@@ -929,7 +929,7 @@
 - Build after 7c: 0.75 s with the shell compile, the new baseline.
 - Tests after 7c, one at a time: `SHFILES` ok 0.7 s, `SHELL` 0.5, `FILES` 0.4, `DIRS` 0.8,
   `DISK` 0.4.
-- Steps since the last full suite: 3. It ran after library refactor step 5 (`STR.UXI`),
+- Steps since the last full suite: 4. It ran after library refactor step 5 (`STR.UXI`),
   2026-10-17: 34 tests, 0 failed, 18.3 s, the longest `CMDLETS` 1.4 s.
 - UXCBASIC: 174 tests, 0 failed, 43 s. `compare.py`: 566 MATCH, 5 RESULT, 31 NO GOLDEN of 602,
   1.7 s. The RESULTs are `STRLR`, `STRNS`, `EXERRCONSTSTR`, and the two below, all expected:
@@ -1765,6 +1765,20 @@
         `STRINGS2.UXI`. No asm, no UXDOS16 build. Tests in UXCBASIC: `STRLR` ok 0.7 s, `STRNS`
         ok 0.5 s.
      8. `genapi.py` writes the `API_*` constants that `DOS.UXI` now holds by hand.
+        Step 8 done: `genapi.py` writes one `API_` CONST for each call in `api.py`, 47, into
+        `lib/DOS.UXI` between the lines `UXI_BEGIN` and `UXI_END`, packed to 100 columns. It
+        writes the file only when the block changes, so a build that changes nothing in
+        `api.py` recompiles nothing. The 25 hand-written values all matched. The new names
+        include the calls not yet written in the kernel (`API_ATTRIB`, `API_GETDATE` and so
+        on), which give error 1. Build 1.48 s with every program recompiled, the new
+        baseline. `VIEW.COM` stays 6419 bytes. Tests: `DOSAPI` ok 0.9 s, `FILES` ok 0.3 s (no
+        size changed), `SHELL` ok 0.5 s.
+        Not done, for the user to choose: `HEAP.UXI` still has its own four `API_STR_*` by
+        hand. `DOS.UXI`'s `ERR_` CONSTs are by hand too, and they differ from `api.py`:
+        `api.py` has `TOO_MANY_FILES`, `BAD_ACCESS_CODE`, `NOT_SAME_DEVICE` and `NO_MORE_FILES`,
+        but `DOS.UXI` has shorter names, and pyuxc takes at most 16 characters a name part.
+        `ERR_WRITE_FAULT` (29) is missing from `DOS.UXI`. Its `FIND_ATTRIBUTES` is `ATTR` in
+        `api.py`.
      - Names follow ECMA-48 (CUU, CUD, CUF, CUB, CUP, ED, EL, SGR).
      - The user, 2026-10-17: the ANSI string CONSTs go in `NAMESPACE CONS`, as the key codes are
        in `NAMESPACE KEYS` (`lib/KEYS.UXI`). VIEW then writes `CONS.SGR_REVERSE$`.
