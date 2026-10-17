@@ -1,0 +1,67 @@
+'----------------------------------------------------------
+' KEYS.UXB -- print the code of each key pressed; Q stops
+'
+'
+'----------------------------------------------------------
+DIM K AS BYTE
+PRINT "Press keys. Q stops."
+DO
+  K = GETKEY()
+  IF K = 0 THEN CONTINUE
+  PRINT K
+  IF K = 81  THEN EXIT DO
+  IF K = 113 THEN EXIT DO
+LOOP
+
+
+STR.PrintBool(str.contains("1234567890","56"))
+
+END
+
+
+//SUB CONTAINS(SEARCHME$,FINDME$) AS BYTE
+//    RETURN (INSTR(SEARCHME$,FINDME$) <> 0)
+//END SUB
+
+namespace STR
+
+    //SUB LEFT(S$)        
+    //SUB RIGHT(S$)
+    //INSTRREV
+    //UPPER - LOWER - TRIM - RTRIM - LTRIM
+    // STARTSWITH, ENDSWITH
+    // SPLIT, JOIN, COUNT
+    // ISNUMNER - ISLETTER
+    // replace    
+    // RPT$
+    // MATCH
+    
+        
+    SUB CONTAINS(SEARCHME$,FINDME$) AS BYTE
+        RETURN (INSTR(SEARCHME$,FINDME$) <> 0)
+    END SUB
+
+   
+
+    SUB PrintBool(V AS BYTE) 
+        if v then
+            print "true"
+        else
+            print "false"
+        end if
+    END SUB
+    
+    SUB Instr(Text$, Search$) AS BYTE
+         IF LEN(Search$) = 0 THEN return 1
+  
+       dim i
+        FOR I = 1 TO LEN(Text$) - LEN(Search$) + 1
+            IF MID$(Text$, I, LEN(Search$)) = Search$ THEN return I
+        NEXT I
+        return 0
+        
+    END sub        
+
+end namespace
+
+

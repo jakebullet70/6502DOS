@@ -1,0 +1,2 @@
+CONST K AS UBYTE = 1
+PRINT @K

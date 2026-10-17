@@ -1,0 +1,14 @@
+@GETKEY
+.
+=GETKEY
+.
+.GETKEY() gives the next key from the keyboard buffer as a UBYTE, or 0 when
+.no key is waiting. It does not wait. The brackets are required.
+.
+:DIM K AS UBYTE
+:DO
+:  K = GETKEY()
+:LOOP UNTIL K <> 0
+:PRINT K
+.
+.The value is the key's PETSCII code: 13 is RETURN.

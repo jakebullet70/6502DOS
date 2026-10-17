@@ -1,0 +1,2 @@
+DIM X AS UBYTE, P AS UWORD
+P = AddrOf(X

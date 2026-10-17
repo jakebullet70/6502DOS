@@ -1,0 +1,11 @@
+' STRLR -- the built-ins LEFT$ and RIGHT$, and their names STR.LEFT$ and STR.RIGHT$ from STRINGS.UXI
+DIM T$ * 20
+T$ = "HELLO"
+PRINT STR.LEFT$(T$, 3); "|"; STR.LEFT$(T$, 0); "|"; STR.LEFT$(T$, 99); "|"
+PRINT STR.RIGHT$(T$, 3); "|"; STR.RIGHT$(T$, 0); "|"; STR.RIGHT$(T$, 99); "|"
+PRINT STR.LEFT$(STR.RIGHT$(T$, 4), 2); "|"; STR.RIGHT$("", 2); "|"
+T$ = STR.LEFT$(T$, 2) + STR.RIGHT$(T$, 2)
+PRINT T$; LEN(T$)
+PRINT LEFT$(T$, 1); RIGHT$(T$, 1)
+PRINT LEFT$(T$, 300); "|"; RIGHT$(T$, 256); "|"; LEFT$(RIGHT$("ABCDEF", 3), 2); "|"
+#INCLUDE "STRINGS.UXI"

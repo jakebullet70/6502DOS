@@ -1,0 +1,2 @@
+SUB A()
+IF 1 THEN ENDSUB

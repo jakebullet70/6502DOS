@@ -1,0 +1,19 @@
+@POS
+.
+=POS
+.
+.POS(0) gives the cursor column as a UBYTE, as in Commodore BASIC. POS(1)
+.gives the cursor row as a UBYTE. Both count from 0. POS(0) = v moves the
+.cursor to column v and keeps the row. POS(1) = v moves it to row v and keeps
+.the column. v is any expression and is used as a UBYTE. The number in the
+.brackets must be written as 0 or 1; anything else is the compile error "POS
+.NEEDS 0 OR 1".
+.
+:DIM C AS UBYTE
+:PRINT "ABC";
+:C = POS(0)
+:PRINT C
+:POS(0) = C * 3 + 1
+:PRINT POS(0)
+.
+.This prints 3 after ABC, then 10 starting at column 10.

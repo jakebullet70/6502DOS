@@ -1,0 +1,214 @@
+"""Run the UXDOS16 tests: boot build/TEST.ROM headless and compare what it prints.
+
+    python tools/tests.py [NAME ...] [--update]
+
+build/TEST.ROM boots to the monitor. The tests in SHELL_ROM_TESTS boot build/UXDOS16.ROM, which
+runs C:\\CMDSHELL.COM at boot.
+
+Each test is an expected output tests/NAME.OUT. A test boots the ROM in x16emu with -echo raw
+and reads what the ROM writes through $FFD2. It passes when that output equals NAME.OUT. It
+fails when the output departs from NAME.OUT or when NAME.OUT is not complete within 5 s.
+
+Every test runs with the SD card image build/tests/SD.IMG, which tools/mksd.py makes from
+tests/sd at the start: 2 sectors per cluster, 1024 clusters, the files dated 2026-10-13. Its
+root also holds build/bas/NAME.COM, from tools/build.py, tests/com/NAME.S assembled to
+NAME.COM: the load address $0801, then the code from $0801, and tests/com/NAME.UXB and
+tests/NAME.UXB compiled to NAME.COM. Its folder DOS is build/DOS, the commandlets from
+tools/build.py. Each test gets a new copy of the image.
+
+A test can type keys into the monitor with x16emu -bas:
+- tests/NAME.S, a program assembled with ca65 to run at $1000, typed in with E commands;
+- or RUN NAME.COM, when tests/NAME.UXB exists: it compiles to NAME.COM on the test card;
+- then tests/NAME.IN, each line ended by CR.
+
+NAMEs pick tests; with none, every test runs. --update runs each test for 2 s and writes
+NAME.OUT from what it printed: read the .OUT before you keep it. Build first
+(tools/build.py). Exit status 1 when a test failed or a program did not assemble.
+"""
+
+import datetime
+import glob
+import os
+import shutil
+import subprocess
+import sys
+import threading
+import time
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import mksd  # noqa: E402
+import uxb  # noqa: E402
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+EMU = r"C:\8bitProgramming\x16emu\x16emu.exe"
+ROM = os.path.join(ROOT, "build", "TEST.ROM")
+SHELL_ROM = os.path.join(ROOT, "build", "UXDOS16.ROM")
+SHELL_ROM_TESTS = ("SHBOOT",)   # these boot UXDOS16.ROM, into the shell
+TESTS = os.path.join(ROOT, "tests")
+OBJ = os.path.join(ROOT, "build", "tests")
+KEYS = os.path.join(OBJ, "keys.txt")
+SD_FOLDER = os.path.join(TESTS, "sd")
+SD_IMAGE = os.path.join(OBJ, "SD.IMG")
+RUN_IMAGE = os.path.join(OBJ, "RUN.IMG")
+CC65 = os.path.join(ROOT, "tools", "cc65", "bin")
+COM_FOLDER = os.path.join(TESTS, "com")
+BAS_OUT = os.path.join(ROOT, "build", "bas")
+CBIN_OUT = os.path.join(ROOT, "build", "DOS")
+PROGRAM_START = 0x1000
+COM_START = 0x0801
+BYTES_PER_LINE = 24             # "E 1000 " and 24 bytes fit the monitor's 79 characters
+LIMIT = 5.0
+UPDATE_SECONDS = 2.0
+# x16emu prints these itself: when the ROM has no stock KERNAL symbols, and at -sdcard.
+EMULATOR_LINES = ("Unable to find KERNAL ", "SD card attached.")
+
+
+def clean(raw):
+    # x16emu's stdout turns LF into CR LF, so the console's CR LF arrives as CR CR LF.
+    text = raw.decode("latin-1").replace("\r\n", "\n").replace("\r\n", "\n").replace("\r", "\n")
+    lines = [l for l in text.split("\n") if not l.startswith(EMULATOR_LINES)]
+    # The last line may be an emulator line still arriving.
+    if lines and any(e.startswith(lines[-1]) for e in EMULATOR_LINES):
+        lines[-1] = ""
+    return "\n".join(lines)
+
+
+def assemble(source, start):
+    """Assemble source to run at start and return its bytes."""
+    name = os.path.splitext(os.path.basename(source))[0]
+    obj = os.path.join(OBJ, name + ".o")
+    binary = os.path.join(OBJ, name + ".BIN")
+    config = os.path.join(OBJ, "program.cfg")
+    with open(config, "w", encoding="utf-8") as out:
+        out.write("MEMORY { RAM: start = $%04X, size = $8000, file = %%O; }\n"
+                  "SEGMENTS { CODE: load = RAM, type = rw; }\n" % start)
+    for command in ([os.path.join(CC65, "ca65.exe"), "--cpu", "65C02",
+                     "-I", os.path.join(ROOT, "build", "gen"), "-o", obj, source],
+                    [os.path.join(CC65, "ld65.exe"), "-C", config, "-o", binary, obj]):
+        result = subprocess.run(command, capture_output=True, text=True)
+        if result.returncode != 0:
+            sys.exit("tests: %s%s" % (result.stdout, result.stderr))
+    return open(binary, "rb").read()
+
+
+def program_keys(source):
+    """Assemble source to run at PROGRAM_START and return the E commands that enter it."""
+    data = assemble(source, PROGRAM_START)
+    lines = []
+    for offset in range(0, len(data), BYTES_PER_LINE):
+        chunk = data[offset:offset + BYTES_PER_LINE]
+        lines.append("E %04X %s\n" % (PROGRAM_START + offset, " ".join("%02X" % b for b in chunk)))
+    return "".join(lines)
+
+
+def boot(rom, want, keys):
+    """Boot rom, type keys when it is not None, and return what the ROM
+    printed. Stop when the output is as long as want or departs from it, or after LIMIT
+    seconds. With want None, stop after UPDATE_SECONDS."""
+    env = dict(os.environ, SDL_VIDEODRIVER="dummy")
+    command = [EMU, "-rom", rom, "-warp", "-sound", "none", "-nohostfs", "-echo", "raw",
+               "-sdcard", RUN_IMAGE]
+    if keys is not None:
+        with open(KEYS, "w", encoding="latin-1", newline="") as out:
+            out.write(keys.replace("\r\n", "\n").replace("\n", "\r"))
+        command += ["-bas", KEYS]
+    emu = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)
+    chunks = []
+
+    def reader():
+        while True:
+            chunk = emu.stdout.read1(4096)
+            if not chunk:
+                return
+            chunks.append(chunk)
+
+    thread = threading.Thread(target=reader, daemon=True)
+    thread.start()
+    deadline = time.time() + (UPDATE_SECONDS if want is None else LIMIT)
+    while time.time() < deadline:
+        if want is not None:
+            # A CR at the end may be the start of a CR LF still arriving.
+            got = clean(b"".join(chunks).rstrip(b"\r"))
+            if len(got) >= len(want) or not want.startswith(got):
+                break
+        time.sleep(0.02)
+    # Kill by this handle only: never by image name, other emulators may be running.
+    emu.kill()
+    emu.wait(timeout=5)
+    thread.join(timeout=5)
+    return clean(b"".join(chunks))
+
+
+def test_name(out_path):
+    """NAME for tests/NAME.OUT."""
+    return os.path.splitext(os.path.basename(out_path))[0].upper()
+
+
+def main():
+    args = sys.argv[1:]
+    update = "--update" in args
+    names = [a.upper() for a in args if not a.startswith("--")]
+    if not os.path.exists(ROM):
+        sys.exit("tests: no build/TEST.ROM; run tools/build.py first")
+    outs = sorted(glob.glob(os.path.join(TESTS, "*.OUT")))
+    if names:
+        outs = [o for o in outs if test_name(o) in names]
+        if len(outs) != len(names):
+            sys.exit("tests: no such test among %s" % " ".join(names))
+    os.makedirs(OBJ, exist_ok=True)
+    programs = sorted(glob.glob(os.path.join(BAS_OUT, "*.COM")))
+    for source in sorted(glob.glob(os.path.join(COM_FOLDER, "*.S"))):
+        program = os.path.join(OBJ, os.path.splitext(os.path.basename(source))[0] + ".COM")
+        with open(program, "wb") as out:
+            out.write(COM_START.to_bytes(2, "little") + assemble(source, COM_START))
+        programs.append(program)
+    uxb_sources = glob.glob(os.path.join(COM_FOLDER, "*.UXB")) + glob.glob(os.path.join(TESTS, "*.UXB"))
+    for source in sorted(uxb_sources):
+        program = os.path.join(OBJ, os.path.splitext(os.path.basename(source))[0].upper() + ".COM")
+        uxb.compile(source, program)
+        programs.append(program)
+    if os.path.isdir(CBIN_OUT):
+        programs.append(CBIN_OUT)
+    mksd.make(SD_FOLDER, SD_IMAGE, sectors_per_cluster=2, clusters=1024,
+              date=datetime.date(2026, 10, 13), extra=programs)
+    failed = []
+    started = time.time()
+    for out_path in outs:
+        name = os.path.splitext(os.path.basename(out_path))[0]
+        want = open(out_path, encoding="latin-1").read().replace("\r\n", "\n")
+        base = os.path.splitext(out_path)[0]
+        keys = None
+        shutil.copyfile(SD_IMAGE, RUN_IMAGE)
+        if os.path.exists(base + ".S"):
+            keys = program_keys(base + ".S")
+        elif os.path.exists(base + ".UXB"):
+            keys = "RUN %s.COM\n" % name.upper()
+        if os.path.exists(base + ".IN"):
+            keys = (keys or "") + open(base + ".IN", encoding="latin-1").read()
+        took = time.time()
+        rom = SHELL_ROM if test_name(out_path) in SHELL_ROM_TESTS else ROM
+        got = boot(rom, None if update else want, keys)
+        took = time.time() - took
+        if update:
+            with open(out_path, "w", encoding="latin-1", newline="\n") as out:
+                out.write(got)
+            print("WROTE %-12s %4.1f s" % (test_name(out_path), took))
+            continue
+        if got == want and took <= LIMIT:
+            print("ok    %-12s %4.1f s" % (test_name(out_path), took))
+            continue
+        failed.append(test_name(out_path))
+        print("FAIL  %-12s %4.1f s" % (test_name(out_path), took))
+        print("      expected:")
+        for line in want.split("\n"):
+            print("      | " + line)
+        print("      got:")
+        for line in got.split("\n"):
+            print("      | " + line)
+    print("%d tests, %d failed, %.1f s" % (len(outs), len(failed), time.time() - started))
+    if failed:
+        print("failed: " + " ".join(failed))
+        sys.exit(1)
+
+
+main()

@@ -1,0 +1,3 @@
+SUB A(X AS UBYTE)
+ENDSUB
+A(1, 2)

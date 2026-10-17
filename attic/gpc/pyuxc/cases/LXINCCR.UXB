@@ -1,0 +1,3 @@
+#INCLUDE "LXINC4.UXI"
+PRINT 2
+J% = 1

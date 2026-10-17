@@ -1,0 +1,6 @@
+' ERRASMLABEL -- a branch to a label the block does not have
+ASM
+    ldy #0
+    bne nowhere
+    rts
+END ASM

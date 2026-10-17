@@ -1,0 +1,40 @@
+UXDOS16 is under the MIT licence in LICENSE.
+
+Programs built with UXCBASIC include its runtime, which is under the MIT licence,
+Copyright (c) 2026 Steven De George SR.
+
+Third-party code in the ROM, from x16-rom, github.com/X16Community/x16-rom, under the
+2-clause BSD licence below:
+
+- src/asm/font.s, the CP437 font, from charset/ascii-cp437.s.
+  Copyright (c) 2024 Tom Wilson.
+- src/asm/i2c.s, the I2C bus, from kernal/drivers/x16/i2c.s.
+  Copyright (c) 2015, Dieter Hauer. (C)2015-2022 Dieter Hauer, Michael Steil, Joe Burks.
+- src/asm/sdcard.s, the SD card over SPI, from fat32/sdcard.s.
+  Copyright (C) 2020 Frank van den Hoef. Copyright 2020 Frank van den Hoef, Michael Steil.
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+  1. Redistributions of source code must retain the above copyright notice, this
+     list of conditions and the following disclaimer.
+  2. Redistributions in binary form must reproduce the above copyright notice,
+     this list of conditions and the following disclaimer in the documentation
+     and/or other materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+  ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+  WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
+  ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+Build tools in this repository:
+
+- tools/cc65/bin/ca65.exe and tools/cc65/bin/ld65.exe are unaltered binaries of
+  cc65 V2.19, Git e11fb5c, from github.com/cc65/cc65. They are under the zlib
+  licence in tools/cc65/LICENSE. They are not part of the ROM.

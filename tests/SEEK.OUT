@@ -1,0 +1,23 @@
+UXDOS16 V0.1.0
+For the Commander X16
+>>RUN SEEK.COM
+OPEN E 0 
+SEEK 0  0  0  E 0  AT 0  0  READ 8  [Line 01 ]
+SEEK 0  0  512  E 0  AT 0  512  READ 8  [Line 09 ]
+SEEK 1  0  504  E 0  AT 0  1024  READ 8  [Line 17 ]
+SEEK 1  65535  65528  E 0  AT 0  1024  READ 8  [Line 17 ]
+SEEK 1  65535  65016  E 0  AT 0  512  READ 8  [Line 09 ]
+SEEK 0  0  508  E 0  AT 0  508  READ 8  [....Line]
+SEEK 0  0  3072  E 0  AT 0  3072  READ 8  [Line 49 ]
+SEEK 2  65535  65528  E 0  AT 0  3192  READ 8  [9.......]
+SEEK 2  0  0  E 0  AT 0  3200  READ 0  []
+SEEK 2  0  100  E 0  AT 0  3300  READ 0  []
+SEEK 0  1  0  E 0  AT 1  0  READ 0  []
+SEEK 1  0  0  E 0  AT 1  0  READ 0  []
+SEEK 0  0  1  E 0  AT 0  1  READ 8  [ine 01 o]
+SEEK 3  0  0  E 1  AT 0  0  READ 8  [f LONG.T]
+SEEK CON E 0  AT 0  0 
+SEEK 15 E 6 
+SEEK CLOSED E 6 
+
+>>

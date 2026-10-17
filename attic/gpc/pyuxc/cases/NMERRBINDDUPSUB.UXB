@@ -1,0 +1,4 @@
+SUB S()
+ENDSUB
+BIND B = S
+BIND B = S

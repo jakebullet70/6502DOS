@@ -1,0 +1,29 @@
+@INPUT and LINPUT
+.
+=INPUT AND LINPUT
+.
+.INPUT reads what the user types into number and STRING variables. It prints
+."? " first. A string and a semicolon after INPUT are printed before the "?
+.".
+.
+:DIM AGE AS UWORD, N$ * 20
+:INPUT "NAME"; N$
+:INPUT "AGE"; AGE
+:PRINT N$; AGE
+.
+.  - Each variable takes one field. A field ends at a comma or at RETURN.
+.  - Several variables take their fields from one line: INPUT A, B$ takes
+.    5,BOB.
+.  - The rest of the line after the last field is dropped.
+.  - When RETURN comes before the last field, the next field is read from a
+.    new line, with no prompt.
+.  - A number field is read as VAL reads it. A signed variable takes a minus
+.    sign. A LONG or ULONG variable is read in 32 bits.
+.  - A string field is cut at the string's size.
+.  - The variable cannot be an array element.
+.
+.LINPUT reads a whole line into a STRING variable, commas and quotes
+.included. It prints no prompt. A line longer than the string is cut.
+.
+:DIM L$ * 80
+:LINPUT L$

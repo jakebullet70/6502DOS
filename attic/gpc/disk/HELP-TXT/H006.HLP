@@ -1,0 +1,41 @@
+@ENUM
+.
+=ENUM
+.
+.ENUM name ... END ENUM makes a set of named constants, the members. ENDENUM
+.is the same as END ENUM. A line holds one member, or several separated by
+.commas.
+.
+:ENUM STATE
+:  READY, RUNNING
+:  BLOCKED = 10
+:  DONE             ' 11
+:  LAST = DONE + 5
+:END ENUM
+:PRINT STATE.READY; STATE.RUNNING; STATE.BLOCKED; STATE.DONE; STATE.LAST
+.
+.This prints 0 1 10 11 16.
+.
+.  - Members number from 0. NAME = value sets a member's number, and the
+.    members after it count on by 1. The value is a constant expression, and
+.    can use an earlier member bare and any CONST.
+.  - Inside the ENUM a member is used bare, in a value only. Outside it is
+.    qualified: STATE.READY. An ENUM MODE in namespace GFX gives
+.    GFX.MODE.TEXT.
+.  - The members are UBYTE when every value is 0 to 255. When one passes 255,
+.    the ENUM and every member are UWORD.
+.  - A member is a constant. It takes no RAM and no space in the PRG.
+.  - A member name takes no mark. A $ is a syntax error. A % stops the
+.    compile with % IS NOT A MARK: USE AS UWORD.
+.  - An ENUM may be in a namespace or a SUB.
+.  - Errors: ENUM WITHOUT END ENUM at the ENUM's line when the source ends
+.    inside it, END ENUM WITHOUT ENUM, TOO BIG FOR A WORD: name for a count
+.    past 65535, VALUE NOT A CONSTANT.
+.
+.See CONST, Namespaces, Types.
+.
+=SEE ALSO
+.
+>14|CONST
+>35|Namespaces
+>5|Types

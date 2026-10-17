@@ -1,0 +1,120 @@
+## UXC-CASE.BL -- ON CASE, a jump table on a BYTE.
+##
+##   ON CASE b          b is a BYTE
+##   CASE 1, 2, 5       constants from 0 to 255, each in one CASE only
+##   CASE ELSE          last; a value with no CASE comes here
+##   END CASE           or ENDCASE
+##
+## The code, with min and max the lowest and the highest value of any CASE:
+##
+##   b into A : JMP dispatch
+##   body : JMP out                 for each CASE, and CASE ELSE
+##   low: the low byte of the target of each value from min to max
+##   high: the high bytes
+##   dispatch: [SBC min] [CMP count : BCS default] T_CASE_JMP low, high
+##   out:
+##
+## The default is the CASE ELSE body, or else the last body's JMP out. A value from min to
+## max with no CASE goes to the default too. The code never moves, so a table entry is the
+## address LK.ORG + offset, written with no fixup.
+##
+## The entry on the nesting stack: NS.FL() is the jump to the dispatch, NS.EX() the jumps out,
+## NS.P%() the count of CASEs, NS.EL%() 1 after CASE ELSE and NS.TOP() its body, NS.VA() and
+## NS.LV() the lowest and the highest value so far. The targets are words in CS.BANK at
+## CS.BASE, 0 for none.
+
+CS.ON:
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.NAME OR TK.S$ <> "CASE" THEN GOTO ER.SYNTAX
+    GOSUB LX.NEXT : GOSUB EX.EXPR
+    EX.I = EX.VN - 1
+    IF EX.VT%(EX.I) <> 0 AND EX.VT%(EX.I) <> K.TY.BYTE THEN ER.M$ = "ON CASE NEEDS A BYTE" : GOTO ER.STOP
+    GOSUB EX.TOB
+    NS.KN = K.NS.CASE : GOSUB NS.PUSH : CT.I = NS.D
+    JP.K = K.JP.LIST : JP.H = 0 : JP.B = T.BRA.ID : GOSUB JP.BR : NS.FL(CT.I) = JP.H
+    NS.VA(CT.I) = 256 : NS.LV(CT.I) = -1
+    CS.AT = (CT.I - 1) * K.CS.SIZE : GOSUB CS.CLEAR
+    CS.WAIT = 1
+    RETURN
+
+## CS.BEFORE -- the first statement after ON CASE must be a CASE.
+CS.BEFORE:
+    IF SM.W$ = "CASE" OR SM.W$ = "END" OR SM.W$ = "ENDCASE" THEN RETURN
+    ER.M$ = "STATEMENT BEFORE CASE" : GOTO ER.STOP
+
+CS.CASE:
+    CT.W$ = "CASE WITHOUT ON CASE" : NS.KN = K.NS.CASE : GOSUB NS.TOPK
+    IF NS.EL%(CT.I) <> 0 THEN ER.M$ = "CASE AFTER CASE ELSE" : GOTO ER.STOP
+    GOSUB CS.BODY.END
+    NS.P%(CT.I) = NS.P%(CT.I) + 1
+    GOSUB LX.NEXT
+    GP.IF TK.T = K.TT.NAME AND TK.S$ = "ELSE" THEN
+        NS.EL%(CT.I) = 1 : NS.TOP(CT.I) = CB.N
+        GOSUB LX.NEXT : RETURN
+    GP.ENDIF
+CS.VALUE:
+    GOSUB EX.EXPR
+    CT.I = NS.D : EX.I = EX.VN - 1
+    IF EX.VK%(EX.I) <> K.EK.CONST THEN ER.M$ = "CASE NEEDS A CONSTANT" : GOTO ER.STOP
+    CS.V = EX.VV(EX.I) : EX.VN = EX.VN - 1
+    IF CS.V > 255 THEN ER.M$ = "CASE VALUE OVER 255" : GOTO ER.STOP
+    CS.AT = (CT.I - 1) * K.CS.SIZE + CS.V * 2 : GOSUB CS.GET
+    IF CS.W <> 0 THEN ER.M$ = "CASE VALUE TWICE" : GOTO ER.STOP
+    CS.W = CB.N : GOSUB CS.PUT
+    IF CS.V < NS.VA(CT.I) THEN NS.VA(CT.I) = CS.V
+    IF CS.V > NS.LV(CT.I) THEN NS.LV(CT.I) = CS.V
+    IF TK.T = K.TT.OP AND TK.K = 44 THEN GOSUB LX.NEXT : GOTO CS.VALUE
+    RETURN
+
+## CS.BODY.END -- the body before this point, if any, jumps out. CS.JO is that jump.
+CS.BODY.END:
+    CS.WAIT = 0
+    IF NS.P%(CT.I) = 0 THEN RETURN
+    CS.JO = CB.N
+    JP.K = K.JP.LIST : JP.H = NS.EX(CT.I) : JP.B = T.BRA.ID : GOSUB JP.BR : NS.EX(CT.I) = JP.H
+    RETURN
+
+## END CASE, or ENDCASE: the token is CASE or ENDCASE.
+CS.END:
+    CT.W$ = "END CASE WITHOUT ON CASE" : NS.KN = K.NS.CASE : GOSUB NS.TOPK
+    GOSUB CS.BODY.END
+    CS.DEFAULT = CS.JO
+    IF NS.EL%(CT.I) <> 0 THEN CS.DEFAULT = NS.TOP(CT.I)
+    CS.BASE = (CT.I - 1) * K.CS.SIZE
+    CS.MIN = NS.VA(CT.I) : CS.MAX = NS.LV(CT.I)
+    GP.IF CS.MAX < 0 THEN
+        JP.L = NS.FL(CT.I) : GOSUB JP.HERE
+        IF NS.EL%(CT.I) <> 0 THEN JP.V = CS.DEFAULT : JP.B = T.BRA.ID : GOSUB JP.BACK
+        GOTO CS.OUT
+    GP.ENDIF
+    CS.LOW = CB.N
+    CS.BYTE = 0 : GOSUB CS.TABLE
+    CS.HIGH = CB.N
+    CS.BYTE = 1 : GOSUB CS.TABLE
+    JP.L = NS.FL(CT.I) : GOSUB JP.HERE
+    IF CS.MIN > 0 THEN SL.S%(0) = K.SEC.CONST : SL.V(0) = CS.MIN : GP.SUB EMIT, T.SUBB.C.ID
+    CS.COUNT = CS.MAX - CS.MIN + 1
+    GP.IF CS.COUNT < 256 THEN
+        SL.S%(0) = K.SEC.CONST : SL.V(0) = CS.COUNT : GP.SUB EMIT, T.CMPB.C.ID
+        JP.V = CS.DEFAULT : JP.B = T.BCS.ID : GOSUB JP.BACK
+    GP.ENDIF
+    SL.S%(0) = K.SEC.CODE : SL.V(0) = CS.LOW
+    SL.S%(1) = K.SEC.CODE : SL.V(1) = CS.HIGH
+    GP.SUB EMIT, T.CASE.JMP.ID
+CS.OUT:
+    JP.L = NS.EX(CT.I) : GOSUB JP.HERE
+    NS.D = NS.D - 1
+    GOSUB LX.NEXT : RETURN
+
+## CS.TABLE -- the low bytes (CS.BYTE = 0) or the high bytes (1) of the addresses of the
+## targets of the values from CS.MIN to CS.MAX.
+CS.TABLE:
+    FOR CS.V = CS.MIN TO CS.MAX
+        CS.AT = CS.BASE + CS.V * 2 : GOSUB CS.GET
+        IF CS.W = 0 THEN CS.W = CS.DEFAULT
+        CS.W = LK.ORG + CS.W : CS.WH = INT(CS.W / 256)
+        CB.B = CS.W - CS.WH * 256
+        IF CS.BYTE <> 0 THEN CB.B = CS.WH
+        GOSUB CB.ADD
+    NEXT CS.V
+    RETURN

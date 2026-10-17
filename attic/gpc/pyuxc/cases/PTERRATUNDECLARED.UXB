@@ -1,0 +1,2 @@
+DIM P AS UWORD
+P = @NOWHERE

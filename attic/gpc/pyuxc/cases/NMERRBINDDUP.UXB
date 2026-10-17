@@ -1,0 +1,3 @@
+DIM A AS UBYTE
+BIND B = A
+BIND B = A

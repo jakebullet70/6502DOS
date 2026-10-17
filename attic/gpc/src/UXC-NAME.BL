@@ -1,0 +1,624 @@
+## UXC-NAME.BL -- scopes: finding a name, NAMESPACE, BIND, and the reserved words.
+##
+##   NM.FIND          in  SM.N$     out SY.*, the record the name means; stops when there is none
+##   NM.RESERVED      in  SM.N$     stop when the name is a word of the language, or qualified
+##   NM.WORD          in  SM.N$     out NM.WORD.FOUND, 1 when the name is a word of the language
+##   NM.SCAN                        the first pass: NAMESPACE and END NAMESPACE, with the token
+##                                  at the line's first word
+##   NM.NAMESPACE                   NAMESPACE name
+##   NM.END                         END NAMESPACE, with the token at NAMESPACE, or ENDNAMESPACE
+##   NM.BODY          in  SM.W$     stop when a statement may not stand in a namespace body
+##   NM.DECLARATION   in  SM.W$     CONST, NAMESPACE, ENDNAMESPACE, BIND, ENUM or TYPE, with the
+##                                  token at it; out NM.DECLARED, 0 when SM.W$ is none of them
+##   NM.BIND                        BIND name [=] target
+##   NM.BIND.SCAN                   the first pass: BIND name [=] word, with the token at BIND
+##   NM.AT            in  SM.N$ SM.TY SM.CNT    DIM name AT address, with the token after the type
+##   NM.AS.TYPE       in  SM.TY     AS type, with the token at AS, after a name of mark SM.TY;
+##                                  out SM.TY, and the token after the type. A TYPE's name
+##                                  also gives RD.AS.RECORD and RD.AS.SIZE.
+##   NM.TYPE.NAME     in  TK.S$     out NM.TYPE.CODE: the type a word names, 0 for none;
+##                                  NM.TYPE.SIGNED, 1 for a signed type
+##   NM.CONST                       CONST name = value, several to a line
+##   NM.ENUM          in  SM.W$     ENUM name, with the token at ENUM, or a stray ENDENUM
+##   NM.ENUM.MEMBERS                one line inside an ENUM
+##   NM.OPEN                        at the end of the source, a namespace still open is an error
+##
+## A scope is a record: a SUB, a namespace, or 0 for the main program. A name belongs to the
+## scope it is declared in, and its record's owner is that scope. A namespace's owner is the
+## namespace around it, and a SUB's owner is its namespace.
+##
+## NM.CURRENT is the namespace being compiled, 0 outside every namespace. NM.SCOPE is the
+## scope a new name goes into: the SUB being compiled, or else NM.CURRENT.
+
+## ---------------------------------------------------------------------------------
+## Finding a name
+
+## NM.FIND -- the first part of the name is looked for in NM.SCOPE, then in each scope
+## around it, out to the main program. Each further part is looked for in the scope the part
+## before it names. A BIND is followed to its target. A name in a SUB is found only from
+## inside that SUB. With NM.FIND.QUIET set, a name not found gives SY.R = 0, not an error.
+## The part after a record variable is a field, which RD.MEMBER gives.
+NM.FIND:
+    NM.REST$ = SM.N$
+    GOSUB NM.SPLIT
+    NM.OWNER = NM.SCOPE
+NM.FIND.OUTWARD:
+    SY.NAME$ = NM.PART$
+    SY.OW = NM.OWNER
+    GOSUB SY.FIND
+    IF SY.R <> 0 THEN GOTO NM.FIND.FOUND
+    IF NM.OWNER = 0 THEN GOTO NM.FIND.MISSING
+    SY.R = NM.OWNER
+    GOSUB SY.GET
+    NM.OWNER = SY.OWNER
+    GOTO NM.FIND.OUTWARD
+NM.FIND.FOUND:
+    GOSUB SY.GET
+    IF SY.KIND <> K.SK.BIND THEN GOTO NM.FIND.TARGET
+    SY.R = SY.VAL
+    GOSUB SY.GET
+NM.FIND.TARGET:
+    IF NM.REST$ = "" THEN RETURN
+    IF SY.KIND = K.SK.VAR AND SY.TYPE >= K.TY.RECORD THEN GOSUB RD.MEMBER : RETURN
+    IF SY.KIND <> K.SK.SPACE AND SY.KIND <> K.SK.SUB AND SY.KIND <> K.SK.ENUM THEN GOTO NM.ERROR.NOT.SCOPE
+    IF SY.KIND = K.SK.SUB AND SY.R <> SB.CURRENT THEN GOTO NM.ERROR.LOCAL
+    GOSUB NM.SPLIT
+    SY.NAME$ = NM.PART$
+    SY.OW = SY.R
+    GOSUB SY.FIND
+    IF SY.R = 0 THEN GOTO NM.FIND.MISSING
+    GOTO NM.FIND.FOUND
+NM.FIND.MISSING:
+    IF NM.FIND.QUIET <> 0 THEN RETURN
+    GOTO NM.ERROR.UNDECLARED
+
+## NM.SPLIT -- the first part of NM.REST$ into NM.PART$, and the rest after its dot back
+## into NM.REST$, "" when there is none.
+NM.SPLIT:
+    NM.DOT = GP.INSTR(NM.REST$, ".")
+    IF NM.DOT = 0 THEN GOTO NM.SPLIT.LAST
+    NM.PART$ = LEFT$(NM.REST$, NM.DOT - 1)
+    NM.REST$ = MID$(NM.REST$, NM.DOT + 1)
+    RETURN
+NM.SPLIT.LAST:
+    NM.PART$ = NM.REST$
+    NM.REST$ = ""
+    RETURN
+
+NM.RESERVED:
+    IF GP.INSTR(SM.N$, ".") > 0 THEN GOTO NM.ERROR.QUALIFIED
+    GOSUB NM.WORD
+    IF NM.WORD.FOUND <> 0 THEN GOTO NM.ERROR.RESERVED
+    RETURN
+
+## NM.WORD -- PRINT$ is a word as PRINT is. MID$ is in the list as it is spelled. The
+## words are two strings, NM.R$ and NM.Q$, because one would pass 255 characters.
+NM.WORD:
+    NM.WORD.FOUND = 0
+    NM.R$ = "|PRINT|END|DIM|VAR|AS|BYTE|WORD|STRING|IF|THEN|ELSE|ELSEIF|ENDIF|DO|LOOP|WHILE"
+    NM.R$ = NM.R$ + "|UBYTE|UWORD|INT|UINT|LONG|ULONG"
+    NM.R$ = NM.R$ + "|UNTIL|FOR|TO|STEP|NEXT|REPEAT|ENDREPEAT|EXIT|CONTINUE|ERRORS|UXC"
+    NM.R$ = NM.R$ + "|NAMESPACE|ENDNAMESPACE|BIND|CONST|ENUM|ENDENUM|TYPE|ENDTYPE|"
+    NM.Q$ = "|GOTO|SUB|ENDSUB|FUNCTION|ENDFUNCTION|CALL|RETURN|INPUT|LINPUT|GETKEY|OPEN|CLOSE|READ|WRITE|EOF"
+    NM.Q$ = NM.Q$ + "|DIR|PEEK|POKE|SYS|ASM|AND|OR|XOR|NOT|MOD|LEN|MID$|CHR$|ASC|STR$|VAL|LVAL|NOFILE|"
+    NM.Q$ = NM.Q$ + "INSTR|POS|ON|CASE|ENDCASE|"
+    NM.Q$ = NM.Q$ + "ADDROF|CONTENTSAT|CONTENTSATW|"
+    NM.B$ = "|" + SM.N$ + "|"
+    IF GP.INSTR(NM.R$, NM.B$) > 0 THEN NM.WORD.FOUND = 1
+    IF GP.INSTR(NM.Q$, NM.B$) > 0 THEN NM.WORD.FOUND = 1
+    NM.B$ = RIGHT$(SM.N$, 1)
+    IF NM.B$ <> "$" THEN RETURN
+    NM.B$ = "|" + LEFT$(SM.N$, LEN(SM.N$) - 1) + "|"
+    IF GP.INSTR(NM.R$, NM.B$) > 0 THEN NM.WORD.FOUND = 1
+    IF GP.INSTR(NM.Q$, NM.B$) > 0 THEN NM.WORD.FOUND = 1
+    RETURN
+
+## ---------------------------------------------------------------------------------
+## NAMESPACE
+
+## NM.SCAN -- the first pass makes each namespace's record, so that the SUBs in it are
+## declared in it. A NAMESPACE that names an open namespace again reopens it.
+## NM.SCAN.PATH$ is the qualified name of NM.CURRENT with a dot after it, "" outside.
+NM.SCAN:
+    IF TK.S$ = "NAMESPACE" THEN GOTO NM.SCAN.OPEN
+    IF TK.S$ = "ENDNAMESPACE" THEN GOTO NM.SCAN.CLOSE
+    IF TK.S$ <> "END" THEN RETURN
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.NAME THEN RETURN
+    IF TK.S$ = "NAMESPACE" THEN GOTO NM.SCAN.CLOSE
+    RETURN
+NM.SCAN.OPEN:
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.NAME OR TK.M <> 0 THEN GOTO ER.SYNTAX
+    SM.N$ = TK.S$
+    GOSUB NM.RESERVED
+    SY.NAME$ = SM.N$
+    SY.OW = NM.CURRENT
+    GOSUB SY.FIND
+    NM.SCAN.PATH$ = NM.SCAN.PATH$ + SM.N$ + "."
+    IF SY.R = 0 THEN GOTO NM.SCAN.NEW
+    GOSUB SY.GET
+    IF SY.KIND <> K.SK.SPACE THEN GOTO NM.ERROR.DUPLICATE
+    NM.CURRENT = SY.R
+    RETURN
+NM.SCAN.NEW:
+    SY.KIND = K.SK.SPACE
+    SY.TYPE = 0
+    SY.VAL = 0
+    SY.FLAGS = 0
+    SY.CNT = 0
+    GOSUB SY.ADD
+    NM.CURRENT = SY.R
+    RETURN
+NM.SCAN.CLOSE:
+    IF NM.CURRENT = 0 THEN RETURN
+    SY.R = NM.CURRENT
+    GOSUB SY.GET
+    NM.CURRENT = SY.OWNER
+    NM.SCAN.PATH$ = LEFT$(NM.SCAN.PATH$, LEN(NM.SCAN.PATH$) - 1)
+NM.SCAN.CLOSE.PART:
+    IF NM.SCAN.PATH$ = "" THEN RETURN
+    IF RIGHT$(NM.SCAN.PATH$, 1) = "." THEN RETURN
+    NM.SCAN.PATH$ = LEFT$(NM.SCAN.PATH$, LEN(NM.SCAN.PATH$) - 1)
+    GOTO NM.SCAN.CLOSE.PART
+
+NM.NAMESPACE:
+    IF SB.CURRENT <> 0 THEN GOTO NM.ERROR.IN.SUB
+    IF NS.D <> 0 THEN GOTO NM.ERROR.IN.BLOCK
+    GOSUB LX.NEXT
+    SY.NAME$ = TK.S$
+    SY.OW = NM.CURRENT
+    GOSUB SY.FIND
+    IF SY.R = 0 THEN GOTO ER.SYNTAX
+    IF NM.CURRENT = 0 THEN NM.LINE = LX.NO
+    IF NM.CURRENT = 0 THEN NM.TEXT$ = LX.L$
+    NM.CURRENT = SY.R
+    NM.SCOPE = SY.R
+    GOSUB LX.NEXT
+    RETURN
+
+NM.END:
+    IF SB.CURRENT <> 0 THEN GOTO NM.ERROR.END.IN.SUB
+    IF NM.CURRENT = 0 THEN GOTO NM.ERROR.END.OUTSIDE
+    SY.R = NM.CURRENT
+    GOSUB SY.GET
+    NM.CURRENT = SY.OWNER
+    NM.SCOPE = NM.CURRENT
+    GOSUB LX.NEXT
+    RETURN
+
+## NM.BODY -- a namespace body holds declarations and SUBs, and nothing that runs. END is
+## allowed only as END NAMESPACE; the token after it is read, and LX.P put back.
+NM.BODY:
+    IF GP.INSTR("|DIM|VAR|CONST|ENUM|TYPE|ENDTYPE|SUB|FUNCTION|NAMESPACE|ENDNAMESPACE|BIND|ERRORS|", "|" + SM.W$ + "|") > 0 THEN RETURN
+    IF SM.W$ <> "END" THEN GOTO NM.ERROR.BODY
+    NM.SAVED.POSITION = LX.P
+    GOSUB LX.NEXT
+    LX.P = NM.SAVED.POSITION
+    IF TK.T <> K.TT.NAME THEN GOTO NM.ERROR.BODY
+    IF TK.S$ <> "NAMESPACE" THEN GOTO NM.ERROR.BODY
+    RETURN
+
+NM.DECLARATION:
+    NM.DECLARED = 1
+    IF SM.W$ = "CONST" THEN GOTO NM.CONST
+    IF SM.W$ = "NAMESPACE" THEN GOTO NM.NAMESPACE
+    IF SM.W$ = "ENDNAMESPACE" THEN GOTO NM.END
+    IF SM.W$ = "BIND" THEN GOTO NM.BIND
+    IF SM.W$ = "ENUM" OR SM.W$ = "ENDENUM" THEN GOTO NM.ENUM
+    IF SM.W$ = "TYPE" OR SM.W$ = "ENDTYPE" THEN GOSUB RD.TYPE : RETURN
+    NM.DECLARED = 0
+    RETURN
+
+## NM.OPEN -- the error is at the line of the open ENUM, else of the outermost NAMESPACE.
+NM.OPEN:
+    GP.IF NM.ENUM.RECORD <> 0 THEN
+        LX.NO = NM.ENUM.START.LINE
+        LX.L$ = NM.ENUM.START.TEXT$
+        ER.M$ = "ENUM WITHOUT END ENUM"
+        GOTO ER.STOP
+    GP.ENDIF
+    IF NM.CURRENT = 0 THEN RETURN
+    LX.NO = NM.LINE
+    LX.L$ = NM.TEXT$
+    ER.M$ = "NAMESPACE WITHOUT END NAMESPACE"
+    GOTO ER.STOP
+
+## ---------------------------------------------------------------------------------
+## BIND
+
+## BIND name [=] target. The target is a variable, an array, a SUB, a namespace or a word
+## of the language, and the new name has the same mark as the target. The record keeps the
+## target's record, so a BIND of a BIND names the first target. A BIND to a word was made
+## by NM.BIND.SCAN, and is passed over here.
+NM.BIND:
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.NAME THEN GOTO ER.SYNTAX
+    NM.BIND.NAME$ = TK.S$
+    NM.BIND.MARK = TK.M
+    GOSUB NM.BIND.TARGET
+    SM.N$ = TK.S$
+    GOSUB NM.WORD
+    IF NM.WORD.FOUND = 0 THEN GOTO NM.BIND.SYMBOL
+    GOSUB LX.NEXT
+    RETURN
+NM.BIND.SYMBOL:
+    SM.N$ = NM.BIND.NAME$
+    GOSUB NM.RESERVED
+    SM.N$ = TK.S$
+    GOSUB NM.FIND
+    IF SY.KIND = K.SK.LABEL THEN GOTO NM.ERROR.LABEL
+    IF (SY.FLAGS AND K.SY.MEMBER) <> 0 THEN GOTO NM.ERROR.FIELD
+    NM.TARGET = SY.R
+    NM.TARGET.TYPE = SY.TYPE
+    SY.NAME$ = NM.BIND.NAME$
+    SY.OW = NM.SCOPE
+    GOSUB SY.FIND
+    SM.N$ = NM.BIND.NAME$
+    IF SY.R <> 0 THEN GOTO NM.BIND.SCANNED
+    NM.BIND.FLAGS = 0
+    GOSUB NM.BIND.ADD
+    GOSUB LX.NEXT
+    RETURN
+
+## NM.BIND.SCANNED -- the second pass meets a BIND of NM.BIND.SCAN once and clears its
+## flag, so that a second BIND of the name is a duplicate.
+NM.BIND.SCANNED:
+    GOSUB SY.GET
+    IF SY.KIND <> K.SK.BIND THEN GOTO NM.ERROR.DUPLICATE
+    IF (SY.FLAGS AND K.SY.SCANNED) = 0 THEN GOTO NM.ERROR.DUPLICATE
+    SY.FLAGS = SY.FLAGS - K.SY.SCANNED
+    GOSUB SY.SET
+    GOSUB LX.NEXT
+    RETURN
+
+## NM.BIND.ADD -- the record of BIND NM.BIND.NAME$ in SY.OW, to NM.TARGET of type
+## NM.TARGET.TYPE, with flags NM.BIND.FLAGS.
+NM.BIND.ADD:
+    SY.NAME$ = NM.BIND.NAME$
+    SY.KIND = K.SK.BIND
+    SY.TYPE = NM.TARGET.TYPE
+    SY.VAL = NM.TARGET
+    SY.FLAGS = NM.BIND.FLAGS
+    SY.CNT = 0
+    GOSUB SY.ADD
+    RETURN
+
+## NM.BIND.TARGET -- the optional = and the target name, with the token left at the target.
+NM.BIND.TARGET:
+    GOSUB LX.NEXT
+    IF TK.T = K.TT.OP AND TK.K = 61 THEN GOSUB LX.NEXT
+    IF TK.T <> K.TT.NAME THEN GOTO ER.SYNTAX
+    IF TK.M <> NM.BIND.MARK THEN GOTO NM.ERROR.MARK
+    RETURN
+
+## NM.BIND.SCAN -- a BIND to a word of the language adds NM.SCAN.PATH$ + name to the
+## aliases, and LX.NEXT reads that name as the word. In a namespace the name may be a word
+## itself: BIND INSTR INSTR in NAMESPACE STR makes STR.INSTR. A BIND to a SUB declared
+## above it, outside a SUB body, is made by NM.BIND.SCAN.SUB. Any other BIND waits for
+## NM.BIND.
+NM.BIND.SCAN:
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.NAME THEN RETURN
+    NM.BIND.NAME$ = TK.S$
+    NM.BIND.MARK = TK.M
+    GOSUB NM.BIND.TARGET
+    SM.N$ = TK.S$
+    GOSUB NM.WORD
+    IF NM.WORD.FOUND = 0 THEN GOTO NM.BIND.SCAN.SUB
+    NM.ALIAS.WORD$ = TK.S$
+    SM.N$ = NM.BIND.NAME$
+    IF GP.INSTR(SM.N$, ".") > 0 THEN GOTO NM.ERROR.QUALIFIED
+    IF NM.CURRENT = 0 THEN GOSUB NM.RESERVED
+    SM.N$ = NM.SCAN.PATH$ + NM.BIND.NAME$
+    NM.ALIAS.INDEX = 0
+NM.BIND.SCAN.NEXT:
+    IF NM.ALIAS.INDEX >= NM.ALIAS.COUNT THEN GOTO NM.BIND.SCAN.ADD
+    IF NM.ALIAS.NAME$(NM.ALIAS.INDEX) = SM.N$ THEN GOTO NM.ERROR.DUPLICATE
+    NM.ALIAS.INDEX = NM.ALIAS.INDEX + 1
+    GOTO NM.BIND.SCAN.NEXT
+NM.BIND.SCAN.ADD:
+    IF NM.ALIAS.COUNT >= K.ALIASES THEN GOTO NM.ERROR.ALIASES
+    NM.ALIAS.NAME$(NM.ALIAS.COUNT) = SM.N$
+    NM.ALIAS.TARGET$(NM.ALIAS.COUNT) = NM.ALIAS.WORD$
+    NM.ALIAS.COUNT = NM.ALIAS.COUNT + 1
+    RETURN
+
+## NM.BIND.SCAN.SUB -- a target that is not found, or is not a SUB, or a name already in
+## the namespace, is left for NM.BIND, which gives the error.
+NM.BIND.SCAN.SUB:
+    IF SB.SCAN.IN.SUB <> 0 THEN RETURN
+    NM.SCOPE = NM.CURRENT
+    NM.FIND.QUIET = 1
+    GOSUB NM.FIND
+    NM.FIND.QUIET = 0
+    NM.SCOPE = 0
+    IF SY.R = 0 THEN RETURN
+    IF SY.KIND <> K.SK.SUB THEN RETURN
+    NM.TARGET = SY.R
+    NM.TARGET.TYPE = SY.TYPE
+    SM.N$ = NM.BIND.NAME$
+    GOSUB NM.RESERVED
+    SY.NAME$ = NM.BIND.NAME$
+    SY.OW = NM.CURRENT
+    GOSUB SY.FIND
+    IF SY.R <> 0 THEN RETURN
+    NM.BIND.FLAGS = K.SY.SCANNED
+    GOSUB NM.BIND.ADD
+    RETURN
+
+## ---------------------------------------------------------------------------------
+## Fixed addresses
+
+## NM.AT -- AT address after the name SM.N$, of type SM.TY, in a DIM. The address is a
+## constant. The variable takes no space: its record holds the address, flagged K.SY.FIXED.
+NM.AT:
+    IF TK.S$ <> "AT" THEN GOTO ER.SYNTAX
+    IF SM.CNT <> 0 OR SM.TY = K.TY.STR THEN GOTO NM.ERROR.AT.KIND
+    NM.AT.NAME$ = SM.N$
+    NM.AT.TYPE = SM.TY
+    NM.AT.SIGNED = NM.TYPE.SIGNED
+    GOSUB LX.NEXT
+    GOSUB EX.EXPR
+    EX.I = EX.VN - 1
+    IF EX.VK%(EX.I) <> K.EK.CONST THEN GOTO NM.ERROR.AT.CONSTANT
+    GOSUB EX.CONST.WORD
+    NM.AT.ADDRESS = EX.VV(EX.I)
+    EX.VN = EX.VN - 1
+    SM.N$ = NM.AT.NAME$
+    SM.TY = NM.AT.TYPE
+    SY.NAME$ = SM.N$
+    SY.OW = NM.SCOPE
+    GOSUB SY.FIND
+    IF SY.R <> 0 THEN GOTO NM.ERROR.DUPLICATE
+    SY.KIND = K.SK.VAR
+    SY.TYPE = NM.AT.TYPE
+    SY.VAL = NM.AT.ADDRESS
+    SY.FLAGS = K.SY.FIXED + NM.AT.SIGNED * K.SY.SIGNED
+    SY.CNT = 0
+    GOSUB SY.ADD
+    RETURN
+
+## ---------------------------------------------------------------------------------
+## Constants
+
+NM.AS.TYPE:
+    IF SM.TY <> 0 THEN ER.M$ = "A MARK AND AS" : GOTO ER.STOP
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.NAME THEN GOTO ER.SYNTAX
+    GOSUB NM.TYPE.NAME
+    SM.TY = NM.TYPE.CODE
+    IF SM.TY = 0 THEN GOSUB RD.AS.TYPE
+    GOSUB LX.NEXT
+    RETURN
+
+## NM.TYPE.NAME -- UBYTE and BYTE, UWORD or UINT and WORD or INT, ULONG and LONG, and
+## STRING. BYTE, WORD, INT and LONG are signed.
+NM.TYPE.NAME:
+    NM.TYPE.CODE = 0
+    NM.TYPE.SIGNED = 0
+    IF TK.S$ = "BYTE" OR TK.S$ = "WORD" OR TK.S$ = "INT" OR TK.S$ = "LONG" THEN NM.TYPE.SIGNED = 1
+    IF TK.S$ = "UBYTE" OR TK.S$ = "BYTE" THEN NM.TYPE.CODE = K.TY.BYTE
+    IF TK.S$ = "UWORD" OR TK.S$ = "UINT" THEN NM.TYPE.CODE = K.TY.WORD
+    IF TK.S$ = "WORD" OR TK.S$ = "INT" THEN NM.TYPE.CODE = K.TY.WORD
+    IF TK.S$ = "STRING" THEN NM.TYPE.CODE = K.TY.STR
+    IF TK.S$ = "LONG" OR TK.S$ = "ULONG" THEN NM.TYPE.CODE = K.TY.LONG
+    RETURN
+
+
+## CONST N AS UBYTE = 10 / CONST BASE AS UWORD = $9F20 / CONST LOW AS BYTE = -5. The AS is
+## required. The value is a constant expression, and the type sets its range.
+## A CONST takes no space: EX.OPERAND folds it as it does a number.
+NM.CONST:
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.NAME THEN GOTO ER.SYNTAX
+    SM.N$ = TK.S$
+    SM.TY = TK.M
+    GOSUB NM.RESERVED
+    GOSUB LX.NEXT
+    IF TK.T = K.TT.NAME AND TK.S$ = "AS" THEN GOSUB NM.AS.TYPE
+    IF SM.TY = 0 THEN GOTO ER.MISSING.AS
+    IF SM.TY = K.TY.STR OR SM.TY >= K.TY.RECORD THEN ER.M$ = "A CONST IS A NUMBER" : GOTO ER.STOP
+    IF TK.T <> K.TT.OP OR TK.K <> 61 THEN GOTO ER.SYNTAX
+    NM.CONST.NAME$ = SM.N$
+    NM.CONST.TYPE = SM.TY
+    NM.CONST.SIGNED = NM.TYPE.SIGNED
+    GOSUB LX.NEXT
+    GOSUB EX.EXPR
+    SM.N$ = NM.CONST.NAME$
+    EX.I = EX.VN - 1
+    IF EX.VK%(EX.I) <> K.EK.CONST THEN ER.M$ = "VALUE NOT A CONSTANT" : GOTO ER.STOP
+    NM.CONST.VALUE = EX.VV(EX.I)
+    NM.CONST.NEGATIVE = EX.VG%(EX.I)
+    GOSUB EX.WHOLE
+    NM.CONST.WHOLE = EX.WHOLE.VALUE
+    EX.VN = EX.VN - 1
+    GOSUB NM.CONST.RANGE
+    SY.NAME$ = SM.N$
+    SY.OW = NM.SCOPE
+    GOSUB SY.FIND
+    IF SY.R <> 0 THEN GOTO NM.ERROR.DUPLICATE
+    SY.KIND = K.SK.CONST
+    SY.TYPE = NM.CONST.TYPE
+    SY.CNT = INT(NM.CONST.VALUE / 65536)
+    SY.VAL = NM.CONST.VALUE - SY.CNT * 65536
+    SY.FLAGS = NM.CONST.NEGATIVE * K.SY.SIGNED
+    GOSUB SY.ADD
+    IF TK.T = K.TT.OP AND TK.K = 44 THEN GOTO NM.CONST
+    RETURN
+
+## NM.CONST.RANGE -- the value NM.CONST.WHOLE fits the CONST's type: UBYTE 0 to 255, BYTE
+## -128 to 127, UWORD 0 to 65535, WORD -32768 to 32767, ULONG 0 to 4294967295, LONG
+## -2147483648 to 2147483647.
+NM.CONST.RANGE:
+    NM.CONST.LOW = 0
+    NM.CONST.HIGH = 255
+    IF NM.CONST.TYPE = K.TY.WORD THEN NM.CONST.HIGH = 65535
+    IF NM.CONST.TYPE = K.TY.LONG THEN NM.CONST.HIGH = 4294967295
+    GP.IF NM.CONST.SIGNED = 1 THEN
+        NM.CONST.HIGH = INT(NM.CONST.HIGH / 2)
+        NM.CONST.LOW = 0 - NM.CONST.HIGH - 1
+    GP.ENDIF
+    GP.IF NM.CONST.WHOLE > NM.CONST.HIGH THEN
+        IF NM.CONST.TYPE = K.TY.BYTE THEN ER.M$ = "TOO BIG FOR A BYTE: " + SM.N$
+        IF NM.CONST.TYPE = K.TY.WORD THEN ER.M$ = "TOO BIG FOR A WORD: " + SM.N$
+        IF NM.CONST.TYPE = K.TY.LONG THEN ER.M$ = "TOO BIG FOR A LONG: " + SM.N$
+        GOTO ER.STOP
+    GP.ENDIF
+    IF NM.CONST.WHOLE < NM.CONST.LOW THEN ER.M$ = "TOO SMALL: " + SM.N$ : GOTO ER.STOP
+    RETURN
+
+## ---------------------------------------------------------------------------------
+## Enums
+
+## NM.ENUM -- NM.ENUM.RECORD is the ENUM's record from here to its END ENUM, and SM.LINE
+## sends each line to NM.ENUM.MEMBERS. NM.SCOPE is the ENUM meanwhile, so that a value can
+## use the members before it bare.
+NM.ENUM:
+    IF SM.W$ = "ENDENUM" THEN GOTO NM.ERROR.END.ENUM
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.NAME OR TK.M <> 0 THEN GOTO ER.SYNTAX
+    SM.N$ = TK.S$
+    GOSUB NM.RESERVED
+    SY.NAME$ = SM.N$
+    SY.OW = NM.SCOPE
+    GOSUB SY.FIND
+    IF SY.R <> 0 THEN GOTO NM.ERROR.DUPLICATE
+    SY.KIND = K.SK.ENUM
+    SY.TYPE = K.TY.BYTE
+    SY.VAL = 0
+    SY.FLAGS = 0
+    SY.CNT = 0
+    GOSUB SY.ADD
+    NM.ENUM.RECORD = SY.R
+    NM.ENUM.OUTER.SCOPE = NM.SCOPE
+    NM.SCOPE = SY.R
+    NM.ENUM.NEXT = 0
+    NM.ENUM.TYPE = K.TY.BYTE
+    NM.ENUM.START.LINE = LX.NO
+    NM.ENUM.START.TEXT$ = LX.L$
+    GOSUB LX.NEXT
+    RETURN
+
+## NM.ENUM.MEMBERS -- members with a comma between them, or END ENUM. A member is NAME or
+## NAME = value, and each member after it counts on by 1.
+NM.ENUM.MEMBERS:
+    EX.VN = 0
+    EX.SD = 0
+    EX.OP.BASE = 0
+    SG.N = 0
+    SG.POINTERS = 0
+    IF TK.T = K.TT.EOL THEN RETURN
+    IF TK.T <> K.TT.NAME THEN GOTO ER.SYNTAX
+    IF TK.S$ = "ENDENUM" THEN GOTO NM.ENUM.END
+    IF TK.S$ = "END" THEN GOTO NM.ENUM.END.WORD
+NM.ENUM.MEMBER:
+    IF TK.T <> K.TT.NAME OR TK.M <> 0 THEN GOTO ER.SYNTAX
+    SM.N$ = TK.S$
+    GOSUB NM.RESERVED
+    SY.NAME$ = SM.N$
+    SY.OW = NM.ENUM.RECORD
+    GOSUB SY.FIND
+    IF SY.R <> 0 THEN GOTO NM.ERROR.DUPLICATE
+    NM.ENUM.MEMBER.NAME$ = SM.N$
+    GOSUB LX.NEXT
+    IF TK.T = K.TT.OP AND TK.K = 61 THEN GOSUB NM.ENUM.VALUE
+    IF NM.ENUM.NEXT > 65535 THEN ER.M$ = "TOO BIG FOR A WORD: " + NM.ENUM.MEMBER.NAME$ : GOTO ER.STOP
+    IF NM.ENUM.NEXT > 255 THEN NM.ENUM.TYPE = K.TY.WORD
+    SY.NAME$ = NM.ENUM.MEMBER.NAME$
+    SY.OW = NM.ENUM.RECORD
+    SY.KIND = K.SK.CONST
+    SY.TYPE = K.TY.BYTE
+    SY.VAL = NM.ENUM.NEXT
+    SY.FLAGS = 0
+    SY.CNT = 0
+    GOSUB SY.ADD
+    NM.ENUM.NEXT = NM.ENUM.NEXT + 1
+    IF TK.T <> K.TT.OP OR TK.K <> 44 THEN RETURN
+    GOSUB LX.NEXT
+    GOTO NM.ENUM.MEMBER
+NM.ENUM.VALUE:
+    GOSUB LX.NEXT
+    GOSUB EX.EXPR
+    EX.I = EX.VN - 1
+    IF EX.VK%(EX.I) <> K.EK.CONST THEN ER.M$ = "VALUE NOT A CONSTANT" : GOTO ER.STOP
+    GOSUB EX.CONST.WORD
+    NM.ENUM.NEXT = EX.VV(EX.I)
+    EX.VN = EX.VN - 1
+    RETURN
+NM.ENUM.END.WORD:
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.NAME OR TK.S$ <> "ENUM" THEN GOTO ER.SYNTAX
+## NM.ENUM.END -- the members are the records after the ENUM's record, up to SY.N. When one
+## passes 255, the ENUM and every member become WORD.
+NM.ENUM.END:
+    NM.SCOPE = NM.ENUM.OUTER.SCOPE
+    GOSUB LX.NEXT
+    IF NM.ENUM.TYPE = K.TY.BYTE THEN GOTO NM.ENUM.CLOSED
+    FOR NM.ENUM.MEMBER.RECORD = NM.ENUM.RECORD TO SY.N
+        SY.R = NM.ENUM.MEMBER.RECORD
+        GOSUB SY.GET
+        SY.TYPE = K.TY.WORD
+        GOSUB SY.SET
+    NEXT NM.ENUM.MEMBER.RECORD
+NM.ENUM.CLOSED:
+    NM.ENUM.RECORD = 0
+    RETURN
+
+## ---------------------------------------------------------------------------------
+## Errors
+
+NM.ERROR.UNDECLARED:
+    ER.M$ = "UNDECLARED NAME " + SM.N$
+    GOTO ER.STOP
+NM.ERROR.NOT.SCOPE:
+    ER.M$ = "NOT A NAMESPACE: " + NM.PART$
+    GOTO ER.STOP
+NM.ERROR.LOCAL:
+    ER.M$ = "LOCAL TO A SUB: " + SM.N$
+    GOTO ER.STOP
+NM.ERROR.QUALIFIED:
+    ER.M$ = "NOT A SIMPLE NAME: " + SM.N$
+    GOTO ER.STOP
+NM.ERROR.RESERVED:
+    ER.M$ = "RESERVED NAME " + SM.N$
+    GOTO ER.STOP
+NM.ERROR.DUPLICATE:
+    ER.M$ = "DUPLICATE NAME " + SM.N$
+    GOTO ER.STOP
+NM.ERROR.IN.SUB:
+    ER.M$ = "NAMESPACE IN A SUB"
+    GOTO ER.STOP
+NM.ERROR.IN.BLOCK:
+    ER.M$ = "NAMESPACE IN A BLOCK"
+    GOTO ER.STOP
+NM.ERROR.END.IN.SUB:
+    ER.M$ = "END NAMESPACE IN A SUB"
+    GOTO ER.STOP
+NM.ERROR.END.OUTSIDE:
+    ER.M$ = "END NAMESPACE WITHOUT NAMESPACE"
+    GOTO ER.STOP
+NM.ERROR.END.ENUM:
+    ER.M$ = "END ENUM WITHOUT ENUM"
+    GOTO ER.STOP
+NM.ERROR.BODY:
+    ER.M$ = "NOT ALLOWED IN A NAMESPACE"
+    GOTO ER.STOP
+NM.ERROR.MARK:
+    ER.M$ = "BIND NEEDS THE SAME MARK"
+    GOTO ER.STOP
+NM.ERROR.AT.KIND:
+    ER.M$ = "NOT YET: AN ARRAY OR A STRING AT AN ADDRESS"
+    GOTO ER.STOP
+NM.ERROR.AT.CONSTANT:
+    ER.M$ = "ADDRESS NOT A CONSTANT"
+    GOTO ER.STOP
+NM.ERROR.LABEL:
+    ER.M$ = "BIND OF A LABEL"
+    GOTO ER.STOP
+NM.ERROR.FIELD:
+    ER.M$ = "BIND OF A FIELD"
+    GOTO ER.STOP
+NM.ERROR.ALIASES:
+    ER.M$ = "TOO MANY BINDS TO WORDS"
+    GOTO ER.STOP

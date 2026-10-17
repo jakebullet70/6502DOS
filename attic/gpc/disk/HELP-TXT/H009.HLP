@@ -1,0 +1,69 @@
+@Strings
+.
+=STRINGS
+.
+.DIM name$ * size makes a string of up to size characters, 1 to 255. The form
+.name AS STRING * size does the same. A string must have a size.
+.
+:DIM L$ * 80, N AS STRING * 20
+:N = "ADA"
+:L$ = "HELLO, " + N
+:PRINT L$; LEN(L$)
+:IF L$ <> "" THEN PRINT MID$(L$, 1, 5)
+.
+.  - A main program string is empty when the program starts. A string DIMed
+.    in a SUB is set empty each time its DIM line runs.
+.  - An assignment cuts the text at the string's size.
+.  - + joins two strings. A joined string is cut at 255 characters.
+.  - The six compares work on strings. The first character that differs
+.    decides, by its code. When one string starts with the other, the longer
+.    one is greater.
+.  - A string and a number in one operator stop the compile with TYPE
+.    MISMATCH.
+.  - A string holds any byte, 0 included.
+.  - @L$ is the address of the string's block: the size byte, the length
+.    byte, then the characters.
+.  - Strings sit in memory after the program, as arrays do, and take no space
+.    in the PRG file.
+.
+.The functions:
+.
+.  - LEN(s) is the length, a UBYTE.
+.  - ASC(s) is the code of the first character, or 0 when s is empty.
+.  - CHR$(n) is the one character with code n.
+.  - STR$(n) is n in decimal, with a space or a minus sign in front: STR$(5)
+.    is " 5" and STR$(-3) is "-3".
+.  - VAL(s) is the number s starts with. Spaces and a + before it are
+.    skipped. A - right before the digits gives the bits of the negative
+.    number: PRINT VAL("-42") prints 65494, and X = VAL("-42") with X AS INT
+.    gives -42. VAL("12AB") is 12, and VAL("ABC") is 0. VAL gives a 16-bit
+.    value, also when it is stored in a LONG.
+.  - LVAL(s) is the number s starts with, read in 32 bits, as a ULONG. Stored
+.    in a LONG it is the signed value: L = LVAL("-1234567") with L AS LONG
+.    gives -1234567, and PRINT LVAL("3000000000") prints 3000000000. LVAL is
+.    a reserved word.
+.  - MID$(s, start, count) is count characters of s from position start. The
+.    first position is 1, and 0 is the same as 1. Without count, it is the
+.    rest of s. A start past the end gives "".
+.  - STR.name is the same function as name: STR.MID$ is MID$. STRINGS.UXI
+.    lists them in NAMESPACE STR.
+.  - INSTR(s, find, start) is the position of the first find in s at or after
+.    position start, a UBYTE. It is 0 when there is none, or when find is
+.    empty. Without start, the search starts at 1, and 0 is the same as 1.
+.
+.LEN and ASC of a literal, and CHR$ and STR$ of a constant, are worked out by
+.the compiler.
+.
+.A SUB takes a STRING parameter with no size: SUB SHOW(T$). The SUB works on
+.the caller's string, so an assignment to T$ changes it. A literal argument
+.is copied first, so the SUB cannot change the literal.
+.
+.Not yet: string arrays, a start value.
+.
+.See Types, Subroutines, Including files.
+.
+=SEE ALSO
+.
+>5|Types
+>31|Subroutines
+>49|Including files

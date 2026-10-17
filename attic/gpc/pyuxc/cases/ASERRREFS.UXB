@@ -1,0 +1,38 @@
+CONST ZP AS UBYTE = $22, VEC AS UWORD = $0314
+DIM N AS UBYTE, W AS UWORD
+ASM
+    bra later
+    bra later
+    bra later
+    bra later
+    bra later
+    bra later
+    bra later
+    bra later
+    bra later
+    bra later
+    bra later
+    bra later
+    bra later
+    bra later
+    bra later
+    bra later
+    bra later
+    bra later
+    bra later
+    bra later
+    bra later
+    bra later
+    bra later
+    bra later
+    bra later
+    bra later
+    bra later
+    bra later
+    bra later
+    bra later
+    bra later
+    bra later
+    bra later
+    later: rts
+END ASM

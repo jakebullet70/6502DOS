@@ -1,0 +1,18 @@
+# Build and test output: tools/build.py writes build/, UXCBASIC/tests.py writes build/uxctests/.
+build/
+
+# Python
+__pycache__/
+*.pyc
+
+# Written by UXCBASIC/tpl/MKTPL.PY. The tables UXC.TPL.BIN and UXC.TPL.IDS are kept, so a clone
+# compiles without running 64tass.
+UXCBASIC/tpl/*.LST
+UXCBASIC/tpl/UXDOS/*.LST
+UXCBASIC/tpl/UXC.TPL.BL
+
+# Written by UXCBASIC/help/MKHELP.PY.
+UXCBASIC/help/HELP-TXT/
+
+# Claude Code per-machine settings.
+.claude/settings.local.json

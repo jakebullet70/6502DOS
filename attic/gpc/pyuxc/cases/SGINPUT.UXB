@@ -1,0 +1,9 @@
+' INPUT and LINPUT from the keyboard.
+DIM N AS UBYTE, W AS UWORD, C AS BYTE, L AS LONG, S$ * 40, T$ * 3
+INPUT S$
+INPUT N
+INPUT "NAME"; S$
+INPUT "TWO"; N, W
+INPUT S$, T$, C, L
+LINPUT S$
+LINPUT T$

@@ -1,0 +1,72 @@
+'=============================================================================================
+' -- Callable Commandlet -----> DISKINFO [d:] [SILENT]
+' -- prints the size of drive d, or of the current drive with no d:, as CHKDSK does:
+' --      1024 KB total
+' --       880 KB free
+' --      1024 bytes a cluster
+' --      1024 clusters
+' --       880 clusters free
+' -- Sets P1$ to P5$ to the five numbers, and P1$ to an empty string on an invalid drive.
+' -- The colon may be left off, and a small letter is the same as a capital.
+' -- SILENT, in capitals, prints nothing. It is P1$ with no d:, else P2$.
+' -- A drive that is not a letter, or that the kernel does not know, prints Invalid drive and
+' -- gives exit code 1. Exit code 0 otherwise.
+' -- The kernel's diskfree call reads the whole FAT, so a large card takes a while.
+' --
+' -- From a script:
+' --     DISKINFO C: SILENT
+' --     PRINT "Free: " + P2$ + " KB of " + P1$
+'=============================================================================================
+#INCLUDE "DOS.UXI"
+#INCLUDE "HEAP.UXI"
+#INCLUDE "CBIN.UXI"
+DIM DRIVE_NAME AS STRING * 255, DRIVE AS UBYTE
+DIM CLUSTER_BYTES AS ULONG, TOTAL_CLUSTERS AS ULONG, FREE_CLUSTERS AS ULONG
+
+' Clears P1$, prints Invalid drive unless SILENT, and ends with exit code 1.
+SUB INVALID_DRIVE()
+  HEAP.SYS_STRINGS_SET(SLOT_P1, "")
+  IF SILENT = 0 THEN PRINT "Invalid drive"
+  END 1
+END SUB
+
+' Puts VALUE in system string SLOT and, unless SILENT, prints it right-aligned before LABEL.
+SUB SHOW(SLOT AS UBYTE, VALUE AS ULONG, LABEL AS STRING)
+  DIM TEXT AS STRING * 10
+  TEXT = MID$(STR$(VALUE), 2)
+  HEAP.SYS_STRINGS_SET(SLOT, TEXT)
+  IF SILENT = 0 THEN PRINT RIGHT$("        " + TEXT, 9); " "; LABEL
+END SUB
+
+' Gives the kilobytes in CLUSTERS clusters. Sectors are a multiple of 512 bytes.
+FUNCT CLUSTERS_KB(CLUSTERS AS ULONG) AS ULONG
+  RETURN (CLUSTERS * DOS.CLUSTER_SECTORS * (DOS.SECTOR_BYTES >> 9)) >> 1
+END FUNCT
+
+DRIVE_NAME = HEAP.SYS_STRINGS_GET(SLOT_P1)
+IF HEAP.SYS_STRINGS_GET(SLOT_P2) = "SILENT" THEN SILENT = 1
+IF DRIVE_NAME = "SILENT" THEN
+  SILENT = 1
+  DRIVE_NAME = ""
+END IF
+IF DRIVE_NAME <> "" THEN
+  ' a to z give 1 to 26. Any other first character gives 0 or wraps past 26.
+  DRIVE = (ASC(DRIVE_NAME) OR $20) - ASC("a") + 1
+  IF DRIVE = 0 OR DRIVE > 26 OR (MID$(DRIVE_NAME, 2) <> "" AND MID$(DRIVE_NAME, 2) <> ":") THEN
+    INVALID_DRIVE()
+  END IF
+END IF
+DOS.DISKFREE(DRIVE)
+IF DOS.ERROR <> 0 THEN INVALID_DRIVE()
+TOTAL_CLUSTERS = DOS.TOTAL_HIGH
+TOTAL_CLUSTERS = (TOTAL_CLUSTERS << 16) OR DOS.TOTAL_LOW
+FREE_CLUSTERS = DOS.FREE_HIGH
+FREE_CLUSTERS = (FREE_CLUSTERS << 16) OR DOS.FREE_LOW
+CLUSTER_BYTES = DOS.CLUSTER_SECTORS
+CLUSTER_BYTES = CLUSTER_BYTES * DOS.SECTOR_BYTES
+SHOW(SLOT_P1, CLUSTERS_KB(TOTAL_CLUSTERS), "KB total")
+SHOW(SLOT_P2, CLUSTERS_KB(FREE_CLUSTERS), "KB free")
+SHOW(SLOT_P3, CLUSTER_BYTES, "bytes a cluster")
+SHOW(SLOT_P4, TOTAL_CLUSTERS, "clusters")
+SHOW(SLOT_P5, FREE_CLUSTERS, "clusters free")
+END 0

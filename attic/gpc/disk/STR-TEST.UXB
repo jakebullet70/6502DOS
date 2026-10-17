@@ -1,0 +1,31 @@
+'----------------------------------------------------------
+' KEYS.UXB -- print the code of each key pressed; Q stops
+'
+'
+'----------------------------------------------------------
+const KEY1 = 49
+const KEY2 = 50
+#include "strings2.uxi"
+
+DIM K AS BYTE
+PRINT "Press keys. Q stops."
+DO
+  K = GETKEY()
+  IF K = 0 THEN CONTINUE
+  IF K = 81  THEN EXIT DO
+  IF K = 113 THEN EXIT DO
+  if K = key1 then rev1()
+  if k = key2 then rev2()
+  print k 
+LOOP
+END
+
+
+sub rev1()
+    print str.instrrev("123456.inc",".",0)
+end sub
+
+sub rev2()
+    print "rev2"
+end sub
+

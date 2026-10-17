@@ -1,0 +1,2 @@
+CONST K AS UBYTE = 1
+K = 2

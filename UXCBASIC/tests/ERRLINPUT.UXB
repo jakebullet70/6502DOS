@@ -1,0 +1,3 @@
+' ERRLINPUT -- LINPUT needs a STRING variable
+DIM N AS UWORD
+LINPUT N

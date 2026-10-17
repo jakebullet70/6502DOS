@@ -1,0 +1,3 @@
+SUB A()
+RETURN 1
+ENDSUB

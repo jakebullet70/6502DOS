@@ -1,0 +1,8 @@
+' INPUT1 -- INPUT and LINPUT from the keyboard
+DIM N AS UWORD, B AS UBYTE, A$ * 4, L$ * 20
+INPUT "NUMBER"; N
+PRINT N + 1
+INPUT B, A$
+PRINT B; A$; LEN(A$)
+LINPUT L$
+PRINT "[" + L$ + "]"

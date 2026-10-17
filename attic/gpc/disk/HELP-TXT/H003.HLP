@@ -1,0 +1,123 @@
+@Types
+.
+=TYPES
+.
+.A number takes its type from AS. A string takes the $ mark or AS STRING.
+.
+:DIM B AS BYTE, W AS WORD, N AS INT, U AS UBYTE
+:VAR T AS STRING * 20
+:B = -5
+:PRINT B / 2
+.
+.This prints -2.
+.
+=The types
+.
+.  - BYTE is -128 to 127, 1 byte.
+.  - UBYTE is 0 to 255, 1 byte.
+.  - WORD is -32768 to 32767, 2 bytes, low byte first. INT is a second name
+.    for it.
+.  - UWORD is 0 to 65535, 2 bytes, low byte first. UINT is a second name for
+.    it.
+.  - LONG is -2147483648 to 2147483647, 4 bytes, low byte first.
+.  - ULONG is 0 to 4294967295, 4 bytes, low byte first.
+.  - STRING is text of up to 255 characters. A STRING needs a size.
+.  - An array, a parameter, a FUNCTION result and a TYPE field take every
+.    number type: FUNCTION HALF(N AS WORD) AS WORD, DIM A(3) AS LONG.
+.  - A number with no AS stops the compile with MISSING AS: name, so DIM B
+.    gives MISSING AS: B. The same holds for a CONST, a parameter and the
+.    result of a FUNCTION.
+.
+=Signed numbers
+.
+.BYTE and WORD are signed. UBYTE and UWORD are unsigned.
+.
+.  - An operator is signed when either side is signed. A negative constant,
+.    such as -1, is signed.
+.  - A signed side with a UBYTE, or with a constant from 128 to 255, on the
+.    other side works at WORD width. With a UBYTE U of 200 and a BYTE B of
+.    -5, U > B is true and U + B is 195.
+.  - <, <=, > and >= are signed when a side is signed. = and <> compare the
+.    bits.
+.  - / rounds toward 0, and MOD has the sign of the left side: -7 / 2 is -3,
+.    and -7 MOD 2 is -1.
+.  - >> on a signed left side keeps the sign: -1000 >> 2 is -250. << is the
+.    same for signed and unsigned.
+.  - Unary minus gives a signed value: a BYTE for a BYTE, a LONG for a LONG
+.    or ULONG, else a WORD. With a UWORD M of 7, -M is -7.
+.  - An operator on two BYTEs is a BYTE operator: with a BYTE C of -128, C -
+.    1 is 127.
+.  - A BYTE stored in a WORD keeps its sign: W = B gives -5.
+.  - PRINT and STR$ show a signed value with a minus sign: PRINT -1 prints
+.    -1. An unsigned value has no sign: a UWORD of 65535 prints 65535.
+.  - INPUT and VAL read a leading minus. See Strings.
+.
+=LONG and ULONG
+.
+.LONG and ULONG are 32 bits. LONG is signed and ULONG is unsigned.
+.
+:DIM L AS LONG, W AS WORD
+:L = 100000
+:PRINT L * 3; -L / 7; -L MOD 7
+:L = 1000000
+:W = L
+:PRINT W
+.
+.This prints 300000 -14285 -5, then 16960.
+.
+.  - An operator with a LONG or ULONG side works at 32 bits. The other side
+.    is widened, with its sign when it is signed. It is signed when either
+.    side is signed, as for BYTE and WORD.
+.  - + - * / MOD, the compares, AND, OR, XOR, <<, >>, unary minus and NOT
+.    work at 32 bits. >> on a signed left side keeps the sign.
+.  - A LONG stored in a BYTE or WORD keeps its low bits: W = L above gives
+.    16960. A BYTE or WORD stored in a LONG is widened, with its sign when it
+.    is signed.
+.  - PRINT shows a LONG as it shows a WORD. STR$ gives its digits: STR$(-L)
+.    above is "-1000000".
+.  - INPUT reads a LONG or ULONG variable in 32 bits, with a leading minus.
+.    VAL gives a 16-bit value. LVAL reads a string in 32 bits.
+.
+=LONG constants and limits
+.
+.  - A number literal goes up to 4294967295, in decimal, $hex or %binary. A
+.    bigger one stops the compile with OVERFLOW.
+.  - A literal over 65535 is a LONG. A negative constant under -32768, such
+.    as -70000, is a LONG.
+.  - Constants fold at 32 bits when a side is a LONG, and wrap at 32 bits:
+.    4294967295 + 1 is 0, and 70000 * 70000 is 605032704. Two constants that
+.    are not LONG fold at 16 bits.
+.  - A LONG constant where the compiler needs 16 bits stops the compile with
+.    NUMBER TOO BIG: an array size, a DIM ... AT, PEEK or POKE address, an
+.    ENUM value, a REPEAT count, an ASM operand.
+.  - A FOR counter that is a LONG or ULONG stops the compile with A FOR
+.    COUNTER IS A BYTE OR A WORD.
+.  - + -, the compares and the bit operators are inline code. * / MOD, the
+.    shifts, PRINT, STR$ and INPUT call run-time routines, linked only when
+.    used. A program that uses a LONG gets 32 more bytes for the expression
+.    stack.
+.
+=The $ mark
+.
+.  - A $ after a name makes it a STRING: DIM L$ * 80. AS STRING is the same.
+.  - A $ and AS on one name stop the compile with A MARK AND AS.
+.  - % is not a mark. A % right after a name stops the compile with % IS NOT
+.    A MARK: USE AS UWORD. %1010 is a binary number.
+.  - ! is not a mark. DIM A! AS UBYTE stops the compile with SYNTAX ERROR.
+.
+=Names
+.
+.A name is a letter, then letters, digits and _, 16 at most, then a $ for a
+.string. The $ is part of the name: S and S$ are two names. A name declared
+.with AS has no mark, so after VAR T AS STRING * 20 the name is T. Upper and
+.lower case are the same, so my_count and MY_COUNT are one name. A dot joins
+.the parts of a qualified name: GFX.COLOR is COLOR in namespace GFX. A
+.reserved word with a $ is reserved too: PRINT$ is not a name.
+.
+.See Declarations, Strings, Namespaces.
+.
+=SEE ALSO
+.
+>18|Strings
+>12|Declarations
+>35|Namespaces

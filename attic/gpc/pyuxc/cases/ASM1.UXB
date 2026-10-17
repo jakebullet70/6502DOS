@@ -1,0 +1,18 @@
+' ASM1 -- bytes into the code, on one line and in a block
+DIM N AS UBYTE, W AS UWORD
+ASM $A9, 65, $20, $FFD2      ' lda #65 : jsr CHROUT
+PRINT
+ASM
+    $A9, 66          ' lda #66
+    $8D, @N         ' sta N
+
+    $A9, $34
+    $8D, @W
+    $A9, $12
+    $8D, @W + 1
+END ASM
+PRINT N; W
+ASM
+    $EA
+ENDASM
+PRINT "OK"

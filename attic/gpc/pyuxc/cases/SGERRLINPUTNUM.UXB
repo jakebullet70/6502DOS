@@ -1,0 +1,2 @@
+DIM N AS UBYTE
+LINPUT #1, N

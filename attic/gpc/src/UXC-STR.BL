@@ -1,0 +1,1031 @@
+## UXC-STR.BL -- strings.
+##
+##   SG.DIM        DIM name$ * n, with the token after the type
+##   SG.LET        name$ = expr, with the variable's record in SY.* and the token at the =
+##   SG.PRINT.ITEM one PRINT item. Out: SG.PRINTED, 1 when it was a string and is printed
+##   SG.LITERAL    a literal as an operand
+##   SG.FUNCTION   LEN, ASC, VAL, LVAL, CHR$, STR$, MID$, INSTR, OPEN, EOF or READ as an operand.
+##                 Out: SG.FOUND
+##   SG.AT         @name of a string, with EX.* made for a variable
+##   SG.LEFT       the left side of a +, before its right side is parsed
+##   SG.BINARY     + or a compare on the two top entries, when either is a string
+##   SG.TOS        the top entry, a string, into A/Y
+##   SG.PASS       the top entry as the argument of a STRING parameter, into A/Y
+##   SG.RESULT     the result of a STRING SUB, in A/Y after its JSR, as a new entry
+##   SG.RETURN.EMPTY  A/Y = the address of "", for a STRING SUB that ends with no RETURN
+##   SG.INPUT      INPUT or LINPUT, from the keyboard or #handle, with the token at the keyword
+##   SG.WRITE      WRITE handle, address, count, with the token at WRITE
+##   SG.MAXES      at startup: the max byte of each string block
+##
+## A string variable is a record of kind K.SK.VAR and type K.TY.STR. Its value is the offset
+## of its block in the array space, and its element count is its max. A STRING parameter
+## has count 0, and its value is the offset of the WORD that holds the block's address.
+## A string field of a record is a block too, in the record's section. RD.SECTION gives
+## the section of every block.
+##
+## A temp is a hidden string variable of max 255, named %T 1, %T 2 and on, and owned by the
+## SUB being compiled or by the main program. It has flag K.SY.TEMP, its value is its
+## offset in its owner's pool, and its entries have section K.SEC.TEMP. A statement takes
+## temps from %T 1 up, and SG.N counts them. The next statement, or the next PRINT item,
+## starts again at %T 1, so a pool holds as many temps as one statement needs at once.
+## SB.POOLS (UXC-SUB.BL) places the pools at link: SUBs of one level in the call graph
+## share one pool. A SUB called inside an expression never reaches the caller's temps.
+##
+## A + whose left side is the first operand of the statement can skip the temp:
+##   A$ = A$ + x    appends x straight onto A$, when A$ is named once on the right and
+##                  there is no call there
+##   PRINT a + b    prints a, then b, when the item has no compare and no call
+## The printed part is a temp entry of value K.TEMP.PRINTED. SG.SCAN reads the statement
+## ahead to see that the order of the work cannot show.
+##
+## A PRINT item that is one character, "X" or CHR$(x), is printed from A with no string.
+##
+## A STRING SUB returns the address of the block that holds its result: a literal, one of
+## its temps, a parameter's block or any other variable. The caller reads that block and
+## never writes it. The caller keeps the address in a hidden WORD, %P 1 and on, counted by
+## SG.POINTERS like the temps. A temp of the SUB holds the result only until the SUB, or a
+## SUB of its level, runs again. So the caller copies the result into a temp of its own
+## when it passes the result to a SUB, or when a call comes later in the statement.
+
+## SG.DIM -- a block of n + 2 bytes in the array space. SM.N$ is the name and SM.CNT its
+## element count.
+SG.DIM:
+    IF SM.CNT <> 0 THEN GOTO SG.ERROR.ARRAY
+    IF TK.T <> K.TT.OP OR TK.K <> 42 THEN GOTO SG.ERROR.NO.SIZE
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.NUM THEN GOTO SG.ERROR.SIZE
+    IF TK.V < 1 OR TK.V > 255 THEN GOTO SG.ERROR.SIZE
+    SG.SIZE = TK.V
+    GOSUB LX.NEXT
+    IF TK.T = K.TT.OP AND TK.K = 61 THEN GOTO SG.ERROR.START
+    SY.NAME$ = SM.N$ : SY.OW = NM.SCOPE
+    GOSUB SY.FIND
+    IF SY.R <> 0 THEN GOTO SG.ERROR.DUPLICATE
+    SB.PLACE.SIZE = SG.SIZE + 2
+    GOSUB SB.PLACE.BLOCK
+    SY.KIND = K.SK.VAR : SY.TYPE = K.TY.STR
+    SY.VAL = SB.PLACE : SY.FLAGS = 0 : SY.CNT = SG.SIZE
+    GOSUB SY.ADD
+    IF SB.CURRENT <> 0 THEN GOSUB SG.EMPTY.LOCAL
+    RETURN
+
+## SG.EMPTY.LOCAL -- a string DIM in a SUB sets its block to empty each time it runs: the
+## max is SG.SIZE and the length 0. A global block gets its max once, at startup.
+SG.EMPTY.LOCAL:
+    SL.S%(0) = K.SEC.CONST
+    SL.V(0) = SG.SIZE
+    GP.SUB EMIT, T.LDW.C.ID
+    SL.S%(0) = K.SEC.BSS
+    SL.V(0) = SB.PLACE
+    GP.SUB EMIT, T.STW.V.ID
+    RETURN
+
+## SG.LET -- the text is copied into the block, cut at its max. A$ = A$ copies nothing.
+## A$ = "" stores 0 in the length byte.
+SG.LET:
+    GOSUB RD.SECTION
+    SG.DESTINATION = SY.VAL : SG.SECTION = RD.SEC : SG.TEMPLATE = T.SCOPY.ID
+    IF SY.CNT = 0 THEN SG.TEMPLATE = T.SCOPY.P.ID
+    GOSUB LX.NEXT
+    SG.APPENDING = 0
+    GP.IF SY.CNT > 0 THEN
+        SG.WHOLE$ = SM.N$
+        GOSUB SG.BASE.OF
+        SG.SCAN.NAME$ = SG.BASE$ : SG.SCAN.ITEM = 0
+        GOSUB SG.SCAN
+        IF SG.SCAN.COUNT = 1 AND SG.SCAN.CALL = 0 THEN SG.APPENDING = 1
+    GP.ENDIF
+    SG.BASE = EX.VN : SG.DEPTH = SB.DEPTH
+    GOSUB EX.EXPR
+    SG.APPENDING = 0
+    GOSUB SG.IS.DESTINATION
+    GP.IF SG.SAME = 1 THEN
+        EX.VN = EX.VN - 1
+        RETURN
+    GP.ENDIF
+    GP.IF SG.SECTION <> K.SEC.VAR THEN
+        EX.I = EX.VN - 1
+        GOSUB SG.IS.EMPTY
+        IF SG.EMPTY = 1 THEN GOTO SG.LET.CLEAR
+    GP.ENDIF
+    GOSUB SG.TOS
+    SL.S%(0) = SG.SECTION
+    SL.V(0) = SG.DESTINATION
+    GP.SUB EMIT, SG.TEMPLATE
+    RETURN
+SG.LET.CLEAR:
+    GOSUB SG.TAKE.LITERAL
+    EX.VN = EX.VN - 1
+    SL.S%(0) = SG.SECTION
+    SL.V(0) = SG.DESTINATION
+    GP.SUB EMIT, T.SCLEAR.ID
+    RETURN
+
+## SG.IS.DESTINATION -- SG.SAME = 1 when the top entry is the block SG.LET stores into.
+SG.IS.DESTINATION:
+    SG.SAME = 0
+    EX.I = EX.VN - 1
+    IF SG.SECTION = K.SEC.VAR OR EX.VT%(EX.I) <> K.TY.STR THEN RETURN
+    IF EX.VK%(EX.I) <> K.EK.ADDR OR EX.VS%(EX.I) <> SG.SECTION THEN RETURN
+    IF EX.VV(EX.I) = SG.DESTINATION THEN SG.SAME = 1
+    RETURN
+
+## SG.PRINT.ITEM -- the string temps are free again after the item.
+SG.PRINT.ITEM:
+    SG.N = 0
+    SG.POINTERS = 0
+    SG.CHR.END = -1
+    SG.SCAN.NAME$ = ""
+    SG.SCAN.ITEM = 1
+    GOSUB SG.SCAN
+    SG.PRINTING = 0
+    IF SG.SCAN.CALL = 0 AND SG.SCAN.COMPARE = 0 THEN SG.PRINTING = 1
+    SG.BASE = EX.VN
+    SG.DEPTH = SB.DEPTH
+    GOSUB EX.EXPR
+    SG.PRINTING = 0
+    SG.PRINTED = 0
+    EX.I = EX.VN - 1
+    IF EX.VT%(EX.I) <> K.TY.STR THEN RETURN
+    SG.PRINTED = 1
+    GP.IF EX.VS%(EX.I) = K.SEC.TEMP AND EX.VV(EX.I) = K.TEMP.PRINTED THEN
+        EX.VN = EX.VN - 1
+        RETURN
+    GP.ENDIF
+    ## CHR$(x) with no code after its T_CHR: A still holds x.
+    GP.IF EX.VS%(EX.I) = K.SEC.TEMP AND EX.VV(EX.I) = SG.CHR.TEMP AND CB.N = SG.CHR.END THEN
+        CB.N = SG.CHR.START
+        FX.N = SG.CHR.FIXUPS
+        EX.VN = EX.VN - 1
+        GP.SUB EMIT, T.PRCHR.ID
+        RETURN
+    GP.ENDIF
+    SG.WAS.LITERAL = 0
+    IF LEN(SG.LAST.TEXT$) = 1 THEN GOSUB SG.TAKE.LITERAL
+    GP.IF SG.WAS.LITERAL = 1 THEN
+        EX.R = ASC(SG.LAST.TEXT$)
+        GOSUB EX.SETC
+        GOSUB EX.TOB
+        GP.SUB EMIT, T.PRCHR.ID
+        RETURN
+    GP.ENDIF
+    GOSUB SG.TOS
+    GP.SUB EMIT, T.PRSTR.ID
+    RETURN
+
+## SG.SCAN -- read the rest of the statement, or of the PRINT item when SG.SCAN.ITEM = 1.
+## In: SG.SCAN.NAME$, a name with no namespace. Out: SG.SCAN.COUNT, the names that end
+## in it; SG.SCAN.CALL = 1 when a name before a ( is not an array; SG.SCAN.COMPARE = 1 when
+## there is a compare. TK.* and LX.P are put back after.
+SG.SCAN:
+    SG.SAVED.P = LX.P
+    SG.SAVED.T = TK.T
+    SG.SAVED.K = TK.K
+    SG.SAVED.V = TK.V
+    SG.SAVED.M = TK.M
+    SG.SAVED.S$ = TK.S$
+    SG.SCAN.COUNT = 0
+    SG.SCAN.CALL = 0
+    SG.SCAN.COMPARE = 0
+    SG.SCAN.DEPTH = 0
+    SG.SCAN.UNKNOWN = 0
+SG.SCAN.NEXT:
+    IF TK.T = K.TT.EOL THEN GOTO SG.SCAN.END
+    GP.IF TK.T = K.TT.NAME THEN
+        IF SG.SCAN.DEPTH = 0 AND TK.S$ = "ELSE" THEN GOTO SG.SCAN.END
+        SG.WHOLE$ = TK.S$
+        GOSUB SG.BASE.OF
+        IF SG.BASE$ = SG.SCAN.NAME$ THEN SG.SCAN.COUNT = SG.SCAN.COUNT + 1
+        SG.SCAN.LAST$ = TK.S$
+        GOSUB SG.SCAN.KNOWN
+        GOSUB LX.NEXT
+        GOTO SG.SCAN.NEXT
+    GP.ENDIF
+    GP.IF TK.T = K.TT.OP THEN
+        IF SG.SCAN.ITEM = 1 AND SG.SCAN.DEPTH = 0 AND (TK.K = 59 OR TK.K = 44) THEN GOTO SG.SCAN.END
+        IF TK.K = 40 AND SG.SCAN.UNKNOWN = 1 THEN GOSUB SG.SCAN.ARRAY
+        IF TK.K = 40 THEN SG.SCAN.DEPTH = SG.SCAN.DEPTH + 1
+        IF TK.K = 41 THEN SG.SCAN.DEPTH = SG.SCAN.DEPTH - 1
+        IF TK.K = 60 OR TK.K = 61 OR TK.K = 62 THEN SG.SCAN.COMPARE = 1
+        IF TK.K >= K.OP.NE AND TK.K <= K.OP.GE THEN SG.SCAN.COMPARE = 1
+    GP.ENDIF
+    SG.SCAN.UNKNOWN = 0
+    GOSUB LX.NEXT
+    GOTO SG.SCAN.NEXT
+SG.SCAN.END:
+    LX.P = SG.SAVED.P
+    TK.T = SG.SAVED.T
+    TK.K = SG.SAVED.K
+    TK.V = SG.SAVED.V
+    TK.M = SG.SAVED.M
+    TK.S$ = SG.SAVED.S$
+    RETURN
+
+## SG.SCAN.ARRAY -- SG.SCAN.CALL = 1 unless SG.SCAN.LAST$, the name before the (, is an
+## array. Clobbers SY.* and the NM.FIND state; SM.N$ is kept.
+SG.SCAN.ARRAY:
+    SG.SCAN.SAVED.N$ = SM.N$
+    SM.N$ = SG.SCAN.LAST$
+    GOSUB NM.FIND
+    SM.N$ = SG.SCAN.SAVED.N$
+    IF SY.KIND <> K.SK.ARRAY THEN SG.SCAN.CALL = 1
+    RETURN
+
+## SG.SCAN.KNOWN -- SG.SCAN.UNKNOWN = 1 when the name in TK.S$ is not a function or an
+## operator of the compiler, so that a ( after it may be a SUB call or an array.
+## A new built-in function in EX.OPERAND goes in this list too, or SG.SCAN.ARRAY reports
+## it as UNDECLARED NAME.
+SG.SCAN.KNOWN:
+    SG.SCAN.UNKNOWN = 1
+    IF TK.S$ = "LEN" OR TK.S$ = "ASC" OR TK.S$ = "VAL" OR TK.S$ = "CHR$" THEN SG.SCAN.UNKNOWN = 0
+    IF TK.S$ = "STR$" OR TK.S$ = "MID$" OR TK.S$ = "PEEK" OR TK.S$ = "NOT" THEN SG.SCAN.UNKNOWN = 0
+    IF TK.S$ = "INSTR" OR TK.S$ = "POS" OR TK.S$ = "LVAL" THEN SG.SCAN.UNKNOWN = 0
+    IF TK.S$ = "AND" OR TK.S$ = "OR" OR TK.S$ = "XOR" OR TK.S$ = "MOD" THEN SG.SCAN.UNKNOWN = 0
+    IF TK.S$ = "GETKEY" OR TK.S$ = "OPEN" OR TK.S$ = "EOF" OR TK.S$ = "READ" THEN SG.SCAN.UNKNOWN = 0
+    IF TK.S$ = "ADDROF" OR TK.S$ = "CONTENTSAT" OR TK.S$ = "CONTENTSATW" THEN SG.SCAN.UNKNOWN = 0
+    RETURN
+
+## SG.BASE.OF -- SG.BASE$ is the last part of the name SG.WHOLE$, after its last dot.
+SG.BASE.OF:
+    SG.BASE.AT = LEN(SG.WHOLE$)
+SG.BASE.OF.BACK:
+    IF SG.BASE.AT = 0 THEN GOTO SG.BASE.OF.END
+    IF MID$(SG.WHOLE$, SG.BASE.AT, 1) = "." THEN GOTO SG.BASE.OF.END
+    SG.BASE.AT = SG.BASE.AT - 1
+    GOTO SG.BASE.OF.BACK
+SG.BASE.OF.END:
+    SG.BASE$ = RIGHT$(SG.WHOLE$, LEN(SG.WHOLE$) - SG.BASE.AT)
+    RETURN
+
+## ---------------------------------------------------------------------------------
+## Operands
+
+SG.LITERAL:
+    SG.TEXT$ = TK.S$
+    GOSUB SG.PUSH.LITERAL
+    GOSUB LX.NEXT
+    RETURN
+
+## SG.PUSH.LITERAL -- SG.TEXT$ as a new literal entry. SG.LAST.TEXT$, SG.LAST.OFFSET and
+## SG.LAST.NEW keep it for SG.TAKE.LITERAL. SG.EMPTY.OFFSET is the offset of "", while
+## SG.EMPTY.KNOWN = 1.
+SG.PUSH.LITERAL:
+    SP.S$ = SG.TEXT$
+    GOSUB SP.ADD
+    SG.LAST.TEXT$ = SG.TEXT$
+    SG.LAST.OFFSET = SP.V
+    SG.LAST.NEW = SP.NEW
+    IF SG.TEXT$ = "" THEN SG.EMPTY.OFFSET = SP.V
+    IF SG.TEXT$ = "" THEN SG.EMPTY.KNOWN = 1
+    EX.K = K.EK.ADDR
+    EX.S = K.SEC.STR
+    EX.V = SP.V
+    EX.TY = K.TY.STR
+    GOSUB EX.PUSHV
+    RETURN
+
+## SG.TAKE.LITERAL -- SG.WAS.LITERAL = 1 when entry EX.I is the literal pushed last. The
+## caller folds its value into a constant, so a literal that SP.ADD kept for it alone is
+## taken back out of the strings.
+SG.TAKE.LITERAL:
+    SG.WAS.LITERAL = 0
+    IF EX.VK%(EX.I) <> K.EK.ADDR OR EX.VS%(EX.I) <> K.SEC.STR THEN RETURN
+    IF EX.VV(EX.I) <> SG.LAST.OFFSET THEN RETURN
+    SG.WAS.LITERAL = 1
+    IF SG.LAST.NEW = 0 THEN RETURN
+    SP.N = SG.LAST.OFFSET
+    SG.LAST.NEW = 0
+    IF SG.EMPTY.OFFSET = SG.LAST.OFFSET THEN SG.EMPTY.KNOWN = 0
+    RETURN
+
+## SG.IS.EMPTY -- SG.EMPTY = 1 when entry EX.I is the literal "".
+SG.IS.EMPTY:
+    SG.EMPTY = 0
+    IF SG.EMPTY.KNOWN = 0 THEN RETURN
+    IF EX.VK%(EX.I) <> K.EK.ADDR OR EX.VS%(EX.I) <> K.SEC.STR THEN RETURN
+    IF EX.VV(EX.I) = SG.EMPTY.OFFSET THEN SG.EMPTY = 1
+    RETURN
+
+SG.AT:
+    IF SY.CNT = 0 THEN GOTO SG.AT.PARAMETER
+    RETURN
+## The address a STRING parameter holds.
+SG.AT.PARAMETER:
+    EX.K = K.EK.MEM
+    RETURN
+
+## ---------------------------------------------------------------------------------
+## The functions
+
+## SG.FUNCTION -- with the token at a name. Each argument is parsed as an expression of its
+## own, nested as a SUB call's arguments are, and SG.CALLED$() keeps the function's name
+## for each depth.
+SG.FUNCTION:
+    SG.FOUND = 0
+    IF GP.INSTR("|LEN|ASC|VAL|LVAL|CHR$|STR$|MID$|INSTR|OPEN|EOF|READ|", "|" + TK.S$ + "|") = 0 THEN RETURN
+    SG.NAME$ = TK.S$
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.OP OR TK.K <> 40 THEN GOTO SG.ERROR.MISSING.OPEN
+    GP.IF SG.NAME$ = "LEN" THEN
+        GOSUB RD.LEN
+        IF RD.LEN.FOUND <> 0 THEN SG.FOUND = 1 : RETURN
+    GP.ENDIF
+    GOSUB SB.NEST
+    SG.CALLED$(SB.DEPTH) = SG.NAME$
+    GOSUB SG.ARGUMENT
+    SG.NAME$ = SG.CALLED$(SB.DEPTH)
+    GP.IF SG.NAME$ = "MID$" THEN
+        GOSUB SG.MID
+    GP.ELSEIF SG.NAME$ = "INSTR" THEN
+        GOSUB SG.INSTR
+    GP.ELSE
+        GOSUB SG.ONE
+    GP.ENDIF
+    SG.FOUND = 1
+    RETURN
+
+## SG.ARGUMENT -- one argument, with the token at the ( or the , before it.
+SG.ARGUMENT:
+    GOSUB LX.NEXT
+    EX.OP.BASE = EX.ON
+    EX.CM = 0
+    GOSUB EX.EXPR
+    RETURN
+
+## SG.CLOSE -- the ) after the last argument.
+SG.CLOSE:
+    IF TK.T <> K.TT.OP OR TK.K <> 41 THEN GOTO SG.ERROR.MISSING.CLOSE
+    GOSUB SB.UNNEST
+    GOSUB LX.NEXT
+    RETURN
+
+## SG.ONE -- a function of one argument, SG.NAME$, on the top entry.
+SG.ONE:
+    IF SG.NAME$ = "OPEN" THEN GOTO SG.OPEN
+    IF SG.NAME$ = "READ" THEN GOTO SG.READ
+    GOSUB SG.CLOSE
+    EX.I = EX.VN - 1
+    IF SG.NAME$ = "LEN" THEN GOTO SG.LEN
+    IF SG.NAME$ = "ASC" THEN GOTO SG.ASC
+    IF SG.NAME$ = "VAL" THEN GOTO SG.VAL
+    IF SG.NAME$ = "LVAL" THEN GOTO SG.LVAL
+    IF SG.NAME$ = "CHR$" THEN GOTO SG.CHR
+    IF SG.NAME$ = "EOF" THEN GOTO SG.EOF
+    GOTO SG.STR
+
+## EOF(handle) -- a compare: C is set when the handle has nothing more to read.
+SG.EOF:
+    GOSUB EX.TOB
+    GP.SUB EMIT, T.EOF.ID
+    EX.K = K.EK.CMP
+    EX.S = K.SEC.CONST
+    EX.V = T.CTRUE.ID
+    EX.TY = K.TY.BYTE
+    GOSUB EX.PUSHV
+    RETURN
+
+## LEN of a literal is a constant.
+SG.LEN:
+    IF EX.VT%(EX.I) <> K.TY.STR THEN GOTO ER.MISMATCH
+    GOSUB SG.TAKE.LITERAL
+    GP.IF SG.WAS.LITERAL = 1 THEN
+        EX.R = LEN(SG.LAST.TEXT$)
+        GOSUB EX.SETC
+        RETURN
+    GP.ENDIF
+    GOTO SG.LENGTH
+
+## SG.LENGTH -- the string on top becomes its length, a BYTE. A block at a known address
+## becomes its length byte, with no code.
+SG.LENGTH:
+    EX.I = EX.VN - 1
+    GP.IF EX.VK%(EX.I) = K.EK.ADDR THEN
+        EX.VK%(EX.I) = K.EK.MEM
+        EX.VV(EX.I) = EX.VV(EX.I) + 1
+        EX.VT%(EX.I) = K.TY.BYTE
+        RETURN
+    GP.ENDIF
+    GOSUB SG.TOS
+    GP.SUB EMIT, T.SLEN.ID
+    GOTO SG.PUSH.BYTE
+
+## ASC of a literal is a constant: its first character, or 0 when it is empty.
+SG.ASC:
+    IF EX.VT%(EX.I) <> K.TY.STR THEN GOTO ER.MISMATCH
+    GOSUB SG.TAKE.LITERAL
+    GP.IF SG.WAS.LITERAL = 1 THEN
+        EX.R = 0
+        IF SG.LAST.TEXT$ <> "" THEN EX.R = ASC(SG.LAST.TEXT$)
+        GOSUB EX.SETC
+        RETURN
+    GP.ENDIF
+    GOSUB SG.TOS
+    GP.SUB EMIT, T.ASC.ID
+    GOTO SG.PUSH.BYTE
+
+SG.VAL:
+    GOSUB SG.TOS
+    GP.SUB EMIT, T.VAL.ID
+    EX.TY = K.TY.WORD
+    GOTO SG.PUSH.REGISTER
+
+SG.LVAL:
+    GOSUB SG.TOS
+    GP.SUB EMIT, T.LVAL.ID
+    EX.TY = K.TY.LONG
+    GOTO SG.PUSH.REGISTER
+
+## CHR$ of a constant is a literal.
+SG.CHR:
+    GP.IF EX.VK%(EX.I) = K.EK.CONST THEN
+        SG.TEXT$ = CHR$(EX.VV(EX.I) - INT(EX.VV(EX.I) / 256) * 256)
+        EX.VN = EX.VN - 1
+        GOTO SG.PUSH.LITERAL
+    GP.ENDIF
+    GOSUB EX.TOB
+    GOSUB SG.NEW.TEMP
+    SL.S%(0) = K.SEC.TEMP
+    SL.V(0) = SG.TEMP
+    SG.CHR.START = CB.N
+    SG.CHR.FIXUPS = FX.N
+    GP.SUB EMIT, T.CHR.ID
+    SG.CHR.END = CB.N
+    SG.CHR.TEMP = SG.TEMP
+    GOTO SG.PUSH.TEMP
+
+## STR$ of a constant is a literal.
+SG.STR:
+    SG.STR.SIGNED = EX.VG%(EX.I)
+    GP.IF EX.VK%(EX.I) = K.EK.CONST THEN
+        GOSUB EX.WHOLE
+        GOSUB EX.TEXT
+        SG.TEXT$ = EX.TEXT.RESULT$
+        EX.VN = EX.VN - 1
+        GOTO SG.PUSH.LITERAL
+    GP.ENDIF
+    SG.STR.LONG = 0
+    IF EX.VT%(EX.I) = K.TY.LONG THEN SG.STR.LONG = 1
+    IF SG.STR.LONG = 0 THEN GOSUB EX.TOW
+    IF SG.STR.LONG = 1 THEN GOSUB EX.TOL
+    GOSUB SG.NEW.TEMP
+    SL.S%(0) = K.SEC.TEMP
+    SL.V(0) = SG.TEMP
+    SG.STR.TEMPLATE = T.STR.ID
+    IF SG.STR.SIGNED = 1 THEN SG.STR.TEMPLATE = T.SSTR.ID
+    IF SG.STR.LONG = 1 THEN SG.STR.TEMPLATE = T.LSTR.ID
+    IF SG.STR.LONG = 1 AND SG.STR.SIGNED = 1 THEN SG.STR.TEMPLATE = T.SLSTR.ID
+    GP.SUB EMIT, SG.STR.TEMPLATE
+    GOTO SG.PUSH.TEMP
+
+## MID$(string, start[, length]) -- the string and the start are pushed, and the length is
+## in A/Y, 255 when it is left out.
+SG.MID:
+    GOSUB SG.TOS
+    GOSUB SG.STACK
+    IF TK.T <> K.TT.OP OR TK.K <> 44 THEN GOTO ER.SYNTAX
+    GOSUB SG.ARGUMENT
+    GOSUB EX.TOW
+    GOSUB SG.STACK
+    SG.DEFAULT = 255
+    GOSUB SG.LAST.WORD
+    GOSUB SG.NEW.TEMP
+    SL.S%(0) = K.SEC.TEMP
+    SL.V(0) = SG.TEMP
+    GP.SUB EMIT, T.MID.ID
+    EX.SD = EX.SD - 2
+    GOTO SG.PUSH.TEMP
+
+## INSTR(string, find[, start]) -- the string and find are pushed, and the start is in A/Y,
+## 1 when it is left out.
+SG.INSTR:
+    GOSUB SG.TOS
+    GOSUB SG.STACK
+    IF TK.T <> K.TT.OP OR TK.K <> 44 THEN GOTO ER.SYNTAX
+    GOSUB SG.ARGUMENT
+    GOSUB SG.TOS
+    GOSUB SG.STACK
+    SG.DEFAULT = 1
+    GOSUB SG.LAST.WORD
+    GP.SUB EMIT, T.INSTR.ID
+    EX.SD = EX.SD - 2
+    GOTO SG.PUSH.BYTE
+
+## SG.LAST.WORD -- an optional last argument into A/Y as a WORD, SG.DEFAULT when it is left
+## out. Then the ).
+SG.LAST.WORD:
+    GP.IF TK.T = K.TT.OP AND TK.K = 44 THEN
+        GOSUB SG.ARGUMENT
+        GOSUB EX.TOW
+    GP.ELSE
+        SL.S%(0) = K.SEC.CONST
+        SL.V(0) = SG.DEFAULT
+        GP.SUB EMIT, T.LDW.C.ID
+    GP.ENDIF
+    GOSUB SG.CLOSE
+    RETURN
+
+## OPEN(name$, mode) -- the handle, a WORD. The mode is a name, so the whole DOS name is
+## known here: name,S,R for O.READ, @:name,S,W for O.WRITE, name,S,A for O.APPEND. A
+## literal name is joined at compile time.
+SG.OPEN:
+    EX.I = EX.VN - 1
+    IF EX.VT%(EX.I) <> K.TY.STR THEN GOTO ER.MISMATCH
+    IF TK.T <> K.TT.OP OR TK.K <> 44 THEN GOTO ER.SYNTAX
+    GOSUB LX.NEXT
+    SG.OPEN.PREFIX$ = ""
+    SG.OPEN.SUFFIX$ = ""
+    GP.IF TK.T = K.TT.NAME THEN
+        IF TK.S$ = "O.READ" THEN SG.OPEN.SUFFIX$ = ",S,R"
+        IF TK.S$ = "O.WRITE" THEN SG.OPEN.SUFFIX$ = ",S,W"
+        IF TK.S$ = "O.APPEND" THEN SG.OPEN.SUFFIX$ = ",S,A"
+    GP.ENDIF
+    IF SG.OPEN.SUFFIX$ = "" THEN GOTO SG.ERROR.MODE
+    IF SG.OPEN.SUFFIX$ = ",S,W" THEN SG.OPEN.PREFIX$ = "@:"
+    GOSUB LX.NEXT
+    GOSUB SG.CLOSE
+    EX.I = EX.VN - 1
+    GOSUB SG.TAKE.LITERAL
+    GP.IF SG.WAS.LITERAL = 1 THEN
+        EX.VN = EX.VN - 1
+        SG.TEXT$ = SG.OPEN.PREFIX$ + SG.LAST.TEXT$ + SG.OPEN.SUFFIX$
+        GOSUB SG.PUSH.LITERAL
+    GP.ELSE
+        GOSUB SG.OPEN.JOIN
+    GP.ENDIF
+    GOSUB SG.TOS
+    GP.IF SG.OPEN.SUFFIX$ = ",S,R" THEN
+        GP.SUB EMIT, T.FOPEN.ID
+    GP.ELSE
+        GP.SUB EMIT, T.OPEN.ID
+    GP.ENDIF
+    EX.TY = K.TY.WORD
+    GOTO SG.PUSH.REGISTER
+
+## READ(handle, address, max) -- A/Y = the count of bytes read.
+SG.READ:
+    GOSUB SG.BLOCK.ARGUMENTS
+    GOSUB SG.CLOSE
+    GP.SUB EMIT, T.READ.ID
+    EX.TY = K.TY.WORD
+    GOTO SG.PUSH.REGISTER
+
+## SG.WRITE -- WRITE handle, address, count, with the token at WRITE.
+SG.WRITE:
+    GOSUB SG.ARGUMENT
+    GOSUB SG.BLOCK.ARGUMENTS
+    GP.SUB EMIT, T.WRITE.ID
+    RETURN
+
+## SG.BLOCK.ARGUMENTS -- with the handle on top: the handle and the address after the next
+## comma are pushed, and the count after the comma after that is in A/Y.
+SG.BLOCK.ARGUMENTS:
+    GOSUB EX.TOW
+    GOSUB SG.STACK
+    IF TK.T <> K.TT.OP OR TK.K <> 44 THEN GOTO ER.SYNTAX
+    GOSUB SG.ARGUMENT
+    GOSUB EX.TOW
+    GOSUB SG.STACK
+    IF TK.T <> K.TT.OP OR TK.K <> 44 THEN GOTO ER.SYNTAX
+    GOSUB SG.ARGUMENT
+    GOSUB EX.TOW
+    EX.SD = EX.SD - 2
+    RETURN
+
+## SG.OPEN.JOIN -- the name on top, between the prefix and the suffix, into a new temp that
+## takes its place.
+SG.OPEN.JOIN:
+    GOSUB SG.NEW.TEMP
+    SG.OPEN.TEMP = SG.TEMP
+    GP.IF SG.OPEN.PREFIX$ = "" THEN
+        GOSUB SG.TOS
+        SL.S%(0) = K.SEC.TEMP
+        SL.V(0) = SG.OPEN.TEMP
+        GP.SUB EMIT, T.SCOPY.ID
+    GP.ELSE
+        SG.TEXT$ = SG.OPEN.PREFIX$
+        GOSUB SG.PUSH.LITERAL
+        GOSUB SG.TOS
+        SL.S%(0) = K.SEC.TEMP
+        SL.V(0) = SG.OPEN.TEMP
+        GP.SUB EMIT, T.SCOPY.ID
+        GOSUB SG.TOS
+        SL.S%(0) = K.SEC.TEMP
+        SL.V(0) = SG.OPEN.TEMP
+        GP.SUB EMIT, T.SCAT.ID
+    GP.ENDIF
+    SG.TEXT$ = SG.OPEN.SUFFIX$
+    GOSUB SG.PUSH.LITERAL
+    GOSUB SG.TOS
+    SL.S%(0) = K.SEC.TEMP
+    SL.V(0) = SG.OPEN.TEMP
+    GP.SUB EMIT, T.SCAT.ID
+    SG.TEMP = SG.OPEN.TEMP
+    GOTO SG.PUSH.TEMP
+
+## SG.STACK -- push A/Y.
+SG.STACK:
+    GP.SUB EMIT, T.PUSH.ID
+    EX.SD = EX.SD + 1
+    IF EX.SD > K.EX.DEPTH THEN GOTO SG.ERROR.COMPLEX
+    RETURN
+
+## ---------------------------------------------------------------------------------
+## Operators
+
+## SG.LEFT -- a string on the left of a + that is not a temp yet is copied into one, so that
+## the right side can be appended to it. The first operand of the statement may skip that.
+SG.LEFT:
+    EX.I = EX.VN - 1
+    IF EX.VT%(EX.I) <> K.TY.STR THEN RETURN
+    IF EX.VS%(EX.I) = K.SEC.TEMP THEN RETURN
+    IF EX.I <> SG.BASE OR SB.DEPTH <> SG.DEPTH THEN GOTO SG.COPY
+    GP.IF SG.APPENDING = 1 THEN
+        GOSUB SG.IS.DESTINATION
+        IF SG.SAME = 1 THEN RETURN
+    GP.ENDIF
+    IF SG.PRINTING = 0 THEN GOTO SG.COPY
+    GOSUB SG.TOS
+    GP.SUB EMIT, T.PRSTR.ID
+    SG.TEMP = K.TEMP.PRINTED
+    GOTO SG.PUSH.TEMP
+
+## SG.BINARY -- EX.O on EX.IL and EX.IR. A compare pushes the left side, and R_SCMP leaves the
+## flags as CMP does, so the tails of a WORD compare give the value.
+SG.BINARY:
+    IF EX.VT%(EX.IL) <> K.TY.STR OR EX.VT%(EX.IR) <> K.TY.STR THEN GOTO ER.MISMATCH
+    IF EX.O = K.EO.ADD THEN GOTO SG.JOIN
+    IF EX.O < K.EO.EQ OR EX.O > K.EO.GE THEN GOTO ER.MISMATCH
+    EX.I = EX.IR
+    GOSUB SG.IS.EMPTY
+    IF SG.EMPTY = 1 THEN GOTO SG.EMPTY.TEST
+    EX.I = EX.IL
+    GOSUB SG.IS.EMPTY
+    IF SG.EMPTY = 1 THEN GOTO SG.EMPTY.LEFT
+    EX.FB = EX.IL
+    GOSUB EX.FLUSH
+    EX.I = EX.IL
+    GOSUB EX.SPILL
+    EX.I = EX.IR
+    EX.WD = 1
+    GOSUB EX.LOAD
+    SG.CORE = T.SCMP.LR.ID
+    IF EX.O = K.EO.LE OR EX.O = K.EO.GT THEN SG.CORE = T.SCMP.RL.ID
+    GP.SUB EMIT, SG.CORE
+    EX.SD = EX.SD - 1
+    SG.TAIL = T.ZTRUE.ID
+    IF EX.O = K.EO.NE THEN SG.TAIL = T.ZFALSE.ID
+    IF EX.O = K.EO.GE OR EX.O = K.EO.LE THEN SG.TAIL = T.CTRUE.ID
+    IF EX.O = K.EO.LT OR EX.O = K.EO.GT THEN SG.TAIL = T.CFALSE.ID
+    EX.VN = EX.VN - 1
+    EX.VK%(EX.IL) = K.EK.CMP
+    EX.VS%(EX.IL) = K.SEC.CONST
+    EX.VV(EX.IL) = SG.TAIL
+    EX.VT%(EX.IL) = K.TY.BYTE
+    RETURN
+
+## SG.EMPTY.LEFT -- "" on the left: the sides swap, and so does the compare.
+SG.EMPTY.LEFT:
+    EX.J = EX.IR
+    GOSUB EX.SWAP
+    SG.MIRROR = EX.O
+    IF EX.O = K.EO.LT THEN SG.MIRROR = K.EO.GT
+    IF EX.O = K.EO.GT THEN SG.MIRROR = K.EO.LT
+    IF EX.O = K.EO.LE THEN SG.MIRROR = K.EO.GE
+    IF EX.O = K.EO.GE THEN SG.MIRROR = K.EO.LE
+    EX.O = SG.MIRROR
+## SG.EMPTY.TEST -- a compare with "" on the right is the same compare of the length with 0.
+SG.EMPTY.TEST:
+    EX.I = EX.IR
+    GOSUB SG.TAKE.LITERAL
+    EX.VN = EX.VN - 1
+    GOSUB SG.LENGTH
+    EX.K = K.EK.CONST
+    EX.S = K.SEC.CONST
+    EX.V = 0
+    EX.TY = 0
+    GOSUB EX.PUSHV
+    GOSUB EX.BINARY
+    RETURN
+
+## SG.JOIN -- the right side appended to the left side, which SG.LEFT made a temp or left as
+## the block SG.LET stores into. Onto a part already printed, the right side is printed.
+SG.JOIN:
+    EX.FB = EX.IR
+    GOSUB EX.FLUSH
+    EX.I = EX.IR
+    EX.WD = 1
+    GOSUB EX.LOAD
+    EX.VN = EX.VN - 1
+    GP.IF EX.VS%(EX.IL) = K.SEC.TEMP AND EX.VV(EX.IL) = K.TEMP.PRINTED THEN
+        GP.SUB EMIT, T.PRSTR.ID
+        RETURN
+    GP.ENDIF
+    SL.S%(0) = EX.VS%(EX.IL)
+    SL.V(0) = EX.VV(EX.IL)
+    GP.SUB EMIT, T.SCAT.ID
+    RETURN
+
+## ---------------------------------------------------------------------------------
+## Values
+
+SG.TOS:
+    EX.I = EX.VN - 1
+    IF EX.VT%(EX.I) <> K.TY.STR THEN GOTO ER.MISMATCH
+    EX.FB = EX.I
+    GOSUB EX.FLUSH
+    EX.I = EX.VN - 1
+    EX.WD = 1
+    GOSUB EX.LOAD
+    EX.VN = EX.VN - 1
+    RETURN
+
+## SG.PASS -- a literal or a STRING result is copied into a temp first, so that the SUB
+## cannot write into it.
+SG.PASS:
+    EX.I = EX.VN - 1
+    IF EX.VT%(EX.I) <> K.TY.STR THEN GOTO ER.MISMATCH
+    IF EX.VS%(EX.I) = K.SEC.STR THEN GOSUB SG.COPY
+    EX.I = EX.VN - 1
+    GOSUB SG.IS.RESULT
+    IF SG.RESULT.FOUND = 1 THEN GOSUB SG.COPY
+    GOTO SG.TOS
+
+## SG.RESULT -- after the JSR of a STRING SUB, with the address of its result in A/Y and the
+## token after the ). A call later in the statement may write that block, so then it is
+## copied into a temp. Else the address is kept in the statement's next %P word, and the
+## entry reads the block through it, as it reads a STRING parameter. Clobbers SY.*.
+SG.RESULT:
+    SG.SCAN.NAME$ = ""
+    SG.SCAN.ITEM = 0
+    GOSUB SG.SCAN
+    GP.IF SG.SCAN.CALL = 1 THEN
+        GOSUB SG.NEW.TEMP
+        SL.S%(0) = K.SEC.TEMP
+        SL.V(0) = SG.TEMP
+        GP.SUB EMIT, T.SCOPY.ID
+        GOTO SG.PUSH.TEMP
+    GP.ENDIF
+    SG.POINTERS = SG.POINTERS + 1
+    SY.NAME$ = "%P" + STR$(SG.POINTERS)
+    GOSUB SG.POINTER.WORD
+    EX.K = K.EK.MEM
+    EX.S = K.SEC.VAR
+    EX.V = SG.POINTER
+    EX.TY = K.TY.STR
+    GOSUB EX.PUSHV
+    RETURN
+
+## SG.POINTER.WORD -- A/Y is stored in the hidden WORD SY.NAME$ of the SUB being compiled,
+## made when it is new. Out: SG.POINTER, its value. Clobbers SY.*.
+SG.POINTER.WORD:
+    SY.OW = SB.CURRENT
+    GOSUB SY.FIND
+    GP.IF SY.R = 0 THEN
+        SY.KIND = K.SK.VAR
+        SY.TYPE = K.TY.WORD
+        SB.PLACE.SIZE = 2
+        GOSUB SB.PLACE.VARIABLE
+        SY.VAL = SB.PLACE
+        SY.FLAGS = 0
+        SY.CNT = 0
+        GOSUB SY.ADD
+    GP.ELSE
+        GOSUB SY.GET
+    GP.ENDIF
+    SG.POINTER = SY.VAL
+    SL.S%(0) = K.SEC.VAR
+    SL.V(0) = SG.POINTER
+    GP.SUB EMIT, T.STW.V.ID
+    RETURN
+
+## SG.IS.RESULT -- SG.RESULT.FOUND = 1 when entry EX.I reads its block through one of the
+## statement's %P words. Clobbers SY.*.
+SG.IS.RESULT:
+    SG.RESULT.FOUND = 0
+    IF EX.VK%(EX.I) <> K.EK.MEM OR EX.VS%(EX.I) <> K.SEC.VAR THEN RETURN
+    IF SG.POINTERS = 0 THEN RETURN
+    FOR SG.RESULT.I = 1 TO SG.POINTERS
+        SY.NAME$ = "%P" + STR$(SG.RESULT.I)
+        SY.OW = SB.CURRENT
+        GOSUB SY.FIND
+        IF SY.R <> 0 THEN GOSUB SY.GET
+        IF SY.R <> 0 AND SY.VAL = EX.VV(EX.I) THEN SG.RESULT.FOUND = 1
+    NEXT SG.RESULT.I
+    RETURN
+
+## SG.RETURN.EMPTY -- A/Y is the address of "", for a STRING SUB whose body ends with no
+## RETURN.
+SG.RETURN.EMPTY:
+    SG.TEXT$ = ""
+    GOSUB SG.PUSH.LITERAL
+    GOTO SG.TOS
+
+## SG.COPY -- the string on top is copied into a new temp, which takes its place.
+SG.COPY:
+    GOSUB SG.TOS
+    GOSUB SG.NEW.TEMP
+    SL.S%(0) = K.SEC.TEMP
+    SL.V(0) = SG.TEMP
+    GP.SUB EMIT, T.SCOPY.ID
+SG.PUSH.TEMP:
+    EX.K = K.EK.ADDR
+    EX.S = K.SEC.TEMP
+    EX.V = SG.TEMP
+    EX.TY = K.TY.STR
+    GOSUB EX.PUSHV
+    RETURN
+
+SG.PUSH.BYTE:
+    EX.TY = K.TY.BYTE
+SG.PUSH.REGISTER:
+    EX.K = K.EK.REG
+    EX.S = K.SEC.CONST
+    EX.V = 0
+    GOSUB EX.PUSHV
+    RETURN
+
+## SG.NEW.TEMP -- the statement's next temp. Out: SG.TEMP, its offset in its owner's pool.
+SG.NEW.TEMP:
+    SG.N = SG.N + 1
+    SY.NAME$ = "%T" + STR$(SG.N)
+    SY.OW = SB.CURRENT
+    GOSUB SY.FIND
+    IF SY.R <> 0 THEN GOTO SG.NEW.TEMP.FOUND
+    SG.TEMP = (SG.N - 1) * 257
+    SY.KIND = K.SK.VAR
+    SY.TYPE = K.TY.STR
+    SY.VAL = SG.TEMP
+    SY.FLAGS = K.SY.TEMP
+    SY.CNT = 255
+    GOSUB SY.ADD
+    RETURN
+SG.NEW.TEMP.FOUND:
+    GOSUB SY.GET
+    SG.TEMP = SY.VAL
+    RETURN
+
+## ---------------------------------------------------------------------------------
+## Input
+
+## SG.INPUT -- INPUT ["prompt";] var, var ... or LINPUT var, with the token at the keyword.
+## INPUT #handle, var ... and LINPUT #handle, var read a file. A var is a BYTE, WORD or STRING
+## variable. A number is read into a temp, and VAL of the temp is stored.
+SG.INPUT:
+    SG.INPUT.FIRST = 1
+    SG.INPUT.FILE = 0
+    GOSUB LX.NEXT
+    IF TK.T = K.TT.OP AND TK.K = 35 THEN GOSUB SG.INPUT.HANDLE
+    GP.IF TK.T = K.TT.STR AND SM.W$ = "INPUT" AND SG.INPUT.FILE = 0 THEN
+        GOSUB SG.PRINT.ITEM
+        IF TK.T <> K.TT.OP OR TK.K <> 59 THEN GOTO ER.SYNTAX
+        GOSUB LX.NEXT
+    GP.ENDIF
+SG.INPUT.NEXT:
+    IF TK.T <> K.TT.NAME THEN GOTO ER.SYNTAX
+    SM.N$ = TK.S$
+    GOSUB SM.VAR
+    GOSUB RD.SECTION.VALUE
+    SG.INPUT.TYPE = SY.TYPE
+    SG.INPUT.VALUE = SY.VAL
+    SG.INPUT.SECTION = RD.SEC
+    EX.K = K.EK.MEM
+    EX.S = K.SEC.VAR
+    EX.V = SY.VAL
+    EX.TY = K.TY.STR
+    IF SY.TYPE = K.TY.STR AND SY.CNT > 0 THEN GOSUB SG.INPUT.BLOCK
+    IF SY.TYPE <> K.TY.STR THEN GOSUB SG.INPUT.TEMP
+    GOSUB LX.NEXT
+    SG.INPUT.MORE = 0
+    IF TK.T = K.TT.OP AND TK.K = 44 AND SM.W$ = "INPUT" THEN SG.INPUT.MORE = 1
+    GOSUB SG.INPUT.PICK
+    GOSUB EX.PUSHV
+    GOSUB SG.TOS
+    GP.SUB EMIT, SG.INPUT.TEMPLATE
+    IF SG.INPUT.TYPE <> K.TY.STR THEN GOSUB SG.INPUT.STORE
+    IF SG.INPUT.MORE = 0 THEN GOTO SG.INPUT.END
+    SG.INPUT.FIRST = 0
+    GOSUB LX.NEXT
+    GOTO SG.INPUT.NEXT
+SG.INPUT.END:
+    IF SG.INPUT.FILE = 1 THEN GP.SUB EMIT, T.CLRCHN.ID
+    RETURN
+
+## SG.INPUT.HANDLE -- #handle and the comma after it, with the token at the #.
+SG.INPUT.HANDLE:
+    GOSUB LX.NEXT
+    GOSUB EX.EXPR
+    GOSUB EX.TOB
+    GP.SUB EMIT, T.CHKIN.ID
+    SG.INPUT.FILE = 1
+    IF TK.T <> K.TT.OP OR TK.K <> 44 THEN GOTO ER.SYNTAX
+    GOSUB LX.NEXT
+    RETURN
+
+## SG.INPUT.PICK -- the template for one var. From the keyboard, the first field prints the
+## prompt and the last field drops the rest of the line. From a file, the rest is kept.
+SG.INPUT.PICK:
+    GP.IF SG.INPUT.FILE = 1 THEN
+        SG.INPUT.TEMPLATE = T.FINPUT.ID
+        IF SM.W$ = "LINPUT" THEN SG.INPUT.TEMPLATE = T.FLINPUT.ID
+        RETURN
+    GP.ENDIF
+    SG.INPUT.TEMPLATE = T.LINPUT.ID
+    IF SM.W$ = "LINPUT" THEN RETURN
+    IF SG.INPUT.FIRST = 1 AND SG.INPUT.MORE = 0 THEN SG.INPUT.TEMPLATE = T.INPUT.ID
+    IF SG.INPUT.FIRST = 1 AND SG.INPUT.MORE = 1 THEN SG.INPUT.TEMPLATE = T.INPUT.FIRST.ID
+    IF SG.INPUT.FIRST = 0 AND SG.INPUT.MORE = 1 THEN SG.INPUT.TEMPLATE = T.INPUT.NEXT.ID
+    IF SG.INPUT.FIRST = 0 AND SG.INPUT.MORE = 0 THEN SG.INPUT.TEMPLATE = T.INPUT.LAST.ID
+    RETURN
+
+## A number is read into the statement's first temp. Clobbers SY.*.
+SG.INPUT.TEMP:
+    IF SM.W$ = "LINPUT" THEN GOTO ER.MISMATCH
+    SG.N = 0
+    GOSUB SG.NEW.TEMP
+    EX.K = K.EK.ADDR
+    EX.S = K.SEC.TEMP
+    EX.V = SG.TEMP
+    EX.TY = K.TY.STR
+    RETURN
+
+SG.INPUT.BLOCK:
+    EX.K = K.EK.ADDR
+    EX.S = SG.INPUT.SECTION
+    RETURN
+
+## VAL of the temp R_INPUT returns in A/Y, stored into the variable. A LONG is read in 32
+## bits.
+SG.INPUT.STORE:
+    GP.IF SG.INPUT.TYPE = K.TY.LONG THEN
+        GP.SUB EMIT, T.LVAL.ID
+        EX.TY = K.TY.LONG
+    GP.ELSE
+        GP.SUB EMIT, T.VAL.ID
+        EX.TY = K.TY.WORD
+    GP.ENDIF
+    GOSUB SG.PUSH.REGISTER
+    SM.TY = SG.INPUT.TYPE
+    SM.AD = SG.INPUT.VALUE
+    SM.SEC = SG.INPUT.SECTION
+    GOSUB SM.STORE
+    RETURN
+
+## ---------------------------------------------------------------------------------
+## Startup
+
+## SG.MAXES -- a max is loaded only when it differs from the one before.
+SG.MAXES:
+    SG.RECORD = 1
+    SG.LOADED = 0
+SG.MAXES.NEXT:
+    IF SG.RECORD > SY.N THEN RETURN
+    SY.R = SG.RECORD
+    GOSUB SY.GET
+    IF (SY.KIND = K.SK.VAR OR SY.KIND = K.SK.ARRAY) AND SY.TYPE >= K.TY.RECORD THEN GOSUB RD.MAXES : GOTO SG.MAXES.SKIP
+    IF SY.KIND <> K.SK.VAR OR SY.TYPE <> K.TY.STR OR SY.CNT = 0 THEN GOTO SG.MAXES.SKIP
+    IF (SY.FLAGS AND K.SY.TEMP) <> 0 THEN GOTO SG.MAXES.SKIP
+    IF SY.VAL < K.FRAME.BASE THEN GOSUB SG.MAX
+SG.MAXES.SKIP:
+    SG.RECORD = SG.RECORD + 1
+    GOTO SG.MAXES.NEXT
+
+SG.MAX:
+    SL.S%(0) = K.SEC.CONST
+    SL.V(0) = SY.CNT
+    IF SY.CNT <> SG.LOADED THEN GP.SUB EMIT, T.LDB.C.ID
+    SG.LOADED = SY.CNT
+    SL.S%(0) = K.SEC.BSS
+    SL.V(0) = SY.VAL
+    GP.SUB EMIT, T.STB.V.ID
+    RETURN
+
+## ---------------------------------------------------------------------------------
+## The errors
+
+SG.ERROR.ARRAY:
+    ER.M$ = "NOT YET: STRING ARRAYS"
+    GOTO ER.STOP
+SG.ERROR.NO.SIZE:
+    ER.M$ = "NO SIZE FOR " + SM.N$
+    GOTO ER.STOP
+SG.ERROR.SIZE:
+    ER.M$ = "BAD STRING SIZE"
+    GOTO ER.STOP
+SG.ERROR.START:
+    ER.M$ = "NOT YET: A START VALUE"
+    GOTO ER.STOP
+SG.ERROR.DUPLICATE:
+    ER.M$ = "DUPLICATE NAME " + SM.N$
+    GOTO ER.STOP
+SG.ERROR.MISSING.OPEN:
+    ER.M$ = "MISSING ( AFTER " + SG.NAME$
+    GOTO ER.STOP
+SG.ERROR.MISSING.CLOSE:
+    ER.M$ = "MISSING )"
+    GOTO ER.STOP
+SG.ERROR.MODE:
+    ER.M$ = "MODE MUST BE O.READ, O.WRITE OR O.APPEND"
+    GOTO ER.STOP
+SG.ERROR.COMPLEX:
+    ER.M$ = "EXPRESSION TOO COMPLEX"
+    GOTO ER.STOP

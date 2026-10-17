@@ -1,0 +1,5 @@
+' FILEBERR -- READ from a handle that is not open stops the program
+DIM N AS UWORD, B(4) AS UBYTE
+PRINT "A"
+N = READ(NOFILE, @B, 4)
+PRINT "B"

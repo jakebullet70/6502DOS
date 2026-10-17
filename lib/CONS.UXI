@@ -1,0 +1,80 @@
+' CONS.UXI: the ANSI escape sequences the UXDOS16 console obeys, as string constants.
+'
+' The names are those of ECMA-48. A sequence with a number starts with CSI$:
+' PRINT CONS.CSI$; "5;10H"; moves the cursor to row 5, column 10.
+'
+' Trap: PRINT puts a space before and after a number, so PRINT CONS.CSI$; ROW; "H" sends
+' Esc[ 5 H. Build the number with STR$ and trim it first.
+'
+' Its constants and BINDs add no bytes to a program, and a SUB or FUNCTION adds bytes only when
+' called. Include it in any file, with or without DOS.UXI and KEYS.UXI.
+'
+' Checklist: the sequences come from ansi and sgr in src/asm/console.s. Change both together.
+
+NAMESPACE CONS
+  ' The console words of the language under CONS. CONS.NEWLINE is PRINT alone.
+  BIND PRINT PRINT
+  BIND INPUT INPUT
+  BIND LINPUT LINPUT
+  BIND POS POS
+  BIND NEWLINE PRINT
+
+  ' The Control Sequence Introducer, Esc [.
+  CONST CSI$ = !"\27["
+
+  ' The cursor one cell up, down, right and left, and to row 1, column 1.
+  CONST CUU$ = CSI$ + "A", CUD$ = CSI$ + "B", CUF$ = CSI$ + "C", CUB$ = CSI$ + "D"
+  CONST CUP_HOME$ = CSI$ + "H"
+
+  ' ED clears the screen and puts the cursor home. EL blanks from the cursor to the end of the
+  ' line.
+  CONST ED$ = CSI$ + "2J", EL$ = CSI$ + "K"
+
+  ' SGR_RESET$ gives the colour COLOR last set and turns bold off. SGR_BOLD$ makes the
+  ' foreground bright. SGR_REVERSE$ swaps the foreground and the background.
+  CONST SGR_RESET$ = CSI$ + "0m", SGR_BOLD$ = CSI$ + "1m", SGR_REVERSE$ = CSI$ + "7m"
+
+  ' The foreground colours, SGR 30 to 37.
+  CONST SGR_FG_BLACK$ = CSI$ + "30m", SGR_FG_RED$ = CSI$ + "31m"
+  CONST SGR_FG_GREEN$ = CSI$ + "32m", SGR_FG_YELLOW$ = CSI$ + "33m"
+  CONST SGR_FG_BLUE$ = CSI$ + "34m", SGR_FG_MAGENTA$ = CSI$ + "35m"
+  CONST SGR_FG_CYAN$ = CSI$ + "36m", SGR_FG_WHITE$ = CSI$ + "37m"
+
+  ' The background colours, SGR 40 to 47.
+  CONST SGR_BG_BLACK$ = CSI$ + "40m", SGR_BG_RED$ = CSI$ + "41m"
+  CONST SGR_BG_GREEN$ = CSI$ + "42m", SGR_BG_YELLOW$ = CSI$ + "43m"
+  CONST SGR_BG_BLUE$ = CSI$ + "44m", SGR_BG_MAGENTA$ = CSI$ + "45m"
+  CONST SGR_BG_CYAN$ = CSI$ + "46m", SGR_BG_WHITE$ = CSI$ + "47m"
+
+  ' The screen's rows and columns, read from the console at each call. POS(2) and POS(3) give
+  ' the same.
+  FUNCTION SCREEN_ROWS() AS UBYTE
+    RETURN POS(2)
+  END FUNCTION
+
+  FUNCTION SCREEN_COLS() AS UBYTE
+    RETURN POS(3)
+  END FUNCTION
+
+  ' Moves the cursor to ROW and COLUMN, counted from 0 as POS counts.
+  SUB LOCATE(ROW AS UBYTE, COLUMN AS UBYTE)
+    POS(1) = ROW
+    POS(0) = COLUMN
+  END SUB
+
+  ' Prints TEXT$ at ROW and COLUMN and leaves the cursor after it.
+  SUB PRINT_AT(ROW AS UBYTE, COLUMN AS UBYTE, TEXT$)
+    POS(1) = ROW
+    POS(0) = COLUMN
+    PRINT TEXT$;
+  END SUB
+
+  ' Prints true when VALUE is not 0, and false when it is 0.
+  SUB PRINT_BOOL(VALUE AS UBYTE)
+    IF VALUE THEN
+      PRINT "true";
+    ELSE
+      PRINT "false";
+    END IF
+  END SUB
+END NAMESPACE

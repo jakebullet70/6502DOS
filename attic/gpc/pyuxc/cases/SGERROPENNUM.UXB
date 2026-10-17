@@ -1,0 +1,2 @@
+DIM F AS UWORD
+F = OPEN(5, O.READ)

@@ -1,0 +1,216 @@
+## UXC-COND.BL -- jumps and conditions, for UXC-FLOW.BL and UXC-EXPR.BL.
+##
+## Jumps (JP.*). A target is JP.K with JP.V or JP.H:
+##   K.JP.CODE    JP.V, a code offset already reached: a backward jump
+##   K.JP.LIST    JP.H, the head of a list of forward jumps waiting for their target
+##   K.JP.LABEL   JP.V, the symbol record of a label
+##
+##   JP.BR    in JP.B, a branch template (T.BRA.ID for always): a jump to the target
+##   JP.SEND  in JP.L: every jump on list JP.L goes to the target
+##   JP.HERE  in JP.L: every jump on list JP.L comes here
+##   JP.FWD   in JP.B: a short branch forward, out JP.AT; JP.LAND then makes it land here
+##
+## A backward jump is a short branch when the target is in range, else the inverse branch
+## over a JMP. A forward jump is always the long form, because its distance is not known
+## yet. A list lives in the code: each waiting JMP holds in its operand the code offset of
+## the next one's operand, 0 at the end, and the head is the first one's. A jump is patched
+## by putting 0 back and adding a K.SEC.CODE or K.SEC.LABEL fixup.
+##
+## Conditions (CN.*):
+##   CN.EXPR  compile the condition that starts at the token in TK.*; it is the top entry
+##   CN.JT    then jump to the target JP.* when it is true, and fall through when false
+##   CN.JF    then jump when it is false
+##
+## A compare is not made a 0 or 1: the branch tests its flag. AND and OR outside brackets,
+## between compares, are jumps that stop as soon as the answer is known: in A AND B, a false
+## A jumps straight to where the whole is false. An entry keeps two lists, EX.JT() of jumps
+## taken when true and EX.JF() of jumps taken when false. AND and OR are bitwise, so they
+## become jumps only where that gives the same answer: when every part between them is a
+## compare or starts with NOT (each gives 0 or 1), and no XOR is outside brackets. CN.SCAN
+## reads the line ahead to see.
+
+## ---------------------------------------------------------------------------------
+## Jumps
+
+JP.BR:
+    GP.IF JP.K = K.JP.CODE THEN
+        JP.D = JP.V - CB.N - 2
+        GP.IF JP.D >= -128 AND JP.D <= 127 THEN
+            IF JP.D < 0 THEN JP.D = JP.D + 256
+            SL.S%(0) = K.SEC.CONST : SL.V(0) = JP.D : GP.SUB EMIT, JP.B
+            RETURN
+        GP.ENDIF
+    GP.ENDIF
+    GP.IF JP.B <> T.BRA.ID THEN
+        GOSUB JP.INV
+        SL.S%(0) = K.SEC.CONST : SL.V(0) = 3 : GP.SUB EMIT, JP.IB
+    GP.ENDIF
+    IF JP.K = K.JP.CODE THEN SL.S%(0) = K.SEC.CODE : SL.V(0) = JP.V
+    IF JP.K = K.JP.LABEL THEN SL.S%(0) = K.SEC.LABEL : SL.V(0) = JP.V
+    IF JP.K = K.JP.LIST THEN SL.S%(0) = K.SEC.CONST : SL.V(0) = JP.H : JP.H = CB.N + 1
+    GP.SUB EMIT, T.JMP.ID
+    RETURN
+
+## JP.INV -- JP.IB, the branch on the opposite flag to JP.B.
+JP.INV:
+    IF JP.B = T.BEQ.ID THEN JP.IB = T.BNE.ID
+    IF JP.B = T.BNE.ID THEN JP.IB = T.BEQ.ID
+    IF JP.B = T.BCC.ID THEN JP.IB = T.BCS.ID
+    IF JP.B = T.BCS.ID THEN JP.IB = T.BCC.ID
+    RETURN
+
+JP.SEND:
+    IF JP.L = 0 THEN RETURN
+    IF JP.K = K.JP.LIST THEN JP.M = JP.H : GOSUB JP.MERGE : JP.H = JP.M : RETURN
+    JP.FS = K.SEC.CODE : IF JP.K = K.JP.LABEL THEN JP.FS = K.SEC.LABEL
+    JP.FV = JP.V : GOTO JP.FIX
+
+JP.HERE:
+    JP.FS = K.SEC.CODE : JP.FV = CB.N
+## JP.FIX -- every jump on list JP.L goes to JP.FV in section JP.FS.
+JP.FIX:
+    IF JP.L = 0 THEN RETURN
+    CB.AT = JP.L : GOSUB CB.GET : JP.N = CB.B : CB.B = 0 : GOSUB CB.PUT
+    CB.AT = JP.L + 1 : GOSUB CB.GET : JP.N = JP.N + 256 * CB.B : CB.B = 0 : GOSUB CB.PUT
+    FX.AT = JP.L : FX.K = K.F.ABS : FX.S = JP.FS : FX.V = JP.FV : GOSUB FX.ADD
+    JP.L = JP.N : GOTO JP.FIX
+
+## JP.MERGE -- JP.M becomes list JP.L joined to list JP.M.
+JP.MERGE:
+    IF JP.L = 0 THEN RETURN
+    IF JP.M = 0 THEN JP.M = JP.L : RETURN
+    JP.A = JP.L
+JP.MERGE.END:
+    CB.AT = JP.A : GOSUB CB.GET : JP.N = CB.B
+    CB.AT = JP.A + 1 : GOSUB CB.GET : JP.N = JP.N + 256 * CB.B
+    IF JP.N <> 0 THEN JP.A = JP.N : GOTO JP.MERGE.END
+    JP.HI = INT(JP.M / 256)
+    CB.AT = JP.A : CB.B = JP.M - JP.HI * 256 : GOSUB CB.PUT
+    CB.AT = JP.A + 1 : CB.B = JP.HI : GOSUB CB.PUT
+    JP.M = JP.L
+    RETURN
+
+JP.FWD:
+    SL.S%(0) = K.SEC.CONST : SL.V(0) = 0 : GP.SUB EMIT, JP.B
+    JP.AT = CB.N - 1
+    RETURN
+
+JP.LAND:
+    CB.AT = JP.AT : CB.B = CB.N - JP.AT - 1
+    IF CB.B > 127 THEN ER.M$ = "BRANCH TOO FAR" : GOTO ER.STOP
+    GOSUB CB.PUT : RETURN
+
+## JP.BACK -- a jump of kind JP.B back to code offset JP.V.
+JP.BACK:
+    JP.K = K.JP.CODE : GOTO JP.BR
+
+## ---------------------------------------------------------------------------------
+## Conditions
+
+CN.EXPR:
+    GOSUB CN.SCAN
+    EX.CM = CN.LG : GOSUB EX.EXPR : EX.CM = 0
+    RETURN
+
+## CN.SCAN -- CN.LG = 1 when AND and OR may be jumps in the condition ahead. The condition
+## ends at the end of the line, or at THEN or GOTO outside brackets. TK.* and LX.P are put
+## back after.
+CN.SCAN:
+    CN.SP = LX.P : CN.ST = TK.T : CN.SK = TK.K : CN.SV = TK.V : CN.SM = TK.M : CN.SS$ = TK.S$
+    CN.LG = 1 : CN.D = 0 : GOSUB CN.SEG.NEW
+CN.SCAN.NEXT:
+    IF TK.T = K.TT.EOL THEN GOTO CN.SCAN.END
+    GP.IF CN.D = 0 AND TK.T = K.TT.NAME THEN
+        IF TK.S$ = "THEN" OR TK.S$ = "GOTO" THEN GOTO CN.SCAN.END
+        GP.IF TK.S$ = "AND" OR TK.S$ = "OR" THEN
+            GOSUB CN.SEG : GOSUB LX.NEXT : GOTO CN.SCAN.NEXT
+        GP.ENDIF
+        IF TK.S$ = "XOR" THEN CN.LG = 0
+        IF TK.S$ = "NOT" AND CN.F = 0 THEN CN.NX = 1
+        IF TK.S$ = "NOT" AND CN.F = 1 THEN CN.NF = 1
+    GP.ENDIF
+    GP.IF TK.T = K.TT.OP THEN
+        IF TK.K = 40 THEN CN.D = CN.D + 1
+        IF TK.K = 41 THEN CN.D = CN.D - 1
+        GP.IF CN.D = 0 THEN
+            IF TK.K = 60 OR TK.K = 61 OR TK.K = 62 THEN CN.C = 1
+            IF TK.K >= K.OP.NE AND TK.K <= K.OP.GE THEN CN.C = 1
+        GP.ENDIF
+    GP.ENDIF
+    CN.F = 0 : GOSUB LX.NEXT : GOTO CN.SCAN.NEXT
+CN.SCAN.END:
+    GOSUB CN.SEG
+    LX.P = CN.SP : TK.T = CN.ST : TK.K = CN.SK : TK.V = CN.SV : TK.M = CN.SM : TK.S$ = CN.SS$
+    RETURN
+
+## CN.SEG -- the end of one part between AND and OR. It gives 0 or 1 when it starts with
+## NOT, or when its lowest operator is a compare: one outside brackets, and no NOT after
+## the start that could take it.
+CN.SEG:
+    IF CN.NF = 0 AND (CN.C = 0 OR CN.NX = 1) THEN CN.LG = 0
+CN.SEG.NEW:
+    CN.C = 0 : CN.NF = 0 : CN.NX = 0 : CN.F = 1
+    RETURN
+
+CN.JF:
+    CN.SN = 0 : GOTO CN.JUMP
+CN.JT:
+    CN.SN = 1
+## CN.JUMP -- jump when the top entry is CN.SN (1 true, 0 false). The entry is dropped.
+## CN.CK is 1 or 0 for a condition known now, else -1, and CN.BT is the branch taken when
+## the condition is true.
+CN.JUMP:
+    EX.I = EX.VN - 1 : CN.LT = EX.JT(EX.I) : CN.LF = EX.JF(EX.I) : CN.K = EX.VK%(EX.I)
+    CN.CK = -1
+    IF CN.K = K.EK.ADDR THEN CN.CK = 1
+    GP.IF CN.K = K.EK.CONST THEN
+        CN.CK = 0 : IF EX.VV(EX.I) <> 0 THEN CN.CK = 1
+    GP.ENDIF
+    GP.IF CN.K = K.EK.CMP THEN
+        EX.TL = EX.VV(EX.I)
+        IF EX.TL = T.ZTRUE.ID THEN CN.BT = T.BEQ.ID
+        IF EX.TL = T.ZFALSE.ID THEN CN.BT = T.BNE.ID
+        IF EX.TL = T.CTRUE.ID THEN CN.BT = T.BCS.ID
+        IF EX.TL = T.CFALSE.ID THEN CN.BT = T.BCC.ID
+    GP.ENDIF
+    IF CN.CK < 0 AND CN.K <> K.EK.CMP THEN GOSUB EX.TEST : CN.BT = T.BNE.ID
+    EX.VN = EX.VN - 1
+    GP.IF CN.CK < 0 THEN
+        JP.B = CN.BT : IF CN.SN = 0 THEN GOSUB JP.INV : JP.B = JP.IB
+        GOSUB JP.BR
+    GP.ENDIF
+    IF CN.CK = CN.SN THEN JP.B = T.BRA.ID : GOSUB JP.BR
+    GP.IF CN.SN = 0 THEN
+        JP.L = CN.LF : GOSUB JP.SEND : JP.L = CN.LT : GOSUB JP.HERE
+    GP.ELSE
+        JP.L = CN.LT : GOSUB JP.SEND : JP.L = CN.LF : GOSUB JP.HERE
+    GP.ENDIF
+    RETURN
+
+## CN.LEFT -- the left side of a logical AND or OR (EX.NEW), now complete on top of the
+## value stack: for AND, jump when it is false, for OR when it is true. It becomes a
+## K.EK.JMP entry that keeps those jumps.
+CN.LEFT:
+    JP.K = K.JP.LIST : JP.H = 0
+    GP.IF EX.NEW = K.EO.LAND THEN
+        GOSUB CN.JF : CN.LJT = 0 : CN.LJF = JP.H
+    GP.ELSE
+        GOSUB CN.JT : CN.LJT = JP.H : CN.LJF = 0
+    GP.ENDIF
+    EX.K = K.EK.JMP : EX.S = K.SEC.CONST : EX.V = 0 : EX.TY = K.TY.BYTE : GOSUB EX.PUSHV
+    EX.JT(EX.VN - 1) = CN.LJT : EX.JF(EX.VN - 1) = CN.LJF
+    RETURN
+
+## CN.LOGIC -- reduce a logical AND or OR. The right side's flag is still to be tested, so
+## the result is the right side, with the left side's jumps added to its lists.
+CN.LOGIC:
+    EX.IL = EX.VN - 2 : EX.IR = EX.VN - 1
+    GP.IF EX.O = K.EO.LAND THEN
+        JP.L = EX.JF(EX.IL) : JP.M = EX.JF(EX.IR) : GOSUB JP.MERGE : EX.JF(EX.IR) = JP.M
+    GP.ELSE
+        JP.L = EX.JT(EX.IL) : JP.M = EX.JT(EX.IR) : GOSUB JP.MERGE : EX.JT(EX.IR) = JP.M
+    GP.ENDIF
+    EX.I = EX.IL : EX.J = EX.IR : GOSUB EX.SWAP
+    EX.JT(EX.IL) = EX.JT(EX.IR) : EX.JF(EX.IL) = EX.JF(EX.IR)
+    EX.VN = EX.VN - 1
+    RETURN

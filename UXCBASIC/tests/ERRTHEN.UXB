@@ -1,0 +1,2 @@
+DIM I AS UBYTE
+IF I = 1 THEN DO

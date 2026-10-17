@@ -1,0 +1,19 @@
+UXDOS16 V0.1.0
+For the Commander X16
+>>RUN TARGET.COM
+OPEN W 3 
+APPEND NEW 3 
+ 12  34 
+[ONE 1 ,TWO]
+[THREE]
+[FOUR]
+READ 7  0  13  10 
+12,34
+NOPE 65535  1 
+A             B             C
+XY 2 
+KEY 0 
+
+?FILE NOT OPEN ERROR AT $0A4F
+
+>>

@@ -1,0 +1,2 @@
+DIM W AS UWORD
+W = VAL(3)

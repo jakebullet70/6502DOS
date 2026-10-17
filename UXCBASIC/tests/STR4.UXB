@@ -1,0 +1,24 @@
+' STR4 -- compares with "", and appending when the left side is named again
+DIM E$ * 4, A$ * 8
+FUNCTION ISEMPTY(T$) AS UBYTE
+  RETURN T$ = ""
+ENDFUNCTION
+IF E$ = "" THEN PRINT "EMPTY"
+IF "" = E$ THEN PRINT "EMPTY2"
+IF E$ <> "" THEN PRINT "WRONG1"
+IF E$ > "" THEN PRINT "WRONG2"
+IF "" < E$ THEN PRINT "WRONG3"
+IF E$ >= "" THEN PRINT "GE"
+IF E$ <= "" THEN PRINT "LE"
+E$ = "Z"
+IF E$ <> "" THEN PRINT "NE"
+IF E$ > "" THEN PRINT "GT"
+IF "" < E$ THEN PRINT "LT"
+IF "" >= E$ THEN PRINT "WRONG4"
+IF "" = "" THEN PRINT "BOTH"
+PRINT LEN(""); "" = ""; "" < E$
+PRINT ISEMPTY(""); ISEMPTY(E$)
+A$ = "12"
+A$ = A$ + MID$(A$, 2) + STR$(LEN(A$))
+PRINT A$
+PRINT A$ + "1" = A$ + "1"; "A" + "B" < "B"

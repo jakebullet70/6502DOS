@@ -1,0 +1,5 @@
+' INSTR -- the built-in, with and without a start
+DIM T$ * 20
+T$ = "ABCABC"
+PRINT INSTR(T$, "BC", 1); INSTR(T$, "BC", 3); INSTR(T$, "X", 1); INSTR(T$, "", 1); INSTR(T$, "C", 0); INSTR(T$, "ABC", 5)
+PRINT INSTR(T$, "CA"); INSTR("AAAB", "AAB"); INSTR(T$, "ABCABCX"); INSTR(T$, "C", 300); INSTR(T$, T$)

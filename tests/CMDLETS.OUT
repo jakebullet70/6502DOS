@@ -1,0 +1,72 @@
+UXDOS16 V0.1.0
+For the Commander X16
+>>RUN CMDSHELL.COM
+C>EXIST HELLO.TXT
+Bad command or file name
+C>PATH$ = "C:\DOS"
+C>EXIST HELLO.TXT
+C>PRINT P1$
+1
+C>EXIST NOSUCH.TXT
+C>PRINT P1$
+0
+C>EXIST DOCS
+C>PRINT P1$
+1
+C>EXIST
+C>PRINT "[" + P1$ + "]"
+[]
+C>DISKFREE
+865 KB free
+C>DISKFREE C:
+865 KB free
+C>DISKFREE c
+865 KB free
+C>DISKFREE A:
+Invalid drive
+C>DISKFREE @
+Invalid drive
+C>DISKFREE CC
+Invalid drive
+C>PRINT "[" + P1$ + "]"
+[]
+C>DISKFREE SILENT
+C>PRINT P1$
+865
+C>DISKFREE C: SILENT
+C>PRINT P1$
+865
+C>DISKFREE Q: SILENT
+C>PRINT "[" + P1$ + "]"
+[]
+C>DISKFREE
+865 KB free
+C>PRINT P1$
+865
+C>DISKINFO
+     1024 KB total
+      865 KB free
+     1024 bytes a cluster
+     1024 clusters
+      865 clusters free
+C>DISKINFO C: SILENT
+C>PRINT P1$ + " " + P2$ + " " + P3$ + " " + P4$ + " " + P5$
+1024 865 1024 1024 865
+C>DISKINFO Q:
+Invalid drive
+C>PRINT "[" + P1$ + "]"
+[]
+C>HELP
+HELP EXIST DISKFREE DISKINFO CHDIR CD DELETE DEL MKDIR MD RMDIR RD RENAME REN VERSION VER COLOR COLORS VIEW 
+C>HELP diskfree
+DISKFREE [d:] [SILENT]          (Command line or Script)
+  Tells the free kilobytes of drive d, or of the current drive.
+  Prints a line such as 877 KB free. Sets P1$ to the number, such as 877.
+  At the prompt: DISKFREE C:
+  In a script:   DISKFREE C: SILENT
+                 PRINT P1$
+C>HELP NOSUCH
+No help for NOSUCH
+C>END
+
+>>

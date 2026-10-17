@@ -1,0 +1,33 @@
+@SYS
+.
+=SYS
+.
+.SYS a calls the machine code at address a. The address is any UWORD
+.expression: a constant, a variable or @name.
+.
+:DIM REG_A AS UBYTE AT $030C, REG_X AS UBYTE AT $030D
+:DIM REG_Y AS UBYTE AT $030E, REG_P AS UBYTE AT $030F
+:REG_A = 65
+:SYS $FFD2                    ' CHROUT prints A
+.
+.  - Before the call SYS loads A, X, Y and P from $030C, $030D, $030E and
+.    $030F. After the call it stores the four back there. X16 ROM BASIC does
+.    the same.
+.  - DIM ... AT names the four bytes, as in the example.
+.  - SYS ANDs P with $F3, so D and I are clear during the call.
+.  - Carry is bit 0 of REG_P. IF REG_P AND 1 THEN PRINT "FAILED" tests the
+.    carry a call returns.
+.  - The four bytes are not cleared when the program starts. Set what the
+.    call reads.
+.  - The called code may change X. SYS keeps the program's X, which indexes
+.    the expression stack.
+.  - A SYS to a constant address is 7 bytes of code. The routine behind it,
+.    43 bytes, is in the program once.
+.  - A string address stops the compile with TYPE MISMATCH.
+.
+.See ASM, Declarations.
+.
+=SEE ALSO
+.
+>42|ASM
+>12|Declarations

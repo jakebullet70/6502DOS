@@ -1,0 +1,385 @@
+' DOS.UXI: the UXDOS16 API (docs/API.md) through the call entries at $0340.
+'
+' Each call sets DOS.ERROR: 0 when it succeeds, else a DOS 2.0 error number.
+' A call not yet written in the kernel gives error 1.
+'
+' Trap: the LONG routines of the runtime use $02-$0D, which are r0-r5. Each call sets its
+' registers right before its SYS, with no LONG value in between.
+
+NAMESPACE DOS
+  DIM REG_A AS UBYTE AT $030C, REG_X AS UBYTE AT $030D, _
+      REG_Y AS UBYTE AT $030E, REG_P AS UBYTE AT $030F
+      
+  DIM R0 AS UWORD AT $02, R1 AS UWORD AT $04, R2 AS UWORD AT $06, _ 
+      R3 AS UWORD AT $08, R4 AS UWORD AT $0A, R5 AS UWORD AT $0C
+
+  CONST API_CREATE AS UWORD = $0340, API_OPEN AS UWORD = $0343, API_CLOSE AS UWORD = $0346
+  CONST API_READ AS UWORD = $0349, API_WRITE AS UWORD = $034C, API_SEEK AS UWORD = $034F
+  CONST API_DELETE AS UWORD = $0352, API_RENAME AS UWORD = $0355
+  CONST API_IOCTL AS UWORD = $035E, API_DUP AS UWORD = $0361, API_DUP2 AS UWORD = $0364
+  CONST API_FINDFIRST AS UWORD = $0367, API_FINDNEXT AS UWORD = $036A
+  CONST API_MKDIR AS UWORD = $036D, API_RMDIR AS UWORD = $0373, API_CHDIR AS UWORD = $0376
+  CONST API_GETCWD AS UWORD = $0379, API_GETDRIVE AS UWORD = $037C, API_SETDRIVE AS UWORD = $037F
+  CONST API_DISKFREE AS UWORD = $0382
+  CONST API_CON_LINE AS UWORD = $0385, API_CON_STATUS AS UWORD = $0388
+  CONST API_CON_IN AS UWORD = $03BB, API_EXEC AS UWORD = $038B, API_EXITCODE AS UWORD = $0391
+  CONST API_VERSION AS UWORD = $03AF, API_TICKS AS UWORD = $03B2, API_ERRMSG AS UWORD = $03B5
+  CONST API_CON_COLOUR AS UWORD = $03CA
+
+  CONST ACCESS_READ AS UBYTE = 0, ACCESS_WRITE AS UBYTE = 1, ACCESS_READWRITE AS UBYTE = 2
+  CONST ATTR_READ_ONLY AS UBYTE = $01, ATTR_HIDDEN AS UBYTE = $02, ATTR_SYSTEM AS UBYTE = $04
+  CONST ATTR_LABEL AS UBYTE = $08, ATTR_DIRECTORY AS UBYTE = $10, ATTR_ARCHIVE AS UBYTE = $20
+  CONST DRIVE_C AS UBYTE = 2, IOCTL_IN_STATUS AS UBYTE = 6
+
+  CONST ERR_BAD_FUNCTION AS UBYTE = 1, ERR_NOT_FOUND AS UBYTE = 2, ERR_NO_PATH AS UBYTE = 3
+  CONST ERR_TOO_MANY AS UBYTE = 4, ERR_ACCESS AS UBYTE = 5, ERR_BAD_HANDLE AS UBYTE = 6
+  CONST ERR_NO_MEMORY AS UBYTE = 8, ERR_BAD_BLOCK AS UBYTE = 9, ERR_BAD_FORMAT AS UBYTE = 11
+  CONST ERR_BAD_ACCESS AS UBYTE = 12, ERR_BAD_DATA AS UBYTE = 13, ERR_BAD_DRIVE AS UBYTE = 15
+  CONST ERR_CURRENT_DIR AS UBYTE = 16, ERR_NOT_SAME AS UBYTE = 17, ERR_NO_MORE AS UBYTE = 18
+  CONST ERR_NOT_READY AS UBYTE = 21, ERR_READ_FAULT AS UBYTE = 30
+  ' COPY's error when the target took fewer bytes than it was given. It is not a DOS 2.0
+  ' error number, so ERRMSG gives "" for it.
+  CONST DISK_FULL AS UBYTE = 255
+
+  ' The find buffer's fields, docs/API.md.
+  CONST FIND_ATTRIBUTES AS UBYTE = 21, FIND_TIME AS UBYTE = 22, FIND_DATE AS UBYTE = 24
+  CONST FIND_SIZE AS UBYTE = 26, FIND_NAME AS UBYTE = 30
+
+  ' The 16 colours of VERA's palette. A console colour is the background times 16 plus the
+  ' foreground. The shell's COLOR_NUMBER gives these values for the same names.
+  CONST BLACK AS UBYTE = 0, WHITE AS UBYTE = 1, RED AS UBYTE = 2, CYAN AS UBYTE = 3
+  CONST PURPLE AS UBYTE = 4, GREEN AS UBYTE = 5, BLUE AS UBYTE = 6, YELLOW AS UBYTE = 7
+  CONST ORANGE AS UBYTE = 8, BROWN AS UBYTE = 9, LIGHTRED AS UBYTE = 10, DARKGRAY AS UBYTE = 11
+  CONST GRAY AS UBYTE = 12, LIGHTGREEN AS UBYTE = 13, LIGHTBLUE AS UBYTE = 14
+  CONST LIGHTGRAY AS UBYTE = 15
+
+  DIM ERROR AS UBYTE
+  ' FINDFIRST and FINDNEXT fill these. The size is 32-bit, in two words.
+  DIM FOUND_NAME AS STRING * 32, FOUND_ATTRIBUTES AS UBYTE, FOUND_TIME AS UWORD, FOUND_DATE AS UWORD
+  DIM FOUND_SIZE_LOW AS UWORD, FOUND_SIZE_HIGH AS UWORD
+  ' SEEK puts the new position here.
+  DIM POSITION_LOW AS UWORD, POSITION_HIGH AS UWORD
+  ' DISKFREE puts the size and free space of a drive here. The cluster counts are 32-bit, in two
+  ' words.
+  DIM CLUSTER_SECTORS AS UWORD, SECTOR_BYTES AS UWORD
+  DIM FREE_LOW AS UWORD, FREE_HIGH AS UWORD, TOTAL_LOW AS UWORD, TOTAL_HIGH AS UWORD
+
+  DIM FIND_BUFFER(63) AS UBYTE
+  DIM CALL_TEXT AS STRING * 255              ' GETCWD's buffer: its length byte and 255 bytes
+
+  ' Sets ERROR from the carry and A that the last SYS returned.
+  SUB READ_ERR_STATUS()
+    ERROR = 0
+    IF REG_P AND 1 THEN ERROR = REG_A
+  END SUB
+
+  ' Copies the find buffer into the FOUND_ variables.
+  SUB UPDATE_FOUND()
+    DIM INDEX AS UBYTE, LENGTH AS UBYTE
+    FOUND_ATTRIBUTES = FIND_BUFFER(FIND_ATTRIBUTES)
+    FOUND_TIME = ContentsAtW(@FIND_BUFFER + FIND_TIME)
+    FOUND_DATE = ContentsAtW(@FIND_BUFFER + FIND_DATE)
+    FOUND_SIZE_LOW = ContentsAtW(@FIND_BUFFER + FIND_SIZE)
+    FOUND_SIZE_HIGH = ContentsAtW(@FIND_BUFFER + FIND_SIZE + 2)
+    LENGTH = FIND_BUFFER(FIND_NAME)
+    ContentsAt(@FOUND_NAME + 1) = LENGTH
+    FOR INDEX = 1 TO LENGTH
+      ContentsAt(@FOUND_NAME + 1 + INDEX) = FIND_BUFFER(FIND_NAME + INDEX)
+    NEXT
+  END SUB
+
+  ' ---- the calls ----
+
+  FUNCT CREATE_FILE(PATH AS STRING, ATTRIBUTES AS UBYTE) AS UWORD
+    R0 = @PATH + 1
+    REG_A = ATTRIBUTES
+    SYS API_CREATE
+    READ_ERR_STATUS()
+    IF ERROR <> 0 THEN RETURN NOFILE
+    RETURN REG_X
+  END FUNCT
+
+  FUNCT OPEN_FILE(PATH AS STRING, ACCESS AS UBYTE) AS UWORD
+    R0 = @PATH + 1
+    REG_A = ACCESS
+    SYS API_OPEN
+    READ_ERR_STATUS()
+    IF ERROR <> 0 THEN RETURN NOFILE
+    RETURN REG_X
+  END FUNCT
+
+  SUB CLOSE_FILE(HANDLE AS UWORD)
+    REG_X = HANDLE
+    SYS API_CLOSE
+    READ_ERR_STATUS()
+  END SUB
+
+  ' Reads up to COUNT bytes into memory at BUFFER. Returns the count read, 0 at the end of
+  ' the file. The console gives one typed line, its CR included.
+  FUNCT READ_FILE(HANDLE AS UWORD, BUFFER AS UWORD, COUNT AS UWORD) AS UWORD
+    REG_X = HANDLE
+    R0 = BUFFER
+    R1 = COUNT
+    SYS API_READ
+    READ_ERR_STATUS()
+    IF ERROR <> 0 THEN RETURN 0
+    RETURN R1
+  END FUNCT
+
+  ' Writes COUNT bytes from memory at BUFFER. Returns the count written.
+  FUNCT WRITE_FILE(HANDLE AS UWORD, BUFFER AS UWORD, COUNT AS UWORD) AS UWORD
+    REG_X = HANDLE
+    R0 = BUFFER
+    R1 = COUNT
+    SYS API_WRITE
+    READ_ERR_STATUS()
+    IF ERROR <> 0 THEN RETURN 0
+    RETURN R1
+  END FUNCT
+
+  ' Moves the position of HANDLE by the signed offset OFFSET_HIGH:OFFSET_LOW from FROM: 0 the
+  ' start, 1 the position, 2 the end. Puts the new position in POSITION_LOW and POSITION_HIGH.
+  SUB SEEK(HANDLE AS UWORD, FROM AS UBYTE, OFFSET_LOW AS UWORD, OFFSET_HIGH AS UWORD)
+    REG_X = HANDLE
+    REG_A = FROM
+    R0 = OFFSET_LOW
+    R1 = OFFSET_HIGH
+    SYS API_SEEK
+    READ_ERR_STATUS()
+    POSITION_LOW = R0
+    POSITION_HIGH = R1
+  END SUB
+
+  ' Makes ioctl request SUBFUNCTION of HANDLE, and returns its data. IOCTL_IN_STATUS gives
+  ' $FF when a read of HANDLE would give a byte, else 0: a file gives 0 at its end, CON $FF
+  ' when a key waits, NUL 0.
+  FUNCT IOCTL(HANDLE AS UWORD, SUBFUNCTION AS UBYTE) AS UWORD
+    REG_X = HANDLE
+    REG_A = SUBFUNCTION
+    SYS API_IOCTL
+    READ_ERR_STATUS()
+    IF ERROR <> 0 THEN RETURN 0
+    RETURN R0
+  END FUNCT
+
+  ' Returns a new handle to the file of HANDLE. Both handles share the position.
+  FUNCT DUP(HANDLE AS UWORD) AS UWORD
+    REG_X = HANDLE
+    SYS API_DUP
+    READ_ERR_STATUS()
+    IF ERROR <> 0 THEN RETURN NOFILE
+    RETURN REG_X
+  END FUNCT
+
+  ' Makes SECOND refer to the file of HANDLE. Closes SECOND first when it is open.
+  SUB DUP2(HANDLE AS UWORD, SECOND AS UWORD)
+    REG_X = HANDLE
+    REG_Y = SECOND
+    SYS API_DUP2
+    READ_ERR_STATUS()
+  END SUB
+
+  SUB DELETE(PATH AS STRING)
+    R0 = @PATH + 1
+    SYS API_DELETE
+    READ_ERR_STATUS()
+  END SUB
+
+  SUB RENAME(OLD AS STRING, NEW AS STRING)
+    R0 = @OLD + 1
+    R1 = @NEW + 1
+    SYS API_RENAME
+    READ_ERR_STATUS()
+  END SUB
+
+  SUB MKDIR(PATH AS STRING)
+    R0 = @PATH + 1
+    SYS API_MKDIR
+    READ_ERR_STATUS()
+  END SUB
+
+  SUB RMDIR(PATH AS STRING)
+    R0 = @PATH + 1
+    SYS API_RMDIR
+    READ_ERR_STATUS()
+  END SUB
+
+  SUB CHDIR(PATH AS STRING)
+    R0 = @PATH + 1
+    SYS API_CHDIR
+    READ_ERR_STATUS()
+  END SUB
+
+  ' The current directory of DRIVE, 0 for the current drive or 3 for C:, without the drive
+  ' letter and the first \: "" at the root, DOCS\SUB below it.
+  FUNCT GETCWD(DRIVE AS UBYTE) AS STRING
+    REG_A = DRIVE
+    R0 = @CALL_TEXT + 1
+    SYS API_GETCWD
+    READ_ERR_STATUS()
+    IF ERROR <> 0 THEN RETURN ""
+    RETURN CALL_TEXT
+  END FUNCT
+
+  ' Finds the first name that matches PATTERN, as FINDNEXT does. A pattern that ends in a
+  ' separator matches every name in that directory.
+  SUB FINDFIRST(PATTERN AS STRING, ATTRIBUTES AS UBYTE)
+    R0 = @PATTERN + 1
+    R1 = @FIND_BUFFER
+    REG_A = ATTRIBUTES
+    SYS API_FINDFIRST
+    READ_ERR_STATUS()
+    IF ERROR = 0 THEN UPDATE_FOUND()
+  END SUB
+
+  ' Finds the next name of the search, and puts it in the FOUND_ variables. Normal files
+  ' always match; directories, hidden and system files only when FINDFIRST's ATTRIBUTES hold
+  ' their bit.
+  SUB FINDNEXT()
+    R1 = @FIND_BUFFER
+    SYS API_FINDNEXT
+    READ_ERR_STATUS()
+    IF ERROR = 0 THEN UPDATE_FOUND()
+  END SUB
+
+  FUNCT GETDRIVE() AS UBYTE
+    SYS API_GETDRIVE
+    READ_ERR_STATUS()
+    RETURN REG_A
+  END FUNCT
+
+  SUB SETDRIVE(DRIVE AS UBYTE)
+    REG_A = DRIVE
+    SYS API_SETDRIVE
+    READ_ERR_STATUS()
+  END SUB
+
+  ' Puts the size and free space of DRIVE, 0 for the current drive or 3 for C:, in
+  ' CLUSTER_SECTORS, SECTOR_BYTES, FREE_ and TOTAL_. It reads the whole FAT.
+  SUB DISKFREE(DRIVE AS UBYTE)
+    REG_A = DRIVE
+    SYS API_DISKFREE
+    READ_ERR_STATUS()
+    CLUSTER_SECTORS = R0
+    FREE_LOW = R1
+    FREE_HIGH = R2
+    SECTOR_BYTES = R3
+    TOTAL_LOW = R4
+    TOTAL_HIGH = R5
+  END SUB
+
+  ' Reads a line from the console with editing into LINE, cut at its size less 1.
+  ' The call's buffer is the string itself: its size byte, its length byte, then the text and
+  ' a CR, which the size leaves room for.
+  SUB CON_LINE(LINE AS STRING)
+    R0 = @LINE
+    SYS API_CON_LINE
+    READ_ERR_STATUS()
+  END SUB
+
+  ' Runs the program at PATH with the command tail TAIL, and returns when it ends.
+  SUB EXEC(PATH AS STRING, TAIL AS STRING)
+    R0 = @PATH + 1
+    R1 = @TAIL + 1
+    SYS API_EXEC
+    READ_ERR_STATUS()
+  END SUB
+
+  FUNCT EXITCODE() AS UBYTE
+    SYS API_EXITCODE
+    READ_ERR_STATUS()
+    RETURN REG_A
+  END FUNCT
+
+  ' The version as major.minor.patch.
+  FUNCT VERSION() AS STRING
+    SYS API_VERSION
+    READ_ERR_STATUS()
+    RETURN MID$(STR$(REG_A), 2) + "." + MID$(STR$(REG_X), 2) + "." + MID$(STR$(REG_Y), 2)
+  END FUNCT
+
+  ' The low word of the VSYNC count since boot. It wraps to 0 after 65535.
+  ' It leaves ERROR as it is: the call cannot fail.
+  FUNCT TICKS() AS UWORD
+    SYS API_TICKS
+    RETURN R0
+  END FUNCT
+
+  ' Sets the console colour, background times 16 plus foreground, for the characters written
+  ' from now on. It leaves ERROR as it is: the call cannot fail.
+  SUB SET_COLOUR(COLOUR AS UBYTE)
+    REG_A = COLOUR
+    REG_P = 0
+    SYS API_CON_COLOUR
+  END SUB
+
+  ' The console colour, background times 16 plus foreground. It leaves ERROR as it is.
+  FUNCT GET_COLOUR() AS UBYTE
+    REG_P = 1
+    SYS API_CON_COLOUR
+    RETURN REG_A
+  END FUNCT
+
+  ' The message of error NUMBER. An unknown number gives "" and error 1.
+  FUNCT ERRMSG(NUMBER AS UBYTE) AS STRING
+    DIM INDEX AS UBYTE, LENGTH AS UBYTE
+    REG_A = NUMBER
+    SYS API_ERRMSG
+    READ_ERR_STATUS()
+    IF ERROR <> 0 THEN RETURN ""
+    LENGTH = ContentsAt(R0)
+    ContentsAt(@CALL_TEXT + 1) = LENGTH
+    FOR INDEX = 1 TO LENGTH
+      ContentsAt(@CALL_TEXT + 1 + INDEX) = ContentsAt(R0 + INDEX)
+    NEXT
+    RETURN CALL_TEXT
+  END FUNCT
+
+  ' ---- whole files, built on the calls ----
+
+  ' 1 when a file or directory matches PATH, else 0 with ERROR set. A wildcard matches any
+  ' name. Trap: it runs FINDFIRST, so it ends a search in progress and sets the FOUND_
+  ' variables.
+  FUNCT EXISTS(PATH AS STRING) AS UBYTE
+    FINDFIRST(PATH, ATTR_DIRECTORY OR ATTR_HIDDEN OR ATTR_SYSTEM)
+    RETURN ERROR = 0
+  END FUNCT
+
+  ' The size in bytes of the file PATH, or 0 with ERROR set. A directory gives error 2. A
+  ' wildcard gives the size of the first match. Trap: it runs FINDFIRST, as EXISTS does.
+  FUNCT SIZE(PATH AS STRING) AS ULONG
+    DIM BYTES AS ULONG
+    FINDFIRST(PATH, ATTR_HIDDEN OR ATTR_SYSTEM)
+    IF ERROR <> 0 THEN RETURN 0
+    ContentsAtW(@BYTES) = FOUND_SIZE_LOW
+    ContentsAtW(@BYTES + 2) = FOUND_SIZE_HIGH
+    RETURN BYTES
+  END FUNCT
+
+  ' Copies the file SOURCE to TARGET, 256 bytes at a time through CALL_TEXT. TARGET is
+  ' created, or emptied when it exists. ERROR is DISK_FULL when TARGET took fewer bytes than
+  ' it was given. A copy that fails keeps the bytes TARGET took.
+  SUB COPY(SOURCE AS STRING, TARGET AS STRING)
+    DIM SOURCE_HANDLE AS UWORD, TARGET_HANDLE AS UWORD, COUNT AS UWORD, CODE AS UBYTE
+    SOURCE_HANDLE = OPEN_FILE(SOURCE, ACCESS_READ)
+    IF ERROR <> 0 THEN RETURN
+    TARGET_HANDLE = CREATE_FILE(TARGET, 0)
+    CODE = ERROR
+    IF CODE = 0 THEN
+      DO
+        COUNT = READ_FILE(SOURCE_HANDLE, @CALL_TEXT + 1, 256)
+        CODE = ERROR
+        IF CODE <> 0 OR COUNT = 0 THEN EXIT DO
+        IF WRITE_FILE(TARGET_HANDLE, @CALL_TEXT + 1, COUNT) < COUNT THEN
+          CODE = ERROR
+          IF CODE = 0 THEN CODE = DISK_FULL
+          EXIT DO
+        END IF
+      LOOP
+      CLOSE_FILE(TARGET_HANDLE)
+      IF CODE = 0 THEN CODE = ERROR
+    END IF
+    CLOSE_FILE(SOURCE_HANDLE)
+    ERROR = CODE
+  END SUB
+END NAMESPACE

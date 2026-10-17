@@ -1,0 +1,9 @@
+' HELLO.UXB -- the first UXCBASIC program
+dim I, N%
+N% = 0
+FOR I = 1 TO 10
+  N% = N% + I ' THE RUNNING TOTAL
+NEXT
+PRINT "HELLO, THE SUM IS "; N%
+// ALL FIVE START A WHOLE-LINE COMMENT
+; REM, ', ;, ## AND //

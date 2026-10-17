@@ -1,0 +1,30 @@
+'=============================================================================================
+' -- Callable Commandlet -----> EXIST name
+' -- For scripts. Tells whether the file or directory name exists. Prints nothing.
+' -- Sets P1$ to 1 when name exists and to 0 when it does not. P1$ stays empty with no name.
+' -- Exit code 0 when name exists, 1 when it does not, 2 with no name.
+' --
+' --     PATH$ = "C:\DOS"
+' --     EXIST DOCS\README.TXT
+' --     IF P1$ = "1"
+' --       PRINT "Found the readme"
+' --     ENDIF
+' -- The shell finds EXIST.CBIN (EXIST.CBI on the card) in the current folder or a PATH$ folder.
+' -- The result replaces the name in P1$.
+' -- END n hands n to the kernel's exit call. A program that runs this one reads n with
+' -- DOS.EXITCODE(). The shell does not read it.
+'=============================================================================================
+#INCLUDE "DOS.UXI"
+#INCLUDE "HEAP.UXI"
+#INCLUDE "CBIN.UXI"
+DIM FILENAME_2_CHK AS STRING * 255
+
+FILENAME_2_CHK = HEAP.SYS_STRINGS_GET(SLOT_P1)
+IF FILENAME_2_CHK = "" THEN END 2
+DOS.FINDFIRST(FILENAME_2_CHK, DOS.ATTR_DIRECTORY OR DOS.ATTR_HIDDEN OR DOS.ATTR_SYSTEM)
+IF DOS.ERROR = 0 THEN
+  HEAP.SYS_STRINGS_SET(SLOT_P1, "1")
+  END 0
+END IF
+HEAP.SYS_STRINGS_SET(SLOT_P1, "0")
+END 1

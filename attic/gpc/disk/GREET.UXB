@@ -1,0 +1,5 @@
+' GREET.UXB -- read a name and greet it
+DIM WHO$ * 20
+PRINT "What is your name? ";
+LINPUT WHO$
+PRINT "Hello, "; WHO$; "!"

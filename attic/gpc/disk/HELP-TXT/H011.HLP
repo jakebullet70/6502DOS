@@ -1,0 +1,24 @@
+@Control
+.
+=CONTROL
+.
+.IF chooses, and DO, FOR and REPEAT loop. EXIT leaves a loop, CONTINUE starts
+.its next pass, and GOTO jumps to a label.
+.
+.A condition is true when it is not 0. A compare is compiled straight to a
+.branch, with no 0 or 1 in between. AND and OR between compares stop as soon
+.as the answer is known: in A AND B, B is not tested when A is false.
+.
+.AND and OR are bitwise, so IF A AND 4 tests bit 2. To test two values for
+.not 0, write IF A <> 0 AND B <> 0.
+.
+.See IF, DO, FOR, REPEAT, EXIT and CONTINUE, GOTO.
+.
+=SEE ALSO
+.
+>22|IF
+>23|DO
+>24|FOR
+>25|REPEAT
+>26|EXIT and CONTINUE
+>27|GOTO

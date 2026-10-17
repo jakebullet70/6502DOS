@@ -1,0 +1,23 @@
+@BIND
+.
+=BIND
+.
+.BIND name = target gives a second name to a variable, an array, a constant,
+.a SUB, a FUNCTION or a namespace. It costs nothing at run time.
+.
+:BIND G = GFX
+:BIND P = GFX.PLOT
+:BIND C = GFX.COLOR
+:P(1, 2)
+.
+.  - The new name has the same mark as the target: BIND C$ = GFX.COLOR stops
+.    the compile with BIND NEEDS THE SAME MARK.
+.  - A BIND belongs to the scope it is written in. A BIND in a SUB is the
+.    SUB's.
+.  - A label cannot be bound.
+.
+.See Namespaces.
+.
+=SEE ALSO
+.
+>35|Namespaces

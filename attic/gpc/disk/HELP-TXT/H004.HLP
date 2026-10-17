@@ -1,0 +1,40 @@
+@Declarations
+.
+=DECLARATIONS
+.
+.DIM and VAR mean the same thing. Every variable must be declared.
+.
+=DIM ... AT
+.
+.DIM name AS type AT address puts a number variable at a fixed address. The
+.variable takes no space in the program.
+.
+:DIM REG_A AS UBYTE AT $030C, REG_P AS UBYTE AT $030F
+:REG_P = 0
+:REG_A = 65
+:SYS $FFD2                    ' CHROUT prints A
+:IF REG_P AND 1 THEN PRINT "CARRY"
+.
+.  - The address is a constant expression: DIM H AS UBYTE AT $0400 + 1.
+.  - A WORD or UWORD takes the address and the next byte, low byte first. A
+.    LONG or ULONG takes 4 bytes.
+.  - The variable works wherever a variable does: in expressions, as the
+.    target of =, as a FOR counter, in INPUT and as a BIND target.
+.  - Each read or write is one absolute load or store, 3 bytes, also at a
+.    zero-page address. REG_P = 5 is LDA #5, STA $030F.
+.  - AddrOf(name) is the address. In ASM it is two bytes.
+.  - Two variables may share an address: DIM P AS UWORD AT $0400, L AS UBYTE
+.    AT $0400.
+.  - The address is not checked against the program's own memory.
+.  - An address that is not a constant stops the compile with ADDRESS NOT A
+.    CONSTANT.
+.  - An array or a string with AT stops the compile with NOT YET: AN ARRAY OR
+.    A STRING AT AN ADDRESS.
+.
+.See Types, SYS, Pointers.
+.
+=SEE ALSO
+.
+>5|Types
+>46|SYS
+>19|Pointers

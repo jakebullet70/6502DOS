@@ -1,0 +1,43 @@
+' TARGET: pyuxc's UXDOS16 target. Files through handles, line ends, print zones, POS and GETKEY.
+DIM F AS UWORD, N AS UWORD, A AS UWORD, B AS UWORD, L AS STRING * 20, BUFFER(20) AS UBYTE
+
+' Writing: PRINT # ends a line with CR LF; O.APPEND writes at the end.
+F = OPEN("T.TXT", O.WRITE)
+PRINT "OPEN W"; F
+PRINT #F, "12,34"
+PRINT #F, "ONE"; 1, "TWO"
+CLOSE F
+F = OPEN("T.TXT", O.APPEND)
+PRINT #F, "THREE"; CHR$(13);
+PRINT #F, "FOUR"
+CLOSE F
+F = OPEN("NEW.TXT", O.APPEND)
+PRINT "APPEND NEW"; F
+CLOSE F
+
+' Reading: fields, then lines to the end. THREE ends at a lone CR.
+F = OPEN("T.TXT", O.READ)
+INPUT #F, A, B
+PRINT A; B
+DO WHILE NOT EOF(F)
+  LINPUT #F, L
+  PRINT "["; L; "]"
+LOOP
+CLOSE F
+
+' Blocks: READ, then WRITE to handle 1. The first line ends with 13 10.
+F = OPEN("T.TXT", O.READ)
+N = READ(F, @BUFFER, 7)
+PRINT "READ"; N; EOF(F); BUFFER(5); BUFFER(6)
+WRITE 1, @BUFFER, 5
+PRINT
+CLOSE F
+F = OPEN("NOPE.TXT", O.READ)
+PRINT "NOPE"; F; EOF(F)
+
+' The screen.
+PRINT "A", "B", "C"
+PRINT "XY";
+PRINT POS(0)
+PRINT "KEY"; GETKEY()
+PRINT #9, "X"

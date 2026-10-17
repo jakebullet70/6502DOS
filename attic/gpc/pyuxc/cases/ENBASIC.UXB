@@ -1,0 +1,28 @@
+' ENUMs: values, the switch to WORD, members used bare inside, and in a SUB and a namespace.
+ENUM E1
+A, B, C
+ENDENUM
+ENUM E2
+X = 5, Y, Z = X + 10
+W = $FF
+V
+END ENUM
+ENUM E3
+ONLY = 65535
+ENDENUM
+ENUM E4
+END ENUM
+NAMESPACE NS
+ENUM E5
+P = 3
+Q
+ENDENUM
+ENDNAMESPACE
+SUB S()
+ENUM E6
+M, N
+ENDENUM
+PRINT E6.N
+ENDSUB
+PRINT E1.A; E1.C; E2.Z; E2.V; E3.ONLY; NS.E5.Q
+S()

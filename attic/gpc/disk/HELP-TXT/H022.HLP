@@ -1,0 +1,36 @@
+@Namespaces
+.
+=NAMESPACES
+.
+.NAMESPACE name ... END NAMESPACE groups names. Inside it a name is used
+.bare. Outside it the name is qualified with a dot. ENDNAMESPACE is the same
+.as END NAMESPACE.
+.
+:NAMESPACE GFX
+:  DIM COLOR AS UBYTE
+:  SUB PLOT(X AS UWORD, Y AS UBYTE)
+:    POKE $9F20, COLOR
+:  ENDSUB
+:END NAMESPACE
+:GFX.COLOR = 5
+:GFX.PLOT(10, 20)
+.
+.  - A namespace body holds DIM, VAR, CONST, ENUM, SUB, FUNCTION, BIND,
+.    ERRORS and other namespaces, and nothing that runs.
+.  - A namespace may hold namespaces: OUTER.INNER.B is B in INNER in OUTER.
+.  - A NAMESPACE with the name of one already made opens it again, to add
+.    names.
+.  - A name is found in the SUB or FUNCTION first, then in each namespace
+.    around it, then in the main program. Inside OUTER, INNER.B and
+.    OUTER.INNER.B are the same.
+.  - A SUB's parameters and DIMs are local to it. Outside the SUB, SHOW.N
+.    stops the compile with LOCAL TO A SUB: SHOW.N.
+.  - UXC is a reserved name.
+.
+.See BIND, Types, Subroutines.
+.
+=SEE ALSO
+.
+>36|BIND
+>5|Types
+>31|Subroutines

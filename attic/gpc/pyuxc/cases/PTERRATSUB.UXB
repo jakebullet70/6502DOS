@@ -1,0 +1,4 @@
+DIM P AS UWORD
+SUB S()
+ENDSUB
+P = @S

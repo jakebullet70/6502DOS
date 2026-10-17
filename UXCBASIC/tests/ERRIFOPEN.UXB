@@ -1,0 +1,3 @@
+DIM A AS UBYTE
+IF A = 1
+PRINT 1

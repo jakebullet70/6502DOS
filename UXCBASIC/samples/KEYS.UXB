@@ -1,0 +1,10 @@
+' KEYS.UXB -- print the code of each key pressed; Q stops
+DIM K AS UBYTE
+PRINT "Press keys. Q stops."
+DO
+  K = GETKEY()
+  IF K = 0 THEN CONTINUE
+  PRINT K
+  IF K = 81 THEN EXIT DO
+  IF K = 113 THEN EXIT DO
+LOOP

@@ -1,0 +1,4 @@
+DO
+SUB A()
+ENDSUB
+LOOP

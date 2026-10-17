@@ -1,0 +1,22 @@
+@Including files
+.
+=INCLUDING FILES
+.
+.#INCLUDE "NAME" compiles the file NAME in place of its line. The compiler
+.reads NAME, then the lines after the #INCLUDE.
+.
+:' TOOLS.UXI holds FUNCTION TWICE(N AS UBYTE) AS UWORD
+:#INCLUDE "TOOLS.UXI"
+:PRINT TWICE(21)
+.
+.  - The file is read from the same drive as the source.
+.  - An included file cannot include another file.
+.  - An error in an included file reports the line of the #INCLUDE, with the
+.    file name and its own line: SYNTAX ERROR (LIB.UXI 2).
+.
+.See Strings, Subroutines.
+.
+=SEE ALSO
+.
+>18|Strings
+>31|Subroutines

@@ -1,0 +1,2 @@
+DIM A(5) AS UBYTE
+A(1) 2

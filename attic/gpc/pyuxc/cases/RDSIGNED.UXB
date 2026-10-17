@@ -1,0 +1,28 @@
+' Signed fields, a blank line in a TYPE, LEN of records and elements, a record at a fixed address.
+TYPE SIG
+
+  B AS BYTE
+  W AS INT
+  L AS LONG
+  NAME AS STRING * 4
+END TYPE
+DIM A(4) AS SIG, R AS SIG, N AS UBYTE, I AS INT, Z AS LONG, IX(3) AS UBYTE
+DIM HIGH AS SIG AT $FFFE
+I = A(N).B
+I = A(N).W
+Z = A(N).L
+Z = A(N).B
+I = A(1).B
+IF A(N).B < 0 THEN PRINT 1
+IF A(N).W < I THEN PRINT 2
+N = LEN(SIG)
+N = LEN(R)
+N = LEN(A(1))
+N = LEN(A(IX(1)))
+N = LEN(A(N + (1)))
+N = LEN(A(1).NAME)
+N = LEN(R.NAME)
+N = LEN(A(N).NAME)
+HIGH.W = 5
+I = HIGH.W
+I = HIGH.B

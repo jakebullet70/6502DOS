@@ -1,0 +1,2 @@
+DIM N AS UBYTE
+N = ASC(N)

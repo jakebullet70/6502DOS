@@ -1,0 +1,31 @@
+@FOR
+.
+=FOR
+.
+.FOR v = a TO b [STEP k] ... NEXT [v]. The variable is a BYTE, UBYTE, WORD or
+.UWORD. STEP is a constant, 1 when it is left out. STEP -1 counts down.
+.
+:DIM I AS UBYTE, W AS UWORD
+:FOR I = 0 TO 255
+:  POKE $0400 + I, I
+:NEXT
+:FOR W = 1000 TO 0 STEP -100
+:  PRINT W
+:NEXT W
+.
+.  - The body runs zero times when the range is empty.
+.  - The test is made before the step, so FOR I = 0 TO 255 ends, and I never
+.    wraps.
+.  - After the loop, v holds the last value the body saw: 255 above.
+.  - The TO value is read once, at the start.
+.  - A signed counter counts through 0 and takes negative limits and steps:
+.    FOR B = 2 TO -2 STEP -1 runs 2, 1, 0, -1, -2.
+.  - STEP may be a negative CONST: STEP N with CONST N AS BYTE = -2 counts
+.    down by 2.
+.  - A constant TO value outside the counter's type stops the compile with TO
+.    VALUE OUT OF RANGE, as FOR B = 0 TO 200 does with B a BYTE. Over an
+.    unsigned counter's range it stops with TO VALUE TOO BIG.
+.  - A LONG or ULONG counter stops the compile with A FOR COUNTER IS A BYTE
+.    OR A WORD.
+.  - A signed counter's STEP is at most half the range: 128 for a BYTE, 32768
+.    for a WORD. A bigger STEP stops the compile with STEP TOO BIG.

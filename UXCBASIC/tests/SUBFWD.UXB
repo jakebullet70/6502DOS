@@ -1,0 +1,21 @@
+' SUBFWD -- calls before their SUB, locals, a local that hides a global, FOR in both
+DIM I AS UBYTE, X AS UWORD, K AS UBYTE
+X = 100
+K = 4
+FOR I = 1 TO K - 1
+  CALL LOOP3(I)
+NEXT I
+PRINT X
+PRINT SQ(12)
+END
+SUB LOOP3(N AS UBYTE)
+  DIM J AS UBYTE, X AS UWORD
+  X = 0
+  FOR J = 1 TO N * 1
+    X = X + J
+  NEXT J
+  PRINT N; X
+ENDSUB
+FUNCTION SQ(V AS UWORD) AS UWORD
+  RETURN V * V
+ENDFUNCTION

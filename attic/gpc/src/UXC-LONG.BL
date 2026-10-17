@@ -1,0 +1,132 @@
+## UXC-LONG.BL -- LONG and ULONG in expressions, for UXC-EXPR.BL. It is its own region, so
+## UXC-EXPR.BL reaches it by GOSUB.
+##
+## A LONG in the registers is in A/Y, its low word, and ZP_HI, its high word. On the
+## run-time stack its high word is in R_ESTKH at the same X as its low word. EX.WD = 2 and
+## EX.CW = 2 mean LONG. An operator with a LONG side is a LONG operator, and the other side
+## is widened, with its sign when it is signed.
+##
+## A LONG constant's EX.VV() is its 32 bits. A signed constant from -32768 up is kept in 16
+## bits, as one with no LONG side is (EX.SETC).
+
+## EX.LONG.LOAD -- emit the code that puts entry EX.I in A/Y/ZP_HI. EX.WD is 2 after it.
+EX.LONG.LOAD:
+    EX.LONG.KIND = EX.VK%(EX.I)
+    GP.IF EX.LONG.KIND = K.EK.CONST THEN
+        GOSUB EX.LONG.BITS
+        SL.S%(0) = K.SEC.CONST
+        SL.V(0) = EX.LONG.LOW
+        SL.S%(1) = K.SEC.CONST
+        SL.V(1) = EX.LONG.HIGH
+        GP.IF EX.LONG.HIGH = 0 THEN
+            GP.SUB EMIT, T.LDW.C.ID
+            GP.SUB EMIT, T.LWIDEN.ID
+        GP.ELSE
+            GP.SUB EMIT, T.LDL.C.ID
+        GP.ENDIF
+        RETURN
+    GP.ENDIF
+    GP.IF EX.VT%(EX.I) = K.TY.LONG THEN
+        IF EX.LONG.KIND <> K.EK.MEM THEN RETURN
+        SL.S%(0) = EX.VS%(EX.I)
+        SL.V(0) = EX.VV(EX.I)
+        GP.SUB EMIT, T.LDL.V.ID
+        RETURN
+    GP.ENDIF
+    EX.WD = 1
+    GOSUB EX.LOAD
+    EX.WD = 2
+    IF EX.VG%(EX.I) = 0 THEN GP.SUB EMIT, T.LWIDEN.ID
+    IF EX.VG%(EX.I) = 1 THEN GP.SUB EMIT, T.LSWIDEN.ID
+    RETURN
+
+## EX.LONG.BITS -- the 32 bits of the constant entry EX.I, in EX.LONG.LOW and EX.LONG.HIGH. A
+## signed 16-bit constant is widened with its sign.
+EX.LONG.BITS:
+    EX.LONG.VALUE = EX.VV(EX.I)
+    IF EX.VG%(EX.I) = 1 AND EX.VT%(EX.I) <> K.TY.LONG THEN EX.LONG.VALUE = EX.LONG.VALUE + 4294901760
+    EX.LONG.HIGH = INT(EX.LONG.VALUE / 65536)
+    EX.LONG.LOW = EX.LONG.VALUE - EX.LONG.HIGH * 65536
+    RETURN
+
+## EX.LONG.CONST -- for EX.SETC: EX.R has bits past 16, and EX.CG = 1 when it is signed.
+## EX.SETC.LONG = 1 for a LONG; a signed value from -32768 up is made 16 bits instead.
+EX.LONG.CONST:
+    EX.SETC.LONG = 1
+    IF EX.CG = 0 OR EX.R < 4294934528 THEN RETURN
+    EX.R = EX.R - 4294901760
+    EX.SETC.LONG = 0
+    RETURN
+
+## EX.LONG.STACK -- the left side of a LONG operator, a narrower value on top of the run-time
+## stack, made a LONG there.
+EX.LONG.STACK:
+    IF EX.VG%(EX.IL) = 0 THEN GP.SUB EMIT, T.STKWIDEN.ID
+    IF EX.VG%(EX.IL) = 1 THEN GP.SUB EMIT, T.STKSWIDEN.ID
+    RETURN
+
+## EX.LONG.FAST -- a LONG + or - with a constant on the right: the left side is loaded, and
+## the constant is the operand of the template. EX.FD = 1 when it was done.
+EX.LONG.FAST:
+    EX.FD = 0
+    IF EX.O <> K.EO.ADD AND EX.O <> K.EO.SUB THEN RETURN
+    IF EX.VK%(EX.IR) <> K.EK.CONST THEN RETURN
+    GOSUB EX.FAST.LEFT
+    EX.I = EX.IR
+    GOSUB EX.LONG.BITS
+    SL.S%(0) = K.SEC.CONST
+    SL.V(0) = EX.LONG.LOW
+    SL.S%(1) = K.SEC.CONST
+    SL.V(1) = EX.LONG.HIGH
+    IF EX.O = K.EO.ADD THEN GP.SUB EMIT, T.ADDL.C.ID
+    IF EX.O = K.EO.SUB THEN GP.SUB EMIT, T.SUBL.C.ID
+    EX.VN = EX.VN - 1
+    EX.I = EX.IL
+    EX.VK%(EX.I) = K.EK.REG
+    EX.VT%(EX.I) = K.TY.LONG
+    EX.VS%(EX.I) = K.SEC.CONST
+    EX.VV(EX.I) = 0
+    EX.VG%(EX.I) = EX.G
+    EX.FD = 1
+    RETURN
+
+## EX.LONG.OPCODE -- emit the LONG operator EX.O, and give the result's EX.RT, and for a
+## compare EX.RK, EX.RG and the tail EX.RV.
+EX.LONG.OPCODE:
+    EX.RT = K.TY.LONG
+    IF EX.O = K.EO.MUL THEN EX.TP = T.MULL.ID
+    IF EX.O = K.EO.DIV THEN EX.TP = T.DIVL.ID : IF EX.G = 1 THEN EX.TP = T.DIVLS.ID
+    IF EX.O = K.EO.MOD THEN EX.TP = T.MODL.ID : IF EX.G = 1 THEN EX.TP = T.MODLS.ID
+    IF EX.O = K.EO.ADD THEN EX.TP = T.ADDL.ID
+    IF EX.O = K.EO.SUB THEN EX.TP = T.SUBL.ID
+    IF EX.O = K.EO.AND THEN EX.TP = T.ANDL.ID
+    IF EX.O = K.EO.OR THEN EX.TP = T.ORL.ID
+    IF EX.O = K.EO.XOR THEN EX.TP = T.XORL.ID
+    IF EX.O = K.EO.SHL THEN EX.TP = T.SHLL.ID
+    IF EX.O = K.EO.SHR THEN EX.TP = T.SHRL.ID : IF EX.G = 1 THEN EX.TP = T.SARL.ID
+    IF EX.O >= K.EO.EQ AND EX.O <= K.EO.GE THEN GOSUB EX.LONG.COMPARE
+    GP.SUB EMIT, EX.TP
+    RETURN
+
+## EX.LONG.COMPARE -- the core of a LONG compare, as EX.COMPARE picks a WORD one.
+EX.LONG.COMPARE:
+    EX.RK = K.EK.CMP
+    EX.RT = K.TY.BYTE
+    EX.RG = 0
+    IF EX.O = K.EO.EQ THEN EX.TP = T.CMPL.EQ.ID : EX.RV = T.ZTRUE.ID
+    IF EX.O = K.EO.NE THEN EX.TP = T.CMPL.EQ.ID : EX.RV = T.ZFALSE.ID
+    IF EX.O = K.EO.GE THEN EX.TP = T.CMPL.LR.ID : EX.RV = T.CTRUE.ID
+    IF EX.O = K.EO.LT THEN EX.TP = T.CMPL.LR.ID : EX.RV = T.CFALSE.ID
+    IF EX.O = K.EO.LE THEN EX.TP = T.CMPL.RL.ID : EX.RV = T.CTRUE.ID
+    IF EX.O = K.EO.GT THEN EX.TP = T.CMPL.RL.ID : EX.RV = T.CFALSE.ID
+    IF EX.G = 0 THEN RETURN
+    IF EX.TP = T.CMPL.LR.ID THEN EX.TP = T.SCMPL.LR.ID : RETURN
+    IF EX.TP = T.CMPL.RL.ID THEN EX.TP = T.SCMPL.RL.ID
+    RETURN
+
+## EX.LONG.TEST -- the LONG entry EX.I loaded, and Z set when it is 0.
+EX.LONG.TEST:
+    EX.WD = 2
+    GOSUB EX.LOAD
+    GP.SUB EMIT, T.TSTL.ID
+    RETURN

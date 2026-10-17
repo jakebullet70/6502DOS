@@ -1,0 +1,48 @@
+' ASMOPS -- 65C02 instructions in an ASM block
+DIM N AS UBYTE, W AS UWORD, M$ * 8
+DIM ZW AS UWORD AT $24
+M$ = "HI"
+ASM
+    lda #<@M$           ' a pointer in zero page, through #< and #>
+    sta @ZW
+    lda #>@M$
+    sta @ZW + 1
+    ldy #2
+next: lda (@ZW),y      ' (zp),Y, and a branch back
+    phx
+    phy
+    jsr $03B8           ' con_out, which changes X and Y
+    ply
+    plx
+    iny
+    cpy #4
+    bne next
+END ASM
+PRINT
+ASM
+    lda #5
+    sta @N
+    jsr twice           ' JSR and JMP to labels further down
+    jmp done
+twice:
+    asl @N
+    rts
+done:
+END ASM
+PRINT N
+ASM
+    lda #<$1234
+    sta @W
+    lda #>$1234
+    sta @W + 1
+    stz @N
+    phx
+    ldx #3
+again: inc @N
+    dex
+    bpl again
+    plx
+    asl
+    ror a
+END ASM
+PRINT N; W

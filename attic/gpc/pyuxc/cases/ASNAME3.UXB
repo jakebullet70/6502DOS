@@ -1,0 +1,5 @@
+' A line in a block that starts with a name of 3 letters that is no mnemonic.
+CONST LOW AS UBYTE = 5
+ASM
+    LOW, 1
+END ASM

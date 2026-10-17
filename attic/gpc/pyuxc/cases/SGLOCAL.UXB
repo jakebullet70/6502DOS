@@ -1,0 +1,26 @@
+' Strings in SUBs: locals, STRING parameters and results, and the %P words.
+DIM G$ * 20
+SUB SHOW(T$)
+DIM L$ * 10
+L$ = T$ + "."
+PRINT L$
+ENDSUB
+FUNCTION TWO$(A$, B AS STRING)
+DIM M$ * 30
+M$ = A$ + B
+RETURN M$
+ENDFUNCTION
+FUNCTION NONE$(N AS UBYTE)
+IF N = 1 THEN RETURN "ONE"
+ENDFUNCTION
+FUNCTION LENOF(X$) AS UBYTE
+RETURN LEN(X$)
+ENDFUNCTION
+G$ = TWO$("A", "B")
+G$ = TWO$(G$, G$) + TWO$("C", G$)
+PRINT TWO$(NONE$(1), NONE$(2)); LENOF(TWO$(G$, "Z"))
+SHOW(TWO$(G$, G$))
+SHOW(NONE$(1) + NONE$(2))
+G$ = NONE$(1) + NONE$(1) + NONE$(1)
+IF NONE$(1) = G$ THEN SHOW(G$)
+PRINT LEN(NONE$(1)); ASC(NONE$(2))

@@ -1,0 +1,5 @@
+' FILEINERR -- INPUT # from a handle that is not open stops the program
+DIM A$ * 10
+PRINT "A"
+INPUT #0, A$
+PRINT "B"

@@ -1,0 +1,20 @@
+' LONG and ULONG operators, widening, LONG fast + and -.
+DIM L AS LONG, U AS ULONG, B AS UWORD, C AS BYTE, W AS INT, A AS UBYTE
+L = -5
+U = 100000
+B = 7
+C = -2
+PRINT L + U; L - U; L * U; L / U; L MOD U; U / B; U MOD B
+PRINT L AND U; L OR B; U XOR C; L << 2; L >> 1; U >> 3; L << A
+PRINT L = U; L <> U; L < U; L > U; L <= U; L >= U; U > B; C < L
+PRINT L + 1; U - 70000; L + 100000; U + C; B + U; C - L; A * U
+PRINT -L; -U; NOT L; NOT U; L + -1; U - -70000
+PRINT (L + U) * (B - C); L * (U + (B * (C + L)))
+L = B
+L = C
+L = W
+U = 4000000000
+B = U
+A = L
+L = A + B
+U = L * 3

@@ -1,0 +1,52 @@
+'=============================================================================================
+' -- HELP [topic]
+' -- prints the help on topic from C:\DOS\HELP.TXT. With no topic it lists the topic names.
+' -- A small letter in topic is the same as a capital.
+' -- In HELP.TXT a line :NAME starts the topic NAME, in capitals. The lines after it, up to the
+' -- next :NAME line, are its text. A line is 80 characters at most; the rest is cut.
+' -- No help for topic prints No help for TOPIC and gives exit code 1. No HELP.TXT prints File
+' -- not found and gives exit code 2. Exit code 0 otherwise.
+' --
+' -- From a prompt:
+' --     HELP
+' --     HELP diskfree
+'=============================================================================================
+#INCLUDE "DOS.UXI"
+#INCLUDE "HEAP.UXI"
+CONST SLOT_P1 AS UBYTE = 0
+DIM TOPIC_TYPED AS STRING * 80, TOPIC AS STRING * 80, TEXT_LINE AS STRING * 80
+DIM HELP_FILE AS UWORD, POSITION AS UBYTE, CHARACTER AS UBYTE, FOUND AS UBYTE
+
+TOPIC_TYPED = HEAP.SYS_STRINGS_GET(SLOT_P1)
+DO WHILE POSITION < LEN(TOPIC_TYPED)
+  POSITION = POSITION + 1
+  CHARACTER = ASC(MID$(TOPIC_TYPED, POSITION, 1))
+  IF CHARACTER >= ASC("a") AND CHARACTER <= ASC("z") THEN CHARACTER = CHARACTER - 32
+  TOPIC = TOPIC + CHR$(CHARACTER)
+LOOP
+HELP_FILE = OPEN("C:\DOS\HELP.TXT", O.READ)
+IF HELP_FILE = NOFILE THEN
+  PRINT "File not found"
+  END 2
+END IF
+DO WHILE NOT EOF(HELP_FILE)
+  LINPUT #HELP_FILE, TEXT_LINE
+  IF ASC(TEXT_LINE) = ASC(":") THEN
+    IF TOPIC = "" THEN
+      PRINT MID$(TEXT_LINE, 2); " ";
+    ELSE
+      IF FOUND = 1 THEN EXIT DO
+      IF MID$(TEXT_LINE, 2) = TOPIC THEN FOUND = 1
+    END IF
+  ELSEIF FOUND = 1 THEN
+    PRINT TEXT_LINE
+  END IF
+LOOP
+CLOSE HELP_FILE
+IF TOPIC = "" THEN
+  PRINT
+  END 0
+END IF
+IF FOUND = 1 THEN END 0
+PRINT "No help for "; TOPIC
+END 1

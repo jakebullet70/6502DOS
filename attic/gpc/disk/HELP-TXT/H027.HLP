@@ -1,0 +1,31 @@
+@Compiling from UXCEDIT
+.
+=COMPILING FROM UXCEDIT
+.
+.F5, or Build, Compile on the menu, compiles the document on screen with UXC.
+.
+.  - Every changed document is saved first. The document on screen is saved
+.    also when it has no name: a save prompt asks for one. If a save does not
+.    happen, the compile stops on the document it was for.
+.  - The editor closes and loads UXC.PRG. UXC compiles the source and loads
+.    UXCEDIT.PRG again.
+.  - The PRG is named after the source and goes on the same drive. HELLO.UXB
+.    writes HELLO.PRG.
+.  - UXCEDIT comes back with the same documents open, up to three, each with
+.    its cursor and scroll place. The compiled document is on screen.
+.  - A message box shows the result. On success it is titled "Compiled" and
+.    shows the PRG name and its size in bytes.
+.  - On an error the box is titled "Compile error" and shows "Line N" and the
+.    error message. The cursor is on that line.
+.  - If UXC writes no result, the box says "Compile gave no result". A crash
+.    in UXC writes no result and does not load the editor. The X16 is left at
+.    READY.
+.  - The editor does not run the program. Load and run it from BASIC.
+.  - The files UXC.INPUT, UXC.RESULT and UXCEDIT.RUN on the drive carry the
+.    request and the result between the two programs.
+.
+.See Errors.
+.
+=SEE ALSO
+.
+>52|Errors

@@ -1,0 +1,109 @@
+## UXC-LINK.BL -- the link step, and the PRG writer.
+##
+##   LK.INIT.CALL at the start of the program, the call to the startup work
+##   LK.LINK      append the startup work, the runtime routines, the strings and the
+##                variables to the code, then resolve every fixup
+##   LK.WRITE     in  UI.OBJ$      write the PRG: the load address, then the code buffer
+##
+## The routines go in the order they were first needed. Emitting one can need another,
+## through its REC fixups, and RT.USE puts that one on the end of the same list, so the
+## loop below reaches it too. A routine's address is known when it is placed, and every
+## fixup is resolved after the last one, so a forward call needs nothing special.
+##
+## This file runs in a region, which may not execute BANK. RT.PLACE, RT.ADDRESS and SP.COPY
+## in UXC-CODE.BL read the banks for it.
+
+## LK.INIT.CALL -- a JSR to the label %INIT, which no source name can spell. LK.LINK places
+## the label on the startup work, or turns the JSR into a BIT when there is none.
+LK.INIT.CALL:
+    SY.NAME$ = "%INIT" : SY.OW = 0 : SY.KIND = K.SK.LABEL : SY.TYPE = 0 : SY.VAL = 0
+    SY.FLAGS = 0 : SY.CNT = 0 : GOSUB SY.ADD
+    LK.INIT.RECORD = SY.R : LK.INIT.AT = CB.N
+    SL.S%(0) = K.SEC.LABEL : SL.V(0) = LK.INIT.RECORD : GP.SUB EMIT, T.JSR.ID
+    RETURN
+
+## The startup work: clear the array space, set the max of each string block, then lay out
+## the pools of temps after it and set the max of each temp. The temps are not cleared.
+LK.LINK:
+    SY.R = LK.INIT.RECORD : GOSUB SY.GET
+    SY.VAL = CB.N : SY.FLAGS = 1 : GOSUB SY.SET
+    LK.START = CB.N
+    GP.IF BS.N > 0 THEN
+        SL.S%(0) = K.SEC.BSS : SL.V(0) = 0 : SL.S%(1) = K.SEC.CONST : SL.V(1) = BS.N
+        GP.SUB EMIT, T.ZERO.ID
+    GP.ENDIF
+    GOSUB SG.MAXES
+    GOSUB SB.POOLS
+    GP.IF CB.N > LK.START THEN
+        GP.SUB EMIT, T.RTS.ID
+    GP.ELSE
+        CB.AT = LK.INIT.AT : CB.B = $2C : GOSUB CB.PUT
+    GP.ENDIF
+    LK.I = 0
+LK.LINK.ROUTINE:
+    IF LK.I >= RT.N THEN GOTO LK.LINK.DATA
+    GOSUB RT.PLACE
+    GP.SUB EMIT, RT.ID
+    LK.I = LK.I + 1 : GOTO LK.LINK.ROUTINE
+LK.LINK.DATA:
+    ## The strings, out of their own bank.
+    LK.STR = LK.ORG + CB.N
+    GOSUB SP.COPY
+    ## The variables, all 0.
+    LK.VAR = LK.ORG + CB.N
+    GP.IF VR.N > 0 THEN
+        FOR LK.I = 1 TO VR.N : CB.B = 0 : GOSUB CB.ADD : NEXT LK.I
+    GP.ENDIF
+    ## The array space follows, outside the file.
+    LK.BSS = LK.ORG + CB.N
+    IF LK.BSS + BS.N > K.TOP THEN ER.M$ = "PROGRAM TOO BIG" : GOTO ER.STOP
+    GP.IF FX.N > 0 THEN
+        FOR FX.I = 0 TO FX.N - 1 : GOSUB LK.FIX : NEXT FX.I
+    GP.ENDIF
+    RETURN
+
+## LK.FIX -- resolve fixup FX.I. LK.V is the address of the value.
+LK.FIX:
+    GOSUB FX.READ
+    IF FX.S = K.SEC.CODE THEN LK.V = LK.ORG + FX.V
+    IF FX.S = K.SEC.REC THEN GOSUB RT.ADDRESS
+    IF FX.S = K.SEC.STR THEN LK.V = LK.STR + FX.V
+    IF FX.S = K.SEC.VAR THEN LK.V = LK.VAR + FX.V
+    IF FX.S = K.SEC.BSS THEN LK.V = LK.BSS + FX.V
+    IF FX.S = K.SEC.VAR AND FX.V >= K.FRAME.BASE THEN GOSUB SB.POOL.OF : LK.V = LK.BSS + SB.POOL + FX.V - 65536
+    IF FX.S = K.SEC.BSS AND FX.V >= K.FRAME.BASE THEN GOSUB SB.POOL.OF : LK.V = LK.BSS + SB.POOL + FX.V - 65536
+    IF FX.S = K.SEC.TEMP THEN GOSUB SB.POOL.OF : LK.V = LK.BSS + SB.POOL + FX.V
+    GP.IF FX.S = K.SEC.LABEL THEN
+        SY.R = FX.V : GOSUB SY.GET
+        IF (SY.FLAGS AND 1) = 0 THEN ER.M$ = "LABEL NOT FOUND" : GOTO ER.STOP
+        LK.V = LK.ORG + SY.VAL
+    GP.ENDIF
+    LK.HI = INT(LK.V / 256) : LK.LO = LK.V - LK.HI * 256
+    GP.IF FX.K = K.F.LO THEN
+        CB.AT = FX.AT : CB.B = LK.LO
+        GOSUB CB.PUT
+        RETURN
+    GP.ENDIF
+    GP.IF FX.K = K.F.HI THEN
+        CB.AT = FX.AT : CB.B = LK.HI
+        GOSUB CB.PUT
+        RETURN
+    GP.ENDIF
+    ## ABS: add to the addend in the code.
+    CB.AT = FX.AT     : GOSUB CB.GET : LK.W = CB.B
+    CB.AT = FX.AT + 1 : GOSUB CB.GET : LK.W = LK.W + 256 * CB.B + LK.V
+    IF LK.W > 65535 THEN LK.W = LK.W - 65536
+    LK.HI = INT(LK.W / 256)
+    CB.AT = FX.AT : CB.B = LK.W - LK.HI * 256 : GOSUB CB.PUT
+    CB.AT = FX.AT + 1 : CB.B = LK.HI : GOSUB CB.PUT
+    RETURN
+
+LK.WRITE:
+    OPEN 3, 8, 3, "@:" + UI.OBJ$ + ",P,W"
+    LK.HI = INT(LK.ORG / 256)
+    PRINT# 3, CHR$(LK.ORG - LK.HI * 256); CHR$(LK.HI);
+    FOR CB.AT = 0 TO CB.N - 1
+        GOSUB CB.GET : PRINT# 3, CHR$(CB.B);
+    NEXT CB.AT
+    CLOSE 3
+    RETURN

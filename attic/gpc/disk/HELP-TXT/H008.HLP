@@ -1,0 +1,25 @@
+@Comments
+.
+=COMMENTS
+.
+.A line is a comment when its first word, after any spaces, is REM, ', ;, ##
+.or //. The compiler skips the whole line.
+.
+:REM THE WHOLE LINE
+:' THE WHOLE LINE
+:; THE WHOLE LINE
+:## THE WHOLE LINE
+:// THE WHOLE LINE
+.
+.Only REM and ' can follow a statement. The comment runs to the end of the
+.line.
+.
+:X = 1 ' THE REST OF THE LINE
+:X = 1 REM THE REST OF THE LINE
+.
+.  - ; is a comment only at the start of a line, so PRINT A; B is a PRINT.
+.  - ## is a comment and #DEFINE is not: a directive has one #.
+.  - Inside a string none of these starts a comment.
+.
+.There is no character literal. Write ASC("A"), and the compiler folds it to
+.65.

@@ -1,0 +1,126 @@
+@Files
+.
+=FILES
+.
+.OPEN opens a file on drive 8 and returns its handle. PRINT # writes to the
+.handle, INPUT # and LINPUT # read from it, and CLOSE closes it. READ and
+.WRITE move bytes between the file and memory.
+.
+:DIM F AS UWORD
+:F = OPEN("LOG.TXT", O.WRITE)
+:IF F = NOFILE
+:  PRINT "CANNOT OPEN"
+:  END
+:ENDIF
+:PRINT #F, "SCORE"; 120
+:CLOSE F
+.
+.Close every file before the program ends.
+.
+=OPEN
+.
+.F = OPEN(name$, mode) returns a handle, a UWORD. The name is a literal or
+.any string expression. The mode is one of three names, written as the
+.argument itself:
+.
+.  - O.READ reads the file.
+.  - O.WRITE makes the file, and replaces one that is there.
+.  - O.APPEND writes at the end of the file, and makes the file when it is
+.    missing.
+.
+.Any other mode stops the compile with MODE MUST BE O.READ, O.WRITE OR
+.O.APPEND.
+.
+.OPEN returns NOFILE when the file cannot be opened: the file is missing for
+.O.READ, the drive reports an error, or no handle is free. NOFILE is a
+.built-in constant, 65535. Up to 12 files can be open at once, as handles 3
+.to 14.
+.
+=PRINT # and CLOSE
+.
+.PRINT #F, items works as PRINT does, and writes to the file.
+.
+.  - Each line ends with a CR, 13. A trailing ; leaves out the CR.
+.  - A comma between items writes a "," character, not spaces to a print
+.    zone.
+.  - A number has a space before and after it, as on the screen. PRINT #F,
+.    "AB"; 5, "CD" writes AB 5 ,CD and a CR.
+.  - Handles 0, 1 and 2 are the screen: PRINT #1, "HI" is PRINT "HI".
+.  - A handle that is not open stops the program with ?FILE NOT OPEN ERROR AT
+.    $xxxx.
+.
+.CLOSE F closes the file. CLOSE of a handle that is not open, NOFILE
+.included, does nothing.
+.
+=INPUT #, LINPUT # and EOF
+.
+.INPUT #F, variables reads fields from the file. LINPUT #F, L$ reads a whole
+.line, commas and quotes included. EOF(F) is 1 when the next read would
+.return nothing, and 0 otherwise.
+.
+:DIM F AS UWORD, L$ * 80
+:F = OPEN("DATA.TXT", O.READ)
+:IF F = NOFILE
+:  PRINT "NO FILE"
+:  END
+:ENDIF
+:DO WHILE NOT EOF(F)
+:  LINPUT #F, L$
+:  PRINT L$
+:LOOP
+:CLOSE F
+.
+.  - A field ends at a comma or at the end of a line. A number variable gets
+.    the field's value as VAL reads it. A LONG or ULONG variable is read in
+.    32 bits.
+.  - The rest of the line stays for the next read. Keyboard INPUT drops it.
+.  - No prompt string is allowed after #F,.
+.  - A line ends at CR, at LF, or at CR LF, so files from the X16, Unix and
+.    DOS read the same. The line ending is not stored.
+.  - A field or line longer than the string is cut, and the rest of it is
+.    skipped.
+.  - At the end of the file a string gets "" and a number gets 0.
+.  - EOF is 1 right after an empty file is opened. EOF(NOFILE) is 1.
+.  - Handles 0, 1 and 2 are the screen and cannot be read.
+.  - A read from a handle that is not open, 0 to 2 included, stops the
+.    program with ?FILE NOT OPEN ERROR AT $xxxx.
+.
+.See INPUT and LINPUT.
+.
+=READ and WRITE
+.
+.N = READ(F, address, max) reads up to max bytes from the file into memory at
+.the address. It returns the count read, a UWORD. WRITE F, address, count
+.writes count bytes from memory at the address to the file.
+.
+:DIM F AS UWORD, N AS UWORD, B(100) AS UBYTE
+:F = OPEN("DATA.BIN", O.READ)
+:N = READ(F, @B, 100)
+:CLOSE F
+:F = OPEN("COPY.BIN", O.WRITE)
+:WRITE F, @B, N
+:CLOSE F
+.
+.  - The address is any UWORD expression. @B is the address of an array or a
+.    variable. @S$ + 2 is the text of a string, after its max and length
+.    bytes. A number such as $A000 is a fixed address.
+.  - Bytes move as they are, CR, LF and 0 included. No line ending is added
+.    or dropped.
+.  - READ returns 0 at the end of the file. A max of 0 reads nothing and
+.    returns 0. A count of 0 writes nothing.
+.  - READ, INPUT #, LINPUT # and EOF can be mixed on the same handle. EOF
+.    stays right after a READ.
+.  - WRITE to handles 0, 1 and 2 goes to the screen. WRITE 1, @S$ + 2, 2
+.    prints the first two characters of S$.
+.  - READ from handles 0 to 2, or from a handle that is not open, NOFILE
+.    included, stops the program with ?FILE NOT OPEN ERROR AT $xxxx. WRITE to
+.    a handle 3 to 14 that is not open, or to NOFILE, does the same.
+.  - Each byte costs a KERNAL CHRIN and READST to read, or a CHROUT to write.
+.
+.See Arrays and Strings for @name.
+.
+=SEE ALSO
+.
+>30|INPUT and LINPUT
+>16|Arrays
+>18|Strings

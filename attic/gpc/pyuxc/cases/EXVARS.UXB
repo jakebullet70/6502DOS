@@ -1,0 +1,70 @@
+' Variables, arrays, stores, loads, spills, POKE, PEEK, POS, PRINT forms.
+DIM A AS UBYTE, B AS UWORD, C AS BYTE, D AS INT, L AS LONG, U AS ULONG
+DIM AR(10) AS UBYTE, WR(5) AS UWORD, LR(3) AS LONG, SR(4) AS BYTE
+VAR P AS UBYTE AT $030F, Q AS WORD AT $9F20
+A = 5
+B = A + 300
+C = -3
+D = C * B
+L = B * 70000
+U = L + D
+A = A + 1
+B = B - A
+D = D / C
+D = D MOD 7
+A = B >> 3
+B = B << A
+C = C >> 1
+C = -128
+A = A AND $0F OR 3 XOR B
+PRINT A; B, C, D; L; U
+PRINT A = B; A < B; A > 4; A <= B; B >= 1000; C < D; C > -2; D <= 4
+PRINT A > 255; B <= 65535; C > 127; C <= 126; D > 32767; A = 0; B <> 0
+PRINT -A; -B; -L; NOT A; NOT (A = B); NOT B; -C; NOT C
+PRINT (A = B) + 1; A + (B = 3); (A < B) * (C > D); A + B * C - D / A
+AR(3) = 7
+AR(A) = A
+AR(B) = 1
+WR(2) = B
+WR(A) = 9
+LR(1) = L
+LR(A) = U
+SR(A) = C
+PRINT AR(3); AR(A); AR(B); WR(A); LR(A); SR(1); SR(A); AR(AR(A))
+ERRORS OFF
+AR(A) = 2
+WR(B) = 3
+PRINT AR(A); WR(B)
+ERRORS ON
+POKE $0400, A
+POKE B, 7
+POKE @A, 9
+POKE @A + 1, 9
+POKE @A - 1, 9
+POKE B + 1, A
+CONTENTSAT(B) = 1
+CONTENTSATW($0400) = B
+CONTENTSATW(B) = L
+CONTENTSAT(@B) = A
+PRINT PEEK($0400); PEEK(B); CONTENTSAT(B + 1); CONTENTSATW(B); @A; ADDROF(AR); P; Q
+PRINT PEEK(@A); CONTENTSATW(@WR + 2); @AR + 3; ADDROF(L)
+POS(0) = 10
+POS(1) = A
+PRINT POS(0); POS(1); GETKEY(); A + GETKEY(); POS(0) + A
+PRINT #1, A
+PRINT #A, A, B; "X"
+CLOSE A
+CLOSE 3
+PRINT "HELLO"; "X"; A, "WORLD", ""
+PRINT
+PRINT A;
+PRINT A,
+PRINT ,;B
+START:
+PRINT ((A + B) * (C - D)) / (A + 1) + (B * 3 - A)
+PRINT A + B + C + D + L; L + U * B; P + 1; Q - 1; NOFILE
+PRINT A * (B + (C * (D + (A * (B + 1)))))
+P = A
+Q = D
+END
+END

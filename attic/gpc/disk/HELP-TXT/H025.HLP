@@ -1,0 +1,109 @@
+@ASM
+.
+=ASM
+.
+.ASM puts bytes into the code where the statement stands. ASM with items puts
+.them in on one line. ASM alone opens a block, and END ASM or ENDASM closes
+.it. When the bytes end, the program goes on with the next statement.
+.
+:DIM N AS UBYTE, W AS UWORD
+:ASM $A9, 65, $20, $FFD2      ' lda #65 : jsr CHROUT
+:ASM
+:    $A9, 66          ' lda #66
+:    $8D, @N          ' sta N
+:    $8D, @W + 1      ' sta the high byte of W
+:END ASM
+.
+.  - A line of a block is a 65C02 instruction or a list of items split by
+.    commas.
+.  - A line may start with a label, name:.
+.  - Empty lines and comments are allowed in a block.
+.  - The code must keep X. X indexes the expression stack.
+.
+=Items
+.
+.An item is a constant expression, @name or AddrOf(name). The compiler folds
+.it to a value.
+.
+.  - A constant 0 to 255 is one byte.
+.  - A constant 256 to 65535 is two bytes, low byte first.
+.  - A negative constant n is 65536 + n, so -1 is two bytes, $FF, $FF.
+.  - A LONG constant, over 65535 or under -32768, stops the compile with
+.    NUMBER TOO BIG.
+.  - @name and AddrOf(name) are two bytes, the address of the variable or
+.    array.
+.  - @name + n and @name - n, with n a constant, are addresses too.
+.
+.$0050 is one byte, $50. The size follows the value, not the digits written.
+.Write $50, $00 for a two-byte operand below 256.
+.
+=Instructions
+.
+.A line whose first word is a 65C02 mnemonic is an instruction. Upper and
+.lower case are the same.
+.
+:DIM M$ * 8
+:DIM PTR AS UWORD AT $24
+:M$ = "HI"
+:ASM
+:    lda #<@M$
+:    sta @PTR
+:    lda #>@M$
+:    sta @PTR + 1
+:    ldy #2
+:next: lda (@PTR),y
+:    jsr $FFD2
+:    iny
+:    cpy #4
+:    bne next
+:END ASM
+.
+.The operands:
+.
+.  - None, or A: implied, or the accumulator.
+.  - #n, #<n, #>n: immediate. n, its low byte, its high byte.
+.  - n, n,X, n,Y: zero page or absolute.
+.  - (n), (n,X), (n),Y: indirect.
+.  - label: a branch, JMP or JSR.
+.  - n, label: BBR0-BBR7 and BBS0-BBS7.
+.
+.  - An operand is a constant expression, @name or AddrOf(name).
+.  - A known value below 256 takes the zero-page form when the instruction
+.    has one. A constant and the @name of a DIM ... AT are known values.
+.  - Any other @name takes the absolute form. #<@name and #>@name are its
+.    bytes.
+.  - An operand that starts with ( is indirect.
+.  - A label belongs to its block. A branch, JMP or JSR may name a label
+.    further down.
+.  - A block holds 32 labels, and 32 uses of a label further down.
+.
+=Errors
+.
+.  - An item that is not a constant or @name stops the compile with ASM TAKES
+.    A CONSTANT OR @NAME.
+.  - A string item stops the compile with TYPE MISMATCH.
+.  - An instruction without the mode its operand asks for stops the compile
+.    with NO SUCH ADDRESS MODE.
+.  - An immediate or zero-page operand over 255 stops the compile with NOT A
+.    BYTE. So does #@name.
+.  - A branch to a name that is not a label stops the compile with BRANCH
+.    TAKES A LABEL.
+.  - A branch further than 127 bytes stops the compile with BRANCH OUT OF
+.    RANGE.
+.  - A label defined twice in a block stops the compile with DUPLICATE LABEL.
+.  - A label that the block does not define stops the compile with LABEL NOT
+.    FOUND, at the line that uses it.
+.  - A 33rd label, or a 33rd use of a label further down, stops the compile
+.    with TOO MANY ASM LABELS.
+.  - ASM alone with no END ASM before the end of the source stops the compile
+.    with ASM WITHOUT END ASM, at the line of the ASM.
+.  - END ASM or ENDASM with no block open stops the compile with END ASM
+.    WITHOUT ASM.
+.
+.See Arrays and Strings for @name, and Pointers.
+.
+=SEE ALSO
+.
+>16|Arrays
+>18|Strings
+>19|Pointers

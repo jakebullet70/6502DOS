@@ -1,0 +1,5 @@
+' ERRSELSTR -- SELECT CASE on a string needs a variable
+DIM M$ * 8
+SELECT CASE M$ + "X"
+  CASE "AX"
+END SELECT

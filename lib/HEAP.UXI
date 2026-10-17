@@ -1,0 +1,115 @@
+' HEAP.UXI: the string heap calls of the UXDOS16 API (docs/API.md), in namespace HEAP.
+' Include DOS.UXI first.
+'
+' A descriptor is a word that holds the address of a string's length byte in the heap's
+' bank, or 0 for an empty string. It is in program RAM, or in the heap's bank at $A000 up.
+' Trap: STR_ALLOC and STR_GC move strings and rewrite their descriptors. Read a descriptor
+' again after either call.
+
+NAMESPACE HEAP
+  CONST API_STR_ALLOC AS UWORD = $0370, API_STR_FREE AS UWORD = $03C1
+  CONST API_STR_GC AS UWORD = $03C4, API_STR_HEAP AS UWORD = $03C7
+
+  ' The string heaps. PSP_HEAP holds the RAM bank of the program's heap. VARBANK's 32 system
+  ' descriptors start at SYS_STRINGS_BASE, in VARBANK; their strings outlive the program.
+  CONST RAM_BANK AS UWORD = $0000, PSP_HEAP AS UWORD = $0701
+  CONST VARBANK AS UBYTE = 21, SYS_STRINGS_BASE AS UWORD = $A00C
+  ' System descriptors 0 to 8 are the slots P1$ to P9$, 9 is PATH$, 10 is PROMPT$, 11 is
+  ' EDITOR$ and 12 holds the shell's BIND aliases (PLAN section 8).
+  CONST PATH_STRING AS UWORD = $A01E, PROMPT_STRING AS UWORD = $A020
+  CONST EDITOR_STRING AS UWORD = $A022, BIND_STRING AS UWORD = $A024
+
+  ' Takes a string of LENGTH bytes for the descriptor at DESCRIPTOR, its length byte set.
+  ' Returns the address of the length byte in the heap's bank, 0 on an error.
+  FUNCT STR_ALLOC(LENGTH AS UBYTE, DESCRIPTOR AS UWORD) AS UWORD
+    DOS.REG_A = LENGTH
+    DOS.R0 = DESCRIPTOR
+    SYS API_STR_ALLOC
+    DOS.READ_ERR_STATUS()
+    IF DOS.ERROR <> 0 THEN RETURN 0
+    RETURN DOS.R1
+  END FUNCT
+
+  SUB STR_FREE(DESCRIPTOR AS UWORD)
+    DOS.R0 = DESCRIPTOR
+    SYS API_STR_FREE
+    DOS.READ_ERR_STATUS()
+  END SUB
+
+  ' Compacts the heap. Returns the free bytes.
+  FUNCT STR_GC() AS UWORD
+    SYS API_STR_GC
+    DOS.READ_ERR_STATUS()
+    RETURN DOS.R0
+  END FUNCT
+
+  ' Makes BANK the program's heap. A bank above VARBANK becomes an empty heap whose blocks
+  ' start at FIRST.
+  SUB STR_HEAP(BANK AS UBYTE, FIRST AS UWORD)
+    DOS.REG_A = BANK
+    DOS.R0 = FIRST
+    SYS API_STR_HEAP
+    DOS.READ_ERR_STATUS()
+  END SUB
+
+  ' Sets the string of the descriptor at DESCRIPTOR to TEXT.
+  SUB STR_SET(DESCRIPTOR AS UWORD, TEXT AS STRING)
+    DIM ADDRESS AS UWORD, LENGTH AS UBYTE, INDEX AS UBYTE, CALLER AS UBYTE
+    LENGTH = LEN(TEXT)
+    ADDRESS = STR_ALLOC(LENGTH, DESCRIPTOR)
+    IF DOS.ERROR <> 0 THEN RETURN
+    CALLER = ContentsAt(RAM_BANK)
+    ContentsAt(RAM_BANK) = ContentsAt(PSP_HEAP)
+    INDEX = 0
+    DO WHILE INDEX < LENGTH
+      INDEX = INDEX + 1
+      ContentsAt(ADDRESS + INDEX) = ContentsAt(@TEXT + 1 + INDEX)
+    LOOP
+    ContentsAt(RAM_BANK) = CALLER
+  END SUB
+
+  ' Copies the string of the descriptor at DESCRIPTOR into DOS.CALL_TEXT.
+  SUB STR_READ(DESCRIPTOR AS UWORD)
+    DIM ADDRESS AS UWORD, LENGTH AS UBYTE, INDEX AS UBYTE, CALLER AS UBYTE
+    CALLER = ContentsAt(RAM_BANK)
+    ContentsAt(RAM_BANK) = ContentsAt(PSP_HEAP)
+    ADDRESS = ContentsAtW(DESCRIPTOR)
+    LENGTH = 0
+    IF ADDRESS <> 0 THEN LENGTH = ContentsAt(ADDRESS)
+    ContentsAt(@DOS.CALL_TEXT + 1) = LENGTH
+    INDEX = 0
+    DO WHILE INDEX < LENGTH
+      INDEX = INDEX + 1
+      ContentsAt(@DOS.CALL_TEXT + 1 + INDEX) = ContentsAt(ADDRESS + INDEX)
+    LOOP
+    ContentsAt(RAM_BANK) = CALLER
+  END SUB
+
+  ' The string of the descriptor at DESCRIPTOR.
+  FUNCT STR_GET(DESCRIPTOR AS UWORD) AS STRING
+    STR_READ(DESCRIPTOR)
+    RETURN DOS.CALL_TEXT
+  END FUNCT
+
+  ' The string of system descriptor SLOT, 0 to 31: P1$ is 0, P9$ 8 and PATH$ 9. Reads VARBANK
+  ' whichever bank is the program's heap.
+  FUNCT SYS_STRINGS_GET(SLOT AS UBYTE) AS STRING
+    DIM HEAP AS UBYTE
+    HEAP = ContentsAt(PSP_HEAP)
+    ContentsAt(PSP_HEAP) = VARBANK
+    STR_READ(SYS_STRINGS_BASE + SLOT * 2)
+    ContentsAt(PSP_HEAP) = HEAP
+    RETURN DOS.CALL_TEXT
+  END FUNCT
+
+  ' Sets the string of system descriptor SLOT, 0 to 31, to TEXT, in VARBANK whichever bank is
+  ' the program's heap. Trap: STR_HEAP can not switch back to a program's own bank, as it
+  ' empties a bank above VARBANK, so this sets and restores PSP_HEAP itself.
+  SUB SYS_STRINGS_SET(SLOT AS UBYTE, TEXT AS STRING)
+    DIM HEAP AS UBYTE
+    HEAP = ContentsAt(PSP_HEAP)
+    ContentsAt(PSP_HEAP) = VARBANK
+    STR_SET(SYS_STRINGS_BASE + SLOT * 2, TEXT)
+    ContentsAt(PSP_HEAP) = HEAP
+  END SUB
+END NAMESPACE

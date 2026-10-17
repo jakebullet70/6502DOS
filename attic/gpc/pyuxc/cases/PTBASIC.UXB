@@ -1,0 +1,55 @@
+' Addresses, reads through them and stores through them.
+DIM N AS UBYTE, C AS BYTE, W AS UWORD, I AS INT, L AS LONG, A(10) AS UBYTE, B(4) AS UWORD
+DIM S$ * 10, P AS UWORD
+DIM SCREEN AS UBYTE AT $9F20, VERA AS UWORD AT $9F21, SIGNED AS BYTE AT $0400
+P = @N
+P = @W
+P = @L
+P = @A
+P = @B
+P = @S$
+P = @SCREEN
+P = AddrOf(N)
+P = AddrOf(A)
+P = AddrOf(VERA)
+P = AddrOf(S$)
+P = @A + 2
+P = @B + W
+P = 2 + @N
+N = PEEK($9F20)
+N = PEEK(@N)
+N = PEEK(P)
+N = PEEK(P + 1)
+N = PEEK(@A + N)
+W = ContentsAtW($0300)
+W = ContentsAtW(@W)
+W = ContentsAtW(P)
+W = ContentsAtW(P + W)
+N = ContentsAt(P)
+N = ContentsAt(@SCREEN)
+L = PEEK(P) + ContentsAtW(P)
+I = PEEK(P) - 1
+POKE $0400, 1
+POKE @N, N
+POKE P, 7
+POKE P + 1, W
+POKE @A + N, N
+POKE @SCREEN, L
+ContentsAt($0400) = 1
+ContentsAt(@N) = W
+ContentsAt(P) = N
+ContentsAt(P + N) = 300
+ContentsAtW($0400) = 1
+ContentsAtW(@W) = W
+ContentsAtW(P) = N
+ContentsAtW(P + 2) = L
+SCREEN = 5
+VERA = SCREEN + VERA
+N = SCREEN
+W = VERA
+SIGNED = -1
+I = SIGNED
+IF PEEK(P) = 3 THEN PRINT 1
+IF ContentsAtW(P) > W THEN PRINT 2
+IF SIGNED < 0 THEN PRINT 3
+PRINT PEEK(P); ContentsAtW(@W); @N; AddrOf(B)

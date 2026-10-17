@@ -1,0 +1,128 @@
+## UXC-ONCE.BL -- the code that runs once, at the start and at the end.
+##
+##   UXC.START    read UXC.INPUT, claim the banks, load the templates, run the first pass,
+##                open the source for the second, and emit the program's start
+##   CB.INIT      claim the banks of the code buffer, the fixups, the strings and the records
+##   UXC.FINISH   the link step, the PRG, the result line, then UI.CHAIN
+##   ER.REPORT    the error message on the screen and in the result file, then UI.CHAIN
+##
+## Trap: UI.CHAIN ends the program with END from inside a banked GOSUB.
+
+UXC.START:
+    PRINT "UXCBASIC 0.1"
+    LX.NO = 0 : UI.RES$ = ""
+    GOSUB UI.READ : GOSUB BANKMGR.INIT
+    ## The code regions, so that nothing is handed the compiler's own code as scratch. They
+    ## are the banks K.BANK.EXPR to K.BANK.ONCE, with none between them left out.
+    FOR UXC.CODE.BANK = K.BANK.EXPR TO K.BANK.ONCE
+        IF GP.FN(BANKMGR.CLAIM.BANK, UXC.CODE.BANK) = 0 THEN ER.M$ = "CODE BANK TAKEN" : GOTO ER.STOP
+    NEXT UXC.CODE.BANK
+    GOSUB TP.LOAD : GOSUB SY.INIT : GOSUB CB.INIT
+    LX.NAME$ = UI.SRC$ : GOSUB LX.OPEN
+    PRINT "COMPILING "; UI.SRC$
+    LK.ORG = K.ORG : VR.N = 0 : RT.N = 0 : BS.N = 0 : SM.ERRORS.ON = 1 : AS.BLOCK = 0 : NM.ENUM.RECORD = 0
+    RD.TYPE.RECORD = 0
+    RD.TYPE.COUNT = 0
+    GOSUB SB.SCAN : CLOSE 2 : GOSUB LX.OPEN
+    GP.SUB EMIT, T.STUB.ID : GP.SUB EMIT, T.START.ID : GOSUB LK.INIT.CALL
+    RETURN
+
+UXC.FINISH:
+    CLOSE 2
+    GOSUB CT.OPEN : GOSUB SB.OPEN : GOSUB RD.OPEN : GOSUB NM.OPEN : GOSUB AS.OPEN
+    GP.SUB EMIT, T.END.ID : LX.NO = 0
+    GOSUB LK.LINK : GOSUB LK.WRITE
+    ## The emulator's echo shows the file's bytes too, so start a fresh line.
+    PRINT : PRINT UI.OBJ$ + " " + MID$(STR$(CB.N + 2), 2) + " BYTES"
+    UI.LINE$ = "OK," + UI.OBJ$ + "," + MID$(STR$(CB.N + 2), 2) : GOSUB UI.RESULT
+    GOTO UI.CHAIN
+
+CB.INIT:
+    FOR CB.I = 0 TO K.CODE.BANKS - 1
+        GOSUB UXC.BANK : CB.BANK%(CB.I) = UXC.B
+    NEXT CB.I
+    FOR CB.I = 0 TO K.FIX.BANKS - 1
+        GOSUB UXC.BANK : FX.BANK%(CB.I) = UXC.B
+    NEXT CB.I
+    GOSUB UXC.BANK : SP.BANK = UXC.B
+    GOSUB UXC.BANK : RT.BANK = UXC.B
+    GOSUB UXC.BANK : CS.BANK = UXC.B
+    GOSUB RT.CLEAR
+    CB.N = 0 : FX.N = 0 : SP.N = 0
+    RETURN
+
+## UI.READ -- UXC.INPUT: line 1 the source, line 2 the result file, line 3 the program to
+## load next. Either line ending is read: the whole file is gathered, then cut at CR and at LF.
+UI.READ:
+    UI.ALL$ = "" : OPEN 4, 8, 4, "UXC.INPUT,S,R"
+UI.READ.MORE:
+    LINPUT# 4, UI.PART$, 10 : UI.ST = ST
+    IF (UI.ST AND 2) <> 0 THEN GOTO UI.READ.DONE
+    UI.ALL$ = UI.ALL$ + UI.PART$ + CHR$(10)
+    IF (UI.ST AND 64) = 0 AND LEN(UI.ALL$) < 200 THEN GOTO UI.READ.MORE
+UI.READ.DONE:
+    CLOSE 4
+    UI.F = 0 : UI.SRC$ = "" : UI.RES$ = "" : UI.NEXT$ = "" : UI.ONE$ = ""
+    FOR UI.I = 1 TO LEN(UI.ALL$)
+        UI.C$ = MID$(UI.ALL$, UI.I, 1)
+        GP.IF UI.C$ = CHR$(13) OR UI.C$ = CHR$(10) THEN
+            IF UI.ONE$ <> "" AND UI.F = 2 THEN UI.NEXT$ = UI.ONE$ : UI.F = 3
+            IF UI.ONE$ <> "" AND UI.F = 1 THEN UI.RES$ = UI.ONE$ : UI.F = 2
+            IF UI.ONE$ <> "" AND UI.F = 0 THEN UI.SRC$ = UI.ONE$ : UI.F = 1
+            UI.ONE$ = ""
+        GP.ELSE
+            UI.ONE$ = UI.ONE$ + UI.C$
+        GP.ENDIF
+    NEXT UI.I
+    IF UI.SRC$ = "" THEN ER.M$ = "NO SOURCE NAMED IN UXC.INPUT" : GOTO ER.STOP
+    ## The PRG is named after the source: HELLO.UXB writes HELLO.PRG.
+    UI.OBJ$ = UI.SRC$ : UI.DOT = 0
+    FOR UI.I = 1 TO LEN(UI.SRC$)
+        IF MID$(UI.SRC$, UI.I, 1) = "." THEN UI.DOT = UI.I
+        IF MID$(UI.SRC$, UI.I, 1) = "/" THEN UI.DOT = 0
+    NEXT UI.I
+    IF UI.DOT > 0 THEN UI.OBJ$ = LEFT$(UI.SRC$, UI.DOT - 1)
+    UI.OBJ$ = UI.OBJ$ + ".PRG"
+    RETURN
+
+## UI.RESULT -- one line into the result file, when UXC.INPUT named one:
+##   OK,<prg>,<bytes>    or    ERROR,<line>,<message>
+UI.RESULT:
+    IF UI.RES$ = "" THEN RETURN
+    OPEN 4, 8, 4, "@:" + UI.RES$ + ",S,W"
+    PRINT# 4, UI.LINE$ : CLOSE 4
+    RETURN
+
+## UI.CHAIN -- load UI.NEXT$ when UXC.INPUT named one, else END. The LOAD line goes on the
+## third screen row and the cursor goes home. END prints READY. on the second row, and the
+## first Return in the key buffer runs the LOAD line. RUN: and a Return follow it; the colon
+## keeps what is left on the screen row out of the RUN.
+UI.CHAIN:
+    IF UI.NEXT$ = "" THEN END
+    PRINT CHR$(147) : PRINT
+    PRINT "LOAD" + CHR$(34) + UI.NEXT$ + CHR$(34) + ",8,1" + CHR$(19);
+    UI.KEYS$ = CHR$(13) + "RUN:" + CHR$(13)
+    UI.ROM.BANK = PEEK(1)
+    POKE 1, 0
+    FOR UI.I = 1 TO LEN(UI.KEYS$)
+        UI.KEY = ASC(MID$(UI.KEYS$, UI.I, 1))
+        GP.CALL K.KBDBUF.PUT, UI.KEY
+    NEXT UI.I
+    POKE 1, UI.ROM.BANK
+    END
+
+## ER.REPORT -- the body of ER.STOP.
+ER.REPORT:
+    CLOSE 2 : CLOSE 3
+    GP.IF LX.INCLUDING <> 0 THEN
+        ER.M$ = ER.M$ + " (" + LX.NAME$ + " " + MID$(STR$(LX.NO), 2) + ")"
+        LX.NO = LX.SOURCE.NO
+    GP.ENDIF
+    GP.IF LX.NO > 0 THEN
+        PRINT "?" + ER.M$ + " IN " + MID$(STR$(LX.NO), 2)
+        PRINT LX.L$
+    GP.ELSE
+        PRINT "?"; ER.M$
+    GP.ENDIF
+    UI.LINE$ = "ERROR," + MID$(STR$(LX.NO), 2) + "," + ER.M$ : GOSUB UI.RESULT
+    GOTO UI.CHAIN

@@ -1,0 +1,629 @@
+## UXC-EXPR.BL -- expressions.
+##
+##   EX.EXPR    compile the expression that starts at the token in TK.*, and leave the
+##              token after it there. The value is the top entry of the value stack.
+##   EX.TOB     emit the code that puts the value in A as a BYTE, and drop the entry
+##   EX.TOW     the same into A/Y as a WORD
+##   EX.TOL     the same into A/Y/ZP_HI as a LONG (UXC-LONG.BL)
+##   The value's type is EX.VT%(EX.VN - 1): K.TY.BYTE, K.TY.WORD, K.TY.LONG, K.TY.STR, or 0
+##   for a constant that fits a BYTE. SM.LINE sets EX.VN and EX.SD to 0 at each statement.
+##   EX.VG%(EX.VN - 1) is 1 for a signed value: a signed variable, or a constant below 0,
+##   whose bits are its value plus 65536.
+##   EX.OP.BASE is the bottom of the operator stack for this expression: a SUB call's
+##   arguments are parsed while the operators of the expression around it wait below.
+##
+## The parse is operator precedence with two stacks, so it needs no recursion: EX.OP%()
+## holds the waiting operators, and the value stack holds the operands. An operand is
+## kept as a description, and code for it is emitted only when an operator needs it:
+##
+##   K.EK.CONST   a number, EX.VV(); folded with another constant, it emits nothing
+##   K.EK.MEM     the BYTE or WORD at an address: a variable, an array element at a
+##                constant index, or PEEK(constant)
+##   K.EK.ADDR    an address, @name of a variable or an array
+##   K.EK.REG     in A or A/Y
+##   K.EK.CMP     a compare whose core has run: the flag is set, and EX.VV() is the tail
+##                that turns it into 0 or 1. NOT swaps the tail.
+##   K.EK.STK     on the run-time stack
+##   K.EK.JMP     in a condition, the left side of a logical AND or OR: its code is done,
+##                and its jumps wait in EX.JT() and EX.JF() (UXC-FLOW.BL)
+##
+## A string is K.EK.ADDR, the address of its block, or K.EK.MEM for a STRING parameter,
+## which holds that address. Neither needs code to load, and neither changes inside a
+## statement, so EX.FLUSH leaves a string where it is. UXC-STR.BL has the rest.
+##
+## The entries of the value stack are, from the bottom: K.EK.STK ones, then the ones not
+## loaded yet, with at most one K.EK.REG or K.EK.CMP among them. Before code is emitted for
+## an operator, every entry under its operands is pushed (EX.FLUSH), so the run-time stack
+## keeps the same order, and a value in A/Y or the flags is pushed before anything else
+## needs them. An operand that needs no code (a constant, a variable, @name) leaves A/Y
+## alone, so a compare, + or - with such an operand on the right is done with the left side
+## in A/Y and nothing pushed (EX.FAST).
+##
+## A BYTE operator works on two BYTEs; a WORD operator on two WORDs, a BYTE being widened. A
+## constant that fits a BYTE takes the type of the other side. *, / and MOD run as WORD,
+## and keep a BYTE type when neither side is a WORD. A shift has the width of its left side.
+##
+## An operator is signed when either side is. A signed BYTE is widened with its sign. A
+## signed side with an unsigned BYTE, or a constant from 128 to 255, on the other side works
+## as WORD. A signed compare uses the signed templates, / and MOD divide signed, and >>
+## keeps the sign of a signed left side. Unary - gives a signed value.
+##
+## A LONG side makes the operator LONG (UXC-LONG.BL). A LONG used as a BYTE or a WORD is its
+## low bits.
+
+EX.EXPR:
+    EX.ON = EX.OP.BASE : EX.PD = 0
+EX.OPERAND:
+    IF TK.T = K.TT.NUM THEN EX.K = K.EK.CONST : EX.S = K.SEC.CONST : EX.V = TK.V : GOTO EX.OPERAND.PUSH
+    GP.IF TK.T = K.TT.OP THEN
+        IF TK.K = 40 THEN EX.O = K.EO.PAR : GOSUB EX.PUSHO : EX.PD = EX.PD + 1 : GOSUB LX.NEXT : GOTO EX.OPERAND
+        IF TK.K = 45 THEN EX.O = K.EO.MINUS : GOSUB EX.PUSHO : GOSUB LX.NEXT : GOTO EX.OPERAND
+        IF TK.K = 64 THEN GOTO EX.AT
+        GOTO ER.SYNTAX
+    GP.ENDIF
+    IF TK.T = K.TT.STR THEN GOSUB SG.LITERAL : GOTO EX.OPERATOR
+    IF TK.T <> K.TT.NAME THEN GOTO ER.SYNTAX
+    IF TK.S$ = "NOT" THEN EX.O = K.EO.NOT : GOSUB EX.PUSHO : GOSUB LX.NEXT : GOTO EX.OPERAND
+    EX.PEEK.OPERATOR = 0
+    IF TK.S$ = "PEEK" OR TK.S$ = "CONTENTSAT" THEN EX.PEEK.OPERATOR = K.EO.PEEK
+    IF TK.S$ = "CONTENTSATW" THEN EX.PEEK.OPERATOR = K.EO.WORDPEEK
+    GP.IF EX.PEEK.OPERATOR <> 0 THEN
+        GOSUB LX.NEXT
+        IF TK.T <> K.TT.OP OR TK.K <> 40 THEN GOTO ER.SYNTAX
+        EX.O = EX.PEEK.OPERATOR : GOSUB EX.PUSHO : EX.O = K.EO.PAR : GOSUB EX.PUSHO : EX.PD = EX.PD + 1
+        GOSUB LX.NEXT : GOTO EX.OPERAND
+    GP.ENDIF
+    IF TK.S$ = "ADDROF" THEN GOTO EX.ADDROF
+    IF TK.S$ = "GETKEY" THEN GOTO EX.GETKEY
+    IF TK.S$ = "POS" THEN GOTO EX.POS
+    GP.IF TK.S$ = "NOFILE" THEN
+        EX.K = K.EK.CONST
+        EX.S = K.SEC.CONST
+        EX.V = 65535
+        GOTO EX.OPERAND.PUSH
+    GP.ENDIF
+    GOSUB SG.FUNCTION : IF SG.FOUND = 1 THEN GOTO EX.OPERATOR
+    SM.N$ = TK.S$ : GOSUB NM.FIND
+    GP.IF SY.KIND = K.SK.CONST THEN
+        EX.K = K.EK.CONST
+        EX.S = K.SEC.CONST
+        EX.V = SY.VAL + 65536 * SY.CNT
+        IF (SY.FLAGS AND K.SY.SIGNED) <> 0 THEN EX.SG = 1
+        GOTO EX.OPERAND.PUSH
+    GP.ENDIF
+    IF SY.KIND = K.SK.SUB THEN GOSUB SB.FUNCTION : GOTO EX.OPERATOR
+    IF SY.KIND = K.SK.ARRAY THEN GOTO EX.ELEMENT
+    GOSUB SM.VAR.KIND
+    GOSUB RD.SECTION.VALUE
+    EX.K = K.EK.MEM : EX.S = RD.SEC : EX.V = SY.VAL : EX.TY = SY.TYPE
+    IF (SY.FLAGS AND K.SY.SIGNED) <> 0 THEN EX.SG = 1
+    IF EX.TY = K.TY.STR AND SY.CNT > 0 THEN EX.K = K.EK.ADDR
+    GOSUB EX.PUSHV : GOSUB LX.NEXT : GOTO EX.OPERATOR
+EX.OPERAND.PUSH:
+    EX.CG = EX.SG
+    EX.R = EX.V
+    GOSUB EX.PUSHV
+    EX.I = EX.VN - 1
+    GOSUB EX.SETC
+    GOSUB LX.NEXT : GOTO EX.OPERATOR
+
+## AddrOf(name): @name inside its own brackets.
+EX.ADDROF:
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.OP OR TK.K <> 40 THEN ER.M$ = "MISSING ( AFTER ADDROF" : GOTO ER.STOP
+    GOSUB EX.AT.NAME
+    IF TK.T <> K.TT.OP OR TK.K <> 41 THEN ER.M$ = "MISSING )" : GOTO ER.STOP
+    GOSUB LX.NEXT
+    GOTO EX.OPERATOR
+
+## @name: the address of a variable, an array, a record or a field. A DIM ... AT address is in
+## K.SEC.CONST.
+EX.AT:
+    GOSUB EX.AT.NAME
+    GOTO EX.OPERATOR
+
+## EX.AT.NAME -- push the address of the name after the token in TK.*, and leave the token
+## after the name there.
+EX.AT.NAME:
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.NAME THEN GOTO ER.SYNTAX
+    SM.N$ = TK.S$ : GOSUB NM.FIND
+    IF SY.KIND = K.SK.ARRAY AND SY.TYPE >= K.TY.RECORD THEN GOSUB RD.AT.ELEMENT : RETURN
+    EX.S = K.SEC.BSS
+    IF SY.KIND <> K.SK.ARRAY THEN GOSUB SM.VAR.KIND : GOSUB RD.SECTION : EX.S = RD.SEC
+    EX.K = K.EK.ADDR : EX.V = SY.VAL : EX.TY = K.TY.WORD
+    IF SY.TYPE = K.TY.STR THEN GOSUB SG.AT
+    GOSUB EX.PUSHV
+    GOSUB LX.NEXT
+    RETURN
+
+## name(i): an array element. INDEX waits under the ( for its ), as PEEK does.
+EX.ELEMENT:
+    EX.ARRAY = SY.R
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.OP OR TK.K <> 40 THEN ER.M$ = "MISSING ( AFTER " + SM.N$ : GOTO ER.STOP
+    EX.O = K.EO.INDEX : GOSUB EX.PUSHO : EX.OA%(EX.ON - 1) = EX.ARRAY
+    EX.O = K.EO.PAR : GOSUB EX.PUSHO : EX.PD = EX.PD + 1
+    GOSUB LX.NEXT : GOTO EX.OPERAND
+
+## GETKEY(): the key in A, or 0. Like a SUB call, it loses A/Y and the flags.
+EX.GETKEY:
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.OP OR TK.K <> 40 THEN ER.M$ = "MISSING ( AFTER GETKEY" : GOTO ER.STOP
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.OP OR TK.K <> 41 THEN ER.M$ = "MISSING )" : GOTO ER.STOP
+    EX.FB = EX.VN : GOSUB EX.FLUSH
+    GP.SUB EMIT, T.GETKEY.ID
+    EX.K = K.EK.REG : EX.S = K.SEC.CONST : EX.V = 0 : EX.TY = K.TY.BYTE
+    GOSUB EX.PUSHV : GOSUB LX.NEXT : GOTO EX.OPERATOR
+
+## POS(0): the cursor column in A. POS(1): the cursor row. It loses A and the flags.
+EX.POS:
+    GOSUB EX.POS.AXIS
+    EX.FB = EX.VN
+    GOSUB EX.FLUSH
+    IF EX.POS.ROW = 0 THEN GP.SUB EMIT, T.POSCOL.ID
+    IF EX.POS.ROW = 1 THEN GP.SUB EMIT, T.POSROW.ID
+    EX.K = K.EK.REG
+    EX.S = K.SEC.CONST
+    EX.V = 0
+    EX.TY = K.TY.BYTE
+    GOSUB EX.PUSHV
+    GOSUB LX.NEXT
+    GOTO EX.OPERATOR
+
+## EX.POS.AXIS -- read the (0) or (1) after POS, and leave the ) in TK.*. EX.POS.ROW is 1
+## for (1). The axis must be a number, so the compiler picks the template.
+EX.POS.AXIS:
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.OP OR TK.K <> 40 THEN ER.M$ = "MISSING ( AFTER POS" : GOTO ER.STOP
+    GOSUB LX.NEXT
+    EX.POS.BAD = 1
+    IF TK.T = K.TT.NUM AND TK.V <= 1 THEN EX.POS.BAD = 0
+    IF EX.POS.BAD = 1 THEN ER.M$ = "POS NEEDS 0 OR 1" : GOTO ER.STOP
+    EX.POS.ROW = TK.V
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.OP OR TK.K <> 41 THEN ER.M$ = "MISSING )" : GOTO ER.STOP
+    RETURN
+
+## After an operand: a binary operator, a ), or the end of the expression.
+EX.OPERATOR:
+    EX.NEW = 0
+    GP.IF TK.T = K.TT.OP THEN
+        IF TK.K = 41 THEN GOTO EX.CLOSE
+        IF TK.K = 43 THEN EX.NEW = K.EO.ADD
+        IF TK.K = 45 THEN EX.NEW = K.EO.SUB
+        IF TK.K = 42 THEN EX.NEW = K.EO.MUL
+        IF TK.K = 47 THEN EX.NEW = K.EO.DIV
+        IF TK.K = 61 THEN EX.NEW = K.EO.EQ
+        IF TK.K = 60 THEN EX.NEW = K.EO.LT
+        IF TK.K = 62 THEN EX.NEW = K.EO.GT
+        IF TK.K = K.OP.NE THEN EX.NEW = K.EO.NE
+        IF TK.K = K.OP.LE THEN EX.NEW = K.EO.LE
+        IF TK.K = K.OP.GE THEN EX.NEW = K.EO.GE
+        IF TK.K = K.OP.SHL THEN EX.NEW = K.EO.SHL
+        IF TK.K = K.OP.SHR THEN EX.NEW = K.EO.SHR
+    GP.ENDIF
+    GP.IF TK.T = K.TT.NAME THEN
+        IF TK.S$ = "AND" THEN EX.NEW = K.EO.AND
+        IF TK.S$ = "OR" THEN EX.NEW = K.EO.OR
+        IF TK.S$ = "XOR" THEN EX.NEW = K.EO.XOR
+        IF TK.S$ = "MOD" THEN EX.NEW = K.EO.MOD
+    GP.ENDIF
+    IF EX.NEW = 0 THEN GOTO EX.END
+    ## In a condition, AND and OR outside brackets are jumps (UXC-FLOW.BL).
+    GP.IF EX.CM = 1 AND EX.PD = 0 THEN
+        IF EX.NEW = K.EO.AND THEN EX.NEW = K.EO.LAND
+        IF EX.NEW = K.EO.OR THEN EX.NEW = K.EO.LOR
+    GP.ENDIF
+    EX.P = EX.NEW : GOSUB EX.PREC : EX.PN = EX.PR
+EX.OPERATOR.POP:
+    ## Every operator, binary, all left to right.
+    IF EX.ON = EX.OP.BASE THEN GOTO EX.OPERATOR.PUSH
+    EX.P = EX.OP%(EX.ON - 1) : GOSUB EX.PREC
+    IF EX.PR >= EX.PN THEN GOSUB EX.REDUCE : GOTO EX.OPERATOR.POP
+EX.OPERATOR.PUSH:
+    IF EX.NEW >= K.EO.LOR THEN GOSUB CN.LEFT
+    IF EX.NEW = K.EO.ADD THEN GOSUB SG.LEFT
+    EX.O = EX.NEW : GOSUB EX.PUSHO
+    GOSUB LX.NEXT : GOTO EX.OPERAND
+
+## ) closes the innermost (. With none open, the ) is not part of the expression.
+EX.CLOSE:
+    IF EX.ON = EX.OP.BASE THEN GOTO EX.END
+    IF EX.OP%(EX.ON - 1) <> K.EO.PAR THEN GOSUB EX.REDUCE : GOTO EX.CLOSE
+    EX.ON = EX.ON - 1 : EX.PD = EX.PD - 1
+    GOSUB LX.NEXT
+    IF EX.ON = EX.OP.BASE THEN GOTO EX.OPERATOR
+    IF EX.OP%(EX.ON - 1) = K.EO.PEEK OR EX.OP%(EX.ON - 1) = K.EO.WORDPEEK THEN EX.ON = EX.ON - 1 : GOSUB EX.PEEK : GOTO EX.OPERATOR
+    IF EX.OP%(EX.ON - 1) = K.EO.INDEX THEN EX.ON = EX.ON - 1 : GOSUB EX.INDEX
+    GOTO EX.OPERATOR
+
+EX.END:
+    IF EX.ON = EX.OP.BASE THEN RETURN
+    IF EX.OP%(EX.ON - 1) = K.EO.PAR THEN ER.M$ = "MISSING )" : GOTO ER.STOP
+    GOSUB EX.REDUCE
+    GOTO EX.END
+
+## EX.PREC -- the precedence of operator EX.P in EX.PR, higher binds tighter. PAR, PEEK and
+## INDEX are 0, so no binary operator takes them off the stack.
+EX.PREC:
+    IF EX.P >= K.EO.LOR THEN EX.PR = EX.P - K.EO.LOR + 1 : RETURN
+    EX.PR = 0
+    IF EX.P <= K.EO.XOR THEN EX.PR = 1 : RETURN
+    IF EX.P = K.EO.AND THEN EX.PR = 2 : RETURN
+    IF EX.P = K.EO.NOT THEN EX.PR = 3 : RETURN
+    IF EX.P <= K.EO.GE THEN EX.PR = 4 : RETURN
+    IF EX.P <= K.EO.SHR THEN EX.PR = 5 : RETURN
+    IF EX.P <= K.EO.SUB THEN EX.PR = 6 : RETURN
+    IF EX.P <= K.EO.MOD THEN EX.PR = 7 : RETURN
+    IF EX.P = K.EO.MINUS THEN EX.PR = 8
+    RETURN
+
+EX.PUSHO:
+    IF EX.ON >= K.EX.MAX THEN GOTO EX.COMPLEX
+    EX.OP%(EX.ON) = EX.O : EX.ON = EX.ON + 1
+    RETURN
+
+EX.COMPLEX:
+    ER.M$ = "EXPRESSION TOO COMPLEX" : GOTO ER.STOP
+
+## EX.PUSHV -- a new operand EX.K EX.S EX.V EX.TY, signed when EX.SG = 1. EX.SG is 0 after
+## it. It emits no code, so a value in A/Y below it stays there until code is needed.
+EX.PUSHV:
+    IF EX.VN >= K.EX.MAX THEN GOTO EX.COMPLEX
+    EX.VK%(EX.VN) = EX.K : EX.VS%(EX.VN) = EX.S : EX.VV(EX.VN) = EX.V : EX.VT%(EX.VN) = EX.TY
+    EX.VG%(EX.VN) = EX.SG
+    EX.SG = 0
+    EX.JT(EX.VN) = 0 : EX.JF(EX.VN) = 0
+    EX.VN = EX.VN + 1
+    RETURN
+
+## EX.LOAD -- emit the code that puts entry EX.I in A (EX.WD = 0), in A/Y (EX.WD = 1) or in
+## A/Y/ZP_HI (EX.WD = 2). A signed BYTE is widened with its sign.
+EX.LOAD:
+    IF EX.WD = 2 THEN GOSUB EX.LONG.LOAD : RETURN
+    EX.LK = EX.VK%(EX.I) : EX.LT = EX.VT%(EX.I)
+    SL.S%(0) = EX.VS%(EX.I) : SL.V(0) = EX.VV(EX.I)
+    IF EX.LT = K.TY.LONG AND EX.LK = K.EK.CONST THEN SL.V(0) = EX.VV(EX.I) - INT(EX.VV(EX.I) / 65536) * 65536
+    GP.IF EX.LK = K.EK.CONST OR EX.LK = K.EK.ADDR THEN
+        IF EX.WD = 0 THEN GP.SUB EMIT, T.LDB.C.ID : RETURN
+        GP.SUB EMIT, T.LDW.C.ID : RETURN
+    GP.ENDIF
+    GP.IF EX.LK = K.EK.MEM THEN
+        IF EX.WD = 0 THEN GP.SUB EMIT, T.LDB.V.ID : RETURN
+        IF EX.LT <> K.TY.BYTE THEN GP.SUB EMIT, T.LDW.V.ID : RETURN
+        IF EX.VG%(EX.I) = 0 THEN GP.SUB EMIT, T.LDW.B.ID : RETURN
+        GP.SUB EMIT, T.LDB.V.ID
+        GP.SUB EMIT, T.SWIDEN.ID
+        RETURN
+    GP.ENDIF
+    IF EX.LK = K.EK.CMP THEN EX.TL = EX.VV(EX.I) : GP.SUB EMIT, EX.TL : EX.LT = K.TY.BYTE
+    IF EX.WD = 0 OR EX.LT = K.TY.WORD OR EX.LT = K.TY.LONG THEN RETURN
+    IF EX.VG%(EX.I) = 0 THEN GP.SUB EMIT, T.WIDEN.ID
+    IF EX.VG%(EX.I) = 1 THEN GP.SUB EMIT, T.SWIDEN.ID
+    RETURN
+
+## EX.SPILL -- emit the code that pushes entry EX.I, as its own type; it becomes K.EK.STK.
+## A BYTE is pushed with a 0 high byte, so a WORD operator can use it as it is. A signed
+## BYTE is pushed widened with its sign. A LONG's high word goes to R_ESTKH.
+EX.SPILL:
+    EX.WD = 0
+    IF EX.VT%(EX.I) = K.TY.WORD OR EX.VT%(EX.I) = K.TY.STR THEN EX.WD = 1
+    IF EX.VG%(EX.I) = 1 THEN EX.WD = 1
+    IF EX.VT%(EX.I) = K.TY.LONG THEN EX.WD = 2
+    GOSUB EX.LOAD
+    IF EX.WD = 1 THEN GP.SUB EMIT, T.PUSH.ID
+    IF EX.WD = 0 THEN GP.SUB EMIT, T.PUSHB.ID
+    IF EX.WD = 2 THEN GP.SUB EMIT, T.PUSHL.ID
+    IF EX.VK%(EX.I) = K.EK.CMP THEN EX.VT%(EX.I) = K.TY.BYTE
+    EX.VK%(EX.I) = K.EK.STK
+    EX.SD = EX.SD + 1
+    IF EX.SD > K.EX.DEPTH THEN GOTO EX.COMPLEX
+    RETURN
+
+## EX.FLUSH -- push every entry under EX.FB that is not on the run-time stack, from the
+## bottom up. A K.EK.JMP entry has no value to push, and a string needs no push.
+EX.FLUSH:
+    EX.I = 0
+EX.FLUSH.NEXT:
+    IF EX.I >= EX.FB THEN RETURN
+    IF EX.VK%(EX.I) <> K.EK.STK AND EX.VK%(EX.I) <> K.EK.JMP AND EX.VT%(EX.I) <> K.TY.STR THEN GOSUB EX.SPILL
+    EX.I = EX.I + 1 : GOTO EX.FLUSH.NEXT
+
+## EX.SETC -- entry EX.I becomes the constant with the bits EX.R, 16 or 32 of them, signed
+## when EX.CG = 1. EX.CG is 0 after it.
+EX.SETC:
+    EX.SETC.LONG = 0
+    IF EX.R > 65535 THEN GOSUB EX.LONG.CONST
+    EX.VK%(EX.I) = K.EK.CONST : EX.VS%(EX.I) = K.SEC.CONST : EX.VV(EX.I) = EX.R
+    EX.VT%(EX.I) = 0 : IF EX.R > 255 THEN EX.VT%(EX.I) = K.TY.WORD
+    IF EX.CG = 1 AND EX.R >= 65408 THEN EX.VT%(EX.I) = 0
+    IF EX.SETC.LONG = 1 THEN EX.VT%(EX.I) = K.TY.LONG
+    EX.VG%(EX.I) = EX.CG
+    EX.CG = 0
+    RETURN
+
+EX.TOL:
+    EX.WD = 2 : GOTO EX.TO
+EX.TOB:
+    EX.WD = 0 : GOTO EX.TO
+EX.TOW:
+    EX.WD = 1
+EX.TO:
+    EX.I = EX.VN - 1 : IF EX.VT%(EX.I) = K.TY.STR THEN GOTO ER.MISMATCH
+    EX.FB = EX.I : EX.KEEP = EX.WD : GOSUB EX.FLUSH
+    EX.I = EX.VN - 1 : EX.WD = EX.KEEP : GOSUB EX.LOAD
+    EX.VN = EX.VN - 1
+    RETURN
+
+## EX.REDUCE -- apply the operator on top of the operator stack.
+EX.REDUCE:
+    EX.ON = EX.ON - 1 : EX.O = EX.OP%(EX.ON)
+    IF EX.O = K.EO.MINUS OR EX.O = K.EO.NOT THEN GOTO EX.UNARY
+    IF EX.O >= K.EO.LOR THEN GOTO CN.LOGIC
+    GOTO EX.BINARY
+
+## Unary - and NOT, on the top entry. Unary - gives a signed value: a BYTE for a signed BYTE,
+## a LONG for a LONG, else a WORD.
+EX.UNARY:
+    EX.I = EX.VN - 1 : EX.LK = EX.VK%(EX.I) : EX.A = EX.VV(EX.I)
+    IF EX.VT%(EX.I) = K.TY.STR THEN GOTO ER.MISMATCH
+    IF EX.LK = K.EK.CONST AND EX.O = K.EO.MINUS THEN GOSUB EX.FOLD.NEGATE : GOTO EX.SETC
+    IF EX.LK = K.EK.CONST THEN EX.R = 0 : GOTO EX.UNARY.NOT
+    IF EX.LK = K.EK.CMP AND EX.O = K.EO.NOT THEN GOTO EX.FLIP
+    ## NOT x is a test of x for 0: a compare, whose tail gives the 0 or 1.
+    GP.IF EX.O = K.EO.NOT THEN
+        GOSUB EX.TEST
+        EX.VK%(EX.I) = K.EK.CMP : EX.VS%(EX.I) = K.SEC.CONST : EX.VV(EX.I) = T.ZTRUE.ID
+        EX.VT%(EX.I) = K.TY.BYTE
+        EX.VG%(EX.I) = 0
+        RETURN
+    GP.ENDIF
+    EX.FB = EX.I : GOSUB EX.FLUSH
+    EX.I = EX.VN - 1
+    EX.WD = 0 : IF EX.VT%(EX.I) = K.TY.WORD THEN EX.WD = 1
+    IF EX.VG%(EX.I) = 0 THEN EX.WD = 1
+    IF EX.VT%(EX.I) = K.TY.LONG THEN EX.WD = 2
+    GOSUB EX.LOAD
+    IF EX.WD = 0 THEN GP.SUB EMIT, T.NEGB.ID
+    IF EX.WD = 1 THEN GP.SUB EMIT, T.NEGW.ID
+    IF EX.WD = 2 THEN GP.SUB EMIT, T.NEGL.ID
+    EX.VK%(EX.I) = K.EK.REG
+    EX.VT%(EX.I) = K.TY.BYTE
+    IF EX.WD = 1 THEN EX.VT%(EX.I) = K.TY.WORD
+    IF EX.WD = 2 THEN EX.VT%(EX.I) = K.TY.LONG
+    EX.VG%(EX.I) = 1
+    RETURN
+
+## EX.TEST -- emit the code that sets Z when the top entry is 0, and leaves it in EX.I. A
+## BYTE variable needs only its load.
+EX.TEST:
+    EX.I = EX.VN - 1 : IF EX.VT%(EX.I) = K.TY.STR THEN GOTO ER.MISMATCH
+    EX.FB = EX.I : GOSUB EX.FLUSH
+    EX.I = EX.VN - 1 : EX.LK = EX.VK%(EX.I)
+    IF EX.VT%(EX.I) = K.TY.LONG THEN GOSUB EX.LONG.TEST : RETURN
+    GP.IF EX.LK = K.EK.MEM THEN
+        SL.S%(0) = EX.VS%(EX.I) : SL.V(0) = EX.VV(EX.I)
+        IF EX.VT%(EX.I) = K.TY.WORD THEN GP.SUB EMIT, T.TSTW.V.ID : RETURN
+        GP.SUB EMIT, T.LDB.V.ID : RETURN
+    GP.ENDIF
+    EX.WD = 0 : IF EX.VT%(EX.I) = K.TY.WORD THEN EX.WD = 1
+    GOSUB EX.LOAD
+    IF EX.WD = 0 THEN GP.SUB EMIT, T.TSTB.ID : RETURN
+    GP.SUB EMIT, T.TSTW.ID
+    RETURN
+EX.UNARY.NOT:
+    IF EX.A = 0 THEN EX.R = 1
+    GOTO EX.SETC
+
+## NOT of a compare: the opposite tail.
+EX.FLIP:
+    EX.TL = EX.VV(EX.I)
+    IF EX.TL = T.CTRUE.ID THEN EX.VV(EX.I) = T.CFALSE.ID
+    IF EX.TL = T.CFALSE.ID THEN EX.VV(EX.I) = T.CTRUE.ID
+    IF EX.TL = T.ZTRUE.ID THEN EX.VV(EX.I) = T.ZFALSE.ID
+    IF EX.TL = T.ZFALSE.ID THEN EX.VV(EX.I) = T.ZTRUE.ID
+    RETURN
+
+## A binary operator, on the two top entries.
+EX.BINARY:
+    EX.IL = EX.VN - 2 : EX.IR = EX.VN - 1
+    IF EX.VT%(EX.IL) = K.TY.STR OR EX.VT%(EX.IR) = K.TY.STR THEN GOSUB SG.BINARY : RETURN
+    EX.KL = EX.VK%(EX.IL) : EX.KR = EX.VK%(EX.IR)
+    EX.YL = EX.VT%(EX.IL) : EX.YR = EX.VT%(EX.IR)
+    EX.Z = 0 : IF EX.O = K.EO.DIV OR EX.O = K.EO.MOD THEN EX.Z = 1
+    IF EX.Z = 1 AND EX.KR = K.EK.CONST AND EX.VV(EX.IR) = 0 THEN ER.M$ = "DIVISION BY ZERO" : GOTO ER.STOP
+    IF EX.KL = K.EK.CONST AND EX.KR = K.EK.CONST THEN GOSUB EX.FOLD : RETURN
+    GP.IF EX.KL = K.EK.ADDR AND EX.KR = K.EK.CONST THEN
+        IF EX.O = K.EO.ADD OR EX.O = K.EO.SUB THEN GOSUB EX.FOLD.ADDRESS : RETURN
+    GP.ENDIF
+    ## The width: EX.W for the result, EX.CW for the code. EX.G = 1 for a signed operator.
+    EX.W = 0 : IF EX.YL = K.TY.WORD OR EX.YR = K.TY.WORD THEN EX.W = 1
+    IF EX.YL = K.TY.LONG OR EX.YR = K.TY.LONG THEN EX.W = 2
+    EX.SH = 0 : IF EX.O = K.EO.SHL OR EX.O = K.EO.SHR THEN EX.SH = 1
+    EX.G = 0 : IF EX.VG%(EX.IL) = 1 OR EX.VG%(EX.IR) = 1 THEN EX.G = 1
+    IF EX.SH = 1 THEN EX.G = EX.VG%(EX.IL)
+    IF EX.G = 1 AND EX.W = 0 AND EX.SH = 0 THEN GOSUB EX.MIXED
+    IF EX.SH = 1 THEN EX.W = 1
+    IF EX.SH = 1 AND EX.YL = K.TY.BYTE THEN EX.W = 0
+    IF EX.SH = 1 AND EX.YL = K.TY.LONG THEN EX.W = 2
+    EX.CW = EX.W : IF EX.O >= K.EO.MUL AND EX.O <= K.EO.MOD AND EX.W = 0 THEN EX.CW = 1
+    GP.IF EX.KL <> K.EK.STK AND EX.SH = 0 THEN
+        GOSUB EX.FAST : IF EX.FD = 1 THEN RETURN
+    GP.ENDIF
+    ## The left side on the run-time stack, with every entry under it first.
+    EX.FB = EX.IL : GOSUB EX.FLUSH
+    IF EX.KL <> K.EK.STK THEN EX.I = EX.IL : GOSUB EX.SPILL
+    IF EX.CW = 2 AND EX.YL <> K.TY.LONG THEN GOSUB EX.LONG.STACK
+    ## The right side in A or A/Y. A shift count is a BYTE.
+    EX.I = EX.IR : EX.WD = EX.CW : IF EX.SH = 1 THEN EX.WD = 0
+    GOSUB EX.LOAD
+    GOSUB EX.OPCODE
+    EX.SD = EX.SD - 1 : EX.VN = EX.VN - 1 : EX.I = EX.IL
+    EX.VK%(EX.I) = EX.RK : EX.VT%(EX.I) = EX.RT : EX.VS%(EX.I) = K.SEC.CONST : EX.VV(EX.I) = EX.RV
+    EX.VG%(EX.I) = EX.RG
+    RETURN
+
+## EX.MIXED -- a signed side, with an unsigned BYTE or a constant from 128 to 255 on the other
+## side: the operator works as WORD, so EX.W = 1.
+EX.MIXED:
+    IF EX.VG%(EX.IL) = 0 AND EX.YL = K.TY.BYTE THEN EX.W = 1
+    IF EX.VG%(EX.IR) = 0 AND EX.YR = K.TY.BYTE THEN EX.W = 1
+    IF EX.VG%(EX.IL) = 0 AND EX.KL = K.EK.CONST AND EX.VV(EX.IL) > 127 THEN EX.W = 1
+    IF EX.VG%(EX.IR) = 0 AND EX.KR = K.EK.CONST AND EX.VV(EX.IR) > 127 THEN EX.W = 1
+    RETURN
+
+## EX.FAST -- a compare, + or - whose right side needs no code: the left side is loaded
+## into A or A/Y, and the right side is the operand of the template. EX.FD = 1 when it
+## was done. A variable on the right must have the width of the code.
+##
+## The templates give C = left >= right and Z = left = right, so > and <= are turned round:
+## against a constant k they become >= k + 1 and < k + 1, and against a variable the two
+## sides swap, when the left side needs no code either.
+EX.FAST:
+    IF EX.CW = 2 THEN GOSUB EX.LONG.FAST : RETURN
+    EX.FD = 0
+    IF EX.O = K.EO.ADD OR EX.O = K.EO.SUB THEN GOTO EX.FAST.ADD
+    IF EX.O < K.EO.EQ OR EX.O > K.EO.GE THEN RETURN
+    EX.I = EX.IR : GOSUB EX.FAST.OK : IF EX.OK = 0 THEN RETURN
+    EX.OC = EX.O
+    GP.IF EX.OC = K.EO.GT OR EX.OC = K.EO.LE THEN
+        GP.IF EX.KR = K.EK.CONST THEN
+            GOSUB EX.FAST.NEXT
+            IF EX.OK = 0 THEN RETURN
+            IF EX.OC = K.EO.GT THEN EX.OC = K.EO.GE : GOTO EX.FAST.CMP
+            EX.OC = K.EO.LT : GOTO EX.FAST.CMP
+        GP.ENDIF
+        EX.I = EX.IL : GOSUB EX.FAST.OK : IF EX.OK = 0 THEN RETURN
+        EX.I = EX.IL : EX.J = EX.IR : GOSUB EX.SWAP
+        IF EX.OC = K.EO.GT THEN EX.OC = K.EO.LT : GOTO EX.FAST.CMP
+        EX.OC = K.EO.GE
+    GP.ENDIF
+EX.FAST.CMP:
+    GOSUB EX.FAST.LEFT
+    EX.C = 0 : IF EX.VK%(EX.IR) = K.EK.MEM THEN EX.C = 1
+    EX.QE = 0 : IF EX.OC = K.EO.EQ OR EX.OC = K.EO.NE THEN EX.QE = 1
+    IF EX.CW = 0 AND EX.C = 0 THEN EX.TP = T.CMPB.C.ID
+    IF EX.CW = 0 AND EX.C = 1 THEN EX.TP = T.CMPB.V.ID
+    IF EX.CW = 1 AND EX.C = 0 THEN EX.TP = T.CMPW.C.ID : IF EX.QE = 1 THEN EX.TP = T.CMPW.EQC.ID
+    IF EX.CW = 1 AND EX.C = 1 THEN EX.TP = T.CMPW.V.ID : IF EX.QE = 1 THEN EX.TP = T.CMPW.EQV.ID
+    IF EX.G = 1 AND EX.QE = 0 THEN GOSUB EX.FAST.SIGNED
+    GP.SUB EMIT, EX.TP
+    EX.RK = K.EK.CMP : EX.RT = K.TY.BYTE
+    EX.RG = 0
+    IF EX.OC = K.EO.EQ THEN EX.RV = T.ZTRUE.ID
+    IF EX.OC = K.EO.NE THEN EX.RV = T.ZFALSE.ID
+    IF EX.OC = K.EO.GE THEN EX.RV = T.CTRUE.ID
+    IF EX.OC = K.EO.LT THEN EX.RV = T.CFALSE.ID
+    GOTO EX.FAST.DONE
+EX.FAST.ADD:
+    EX.KR = EX.VK%(EX.IR)
+    IF EX.KR <> K.EK.CONST AND EX.KR <> K.EK.ADDR THEN RETURN
+    GOSUB EX.FAST.LEFT
+    EX.TP = T.ADDB.C.ID : IF EX.CW = 1 THEN EX.TP = T.ADDW.C.ID
+    IF EX.O = K.EO.SUB THEN EX.TP = T.SUBB.C.ID : IF EX.CW = 1 THEN EX.TP = T.SUBW.C.ID
+    GP.SUB EMIT, EX.TP
+    EX.RK = K.EK.REG : EX.RV = 0
+    EX.RT = K.TY.BYTE : IF EX.W = 1 THEN EX.RT = K.TY.WORD
+    EX.RG = EX.G
+EX.FAST.DONE:
+    EX.VN = EX.VN - 1 : EX.I = EX.IL
+    EX.VK%(EX.I) = EX.RK : EX.VT%(EX.I) = EX.RT : EX.VS%(EX.I) = K.SEC.CONST : EX.VV(EX.I) = EX.RV
+    EX.VG%(EX.I) = EX.RG
+    EX.FD = 1
+    RETURN
+
+## EX.FAST.LEFT -- the left side into A or A/Y, and the right side into slot 0.
+EX.FAST.LEFT:
+    EX.FB = EX.IL : GOSUB EX.FLUSH
+    EX.I = EX.IL : EX.WD = EX.CW : GOSUB EX.LOAD
+    SL.S%(0) = EX.VS%(EX.IR) : SL.V(0) = EX.VV(EX.IR)
+    RETURN
+
+## EX.FAST.OK -- EX.OK = 1 when entry EX.I can be the operand of a compare template of
+## width EX.CW. EX.KR is its kind.
+EX.FAST.OK:
+    EX.OK = 0 : EX.KR = EX.VK%(EX.I)
+    IF EX.KR = K.EK.CONST OR EX.KR = K.EK.ADDR THEN EX.OK = 1 : RETURN
+    IF EX.KR <> K.EK.MEM THEN RETURN
+    IF EX.CW = 0 AND EX.VT%(EX.I) = K.TY.BYTE THEN EX.OK = 1
+    IF EX.CW = 1 AND EX.VT%(EX.I) = K.TY.WORD THEN EX.OK = 1
+    RETURN
+
+## EX.FAST.NEXT -- the constant on the right made 1 more, at the width EX.CW, signed when
+## EX.G = 1. EX.OK = 0, and the constant is left as it was, when it is the top of its range.
+EX.FAST.NEXT:
+    EX.OK = 0
+    EX.M = 255 : IF EX.CW = 1 THEN EX.M = 65535
+    EX.N = EX.VV(EX.IR)
+    IF EX.CW = 0 THEN EX.N = EX.N - INT(EX.N / 256) * 256
+    GP.IF EX.G = 1 THEN
+        EX.M = INT(EX.M / 2)
+        IF EX.N > EX.M THEN EX.N = EX.N - 2 * EX.M - 2
+    GP.ENDIF
+    IF EX.N >= EX.M THEN RETURN
+    EX.N = EX.N + 1
+    IF EX.N < 0 THEN EX.N = EX.N + 65536
+    EX.VV(EX.IR) = EX.N
+    EX.OK = 1
+    RETURN
+
+## EX.FAST.SIGNED -- EX.TP becomes the signed compare of width EX.CW, with a constant
+## (EX.C = 0) or a variable.
+EX.FAST.SIGNED:
+    IF EX.CW = 0 AND EX.C = 0 THEN EX.TP = T.SCMPB.C.ID
+    IF EX.CW = 0 AND EX.C = 1 THEN EX.TP = T.SCMPB.V.ID
+    IF EX.CW = 1 AND EX.C = 0 THEN EX.TP = T.SCMPW.C.ID
+    IF EX.CW = 1 AND EX.C = 1 THEN EX.TP = T.SCMPW.V.ID
+    RETURN
+
+## EX.SWAP -- entries EX.I and EX.J change places.
+EX.SWAP:
+    EX.T = EX.VK%(EX.I) : EX.VK%(EX.I) = EX.VK%(EX.J) : EX.VK%(EX.J) = EX.T
+    EX.T = EX.VS%(EX.I) : EX.VS%(EX.I) = EX.VS%(EX.J) : EX.VS%(EX.J) = EX.T
+    EX.T = EX.VT%(EX.I) : EX.VT%(EX.I) = EX.VT%(EX.J) : EX.VT%(EX.J) = EX.T
+    EX.T = EX.VV(EX.I) : EX.VV(EX.I) = EX.VV(EX.J) : EX.VV(EX.J) = EX.T
+    EX.T = EX.VG%(EX.I) : EX.VG%(EX.I) = EX.VG%(EX.J) : EX.VG%(EX.J) = EX.T
+    RETURN
+
+## EX.OPCODE -- emit operator EX.O, and give the result's kind EX.RK, type EX.RT, sign EX.RG
+## and, for a compare, the tail EX.RV.
+EX.OPCODE:
+    EX.RK = K.EK.REG : EX.RV = 0
+    EX.RG = EX.G
+    EX.RT = K.TY.BYTE : IF EX.W = 1 THEN EX.RT = K.TY.WORD
+    IF EX.W = 2 THEN GOSUB EX.LONG.OPCODE : RETURN
+    IF EX.O = K.EO.MUL THEN GP.SUB EMIT, T.MUL.ID : RETURN
+    IF EX.O = K.EO.DIV AND EX.G = 1 THEN GP.SUB EMIT, T.DIVS.ID : RETURN
+    IF EX.O = K.EO.MOD AND EX.G = 1 THEN GP.SUB EMIT, T.MODS.ID : RETURN
+    IF EX.O = K.EO.DIV THEN GP.SUB EMIT, T.DIV.ID : RETURN
+    IF EX.O = K.EO.MOD THEN GP.SUB EMIT, T.MOD.ID : RETURN
+    IF EX.O = K.EO.ADD THEN EX.PB = T.ADDB.ID : EX.PW = T.ADDW.ID
+    IF EX.O = K.EO.SUB THEN EX.PB = T.SUBB.ID : EX.PW = T.SUBW.ID
+    IF EX.O = K.EO.AND THEN EX.PB = T.ANDB.ID : EX.PW = T.ANDW.ID
+    IF EX.O = K.EO.OR THEN EX.PB = T.ORB.ID : EX.PW = T.ORW.ID
+    IF EX.O = K.EO.XOR THEN EX.PB = T.XORB.ID : EX.PW = T.XORW.ID
+    IF EX.O = K.EO.SHL THEN EX.PB = T.SHLB.ID : EX.PW = T.SHLW.ID
+    IF EX.O = K.EO.SHR THEN EX.PB = T.SHRB.ID : EX.PW = T.SHRW.ID
+    IF EX.O = K.EO.SHR AND EX.G = 1 THEN EX.PB = T.SARB.ID : EX.PW = T.SARW.ID
+    IF EX.O >= K.EO.EQ AND EX.O <= K.EO.GE THEN GOSUB EX.COMPARE
+    IF EX.W = 0 THEN GP.SUB EMIT, EX.PB : RETURN
+    GP.SUB EMIT, EX.PW
+    RETURN
+
+## A compare: the core now, and the tail when the value is wanted. IF and the loops branch
+## on the flag instead.
+EX.COMPARE:
+    EX.RK = K.EK.CMP : EX.RT = K.TY.BYTE
+    IF EX.O = K.EO.EQ THEN EX.PB = T.CMPB.RL.ID : EX.PW = T.CMPW.EQ.ID : EX.RV = T.ZTRUE.ID
+    IF EX.O = K.EO.NE THEN EX.PB = T.CMPB.RL.ID : EX.PW = T.CMPW.EQ.ID : EX.RV = T.ZFALSE.ID
+    IF EX.O = K.EO.GE THEN EX.PB = T.CMPB.LR.ID : EX.PW = T.CMPW.LR.ID : EX.RV = T.CTRUE.ID
+    IF EX.O = K.EO.LT THEN EX.PB = T.CMPB.LR.ID : EX.PW = T.CMPW.LR.ID : EX.RV = T.CFALSE.ID
+    IF EX.O = K.EO.LE THEN EX.PB = T.CMPB.RL.ID : EX.PW = T.CMPW.RL.ID : EX.RV = T.CTRUE.ID
+    IF EX.O = K.EO.GT THEN EX.PB = T.CMPB.RL.ID : EX.PW = T.CMPW.RL.ID : EX.RV = T.CFALSE.ID
+    EX.RG = 0
+    IF EX.G = 0 THEN RETURN
+    IF EX.PB = T.CMPB.LR.ID THEN EX.PB = T.SCMPB.LR.ID : EX.PW = T.SCMPW.LR.ID
+    IF EX.PW = T.CMPW.RL.ID THEN EX.PB = T.SCMPB.RL.ID : EX.PW = T.SCMPW.RL.ID
+    RETURN

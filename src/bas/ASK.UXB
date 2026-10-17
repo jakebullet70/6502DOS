@@ -1,0 +1,5 @@
+' ASK.UXB -- tries INPUT, which reads a line with con_line
+DIM AGE AS UWORD, N AS STRING * 20
+INPUT "NAME"; N
+INPUT "AGE"; AGE
+PRINT "["; N; "]"; AGE

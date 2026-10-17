@@ -1,0 +1,220 @@
+## UXC-FOLD.BL -- constant folding, for EX.BINARY and EX.UNARY in UXC-EXPR.BL, and the whole
+## number of a constant. It is its own region, so the callers reach it by GOSUB.
+##
+## A constant is a whole number: EX.VV() is its bits, and a signed one (EX.VG% = 1) is below
+## 0, its bits being its value plus 65536, or plus 4294967296 for a LONG. A fold works on the
+## whole numbers, at the width of the wider side: 16 bits, or 32 when a side is a LONG. The
+## result wraps at that width, and is signed when it is below 0 and its bits read as
+## negative. AND, OR, XOR and << work on the bits, and their result is signed when a side
+## is and its bits read as negative.
+##
+## Trap: a GPC number is exact only below 4294967296. A sum or a product past it wraps with
+## no error, and a value that starts past it loses its low bit. So no value here reaches it:
+## + - and * work on the bits 16 at a time, / is a long division a bit at a time, a sign is
+## found by compares, and EX.FOLD.WRAP adds 4294967295 and then 1.
+
+## EX.FOLD -- two constants: the result is a constant, and no code is emitted.
+EX.FOLD:
+    EX.I = EX.IL
+    GOSUB EX.WHOLE
+    EX.A = EX.WHOLE.VALUE
+    EX.I = EX.IR
+    GOSUB EX.WHOLE
+    EX.B = EX.WHOLE.VALUE
+    EX.FOLD.LONG = 0
+    IF EX.VT%(EX.IL) = K.TY.LONG OR EX.VT%(EX.IR) = K.TY.LONG THEN EX.FOLD.LONG = 1
+    EX.R = 0
+    EX.NEGATIVE = 0
+    IF EX.O = K.EO.ADD OR EX.O = K.EO.SUB OR EX.O = K.EO.MUL THEN GOSUB EX.FOLD.ARITHMETIC
+    IF EX.Z = 1 THEN GOSUB EX.FOLD.DIVIDE
+    IF EX.O = K.EO.EQ AND EX.A = EX.B THEN EX.R = 1
+    IF EX.O = K.EO.NE AND EX.A <> EX.B THEN EX.R = 1
+    IF EX.O = K.EO.LT AND EX.A < EX.B THEN EX.R = 1
+    IF EX.O = K.EO.GT AND EX.A > EX.B THEN EX.R = 1
+    IF EX.O = K.EO.LE AND EX.A <= EX.B THEN EX.R = 1
+    IF EX.O = K.EO.GE AND EX.A >= EX.B THEN EX.R = 1
+    IF EX.O = K.EO.SHL OR EX.O = K.EO.SHR THEN GOSUB EX.FOLD.SHIFT
+    IF EX.O <= K.EO.AND THEN GOSUB EX.FOLD.BITS
+    EX.WRAP = EX.R
+    GOSUB EX.FOLD.WRAP
+    EX.R = EX.WRAP
+    IF EX.NEGATIVE = 1 AND EX.R >= EX.FOLD.HALF THEN EX.CG = 1
+    EX.VN = EX.VN - 1
+    EX.I = EX.IL
+    GOSUB EX.SETC
+    RETURN
+
+## EX.FOLD.ARITHMETIC -- EX.A + EX.B, EX.A - EX.B or EX.A * EX.B in EX.R, as bits.
+EX.FOLD.ARITHMETIC:
+    IF EX.O = K.EO.ADD AND EX.A < 0 - EX.B THEN EX.NEGATIVE = 1
+    IF EX.O = K.EO.SUB AND EX.A < EX.B THEN EX.NEGATIVE = 1
+    IF EX.O = K.EO.MUL AND (EX.A < 0) <> (EX.B < 0) THEN EX.NEGATIVE = 1
+    EX.WRAP = EX.A
+    GOSUB EX.FOLD.WRAP
+    EX.X = EX.WRAP
+    EX.WRAP = EX.B
+    GOSUB EX.FOLD.WRAP
+    EX.Y = EX.WRAP
+    IF EX.O = K.EO.SUB AND EX.Y > 0 THEN EX.Y = EX.FOLD.MAX - EX.Y + 1
+    EX.FOLD.XH = INT(EX.X / 65536)
+    EX.FOLD.XL = EX.X - EX.FOLD.XH * 65536
+    EX.FOLD.YH = INT(EX.Y / 65536)
+    EX.FOLD.YL = EX.Y - EX.FOLD.YH * 65536
+    GP.IF EX.O = K.EO.MUL THEN
+        EX.FOLD.LOW = EX.FOLD.XL * EX.FOLD.YL
+        EX.FOLD.PART = EX.FOLD.XL * EX.FOLD.YH
+        EX.FOLD.HIGH = EX.FOLD.PART - INT(EX.FOLD.PART / 65536) * 65536
+        EX.FOLD.PART = EX.FOLD.XH * EX.FOLD.YL
+        EX.FOLD.HIGH = EX.FOLD.HIGH + (EX.FOLD.PART - INT(EX.FOLD.PART / 65536) * 65536)
+    GP.ELSE
+        EX.FOLD.LOW = EX.FOLD.XL + EX.FOLD.YL
+        EX.FOLD.HIGH = EX.FOLD.XH + EX.FOLD.YH
+    GP.ENDIF
+    EX.FOLD.HIGH = EX.FOLD.HIGH + INT(EX.FOLD.LOW / 65536)
+    EX.FOLD.HIGH = EX.FOLD.HIGH - INT(EX.FOLD.HIGH / 65536) * 65536
+    EX.FOLD.LOW = EX.FOLD.LOW - INT(EX.FOLD.LOW / 65536) * 65536
+    EX.R = EX.FOLD.HIGH * 65536 + EX.FOLD.LOW
+    RETURN
+
+## EX.FOLD.DIVIDE -- EX.A / EX.B or EX.A MOD EX.B in EX.R. The quotient rounds toward 0, and
+## the remainder has the sign of EX.A.
+EX.FOLD.DIVIDE:
+    EX.AA = EX.A
+    IF EX.AA < 0 THEN EX.AA = 0 - EX.AA
+    EX.BB = EX.B
+    IF EX.BB < 0 THEN EX.BB = 0 - EX.BB
+    EX.Q = 0
+    EX.FOLD.REST = EX.AA
+    EX.FOLD.BIT = 2147483648
+    FOR EX.J = 1 TO 32
+        GP.IF INT(EX.FOLD.REST / EX.FOLD.BIT) >= EX.BB THEN
+            EX.FOLD.REST = EX.FOLD.REST - EX.BB * EX.FOLD.BIT
+            EX.Q = EX.Q + EX.FOLD.BIT
+        GP.ENDIF
+        EX.FOLD.BIT = EX.FOLD.BIT / 2
+    NEXT EX.J
+    EX.R = EX.Q
+    IF (EX.A < 0) <> (EX.B < 0) THEN EX.R = 0 - EX.Q
+    GP.IF EX.O = K.EO.MOD THEN
+        EX.R = EX.FOLD.REST
+        IF EX.A < 0 THEN EX.R = 0 - EX.FOLD.REST
+    GP.ENDIF
+    IF EX.R < 0 THEN EX.NEGATIVE = 1
+    RETURN
+
+## EX.FOLD.ADDRESS -- @name + constant or @name - constant is an address too.
+EX.FOLD.ADDRESS:
+    EX.R = EX.VV(EX.IL) + EX.VV(EX.IR)
+    IF EX.O = K.EO.SUB THEN EX.R = EX.VV(EX.IL) - EX.VV(EX.IR) + 65536
+    EX.R = EX.R - INT(EX.R / 65536) * 65536
+    EX.VN = EX.VN - 1
+    EX.I = EX.IL
+    EX.VV(EX.IL) = EX.R
+    EX.VT%(EX.IL) = K.TY.WORD
+    RETURN
+
+## EX.FOLD.SHIFT -- EX.A shifted by the low byte of EX.B, at the width of the left side. <<
+## works on the bits. >> halves the whole number, so a signed EX.A keeps its sign.
+EX.FOLD.SHIFT:
+    EX.FOLD.LONG = 0
+    IF EX.VT%(EX.IL) = K.TY.LONG THEN EX.FOLD.LONG = 1
+    GOSUB EX.FOLD.SIZE
+    EX.R = EX.A
+    GP.IF EX.O = K.EO.SHL THEN
+        EX.WRAP = EX.R
+        GOSUB EX.FOLD.WRAP
+        EX.R = EX.WRAP
+    GP.ENDIF
+    EX.NEGATIVE = EX.VG%(EX.IL)
+    EX.N = EX.B - INT(EX.B / 256) * 256
+    IF EX.N > EX.FOLD.WIDTH THEN EX.N = EX.FOLD.WIDTH
+    IF EX.N = 0 THEN RETURN
+    FOR EX.J = 1 TO EX.N
+        IF EX.O = K.EO.SHL AND EX.R >= EX.FOLD.HALF THEN EX.R = EX.R - EX.FOLD.HALF
+        IF EX.O = K.EO.SHL THEN EX.R = EX.R * 2
+        IF EX.O = K.EO.SHR THEN EX.R = INT(EX.R / 2)
+    NEXT EX.J
+    RETURN
+
+## EX.FOLD.SIZE -- the width EX.FOLD.LONG gives: EX.FOLD.WIDTH bits, EX.FOLD.MAX the top
+## bits and EX.FOLD.HALF the first bit that reads as negative.
+EX.FOLD.SIZE:
+    EX.FOLD.WIDTH = 16
+    EX.FOLD.MAX = 65535
+    EX.FOLD.HALF = 32768
+    IF EX.FOLD.LONG = 0 THEN RETURN
+    EX.FOLD.WIDTH = 32
+    EX.FOLD.MAX = 4294967295
+    EX.FOLD.HALF = 2147483648
+    RETURN
+
+## EX.FOLD.WRAP -- EX.WRAP, a whole number from -4294967295 to 4294967295, made bits at the
+## width EX.FOLD.LONG gives.
+EX.FOLD.WRAP:
+    GOSUB EX.FOLD.SIZE
+    IF EX.WRAP < 0 THEN EX.WRAP = EX.FOLD.MAX + EX.WRAP + 1
+    IF EX.WRAP > EX.FOLD.MAX THEN EX.WRAP = EX.WRAP - INT(EX.WRAP / 65536) * 65536
+    RETURN
+
+## EX.FOLD.BITS -- AND, OR or XOR, a bit at a time.
+EX.FOLD.BITS:
+    EX.WRAP = EX.A
+    GOSUB EX.FOLD.WRAP
+    EX.X = EX.WRAP
+    EX.WRAP = EX.B
+    GOSUB EX.FOLD.WRAP
+    EX.Y = EX.WRAP
+    EX.R = 0
+    EX.M = 1
+    EX.NEGATIVE = 0
+    IF EX.VG%(EX.IL) = 1 OR EX.VG%(EX.IR) = 1 THEN EX.NEGATIVE = 1
+    FOR EX.J = 1 TO EX.FOLD.WIDTH
+        EX.XB = EX.X - INT(EX.X / 2) * 2 : EX.YB = EX.Y - INT(EX.Y / 2) * 2
+        IF EX.O = K.EO.AND THEN EX.R = EX.R + EX.M * EX.XB * EX.YB
+        IF EX.O = K.EO.OR THEN EX.R = EX.R + EX.M * SGN(EX.XB + EX.YB)
+        IF EX.O = K.EO.XOR THEN EX.R = EX.R + EX.M * (EX.XB + EX.YB - 2 * EX.XB * EX.YB)
+        EX.M = EX.M * 2 : EX.X = INT(EX.X / 2) : EX.Y = INT(EX.Y / 2)
+    NEXT EX.J
+    RETURN
+
+## EX.FOLD.NEGATE -- 0 minus the constant entry EX.I, as EX.R and EX.CG for EX.SETC.
+EX.FOLD.NEGATE:
+    GOSUB EX.WHOLE
+    EX.N = 0 - EX.WHOLE.VALUE
+    EX.R = EX.N
+    IF EX.N < 0 THEN EX.R = 4294967295 + EX.N + 1
+    IF EX.N < 0 AND EX.R >= 2147483648 THEN EX.CG = 1
+    RETURN
+
+## EX.WHOLE -- EX.WHOLE.VALUE, the whole number of the constant entry EX.I.
+EX.WHOLE:
+    EX.WHOLE.VALUE = EX.VV(EX.I)
+    IF EX.VG%(EX.I) = 0 THEN RETURN
+    EX.WHOLE.VALUE = EX.WHOLE.VALUE - 65536
+    IF EX.VT%(EX.I) = K.TY.LONG THEN EX.WHOLE.VALUE = EX.WHOLE.VALUE - 4294901760
+    RETURN
+
+## EX.TEXT -- EX.TEXT.RESULT$, the whole number EX.WHOLE.VALUE as STR$ shows it: a space or
+## a -, then the digits.
+## Trap: GPC's own STR$ shows a number of 10 digits in E notation.
+EX.TEXT:
+    EX.TEXT.N = EX.WHOLE.VALUE
+    IF EX.TEXT.N < 0 THEN EX.TEXT.N = 0 - EX.TEXT.N
+    EX.TEXT.RESULT$ = ""
+EX.TEXT.DIGIT:
+    EX.TEXT.Q = INT(EX.TEXT.N / 10)
+    EX.TEXT.RESULT$ = CHR$(48 + (EX.TEXT.N - EX.TEXT.Q * 10)) + EX.TEXT.RESULT$
+    EX.TEXT.N = EX.TEXT.Q
+    IF EX.TEXT.N > 0 THEN GOTO EX.TEXT.DIGIT
+    GP.IF EX.WHOLE.VALUE < 0 THEN
+        EX.TEXT.RESULT$ = "-" + EX.TEXT.RESULT$
+    GP.ELSE
+        EX.TEXT.RESULT$ = " " + EX.TEXT.RESULT$
+    GP.ENDIF
+    RETURN
+
+## EX.CONST.WORD -- stop the compile when the constant entry EX.I is a LONG, where a WORD is
+## wanted.
+EX.CONST.WORD:
+    IF EX.VT%(EX.I) = K.TY.LONG THEN ER.M$ = "NUMBER TOO BIG" : GOTO ER.STOP
+    RETURN

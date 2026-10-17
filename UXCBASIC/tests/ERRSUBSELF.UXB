@@ -1,0 +1,3 @@
+SUB F(N AS UBYTE)
+  CALL F(1)
+ENDSUB

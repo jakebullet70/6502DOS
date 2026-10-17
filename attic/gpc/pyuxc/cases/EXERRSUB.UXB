@@ -1,0 +1,2 @@
+DIM A(3) AS UBYTE
+PRINT A(3)

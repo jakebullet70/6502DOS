@@ -1,0 +1,36 @@
+' RECORD4 -- arrays of records: a size that is a power of 2, an element in an index, a local array
+TYPE ITEM
+  COUNT AS UBYTE
+  PRICE AS UWORD
+  NAME AS STRING * 6
+END TYPE
+TYPE PAIR
+  A AS UBYTE
+  B AS UWORD
+  C AS UBYTE
+END TYPE
+DIM STOCK(4) AS ITEM, I AS UBYTE, J AS UBYTE, PS(3) AS PAIR
+STOCK(3).COUNT = 4
+STOCK(3).PRICE = 600
+STOCK(1).PRICE = 1200
+FOR I = 0 TO 2
+  PS(I).A = I
+  PS(I).B = I * 1000
+  PS(I).C = 9 - I
+NEXT I
+J = 0
+FOR I = 0 TO 2
+  J = J + PS(I).A + PS(I).C
+NEXT I
+PRINT J; PS(2).B; PS(J - 26).B
+PRINT STOCK(PS(1).A + 2).COUNT; STOCK(3).PRICE + STOCK(J - 26).PRICE
+SUB LOCALS()
+  DIM L(3) AS ITEM, K AS UBYTE
+  FOR K = 0 TO 2
+    L(K).NAME = L(K).NAME + CHR$(65 + K)
+  NEXT K
+  PRINT L(0).NAME; L(1).NAME; L(2).NAME; PEEK(@L(2).NAME)
+END SUB
+LOCALS()
+LOCALS()
+PRINT "DONE"

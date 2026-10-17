@@ -1,0 +1,310 @@
+## UXC-FLOW.BL -- the statements IF, DO, REPEAT, EXIT, CONTINUE and GOTO. FOR is in
+## UXC-FOR.BL. Their jumps and conditions are in UXC-COND.BL.
+##
+## Blocks (NS.*): the nesting stack holds each open IF and loop, NS.D deep, from 1. An entry
+## keeps its line for errors, its exit list NS.EX() (EXIT, and the end of each IF branch),
+## its continue list NS.CT(), the false list of an IF in NS.FL(), and the top of a loop in
+## NS.TOP().
+
+## ---------------------------------------------------------------------------------
+## The nesting stack
+
+## NS.PUSH -- a new entry of kind NS.KN, for the line being compiled.
+NS.PUSH:
+    IF NS.D >= K.NS.MAX THEN ER.M$ = "NESTED TOO DEEP" : GOTO ER.STOP
+    NS.D = NS.D + 1
+    NS.K%(NS.D) = NS.KN : NS.NO%(NS.D) = LX.NO : NS.L$(NS.D) = LX.L$
+    NS.EX(NS.D) = 0 : NS.CT(NS.D) = 0 : NS.FL(NS.D) = 0 : NS.P%(NS.D) = 0 : NS.EL%(NS.D) = 0
+    RETURN
+
+## NS.TOPK -- the innermost entry must be of kind NS.KN, else the error CT.W$.
+NS.TOPK:
+    IF NS.D = 0 THEN ER.M$ = CT.W$ : GOTO ER.STOP
+    IF NS.K%(NS.D) <> NS.KN THEN ER.M$ = CT.W$ : GOTO ER.STOP
+    CT.I = NS.D
+    RETURN
+
+## NS.FIND -- NS.I, the innermost entry of kind NS.KN, or of any loop when NS.KN = 0; 0
+## when there is none.
+NS.FIND:
+    NS.I = NS.D
+NS.FIND.NEXT:
+    IF NS.I = 0 THEN RETURN
+    NS.KI = NS.K%(NS.I)
+    IF NS.KN = 0 AND NS.KI >= K.NS.DO THEN RETURN
+    IF NS.KI = NS.KN THEN RETURN
+    NS.I = NS.I - 1 : GOTO NS.FIND.NEXT
+
+## NS.HIDDEN -- NS.HV, the hidden WORD of depth NS.D in the variables: a FOR limit or a
+## REPEAT count. Each depth has its own, made when first needed.
+NS.HIDDEN:
+    GP.IF HV.AD(NS.D) < 0 THEN
+        SB.PLACE.SIZE = 2
+        GOSUB SB.PLACE.VARIABLE
+        HV.AD(NS.D) = SB.PLACE
+    GP.ENDIF
+    NS.HV = HV.AD(NS.D)
+    RETURN
+
+## CT.OPEN -- at the end of the source, a block still open is an error at its first line.
+CT.OPEN:
+    IF NS.D = 0 THEN RETURN
+    LX.NO = NS.NO%(NS.D) : LX.L$ = NS.L$(NS.D) : NS.KI = NS.K%(NS.D)
+    IF NS.KI = K.NS.IFB THEN ER.M$ = "IF WITHOUT ENDIF"
+    IF NS.KI = K.NS.DO THEN ER.M$ = "DO WITHOUT LOOP"
+    IF NS.KI = K.NS.FOR THEN ER.M$ = "FOR WITHOUT NEXT"
+    IF NS.KI = K.NS.REP THEN ER.M$ = "REPEAT WITHOUT END REPEAT"
+    IF NS.KI = K.NS.CASE THEN ER.M$ = "ON CASE WITHOUT END CASE"
+    GOTO ER.STOP
+
+## ---------------------------------------------------------------------------------
+## IF
+
+## IF c [THEN] ... [ELSEIF c [THEN]] ... [ELSE] ... ENDIF    a block
+## IF c THEN statement                                       on one line, with no ELSE
+## IF c THEN GOTO label, EXIT DO|FOR|REPEAT, or CONTINUE is one branch to the target, and
+## IF c GOTO label is the same.
+CT.IF:
+    GOSUB LX.NEXT : GOSUB CN.EXPR
+    CT.TH = 0
+    IF TK.T = K.TT.NAME AND TK.S$ = "THEN" THEN CT.TH = 1 : GOSUB LX.NEXT
+    GP.IF TK.T = K.TT.EOL THEN
+        JP.K = K.JP.LIST : JP.H = 0 : GOSUB CN.JF
+        NS.KN = K.NS.IFB : GOSUB NS.PUSH : NS.FL(NS.D) = JP.H
+        RETURN
+    GP.ENDIF
+    IF TK.T <> K.TT.NAME THEN GOTO ER.SYNTAX
+    IF TK.S$ = "GOTO" THEN GOSUB LX.NEXT : GOSUB CT.LABEL : GOSUB CN.JT : RETURN
+    IF CT.TH = 0 THEN GOTO ER.SYNTAX
+    IF TK.S$ = "EXIT" THEN GOSUB CT.EXIT.TO : GOSUB CN.JT : NS.EX(CT.I) = JP.H : RETURN
+    IF TK.S$ = "CONTINUE" THEN GOSUB CT.CONT.TO : GOSUB CN.JT : NS.CT(CT.I) = JP.H : RETURN
+    JP.K = K.JP.LIST : JP.H = 0 : GOSUB CN.JF
+    NS.KN = K.NS.IFL : GOSUB NS.PUSH : NS.FL(NS.D) = JP.H
+    GOSUB SM.STMT
+    IF NS.K%(NS.D) <> K.NS.IFL THEN ER.M$ = "BLOCK STATEMENT AFTER THEN" : GOTO ER.STOP
+    IF TK.T = K.TT.NAME AND TK.S$ = "ELSE" THEN ER.M$ = "NO ELSE IN A ONE-LINE IF" : GOTO ER.STOP
+    JP.L = NS.FL(NS.D) : GOSUB JP.HERE
+    NS.D = NS.D - 1
+    RETURN
+
+## CT.IF.NEXT -- the branch before ELSEIF or ELSE is done: jump to the end, and the false
+## jumps of its test come here.
+CT.IF.NEXT:
+    NS.KN = K.NS.IFB : GOSUB NS.TOPK
+    IF NS.EL%(CT.I) <> 0 THEN ER.M$ = SM.W$ + " AFTER ELSE" : GOTO ER.STOP
+    JP.K = K.JP.LIST : JP.H = NS.EX(CT.I) : JP.B = T.BRA.ID : GOSUB JP.BR : NS.EX(CT.I) = JP.H
+    JP.L = NS.FL(CT.I) : GOSUB JP.HERE : NS.FL(CT.I) = 0
+    RETURN
+
+CT.ELSEIF:
+    CT.W$ = "ELSEIF WITHOUT IF" : GOSUB CT.IF.NEXT
+    GOSUB LX.NEXT : GOSUB CN.EXPR
+    IF TK.T = K.TT.NAME AND TK.S$ = "THEN" THEN GOSUB LX.NEXT
+    IF TK.T <> K.TT.EOL THEN GOTO ER.SYNTAX
+    JP.K = K.JP.LIST : JP.H = 0 : GOSUB CN.JF : NS.FL(CT.I) = JP.H
+    RETURN
+
+CT.ELSE:
+    CT.W$ = "ELSE WITHOUT IF" : GOSUB CT.IF.NEXT
+    NS.EL%(CT.I) = 1
+    GOSUB LX.NEXT : RETURN
+
+## ENDIF, or END IF: the token is ENDIF or IF.
+CT.ENDIF:
+    CT.W$ = "ENDIF WITHOUT IF" : NS.KN = K.NS.IFB : GOSUB NS.TOPK
+    JP.L = NS.FL(CT.I) : GOSUB JP.HERE
+    JP.L = NS.EX(CT.I) : GOSUB JP.HERE
+    NS.D = NS.D - 1
+    GOSUB LX.NEXT : RETURN
+
+## ---------------------------------------------------------------------------------
+## GOTO, EXIT, CONTINUE
+
+CT.GOTO:
+    GOSUB LX.NEXT : GOSUB CT.LABEL
+    JP.B = T.BRA.ID : GOSUB JP.BR : RETURN
+
+## CT.LABEL -- the label named by the token is the target JP.*. A label not placed yet is
+## added, and placed when its line comes.
+CT.LABEL:
+    IF TK.T <> K.TT.NAME OR TK.M <> 0 THEN GOTO ER.SYNTAX
+    SM.N$ = TK.S$ : GOSUB NM.RESERVED
+    SY.NAME$ = SM.N$ : SY.OW = SB.CURRENT : GOSUB SY.FIND
+    GP.IF SY.R = 0 THEN
+        SY.KIND = K.SK.LABEL : SY.TYPE = 0 : SY.VAL = 0 : SY.FLAGS = 0 : GOSUB SY.ADD
+    GP.ELSE
+        GOSUB SY.GET
+        IF SY.KIND <> K.SK.LABEL THEN ER.M$ = "NOT A LABEL: " + SM.N$ : GOTO ER.STOP
+    GP.ENDIF
+    JP.K = K.JP.LABEL : JP.V = SY.R
+    IF (SY.FLAGS AND 1) <> 0 THEN JP.K = K.JP.CODE : JP.V = SY.VAL
+    GOSUB LX.NEXT : RETURN
+
+CT.EXIT:
+    GOSUB CT.EXIT.TO
+    JP.B = T.BRA.ID : GOSUB JP.BR : NS.EX(CT.I) = JP.H
+    RETURN
+
+## CT.EXIT.TO -- EXIT DO, EXIT FOR or EXIT REPEAT: the target is the exit list of that
+## loop, entry CT.I.
+CT.EXIT.TO:
+    GOSUB LX.NEXT
+    NS.KN = -1
+    GP.IF TK.T = K.TT.NAME THEN
+        IF TK.S$ = "DO" THEN NS.KN = K.NS.DO
+        IF TK.S$ = "FOR" THEN NS.KN = K.NS.FOR
+        IF TK.S$ = "REPEAT" THEN NS.KN = K.NS.REP
+    GP.ENDIF
+    IF NS.KN < 0 THEN GOTO ER.SYNTAX
+    GOSUB NS.FIND
+    IF NS.I = 0 THEN ER.M$ = "EXIT " + TK.S$ + " WITHOUT " + TK.S$ : GOTO ER.STOP
+    CT.I = NS.I : JP.K = K.JP.LIST : JP.H = NS.EX(CT.I)
+    GOSUB LX.NEXT : RETURN
+
+CT.CONT:
+    GOSUB CT.CONT.TO
+    JP.B = T.BRA.ID : GOSUB JP.BR : NS.CT(CT.I) = JP.H
+    RETURN
+
+## CT.CONT.TO -- CONTINUE: the target is the continue list of the innermost loop, which
+## comes to its test, or its step.
+CT.CONT.TO:
+    NS.KN = 0 : GOSUB NS.FIND
+    IF NS.I = 0 THEN ER.M$ = "CONTINUE WITHOUT A LOOP" : GOTO ER.STOP
+    CT.I = NS.I : JP.K = K.JP.LIST : JP.H = NS.CT(CT.I)
+    GOSUB LX.NEXT : RETURN
+
+## ---------------------------------------------------------------------------------
+## DO ... LOOP
+##
+##   DO                          DO WHILE|UNTIL a
+##   top: body                   JMP test
+##   cont: [bottom test]         top: body
+##         BRA top               cont: [bottom test, out when it fails]
+##   out:                        test: top test, back to top when it holds
+##                               out:
+##
+## A top test is compiled at the bottom, so it costs no more per pass than a bottom test.
+## Its text is kept, and LOOP compiles it again from the DO line. DO compiles it once too,
+## and throws the code away, so that an error in it is found on its own line.
+
+CT.DO:
+    NS.KN = K.NS.DO : GOSUB NS.PUSH : CT.I = NS.D
+    GOSUB LX.NEXT
+    GP.IF TK.T = K.TT.NAME AND (TK.S$ = "WHILE" OR TK.S$ = "UNTIL") THEN
+        NS.SN%(CT.I) = 0 : IF TK.S$ = "WHILE" THEN NS.SN%(CT.I) = 1
+        JP.K = K.JP.LIST : JP.H = 0 : JP.B = T.BRA.ID : GOSUB JP.BR : NS.FL(CT.I) = JP.H
+        NS.P%(CT.I) = LX.P
+        CT.CB = CB.N : CT.FX = FX.N
+        GOSUB LX.NEXT : GOSUB CN.EXPR
+        JP.K = K.JP.LIST : JP.H = 0 : GOSUB CN.JT
+        CB.N = CT.CB : FX.N = CT.FX
+    GP.ENDIF
+    NS.TOP(CT.I) = CB.N
+    RETURN
+
+CT.LOOP:
+    CT.W$ = "LOOP WITHOUT DO" : NS.KN = K.NS.DO : GOSUB NS.TOPK
+    JP.L = NS.CT(CT.I) : GOSUB JP.HERE
+    GOSUB LX.NEXT
+    CT.BT = 0
+    GP.IF TK.T = K.TT.NAME AND (TK.S$ = "WHILE" OR TK.S$ = "UNTIL") THEN
+        CT.SN = 0 : IF TK.S$ = "WHILE" THEN CT.SN = 1
+        GOSUB LX.NEXT : GOSUB CN.EXPR
+        GP.IF NS.P%(CT.I) = 0 THEN
+            JP.K = K.JP.CODE : JP.V = NS.TOP(CT.I)
+            IF CT.SN = 1 THEN GOSUB CN.JT
+            IF CT.SN = 0 THEN GOSUB CN.JF
+        GP.ELSE
+            JP.K = K.JP.LIST : JP.H = NS.EX(CT.I)
+            IF CT.SN = 1 THEN GOSUB CN.JF
+            IF CT.SN = 0 THEN GOSUB CN.JT
+            NS.EX(CT.I) = JP.H
+        GP.ENDIF
+        CT.BT = 1
+    GP.ENDIF
+    IF TK.T <> K.TT.EOL THEN GOTO ER.SYNTAX
+    GP.IF NS.P%(CT.I) > 0 THEN
+        JP.L = NS.FL(CT.I) : GOSUB JP.HERE
+        CT.L$ = LX.L$ : CT.NO = LX.NO : CT.N = LX.N : CT.P = LX.P
+        LX.L$ = NS.L$(CT.I) : LX.NO = NS.NO%(CT.I) : LX.N = LEN(LX.L$) : LX.P = NS.P%(CT.I)
+        EX.VN = 0 : EX.SD = 0
+        GOSUB LX.NEXT : GOSUB CN.EXPR
+        JP.K = K.JP.CODE : JP.V = NS.TOP(CT.I)
+        IF NS.SN%(CT.I) = 1 THEN GOSUB CN.JT
+        IF NS.SN%(CT.I) = 0 THEN GOSUB CN.JF
+        LX.L$ = CT.L$ : LX.NO = CT.NO : LX.N = CT.N : LX.P = CT.P : TK.T = K.TT.EOL
+    GP.ELSE
+        IF CT.BT = 0 THEN JP.V = NS.TOP(CT.I) : JP.B = T.BRA.ID : GOSUB JP.BACK
+    GP.ENDIF
+    JP.L = NS.EX(CT.I) : GOSUB JP.HERE
+    NS.D = NS.D - 1
+    RETURN
+
+## ---------------------------------------------------------------------------------
+## REPEAT [n] ... END REPEAT
+##
+## The count goes into the hidden word of the depth, and counts down: a BYTE count is
+## DEC c / BNE top. A WORD count is set by T_RPTW_SET and counts down a byte at a time. A
+## count of 0 skips the body. With no count the loop runs until EXIT REPEAT.
+
+CT.REPEAT:
+    NS.KN = K.NS.REP : GOSUB NS.PUSH : CT.I = NS.D
+    NS.VT%(CT.I) = 0
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.EOL THEN GOSUB RP.COUNT
+    NS.TOP(CT.I) = CB.N
+    RETURN
+
+RP.COUNT:
+    GOSUB EX.EXPR
+    GOSUB NS.HIDDEN : NS.VA(CT.I) = NS.HV
+    EX.I = EX.VN - 1
+    GP.IF EX.VK%(EX.I) = K.EK.CONST THEN
+        GOSUB EX.CONST.WORD
+        RP.N = EX.VV(EX.I) : EX.VN = EX.VN - 1
+        IF RP.N = 0 THEN JP.K = K.JP.LIST : JP.H = NS.EX(CT.I) : JP.B = T.BRA.ID : GOSUB JP.BR : NS.EX(CT.I) = JP.H : RETURN
+        GP.IF RP.N < 256 THEN
+            NS.VT%(CT.I) = K.TY.BYTE
+            SL.S%(0) = K.SEC.CONST : SL.V(0) = RP.N : GP.SUB EMIT, T.LDB.C.ID
+            SL.S%(0) = K.SEC.VAR : SL.V(0) = NS.HV : GP.SUB EMIT, T.STB.V.ID
+            RETURN
+        GP.ENDIF
+        ## What T_RPTW_SET would store: the high byte is one more when the low byte is not 0.
+        NS.VT%(CT.I) = K.TY.WORD
+        RP.HI = INT(RP.N / 256) : RP.LO = RP.N - RP.HI * 256
+        IF RP.LO <> 0 THEN RP.HI = RP.HI + 1
+        IF RP.HI = 256 THEN RP.HI = 0
+        SL.S%(0) = K.SEC.CONST : SL.V(0) = RP.LO + 256 * RP.HI : GP.SUB EMIT, T.LDW.C.ID
+        SL.S%(0) = K.SEC.VAR : SL.V(0) = NS.HV : GP.SUB EMIT, T.STW.V.ID
+        RETURN
+    GP.ENDIF
+    GP.IF EX.VT%(EX.I) <> K.TY.BYTE THEN
+        NS.VT%(CT.I) = K.TY.WORD : GOSUB EX.TOW
+        SL.S%(0) = K.SEC.VAR : SL.V(0) = NS.HV : GP.SUB EMIT, T.RPTW.SET.ID
+    GP.ELSE
+        NS.VT%(CT.I) = K.TY.BYTE : GOSUB EX.TOB
+        SL.S%(0) = K.SEC.VAR : SL.V(0) = NS.HV : GP.SUB EMIT, T.STB.V.ID
+        GP.SUB EMIT, T.TSTB.ID
+    GP.ENDIF
+    JP.K = K.JP.LIST : JP.H = NS.EX(CT.I) : JP.B = T.BEQ.ID : GOSUB JP.BR : NS.EX(CT.I) = JP.H
+    RETURN
+
+## END REPEAT, or ENDREPEAT: the token is REPEAT or ENDREPEAT.
+CT.ENDREP:
+    CT.W$ = "END REPEAT WITHOUT REPEAT" : NS.KN = K.NS.REP : GOSUB NS.TOPK
+    JP.L = NS.CT(CT.I) : GOSUB JP.HERE
+    JP.V = NS.TOP(CT.I)
+    GP.IF NS.VT%(CT.I) = 0 THEN
+        JP.B = T.BRA.ID : GOSUB JP.BACK
+    GP.ELSE
+        SL.S%(0) = K.SEC.VAR : SL.V(0) = NS.VA(CT.I) : GP.SUB EMIT, T.DECB.V.ID
+        JP.B = T.BNE.ID : GOSUB JP.BACK
+        GP.IF NS.VT%(CT.I) = K.TY.WORD THEN
+            SL.S%(0) = K.SEC.VAR : SL.V(0) = NS.VA(CT.I) + 1 : GP.SUB EMIT, T.DECB.V.ID
+            JP.B = T.BNE.ID : GOSUB JP.BACK
+        GP.ENDIF
+    GP.ENDIF
+    JP.L = NS.EX(CT.I) : GOSUB JP.HERE
+    NS.D = NS.D - 1
+    GOSUB LX.NEXT : RETURN

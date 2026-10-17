@@ -1,0 +1,258 @@
+## ============================================================================
+## UXCEDIT-CLIP.BL -- the clipboard: copy, cut and paste. The clipboard is document 3 of the
+## store, and holds the copied text as lines.
+##
+## #INCLUDE it after UXCEDIT-VIEW.BL. Call CLIP.SETUP once, after DOC.SETUP.
+##
+## A copy of a selection keeps its line breaks. A selection over N line breaks is N + 1 lines
+## in the clipboard, the first and the last cut at the selection's columns. A copy with no
+## selection takes the cursor line whole, and its paste puts the line below the cursor line.
+##
+## A copy that does not fit bank 40 is written to the file UXCEDIT.CLP in the current directory
+## instead, and bank 40 is emptied. A paste then reads that file.
+##
+## Interface:
+##
+##   CLIP.LINES%     the lines in the clipboard. 0 before the first copy.
+##   CLIP.ON.DISK%   -1 while the clipboard is the file UXCEDIT.CLP
+##   CLIP.MESSAGE%   out of CLIP.COPY, CLIP.CUT and CLIP.PASTE: 0, or a message for the
+##                   program to show:
+##
+##                     1 copied                  2 line copied          3 clipboard empty
+##                     4 UXCEDIT.CLP not written   5 line too long        6 document full
+##                     7 copied to UXCEDIT.CLP     8 UXCEDIT.CLP not found
+##
+##                   After message 4 the clipboard is empty, and a cut leaves the document
+##                   as it was.
+##
+## Routines: CLIP.SETUP, CLIP.COPY, CLIP.CUT, CLIP.PASTE.
+##
+## WARNING: CLIP.COPY and CLIP.PASTE switch the store to document 3 and back. A routine that
+## keeps state of the store's document across a call to them reads it again afterwards.
+## ============================================================================
+
+## CLIP.SETUP -- empty the clipboard. Call it once.
+CLIP.SETUP:
+  CLIP.LINES% = 0 : CLIP.MESSAGE% = 0 : CLIP.WHOLE.LINE% = 0 : CLIP.SOURCE% = 0 : CLIP.TARGET% = 0
+  CLIP.STORE.LINE% = 0 : CLIP.FETCH.LINE% = 0 : CLIP.CURSOR.LENGTH% = 0
+  CLIP.FIRST.LENGTH% = 0 : CLIP.LAST.LENGTH% = 0 : CLIP.CURSOR.COL% = 0
+  CLIP.ON.DISK% = 0 : CLIP.FILE.NAME$ = "UXCEDIT.CLP" : CLIP.KEPT.COUNT% = 0 : CLIP.SPILL.CHAR% = 0
+  RETURN
+
+## CLIP.COPY -- copy the selection into the clipboard, or the cursor line when there is no
+## selection. The selection stays.
+CLIP.COPY:
+  IF DOC.EDIT.DIRTY% <> 0 THEN GOSUB DOC.EDIT.CLOSE
+  CLIP.MESSAGE% = 1 : CLIP.WHOLE.LINE% = 0
+  IF VIEW.SELECT.ON% <> 0 THEN GOSUB VIEW.SELECT.ORDER
+  IF VIEW.SELECT.ON% = 0 THEN GOSUB CLIP.LINE.RANGE
+  GOSUB CLIP.STORE : DOC.LINE% = VIEW.CURSOR.LINE% : GOSUB DOC.FETCH
+  RETURN
+
+## The cursor line, whole, as the range CLIP.STORE copies.
+CLIP.LINE.RANGE:
+  CLIP.WHOLE.LINE% = -1 : CLIP.MESSAGE% = 2
+  VIEW.SELECT.FIRST.LINE% = VIEW.CURSOR.LINE% : VIEW.SELECT.FIRST.COL% = 0
+  VIEW.SELECT.LAST.LINE% = VIEW.CURSOR.LINE% : VIEW.SELECT.LAST.COL% = PEEK(DOC.EDIT.ADDR)
+  RETURN
+
+## Copy the text from VIEW.SELECT.FIRST.LINE% and VIEW.SELECT.FIRST.COL% up to
+## VIEW.SELECT.LAST.LINE% and VIEW.SELECT.LAST.COL% into the clipboard, a line at a time
+## through the edit buffer.
+CLIP.STORE:
+  CLIP.SOURCE% = DOC.NUMBER% : DOC.NEXT.NUMBER% = 3 : GOSUB DOC.SELECT.ONLY : GOSUB DOC.INIT
+  CLIP.ON.DISK% = 0 : CLIP.STORE.LINE% = VIEW.SELECT.FIRST.LINE%
+  IF VIEW.SELECT.LAST.LINE% - VIEW.SELECT.FIRST.LINE% >= DOC.LINE.LIMIT% THEN GOTO CLIP.STORE.FULL
+  GP.DO
+    DOC.NEXT.NUMBER% = CLIP.SOURCE%
+    GOSUB DOC.SELECT.ONLY : DOC.LINE% = CLIP.STORE.LINE% : GOSUB DOC.FETCH
+    IF CLIP.STORE.LINE% = VIEW.SELECT.LAST.LINE% THEN POKE DOC.EDIT.ADDR, VIEW.SELECT.LAST.COL%
+    IF CLIP.STORE.LINE% = VIEW.SELECT.FIRST.LINE% THEN GOSUB CLIP.FIRST.CUT
+    DOC.NEXT.NUMBER% = 3 : GOSUB DOC.SELECT.ONLY
+    IF LINE.COUNT% >= DOC.LINE.LIMIT% THEN DOC.FULL% = -1
+    IF DOC.FULL% = 0 THEN GOSUB DOC.LOAD.APPEND
+    IF DOC.FULL% <> 0 THEN GP.EXITDO
+    IF CLIP.STORE.LINE% = VIEW.SELECT.LAST.LINE% THEN GP.EXITDO
+    CLIP.STORE.LINE% = CLIP.STORE.LINE% + 1
+  GP.LOOP
+  CLIP.LINES% = LINE.COUNT% : IF DOC.FULL% <> 0 THEN GOTO CLIP.STORE.FULL
+  DOC.NEXT.NUMBER% = CLIP.SOURCE% : GOSUB DOC.SELECT.ONLY
+  RETURN
+
+## The selection does not fit bank 40. Empty it, and write the selection to UXCEDIT.CLP.
+CLIP.STORE.FULL:
+  GOSUB DOC.INIT : CLIP.LINES% = 0
+  DOC.NEXT.NUMBER% = CLIP.SOURCE% : GOSUB DOC.SELECT.ONLY
+  DOC.SAVE.ERROR% = 0 : DOC.FILE.PETSCII% = 0 : CLIP.OPEN.NAME$ = "@:" + CLIP.FILE.NAME$ + ",S,W"
+  OPEN 2, 8, 2, CLIP.OPEN.NAME$
+  ## ---- the first line from the selection's first column ----
+  DOC.LINE% = VIEW.SELECT.FIRST.LINE% : GOSUB DOC.FETCH
+  GOSUB CLIP.FIRST.CUT : GOSUB CLIP.SPILL.EDIT
+  ## ---- the lines between, whole ----
+  DOC.WALK.LINE% = VIEW.SELECT.FIRST.LINE% + 1 : DOC.WALK.END% = VIEW.SELECT.LAST.LINE%
+  IF DOC.WALK.END% > DOC.WALK.LINE% THEN GOSUB DOC.SAVE.LINES
+  ## ---- the last line up to the selection's last column ----
+  DOC.LINE% = VIEW.SELECT.LAST.LINE% : GOSUB DOC.FETCH
+  POKE DOC.EDIT.ADDR, VIEW.SELECT.LAST.COL% : GOSUB CLIP.SPILL.EDIT
+  CLOSE 2
+  CLIP.MESSAGE% = 4 : IF DOC.SAVE.ERROR% <> 0 THEN RETURN
+  CLIP.MESSAGE% = 7 : CLIP.ON.DISK% = -1 : CLIP.LINES% = VIEW.SELECT.LAST.LINE% - VIEW.SELECT.FIRST.LINE% + 1
+  RETURN
+
+## Write the edit buffer to file 2 as ASCII, then CR LF. The case swap is DOC.SAVE.LINES's.
+CLIP.SPILL.EDIT:
+  IF PEEK(DOC.EDIT.ADDR) = 0 THEN GOTO CLIP.SPILL.END
+  FOR CLIP.SPILL.COLUMN = 1 TO PEEK(DOC.EDIT.ADDR)
+    CLIP.SPILL.CHAR% = PEEK(DOC.EDIT.ADDR + CLIP.SPILL.COLUMN)
+    IF CLIP.SPILL.CHAR% >= 65 AND CLIP.SPILL.CHAR% <= 90 THEN CLIP.SPILL.CHAR% = CLIP.SPILL.CHAR% + 32
+    IF CLIP.SPILL.CHAR% >= 193 AND CLIP.SPILL.CHAR% <= 218 THEN CLIP.SPILL.CHAR% = CLIP.SPILL.CHAR% - 128
+    PRINT#2, CHR$(CLIP.SPILL.CHAR%);
+  NEXT CLIP.SPILL.COLUMN
+CLIP.SPILL.END:
+  PRINT#2, CHR$(13); CHR$(10);
+  RETURN
+
+## Keep the edit buffer's characters from VIEW.SELECT.FIRST.COL% on.
+CLIP.FIRST.CUT:
+  IF VIEW.SELECT.FIRST.COL% = 0 THEN RETURN
+  DOC.EDIT.COLUMN% = VIEW.SELECT.FIRST.COL% : GOSUB DOC.EDIT.SPLIT : GOSUB DOC.EDIT.FROM.BLOCK
+  RETURN
+
+## CLIP.CUT -- copy as CLIP.COPY does, then take out the selection, or the cursor line when
+## there is no selection.
+CLIP.CUT:
+  GOSUB CLIP.COPY   : IF CLIP.MESSAGE% = 4 THEN RETURN
+  CLIP.MESSAGE% = 0 : IF VIEW.SELECT.ON% <> 0 THEN GOTO CLIP.CUT.SELECTION
+  GOSUB VIEW.DELETE.LINE
+  RETURN
+CLIP.CUT.SELECTION:
+  GOSUB VIEW.SELECTION.DELETE
+  RETURN
+
+## CLIP.PASTE -- put the clipboard's text in at the cursor. A selection is taken out first. A
+## line copied with no selection goes in below the cursor line, and the cursor goes to its
+## column 0. Other text goes in at the cursor, and the cursor goes past it.
+CLIP.PASTE:
+  CLIP.MESSAGE% = 3 : IF CLIP.LINES% = 0 THEN RETURN
+  CLIP.MESSAGE% = 0 : VIEW.SELECTION.DELETED% = -1
+  IF VIEW.SELECT.ON% <> 0 THEN GOSUB VIEW.SELECTION.DELETE
+  IF VIEW.SELECTION.DELETED% = 0 THEN RETURN
+  IF DOC.EDIT.DIRTY% <> 0 THEN GOSUB DOC.EDIT.CLOSE
+  CLIP.MESSAGE% = 6 : IF LINE.COUNT% + CLIP.LINES% > DOC.LINE.LIMIT% THEN RETURN
+  CLIP.MESSAGE% = 0 : VIEW.CHANGE.LINE% = VIEW.CURSOR.LINE%
+  IF CLIP.ON.DISK% <> 0 THEN GOTO CLIP.PASTE.DISK
+  IF CLIP.WHOLE.LINE% <> 0 THEN GOTO CLIP.PASTE.LINE
+  ## ---- refuse a paste that makes a line of over 250 characters ----
+  CLIP.CURSOR.LENGTH% = PEEK(DOC.EDIT.ADDR) : CLIP.FETCH.LINE% = 0 : GOSUB CLIP.FETCH
+  CLIP.FIRST.LENGTH% = PEEK(DOC.EDIT.ADDR)  : CLIP.FETCH.LINE% = CLIP.LINES% - 1
+  GOSUB CLIP.FETCH : CLIP.LAST.LENGTH% = PEEK(DOC.EDIT.ADDR) : CLIP.MESSAGE% = 5
+  IF CLIP.LINES% = 1 AND CLIP.CURSOR.LENGTH% + CLIP.FIRST.LENGTH% > 250 THEN GOTO CLIP.PASTE.REFUSED
+  IF CLIP.LINES% > 1 AND VIEW.CURSOR.COL% + CLIP.FIRST.LENGTH% > 250 THEN GOTO CLIP.PASTE.REFUSED
+  IF CLIP.LINES% > 1 AND CLIP.LAST.LENGTH% + CLIP.CURSOR.LENGTH% - VIEW.CURSOR.COL% > 250 THEN GOTO CLIP.PASTE.REFUSED
+  CLIP.MESSAGE% = 0 : GOSUB CLIP.PASTE.NOTE
+  ## ---- the cursor line's characters from the cursor on, into the block buffer ----
+  DOC.LINE% = VIEW.CURSOR.LINE%       : GOSUB DOC.FETCH
+  DOC.EDIT.COLUMN% = VIEW.CURSOR.COL% : GOSUB DOC.EDIT.SPLIT
+  ## ---- the clipboard's last line with those characters after it ----
+  GOSUB CLIP.FETCH : CLIP.CURSOR.COL% = CLIP.LAST.LENGTH%
+  IF CLIP.LINES% = 1 THEN CLIP.CURSOR.COL% = CLIP.CURSOR.COL% + VIEW.CURSOR.COL%
+  GOSUB DOC.EDIT.APPEND : IF CLIP.LINES% > 1 THEN GOSUB CLIP.PASTE.MIDDLE
+  ## ---- the cursor line up to the cursor, with the edit buffer's characters after it ----
+  GOSUB DOC.EDIT.TO.BLOCK : DOC.LINE% = VIEW.CURSOR.LINE%
+  GOSUB DOC.FETCH : POKE DOC.EDIT.ADDR, VIEW.CURSOR.COL%
+  GOSUB DOC.EDIT.APPEND : GOSUB DOC.COMMIT
+  VIEW.CURSOR.LINE% = VIEW.CURSOR.LINE% + CLIP.LINES% - 1 : VIEW.CURSOR.COL% = CLIP.CURSOR.COL%
+  GOTO CLIP.PASTE.SHOW
+
+## Paste UXCEDIT.CLP. Its lines are read in after the document's last line, joined to the
+## cursor line's two parts, and moved into place below the cursor line.
+##
+## WARNING: DOC.APPENDFILE sets DOC.FULL% when the document reaches its line limit, so the
+## paste needs a line to spare. DOC.FULL% after the read then means the arena refused a line.
+CLIP.PASTE.DISK:
+  CLIP.MESSAGE% = 6 : IF LINE.COUNT% + CLIP.LINES% >= DOC.LINE.LIMIT% THEN RETURN
+  CLIP.KEPT.COUNT% = LINE.COUNT% : DOC.FILE.NAME$ = CLIP.FILE.NAME$ : DOC.FILE.PETSCII% = 0
+  GOSUB DOC.APPENDFILE
+  IF DOC.FULL% <> 0 THEN GOTO CLIP.PASTE.DROP
+  CLIP.MESSAGE% = 8 : IF LINE.COUNT% - CLIP.KEPT.COUNT% <> CLIP.LINES% THEN GOTO CLIP.PASTE.DROP
+  ## ---- refuse a paste that makes a line of over 250 characters ----
+  DOC.LINE% = CLIP.KEPT.COUNT%  : GOSUB DOC.FETCH : CLIP.FIRST.LENGTH% = PEEK(DOC.EDIT.ADDR)
+  DOC.LINE% = LINE.COUNT% - 1   : GOSUB DOC.FETCH : CLIP.LAST.LENGTH% = PEEK(DOC.EDIT.ADDR)
+  DOC.LINE% = VIEW.CURSOR.LINE% : GOSUB DOC.FETCH : CLIP.CURSOR.LENGTH% = PEEK(DOC.EDIT.ADDR)
+  CLIP.MESSAGE% = 5
+  IF VIEW.CURSOR.COL% + CLIP.FIRST.LENGTH% > 250 THEN GOTO CLIP.PASTE.DROP
+  IF CLIP.LAST.LENGTH% + CLIP.CURSOR.LENGTH% - VIEW.CURSOR.COL% > 250 THEN GOTO CLIP.PASTE.DROP
+  CLIP.MESSAGE% = 0 : GOSUB CLIP.PASTE.NOTE
+  ## ---- the clipboard's last line with the cursor line's characters from the cursor on after it ----
+  DOC.LINE% = VIEW.CURSOR.LINE%       : GOSUB DOC.FETCH
+  DOC.EDIT.COLUMN% = VIEW.CURSOR.COL% : GOSUB DOC.EDIT.SPLIT
+  DOC.LINE% = LINE.COUNT% - 1         : GOSUB DOC.FETCH
+  GOSUB DOC.EDIT.APPEND               : GOSUB DOC.COMMIT
+  ## ---- the cursor line up to the cursor with the clipboard's first line after it ----
+  DOC.LINE% = CLIP.KEPT.COUNT%  : GOSUB DOC.FETCH : GOSUB DOC.EDIT.TO.BLOCK
+  DOC.LINE% = VIEW.CURSOR.LINE% : GOSUB DOC.FETCH : POKE DOC.EDIT.ADDR, VIEW.CURSOR.COL%
+  GOSUB DOC.EDIT.APPEND         : GOSUB DOC.COMMIT
+  ## ---- the clipboard's first line is used; the others move to below the cursor line ----
+  DOC.SLOT.LINE% = CLIP.KEPT.COUNT% : GOSUB DOC.SLOT.CLOSE
+  DOC.ROTATE.FIRST% = VIEW.CURSOR.LINE% + 1 : DOC.ROTATE.SPLIT% = CLIP.KEPT.COUNT% : DOC.ROTATE.END% = LINE.COUNT%
+  GOSUB DOC.SLOT.ROTATE
+  VIEW.CURSOR.LINE% = VIEW.CURSOR.LINE% + CLIP.LINES% - 1 : VIEW.CURSOR.COL% = CLIP.LAST.LENGTH%
+  GOTO CLIP.PASTE.SHOW
+
+## Take back the lines a refused paste of UXCEDIT.CLP read in.
+CLIP.PASTE.DROP:
+  LINE.COUNT% = CLIP.KEPT.COUNT%
+
+## Put the cursor line back in the edit buffer.
+CLIP.PASTE.REFUSED:
+  DOC.LINE% = VIEW.CURSOR.LINE% : GOSUB DOC.FETCH
+  RETURN
+
+## Store the edit buffer as a new line below the cursor line, then each middle line of the
+## clipboard as a new line above it, the last first. The clipboard's first line is left in the
+## edit buffer.
+CLIP.PASTE.MIDDLE:
+  GP.DO
+    DOC.SLOT.LINE% = VIEW.CURSOR.LINE% + 1
+    GOSUB DOC.SLOT.OPEN : DOC.LINE% = DOC.SLOT.LINE%
+    GOSUB DOC.COMMIT    : CLIP.FETCH.LINE% = CLIP.FETCH.LINE% - 1
+    GOSUB CLIP.FETCH    : IF CLIP.FETCH.LINE% = 0 THEN GP.EXITDO
+  GP.LOOP
+  RETURN
+
+## The line copied whole goes in below the cursor line.
+CLIP.PASTE.LINE:
+  GOSUB UNDO.GROUP.BEGIN : UNDO.LINE% = VIEW.CURSOR.LINE% + 1
+  GOSUB UNDO.NOTE.ADD    : CLIP.FETCH.LINE% = 0
+  GOSUB CLIP.FETCH       : DOC.SLOT.LINE% = VIEW.CURSOR.LINE% + 1
+  GOSUB DOC.SLOT.OPEN    : DOC.LINE% = DOC.SLOT.LINE%
+  GOSUB DOC.COMMIT       : VIEW.CURSOR.LINE% = DOC.SLOT.LINE% : VIEW.CURSOR.COL% = 0
+
+## Open the cursor line and paint the lines the paste changed.
+CLIP.PASTE.SHOW:
+  DOC.LINE% = VIEW.CURSOR.LINE% : GOSUB DOC.EDIT.OPEN : GOSUB VIEW.AFTER.CHANGE
+  RETURN
+
+## Note a paste of CLIP.LINES% lines at the cursor: the cursor line changes, and a line is added
+## below it for each line after the first. A paste with more records than the ring keeps is not
+## noted, and the rings are emptied.
+CLIP.PASTE.NOTE:
+  GOSUB UNDO.GROUP.BEGIN : IF CLIP.LINES% > UNDO.RING.DEPTH% THEN GOTO CLIP.PASTE.UNNOTED
+  UNDO.LINE% = VIEW.CURSOR.LINE% : GOSUB UNDO.NOTE.REPLACE
+  IF CLIP.LINES% = 1 THEN RETURN
+  GP.DO CLIP.LINES% - 1
+    UNDO.LINE% = VIEW.CURSOR.LINE% + 1
+    GOSUB UNDO.NOTE.ADD
+  GP.LOOP
+  RETURN
+CLIP.PASTE.UNNOTED:
+  GOSUB UNDO.CLEAR
+  RETURN
+
+## Copy line CLIP.FETCH.LINE% of the clipboard into the edit buffer. The store is back on the
+## document it was on afterwards.
+CLIP.FETCH:
+  CLIP.TARGET% = DOC.NUMBER% : DOC.NEXT.NUMBER% = 3
+  GOSUB DOC.SELECT.ONLY : DOC.LINE% = CLIP.FETCH.LINE%
+  GOSUB DOC.FETCH : DOC.NEXT.NUMBER% = CLIP.TARGET% : GOSUB DOC.SELECT.ONLY
+  RETURN

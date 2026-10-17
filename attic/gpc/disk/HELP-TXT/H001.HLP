@@ -1,0 +1,17 @@
+@What UXCBASIC is
+.
+=WHAT UXCBASIC IS
+.
+.UXCBASIC is a small compiled BASIC for the system programs and utilities of
+.the Unix-style X16. The compiler, UXC, turns one source file into a native
+.65C02 PRG. UXCEDIT is the editor.
+.
+.This help is a skeleton. Each topic is written when its command is built.
+.
+.See Using this help, Types and Compiling from UXCEDIT.
+.
+=SEE ALSO
+.
+>3|Using this help
+>5|Types
+>48|Compiling from UXCEDIT

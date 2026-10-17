@@ -1,0 +1,65 @@
+' KEYS.UXI: the codes the UXDOS16 console gives for keys, and the modifier bits.
+'
+' A key gives one character, or two: 0, then the IBM PC BIOS scan code of an extended key.
+' The SCAN_ names are those second characters. GETKEY() gives 0 for an extended key, and the
+' next GETKEY() gives its scan code.
+'
+' It holds constants and a BIND only, so it adds no bytes to a program. Include it in any file, with or
+' without DOS.UXI.
+'
+' Checklist: the codes come from kbd_get and its tables in src/asm/console.s. Change both
+' together.
+
+NAMESPACE KEYS
+  ' GETKEY under KEYS.
+  BIND GETKEY GETKEY
+
+  ' One-character keys. Ctrl+A to Ctrl+Z give 1 to 26, Ctrl+[ 27, Ctrl+\ 28, Ctrl+] 29,
+  ' Ctrl+6 30, Ctrl+- 31.
+  CONST EXTENDED AS UBYTE = 0
+  CONST BACKSPACE AS UBYTE = 8, TAB AS UBYTE = 9, ENTER AS UBYTE = 13, ESC AS UBYTE = 27
+  CONST SPACE AS UBYTE = 32
+  CONST CTRL_A AS UBYTE = 1, CTRL_6 AS UBYTE = 30, CTRL_MINUS AS UBYTE = 31
+
+  ' The modifier bits that API_CON_STATUS returns in X.
+  CONST MOD_SHIFT AS UBYTE = $01, MOD_CAPS AS UBYTE = $04, MOD_ALT AS UBYTE = $40
+  CONST MOD_CTRL AS UBYTE = $80
+
+  ' Scan codes: the cursor keys and the editing keys.
+  CONST SCAN_HOME AS UBYTE = $47, SCAN_UP AS UBYTE = $48, SCAN_PGUP AS UBYTE = $49
+  CONST SCAN_LEFT AS UBYTE = $4B, SCAN_RIGHT AS UBYTE = $4D
+  CONST SCAN_END AS UBYTE = $4F, SCAN_DOWN AS UBYTE = $50, SCAN_PGDN AS UBYTE = $51
+  CONST SCAN_INSERT AS UBYTE = $52, SCAN_DELETE AS UBYTE = $53
+
+  ' Scan codes: the cursor keys with Ctrl. Ctrl+Up, Ctrl+Down, Ctrl+Insert and Ctrl+Delete
+  ' give the scan code without Ctrl.
+  CONST SCAN_CTRL_LEFT AS UBYTE = $73, SCAN_CTRL_RIGHT AS UBYTE = $74
+  CONST SCAN_CTRL_END AS UBYTE = $75, SCAN_CTRL_PGDN AS UBYTE = $76
+  CONST SCAN_CTRL_HOME AS UBYTE = $77, SCAN_CTRL_PGUP AS UBYTE = $84
+
+  ' Scan codes: F1 to F10 are SCAN_F1 to SCAN_F1 + 9, and the same with each modifier. Alt
+  ' wins over Ctrl, and Ctrl over Shift.
+  CONST SCAN_F1 AS UBYTE = $3B, SCAN_F10 AS UBYTE = $44
+  CONST SCAN_SHIFT_F1 AS UBYTE = $54, SCAN_SHIFT_F10 AS UBYTE = $5D
+  CONST SCAN_CTRL_F1 AS UBYTE = $5E, SCAN_CTRL_F10 AS UBYTE = $67
+  CONST SCAN_ALT_F1 AS UBYTE = $68, SCAN_ALT_F10 AS UBYTE = $71
+
+  ' Scan codes: Alt+1 to Alt+0 are SCAN_ALT_1 to SCAN_ALT_1 + 9, then Alt+- and Alt+=.
+  CONST SCAN_ALT_1 AS UBYTE = $78, SCAN_ALT_0 AS UBYTE = $81
+  CONST SCAN_ALT_MINUS AS UBYTE = $82, SCAN_ALT_EQUALS AS UBYTE = $83
+
+  ' Scan codes: Ctrl+2 gives 0, then SCAN_CTRL_2.
+  CONST SCAN_CTRL_2 AS UBYTE = 3
+
+  ' Scan codes: Alt+letter.
+  CONST SCAN_ALT_Q AS UBYTE = $10, SCAN_ALT_W AS UBYTE = $11, SCAN_ALT_E AS UBYTE = $12
+  CONST SCAN_ALT_R AS UBYTE = $13, SCAN_ALT_T AS UBYTE = $14, SCAN_ALT_Y AS UBYTE = $15
+  CONST SCAN_ALT_U AS UBYTE = $16, SCAN_ALT_I AS UBYTE = $17, SCAN_ALT_O AS UBYTE = $18
+  CONST SCAN_ALT_P AS UBYTE = $19
+  CONST SCAN_ALT_A AS UBYTE = $1E, SCAN_ALT_S AS UBYTE = $1F, SCAN_ALT_D AS UBYTE = $20
+  CONST SCAN_ALT_F AS UBYTE = $21, SCAN_ALT_G AS UBYTE = $22, SCAN_ALT_H AS UBYTE = $23
+  CONST SCAN_ALT_J AS UBYTE = $24, SCAN_ALT_K AS UBYTE = $25, SCAN_ALT_L AS UBYTE = $26
+  CONST SCAN_ALT_Z AS UBYTE = $2C, SCAN_ALT_X AS UBYTE = $2D, SCAN_ALT_C AS UBYTE = $2E
+  CONST SCAN_ALT_V AS UBYTE = $2F, SCAN_ALT_B AS UBYTE = $30, SCAN_ALT_N AS UBYTE = $31
+  CONST SCAN_ALT_M AS UBYTE = $32
+END NAMESPACE

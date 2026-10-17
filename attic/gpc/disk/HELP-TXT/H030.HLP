@@ -1,0 +1,24 @@
+@ERRORS ON and OFF
+.
+=ERRORS ON AND OFF
+.
+.ERRORS OFF leaves out the run-time index checks on arrays in the code after
+.it. ERRORS ON puts them back. ON is the default.
+.
+:DIM B(10) AS UBYTE, I AS UBYTE
+:ERRORS OFF
+:B(I) = 1
+:ERRORS ON
+.
+.  - The switch follows the source, not the run: it applies to the lines
+.    below it in the file.
+.  - With the checks off, an index out of range reads or writes the memory
+.    past the array.
+.  - Code under ERRORS OFF is smaller and faster.
+.  - A constant index is checked at compile time in both modes.
+.
+.See Arrays.
+.
+=SEE ALSO
+.
+>16|Arrays

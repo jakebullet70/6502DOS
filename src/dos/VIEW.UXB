@@ -1,0 +1,417 @@
+'=============================================================================================
+' -- VIEW file
+' -- shows file a page at a time: 29 rows of text and a footer row with the file name, the
+' -- number of the top line and the keys. For the command line, not for scripts.
+' -- Up and Down move one line, PgUp and PgDn a page, Space a page down, Home to the first
+' -- line, End to the last page. Left and Right move the view 8 columns sideways. W turns
+' -- wrap on and off: a line then takes 1 to 4 rows, and Left and Right do nothing. F, f or /
+' -- asks for a text on the footer row and finds it from the top line down, in any case; an
+' -- empty text finds nothing. N finds it on the next line after the match. The first match on
+' -- the line shows in reversed colours. When no line has it, the footer says Not found, and
+' -- the next N starts at line 1. Q or Esc ends it and clears the screen.
+' -- A line ends at CR, LF or CR LF. A tab goes to the next column that is a multiple of 8.
+' -- BS, BEL, FF, $0F and Esc show as ".". A line is 255 characters at most; the rest is cut.
+' -- No file name prints Required parameter missing and gives exit code 1. A file that does
+' -- not open prints its error message and gives exit code 2. Exit code 0 otherwise.
+' --
+' -- From a prompt:
+' --     VIEW DOCS\README.TXT
+'=============================================================================================
+#INCLUDE "DOS.UXI"
+#INCLUDE "HEAP.UXI"
+#INCLUDE "KEYS.UXI"
+#INCLUDE "CONS.UXI"
+CONST SLOT_P1 AS UBYTE = 0
+' The footer's colours, black on light grey.
+CONST FOOTER_SGR$ = CONS.CSI$ + "30;47m"
+CONST TEXT_ROWS AS UBYTE = 29, FOOTER_ROW AS UBYTE = 29, COLUMNS AS UBYTE = 80
+CONST LINE_MAX AS UBYTE = 255
+' SHIFT_MAX is the last multiple of SHIFT_STEP that shows a character of a full line.
+CONST SHIFT_STEP AS UBYTE = 8, SHIFT_MAX AS UBYTE = 176
+CONST BUFFER_SIZE AS UWORD = 512
+' The index keeps where every INDEX_STEP-th line starts, 3 bytes an entry: INDEX_STEP is
+' 1 << INDEX_SHIFT. INDEX_ENTRIES entries cover INDEX_ENTRIES * INDEX_STEP lines; a line past
+' them is reached by reading on from the last entry.
+CONST INDEX_SHIFT AS UBYTE = 4, INDEX_STEP AS UWORD = 16, INDEX_ENTRIES AS UWORD = 1024
+
+DIM FILE_NAME AS STRING * 80, FOOTER AS STRING * 120
+DIM VIEWED_FILE AS UWORD
+DIM BUFFER(BUFFER_SIZE) AS UBYTE
+DIM BUFFER_START AS ULONG, BUFFER_COUNT AS UWORD, BUFFER_NEXT AS UWORD
+DIM SEEK_TARGET AS ULONG
+DIM INDEX_LOW(INDEX_ENTRIES) AS UWORD, INDEX_HIGH(INDEX_ENTRIES) AS UBYTE
+DIM INDEXED AS UWORD
+DIM READER_LINE AS UWORD
+' LINE_TEXT is a string so INSTR can search it. Its characters start at @LINE_TEXT + 2.
+' LINE_LENGTH is the count; it goes in the length byte at @LINE_TEXT + 1 only for INSTR.
+DIM LINE_TEXT AS STRING * 255, LINE_LENGTH AS UBYTE
+DIM TOP_LINE AS UWORD, AT_END AS UBYTE, LEFT_COLUMN AS UBYTE
+' PAGE_LINES is the count of lines shown in full on the page. PAGE_ROWS keeps the row counts
+' of the lines FIT_BACK reads.
+DIM WRAP AS UBYTE, PAGE_LINES AS UBYTE, PAGE_ROWS(TEXT_ROWS) AS UBYTE
+' MATCH_LINE is the line of the match, 65535 for none. MATCH_COLUMN counts from 0.
+DIM FIND_TEXT AS STRING * 40, MATCH_LINE AS UWORD, MATCH_COLUMN AS UBYTE
+DIM CHARACTER AS UBYTE, SCAN AS UBYTE, QUIT AS UBYTE
+
+' Reads the next block of the file into the buffer. Returns the count read, 0 at the end.
+FUNCT FILL_BUFFER() AS UWORD
+  BUFFER_START = BUFFER_START + BUFFER_COUNT
+  BUFFER_COUNT = DOS.READ_FILE(VIEWED_FILE, @BUFFER, BUFFER_SIZE)
+  BUFFER_NEXT = 0
+  RETURN BUFFER_COUNT
+END FUNCT
+
+' 1 when a byte is left to read, else 0.
+FUNCT BYTE_LEFT() AS UBYTE
+  IF BUFFER_NEXT < BUFFER_COUNT THEN RETURN 1
+  IF FILL_BUFFER() > 0 THEN RETURN 1
+  RETURN 0
+END FUNCT
+
+' Moves the reader to byte SEEK_TARGET of the file.
+SUB SEEK_READER()
+  IF SEEK_TARGET >= BUFFER_START THEN
+    IF SEEK_TARGET < BUFFER_START + BUFFER_COUNT THEN
+      BUFFER_NEXT = SEEK_TARGET - BUFFER_START
+      RETURN
+    END IF
+  END IF
+  DOS.SEEK(VIEWED_FILE, 0, SEEK_TARGET, ContentsAtW(@SEEK_TARGET + 2))
+  BUFFER_START = SEEK_TARGET
+  BUFFER_COUNT = 0
+  BUFFER_NEXT = 0
+END SUB
+
+' Puts CHARACTER at the end of LINE_TEXT, or drops it when the line is full.
+SUB KEEP(CHARACTER AS UBYTE)
+  IF LINE_LENGTH < LINE_MAX THEN
+    ContentsAt(@LINE_TEXT + 2 + LINE_LENGTH) = CHARACTER
+    LINE_LENGTH = LINE_LENGTH + 1
+  END IF
+END SUB
+
+' Reads line READER_LINE into LINE_TEXT and LINE_LENGTH, and counts it. Adds an index entry
+' when the line is the next one to index. Returns 1, or 0 when no line is left.
+FUNCT READ_LINE() AS UBYTE
+  DIM CHARACTER AS UBYTE
+  IF BYTE_LEFT() = 0 THEN RETURN 0
+  IF (READER_LINE AND (INDEX_STEP - 1)) = 0 THEN
+    IF (READER_LINE >> INDEX_SHIFT) = INDEXED THEN
+      IF INDEXED < INDEX_ENTRIES THEN
+        SEEK_TARGET = BUFFER_START + BUFFER_NEXT
+        INDEX_LOW(INDEXED) = SEEK_TARGET
+        INDEX_HIGH(INDEXED) = ContentsAt(@SEEK_TARGET + 2)
+        INDEXED = INDEXED + 1
+      END IF
+    END IF
+  END IF
+  LINE_LENGTH = 0
+  DO WHILE BYTE_LEFT() = 1
+    CHARACTER = BUFFER(BUFFER_NEXT)
+    BUFFER_NEXT = BUFFER_NEXT + 1
+    IF CHARACTER = KEYS.ENTER THEN
+      IF BYTE_LEFT() = 1 THEN
+        IF BUFFER(BUFFER_NEXT) = 10 THEN BUFFER_NEXT = BUFFER_NEXT + 1
+      END IF
+      EXIT DO
+    END IF
+    SELECT CASE CHARACTER
+      CASE 10
+        EXIT DO
+      CASE KEYS.TAB
+        DO
+          KEEP(KEYS.SPACE)
+        LOOP UNTIL (LINE_LENGTH AND 7) = 0 OR LINE_LENGTH = LINE_MAX
+      CASE 7, 8, 12, 15, KEYS.ESC
+        KEEP(ASC("."))
+      CASE ELSE
+        KEEP(CHARACTER)
+    END SELECT
+  LOOP
+  READER_LINE = READER_LINE + 1
+  RETURN 1
+END FUNCT
+
+' Moves the reader to line TARGET, or to the end when the file has fewer lines. Reads on from
+' where the reader is when that is no further than from the nearest index entry.
+SUB GO_TO_LINE(TARGET AS UWORD)
+  DIM ENTRY AS UWORD
+  ENTRY = TARGET >> INDEX_SHIFT
+  IF ENTRY >= INDEXED THEN ENTRY = INDEXED - 1
+  IF READER_LINE > TARGET OR READER_LINE < (ENTRY << INDEX_SHIFT) THEN
+    SEEK_TARGET = INDEX_LOW(ENTRY)
+    ContentsAt(@SEEK_TARGET + 2) = INDEX_HIGH(ENTRY)
+    SEEK_READER()
+    READER_LINE = ENTRY << INDEX_SHIFT
+  END IF
+  DO WHILE READER_LINE < TARGET
+    IF READ_LINE() = 0 THEN EXIT DO
+  LOOP
+END SUB
+
+' The count of screen rows LINE_TEXT takes: 1 without wrap, else 1 to 4.
+FUNCT LINE_ROWS() AS UBYTE
+  IF WRAP = 0 OR LINE_LENGTH <= COLUMNS THEN RETURN 1
+  IF LINE_LENGTH <= 2 * COLUMNS THEN RETURN 2
+  IF LINE_LENGTH <= 3 * COLUMNS THEN RETURN 3
+  RETURN 4
+END FUNCT
+
+' Shows LINE_TEXT from column FIRST on screen row ROW, and blanks the rest of the row. A full
+' row leaves the cursor on the next row. Line READER_LINE - 1 is the one in LINE_TEXT: when it
+' is MATCH_LINE, the part of the match on the row is written again in reversed colours.
+SUB SHOW_LINE(ROW AS UBYTE, FIRST AS UBYTE)
+  DIM COUNT AS UBYTE, START AS UBYTE, FINISH AS UBYTE
+  POS(1) = ROW
+  POS(0) = 0
+  COUNT = 0
+  IF LINE_LENGTH > FIRST THEN COUNT = LINE_LENGTH - FIRST
+  IF COUNT > COLUMNS THEN COUNT = COLUMNS
+  IF COUNT > 0 THEN WRITE 1, @LINE_TEXT + 2 + FIRST, COUNT
+  IF COUNT < COLUMNS THEN PRINT CONS.EL$;
+  IF READER_LINE - 1 <> MATCH_LINE THEN RETURN
+  START = MATCH_COLUMN
+  IF START < FIRST THEN START = FIRST
+  FINISH = MATCH_COLUMN + LEN(FIND_TEXT)
+  IF FINISH > FIRST + COUNT THEN FINISH = FIRST + COUNT
+  IF START >= FINISH THEN RETURN
+  POS(1) = ROW
+  POS(0) = START - FIRST
+  PRINT CONS.SGR_REVERSE$;
+  WRITE 1, @LINE_TEXT + 2 + START, FINISH - START
+  PRINT CONS.SGR_RESET$;
+END SUB
+
+' Puts FOOTER on the last row, in black on light grey. It stays under 80 characters, so the
+' screen does not scroll.
+SUB PUT_FOOTER()
+  POS(1) = FOOTER_ROW
+  POS(0) = 0
+  PRINT FOOTER_SGR$; LEFT$(FOOTER, COLUMNS - 1); CONS.EL$; CONS.SGR_RESET$;
+END SUB
+
+' Shows the footer: the file name, the top line, the column or Wrap, and the keys.
+SUB SHOW_FOOTER()
+  FOOTER = " " + LEFT$(FILE_NAME, 24) + "  Line" + STR$(TOP_LINE + 1)
+  IF WRAP = 1 THEN
+    FOOTER = FOOTER + "  Wrap"
+  ELSE
+    FOOTER = FOOTER + "  Col" + STR$(LEFT_COLUMN + 1)
+  END IF
+  FOOTER = FOOTER + "  F find  N next  W wrap  Q quits"
+  PUT_FOOTER()
+END SUB
+
+' Sets AT_END to 1 when the last line of the file is on screen, else 0.
+SUB CHECK_END()
+  AT_END = 1 - BYTE_LEFT()
+END SUB
+
+' Shows the page from line TOP_LINE, sets PAGE_LINES, and shows the footer. With wrap, the
+' last line may show in part; AT_END is then 0.
+SUB SHOW_PAGE()
+  DIM ROW AS UBYTE, FIRST AS UBYTE, PARTS AS UBYTE
+  GO_TO_LINE(TOP_LINE)
+  ROW = 0
+  PAGE_LINES = 0
+  DO
+    IF READ_LINE() = 0 THEN LINE_LENGTH = 0
+    PARTS = LINE_ROWS()
+    FIRST = LEFT_COLUMN
+    IF WRAP = 1 THEN FIRST = 0
+    DO
+      SHOW_LINE(ROW, FIRST)
+      ROW = ROW + 1
+      FIRST = FIRST + COLUMNS
+      PARTS = PARTS - 1
+    LOOP UNTIL PARTS = 0 OR ROW = TEXT_ROWS
+    IF PARTS = 0 THEN PAGE_LINES = PAGE_LINES + 1
+  LOOP UNTIL ROW = TEXT_ROWS
+  CHECK_END()
+  IF PARTS > 0 THEN AT_END = 0
+  SHOW_FOOTER()
+END SUB
+
+' Returns the top line of the page that ends with line LAST - 1: the most lines before LAST
+' that fit in TEXT_ROWS rows.
+FUNCT FIT_BACK(LAST AS UWORD) AS UWORD
+  DIM FIRST AS UWORD, COUNT AS UBYTE, ROWS AS UBYTE
+  FIRST = 0
+  IF LAST > TEXT_ROWS THEN FIRST = LAST - TEXT_ROWS
+  GO_TO_LINE(FIRST)
+  COUNT = 0
+  DO WHILE READER_LINE < LAST
+    IF READ_LINE() = 0 THEN EXIT DO
+    PAGE_ROWS(COUNT) = LINE_ROWS()
+    COUNT = COUNT + 1
+  LOOP
+  ROWS = 0
+  DO WHILE COUNT > 0
+    IF ROWS + PAGE_ROWS(COUNT - 1) > TEXT_ROWS THEN EXIT DO
+    COUNT = COUNT - 1
+    ROWS = ROWS + PAGE_ROWS(COUNT)
+  LOOP
+  RETURN FIRST + COUNT
+END FUNCT
+
+' Turns the letters a to z in the COUNT bytes at ADDRESS into A to Z.
+SUB TO_UPPER(ADDRESS AS UWORD, COUNT AS UBYTE)
+  DIM CHARACTER AS UBYTE
+  DO WHILE COUNT > 0
+    CHARACTER = ContentsAt(ADDRESS)
+    IF CHARACTER >= ASC("a") AND CHARACTER <= ASC("z") THEN ContentsAt(ADDRESS) = CHARACTER - 32
+    ADDRESS = ADDRESS + 1
+    COUNT = COUNT - 1
+  LOOP
+END SUB
+
+' Finds FIND_TEXT, in upper case, on line FROM_LINE or after it. Sets MATCH_LINE and
+' MATCH_COLUMN and returns 1, or returns 0 when no line has it. Leaves LINE_TEXT in upper case;
+' SHOW_PAGE reads its lines again.
+FUNCT FIND_NEXT(FROM_LINE AS UWORD) AS UBYTE
+  DIM PLACE AS UBYTE
+  GO_TO_LINE(FROM_LINE)
+  DO WHILE READ_LINE() = 1
+    ContentsAt(@LINE_TEXT + 1) = LINE_LENGTH
+    TO_UPPER(@LINE_TEXT + 2, LINE_LENGTH)
+    PLACE = INSTR(LINE_TEXT, FIND_TEXT)
+    IF PLACE > 0 THEN
+      MATCH_LINE = READER_LINE - 1
+      MATCH_COLUMN = PLACE - 1
+      RETURN 1
+    END IF
+  LOOP
+  RETURN 0
+END FUNCT
+
+' Finds FIND_TEXT from line FROM_LINE on and shows the page with it: the top line moves when
+' the match line is not shown in full, and without wrap the view moves sideways when the
+' match is not all on screen. When no line has it, clears MATCH_LINE and says Not found.
+SUB FIND_FROM(FROM_LINE AS UWORD)
+  IF FIND_NEXT(FROM_LINE) = 0 THEN
+    MATCH_LINE = 65535
+    SHOW_PAGE()
+    FOOTER = " Not found: " + FIND_TEXT
+    PUT_FOOTER()
+    RETURN
+  END IF
+  IF MATCH_LINE < TOP_LINE OR MATCH_LINE >= TOP_LINE + PAGE_LINES THEN TOP_LINE = MATCH_LINE
+  IF WRAP = 0 THEN
+    IF MATCH_COLUMN < LEFT_COLUMN OR MATCH_COLUMN + LEN(FIND_TEXT) - LEFT_COLUMN > COLUMNS THEN
+      LEFT_COLUMN = MATCH_COLUMN AND (256 - SHIFT_STEP)
+      IF LEFT_COLUMN > SHIFT_MAX THEN LEFT_COLUMN = SHIFT_MAX
+    END IF
+  END IF
+  SHOW_PAGE()
+END SUB
+
+' Moves the page down one line. With wrap it redraws the page. Without, a CR on the footer
+' row scrolls the screen up in hardware; the line below the page then goes on the row the
+' footer left.
+SUB SCROLL_DOWN()
+  IF WRAP = 1 THEN
+    TOP_LINE = TOP_LINE + 1
+    SHOW_PAGE()
+    RETURN
+  END IF
+  GO_TO_LINE(TOP_LINE + TEXT_ROWS)
+  IF READ_LINE() = 0 THEN RETURN
+  POS(1) = FOOTER_ROW
+  POS(0) = 0
+  PRINT
+  SHOW_LINE(TEXT_ROWS - 1, LEFT_COLUMN)
+  TOP_LINE = TOP_LINE + 1
+  CHECK_END()
+  SHOW_FOOTER()
+END SUB
+
+FILE_NAME = HEAP.SYS_STRINGS_GET(SLOT_P1)
+IF FILE_NAME = "" THEN
+  PRINT "Required parameter missing"
+  END 1
+END IF
+VIEWED_FILE = DOS.OPEN_FILE(FILE_NAME, DOS.ACCESS_READ)
+IF VIEWED_FILE = NOFILE THEN
+  PRINT DOS.ERRMSG(DOS.ERROR)
+  END 2
+END IF
+INDEXED = 1
+MATCH_LINE = 65535
+SHOW_PAGE()
+DO
+  ' API_CON_STATUS gives A <> 0 when a key waits. An extended key reads as 0, then its scan
+  ' code.
+  DO
+    SYS DOS.API_CON_STATUS
+  LOOP UNTIL DOS.REG_A <> 0
+  CHARACTER = GETKEY()
+  SCAN = 0
+  IF CHARACTER = KEYS.EXTENDED THEN SCAN = GETKEY()
+  IF CHARACTER = KEYS.SPACE THEN SCAN = KEYS.SCAN_PGDN
+  SELECT CASE CHARACTER
+    CASE ASC("Q"), ASC("q"), KEYS.ESC
+      QUIT = 1
+    CASE ASC("W"), ASC("w")
+      WRAP = 1 - WRAP
+      SHOW_PAGE()
+    CASE ASC("F"), ASC("f"), ASC("/")
+      ' LINPUT echoes the CR, which scrolls the screen; the page is drawn again after it.
+      POS(1) = FOOTER_ROW
+      POS(0) = 0
+      PRINT FOOTER_SGR$; "Find: "; CONS.EL$;
+      LINPUT FIND_TEXT
+      PRINT CONS.SGR_RESET$;
+      TO_UPPER(@FIND_TEXT + 2, LEN(FIND_TEXT))
+      MATCH_LINE = 65535
+      IF FIND_TEXT = "" THEN
+        SHOW_PAGE()
+      ELSE
+        FIND_FROM(TOP_LINE)
+      END IF
+    CASE ASC("N"), ASC("n")
+      IF FIND_TEXT <> "" THEN FIND_FROM(MATCH_LINE + 1)
+  END SELECT
+  SELECT CASE SCAN
+    CASE KEYS.SCAN_UP
+      IF TOP_LINE > 0 THEN
+        TOP_LINE = TOP_LINE - 1
+        SHOW_PAGE()
+      END IF
+    CASE KEYS.SCAN_DOWN
+      IF AT_END = 0 THEN SCROLL_DOWN()
+    CASE KEYS.SCAN_PGDN
+      IF AT_END = 0 THEN
+        TOP_LINE = TOP_LINE + PAGE_LINES
+        SHOW_PAGE()
+      END IF
+    CASE KEYS.SCAN_PGUP
+      IF TOP_LINE > 0 THEN
+        TOP_LINE = FIT_BACK(TOP_LINE)
+        SHOW_PAGE()
+      END IF
+    CASE KEYS.SCAN_LEFT
+      IF WRAP = 0 AND LEFT_COLUMN > 0 THEN
+        LEFT_COLUMN = LEFT_COLUMN - SHIFT_STEP
+        SHOW_PAGE()
+      END IF
+    CASE KEYS.SCAN_RIGHT
+      IF WRAP = 0 AND LEFT_COLUMN < SHIFT_MAX THEN
+        LEFT_COLUMN = LEFT_COLUMN + SHIFT_STEP
+        SHOW_PAGE()
+      END IF
+    CASE KEYS.SCAN_HOME
+      IF TOP_LINE > 0 THEN
+        TOP_LINE = 0
+        SHOW_PAGE()
+      END IF
+    CASE KEYS.SCAN_END
+      IF AT_END = 0 THEN
+        GO_TO_LINE(65535)
+        TOP_LINE = FIT_BACK(READER_LINE)
+        SHOW_PAGE()
+      END IF
+  END SELECT
+LOOP UNTIL QUIT = 1
+DOS.CLOSE_FILE(VIEWED_FILE)
+PRINT CONS.SGR_RESET$; CONS.ED$;
+END 0

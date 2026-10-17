@@ -1,0 +1,412 @@
+## UXC-STMT.BL -- the statements.
+##
+##   SM.LINE      compile LX.L$
+##   SM.STMT      compile the statement that starts at the token in TK.*
+##
+##   DIM / VAR    BYTE and WORD names and arrays, by mark or by AS, several to a line;
+##                strings in UXC-STR.BL
+##   CONST        UXC-NAME.BL, from NM.DECLARATION
+##   name = expr  an expression into a variable; into a string in UXC-STR.BL
+##   name(i) = expr   into an array element
+##   ERRORS ON / ERRORS OFF   the array index checks in the code after it
+##   PRINT        strings and expressions, joined by ; or , as in MS BASIC
+##   PRINT #h, ...    the same into a file; a comma writes ","
+##   CLOSE h
+##   POKE a, v
+##   ContentsAt(a) = v, ContentsAtW(a) = v
+##   ASM, SYS     UXC-ASM.BL
+##   END
+##   name:        a label
+##   comments, whole-line and trailing
+##   IF, DO, FOR, REPEAT, EXIT, CONTINUE, GOTO: UXC-FLOW.BL
+##   ON CASE, CASE, END CASE: UXC-CASE.BL
+##   SUB, FUNCTION, their ends, RETURN, CALL, and name(args) as a call: UXC-SUB.BL
+##   NAMESPACE, END NAMESPACE, BIND, ENUM: UXC-NAME.BL, from NM.DECLARATION
+##   TYPE: UXC-RECORD.BL, from NM.DECLARATION
+## Anything else stops the compile.
+##
+## A statement starts with LX.NEXT's first token in TK.*, and leaves the token after its
+## last one there. SM.LINE then wants the end of the line.
+
+SM.LINE:
+    GOSUB LX.WHOLE : GOSUB LX.NEXT
+    IF AS.BLOCK <> 0 THEN GOSUB AS.LINE : GOTO SM.LINE.END
+    IF NM.ENUM.RECORD <> 0 THEN GOSUB NM.ENUM.MEMBERS : GOTO SM.LINE.END
+    IF RD.TYPE.RECORD <> 0 THEN GOSUB RD.FIELDS : GOTO SM.LINE.END
+    GOSUB SM.STMT
+SM.LINE.END:
+    IF TK.T <> K.TT.EOL THEN GOTO ER.SYNTAX
+    RETURN
+
+## SM.STMT -- one statement. IF c THEN statement comes back here for its statement.
+## SM.PREVIOUS.RETURN is 1 when the statement before this one was a RETURN outside any
+## block, so that ENDSUB knows the end of the body cannot be reached.
+SM.STMT:
+    EX.VN = 0 : EX.SD = 0 : EX.OP.BASE = 0 : SG.N = 0 : SG.POINTERS = 0
+    IF TK.T = K.TT.EOL THEN RETURN
+    SM.PREVIOUS.RETURN = SM.LAST.RETURN
+    SM.LAST.RETURN = 0
+    IF TK.T <> K.TT.NAME THEN GOTO ER.SYNTAX
+    SM.W$ = TK.S$
+    IF CS.WAIT <> 0 THEN GOSUB CS.BEFORE
+    IF SB.CURRENT = 0 AND NM.CURRENT <> 0 THEN GOSUB NM.BODY
+    IF SM.W$ = "PRINT" THEN GOTO SM.PRINT
+    IF SM.W$ = "DIM" OR SM.W$ = "VAR" THEN GOTO SM.DIM
+    IF SM.W$ = "POKE" THEN GOTO SM.POKE
+    IF SM.W$ = "CONTENTSAT" OR SM.W$ = "CONTENTSATW" THEN GOTO SM.CONTENTS
+    IF SM.W$ = "POS" THEN GOTO SM.POS
+    IF SM.W$ = "ASM"THEN GOSUB AS.ASM : RETURN
+    IF SM.W$ = "ENDASM" THEN GOSUB AS.STRAY : RETURN
+    IF SM.W$ = "SYS" THEN GOSUB AS.SYS : RETURN
+    IF SM.W$ = "CLOSE" THEN GOTO SM.CLOSE
+    IF SM.W$ = "WRITE" THEN GOSUB SG.WRITE : RETURN
+    IF SM.W$ = "INPUT" OR SM.W$ = "LINPUT" THEN GOSUB SG.INPUT : RETURN
+    IF SM.W$ = "END" THEN GOTO SM.END
+    IF SM.W$ = "IF" THEN GOTO CT.IF
+    IF SM.W$ = "ELSEIF" THEN GOTO CT.ELSEIF
+    IF SM.W$ = "ELSE" THEN GOTO CT.ELSE
+    IF SM.W$ = "ENDIF" THEN GOTO CT.ENDIF
+    IF SM.W$ = "DO" THEN GOTO CT.DO
+    IF SM.W$ = "LOOP" THEN GOTO CT.LOOP
+    IF SM.W$ = "FOR" THEN GOSUB CT.FOR : RETURN
+    IF SM.W$ = "NEXT" THEN GOSUB CT.NEXT : RETURN
+    IF SM.W$ = "REPEAT" THEN GOTO CT.REPEAT
+    IF SM.W$ = "ENDREPEAT" THEN GOTO CT.ENDREP
+    IF SM.W$ = "ON" THEN GOSUB CS.ON : RETURN
+    IF SM.W$ = "CASE" THEN GOSUB CS.CASE : RETURN
+    IF SM.W$ = "ENDCASE" THEN GOSUB CS.END : RETURN
+    IF SM.W$ = "EXIT" THEN GOTO CT.EXIT
+    IF SM.W$ = "CONTINUE" THEN GOTO CT.CONT
+    IF SM.W$ = "GOTO" THEN GOTO CT.GOTO
+    IF SM.W$ = "SUB" OR SM.W$ = "FUNCTION" THEN GOSUB SB.SUB : RETURN
+    IF SM.W$ = "ENDSUB" OR SM.W$ = "ENDFUNCTION" THEN GOSUB SB.ENDSUB : RETURN
+    IF SM.W$ = "RETURN" THEN GOSUB SB.RETURN : GOTO SM.RETURNED
+    IF SM.W$ = "CALL" THEN GOSUB SB.CALL.KEYWORD : RETURN
+    IF SM.W$ = "ERRORS" THEN GOTO SM.ERRORS
+    GOSUB NM.DECLARATION
+    IF NM.DECLARED <> 0 THEN RETURN
+    GOSUB LX.NEXT
+    IF TK.T = K.TT.OP AND TK.K = 58 THEN GOSUB SM.LABEL : GOSUB LX.NEXT : RETURN
+    IF TK.T = K.TT.OP AND TK.K = 61 THEN GOTO SM.LET
+    IF TK.T = K.TT.OP AND TK.K = 40 THEN GOTO SM.BRACKET
+    GOTO ER.SYNTAX
+
+## name( -- an array element to store into, or a SUB to call.
+SM.BRACKET:
+    SM.N$ = SM.W$ : GOSUB NM.FIND
+    IF SY.KIND = K.SK.ARRAY AND SY.TYPE >= K.TY.RECORD THEN GOSUB RD.LET.ELEMENT : RETURN
+    IF SY.KIND = K.SK.ARRAY THEN GOTO SM.LET.ELEMENT
+    GOSUB SB.CALL.STATEMENT
+    RETURN
+
+## ERRORS ON / ERRORS OFF
+SM.ERRORS:
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.NAME THEN GOTO ER.SYNTAX
+    IF TK.S$ <> "ON" AND TK.S$ <> "OFF" THEN GOTO ER.SYNTAX
+    SM.ERRORS.ON = 0
+    IF TK.S$ = "ON" THEN SM.ERRORS.ON = 1
+    GOSUB LX.NEXT
+    RETURN
+
+SM.RETURNED:
+    IF NS.D = 0 THEN SM.LAST.RETURN = 1
+    RETURN
+
+## END, END IF, END REPEAT, END CASE, END SUB, END FUNCTION, END NAMESPACE; a stray END ENUM, END TYPE
+SM.END:
+    GOSUB LX.NEXT
+    GP.IF TK.T = K.TT.NAME THEN
+        IF TK.S$ = "IF" THEN GOTO CT.ENDIF
+        IF TK.S$ = "REPEAT" THEN GOTO CT.ENDREP
+        IF TK.S$ = "CASE" THEN GOSUB CS.END : RETURN
+        IF TK.S$ = "SUB" OR TK.S$ = "FUNCTION" THEN GOSUB SB.ENDSUB : RETURN
+        IF TK.S$ = "NAMESPACE" THEN GOSUB NM.END : RETURN
+        IF TK.S$ = "ENUM" THEN GOSUB NM.ERROR.END.ENUM
+        IF TK.S$ = "TYPE" THEN GOSUB RD.ERROR.END
+        IF TK.S$ = "ASM" THEN GOSUB AS.STRAY : RETURN
+    GP.ENDIF
+    GP.SUB EMIT, T.END.ID
+    RETURN
+
+## SM.VAR -- SM.N$ must be a declared variable: its record in SY.*. SM.VAR.KIND checks a
+## record NM.FIND found.
+SM.VAR:
+    GOSUB NM.FIND
+SM.VAR.KIND:
+    IF SY.KIND <> K.SK.VAR THEN ER.M$ = "NOT A VARIABLE: " + SM.N$ : GOTO ER.STOP
+    RETURN
+
+## DIM A AS UBYTE, B(10) AS UWORD, S$ / DIM P AS UBYTE AT $030F. A number needs AS.
+## DIM R AS ITEM [AT address] is in UXC-RECORD.BL.
+SM.DIM:
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.NAME THEN GOTO ER.SYNTAX
+    SM.N$ = TK.S$ : SM.TY = TK.M
+    GOSUB NM.RESERVED
+    GOSUB LX.NEXT
+    SM.CNT = 0
+    IF TK.T = K.TT.OP AND TK.K = 40 THEN GOSUB SM.DIM.COUNT
+    IF TK.T = K.TT.NAME AND TK.S$ = "AS" THEN GOSUB NM.AS.TYPE
+    IF SM.TY >= K.TY.RECORD THEN GOSUB RD.DIM : GOTO SM.DIM.NEXT
+    IF TK.T = K.TT.OP AND TK.K <> 44 AND TK.K <> 61 AND SM.TY <> K.TY.STR THEN GOTO ER.SYNTAX
+    IF SM.TY = 0 THEN GOTO ER.MISSING.AS
+    IF TK.T = K.TT.NAME THEN GOSUB NM.AT : GOTO SM.DIM.NEXT
+    IF SM.TY = K.TY.STR THEN GOSUB SG.DIM : GOTO SM.DIM.NEXT
+    IF TK.T = K.TT.OP AND TK.K = 61 THEN ER.M$ = "NOT YET: A START VALUE" : GOTO ER.STOP
+    SY.NAME$ = SM.N$ : SY.OW = NM.SCOPE : GOSUB SY.FIND
+    IF SY.R <> 0 THEN ER.M$ = "DUPLICATE NAME " + SM.N$ : GOTO ER.STOP
+    SY.TYPE = SM.TY : SY.FLAGS = NM.TYPE.SIGNED * K.SY.SIGNED : SY.CNT = SM.CNT
+    TY.CODE = SM.TY
+    GOSUB TY.SIZE
+    GP.IF SM.CNT = 0 THEN
+        SB.PLACE.SIZE = TY.BYTES
+        GOSUB SB.PLACE.VARIABLE
+        SY.KIND = K.SK.VAR : SY.VAL = SB.PLACE : GOSUB SY.ADD
+    GP.ELSE
+        SB.PLACE.SIZE = SM.CNT * TY.BYTES
+        GOSUB SB.PLACE.BLOCK
+        SY.KIND = K.SK.ARRAY : SY.VAL = SB.PLACE : GOSUB SY.ADD
+        IF BS.N > K.TOP THEN ER.M$ = "ARRAYS TOO BIG" : GOTO ER.STOP
+    GP.ENDIF
+SM.DIM.NEXT:
+    IF TK.T = K.TT.OP AND TK.K = 44 THEN GOTO SM.DIM
+    RETURN
+
+## (n) after a name in DIM: an array of n elements, 0 to n - 1. n is a constant. The
+## expression can overwrite SM.N$.
+SM.DIM.COUNT:
+    SM.DIM.NAME$ = SM.N$
+    GOSUB LX.NEXT : GOSUB EX.EXPR
+    SM.N$ = SM.DIM.NAME$
+    EX.I = EX.VN - 1
+    IF EX.VK%(EX.I) <> K.EK.CONST THEN ER.M$ = "ARRAY SIZE NOT A CONSTANT" : GOTO ER.STOP
+    GOSUB EX.CONST.WORD
+    SM.CNT = EX.VV(EX.I) : EX.VN = EX.VN - 1
+    IF SM.CNT = 0 THEN ER.M$ = "ARRAY SIZE 0" : GOTO ER.STOP
+    IF TK.T <> K.TT.OP OR TK.K <> 41 THEN ER.M$ = "MISSING )" : GOTO ER.STOP
+    GOSUB LX.NEXT
+    RETURN
+
+## name: -- the label is the code offset of the next statement. A label in a SUB belongs
+## to the SUB, so no GOTO crosses into or out of one.
+SM.LABEL:
+    IF TK.M <> 0 THEN GOTO ER.SYNTAX
+    SM.N$ = SM.W$ : GOSUB NM.RESERVED
+    SY.NAME$ = SM.N$ : SY.OW = SB.CURRENT : GOSUB SY.FIND
+    GP.IF SY.R = 0 THEN
+        SY.KIND = K.SK.LABEL : SY.TYPE = 0 : SY.VAL = CB.N : SY.FLAGS = 1 : GOSUB SY.ADD
+        RETURN
+    GP.ENDIF
+    ## A GOTO can name a label before it is placed.
+    GOSUB SY.GET
+    IF SY.KIND <> K.SK.LABEL OR (SY.FLAGS AND 1) <> 0 THEN ER.M$ = "DUPLICATE NAME " + SM.N$ : GOTO ER.STOP
+    SY.VAL = CB.N : SY.FLAGS = 1 : GOSUB SY.SET
+    RETURN
+
+## name = expr; record = record in UXC-RECORD.BL
+SM.LET:
+    SM.N$ = SM.W$ : GOSUB SM.VAR
+    IF SY.TYPE = K.TY.STR THEN GOSUB SG.LET : RETURN
+    IF SY.TYPE >= K.TY.RECORD THEN GOSUB RD.LET : RETURN
+    GOSUB RD.SECTION
+    SM.TY = SY.TYPE : SM.AD = SY.VAL : SM.SEC = RD.SEC
+    GOSUB LX.NEXT : GOSUB EX.EXPR
+## SM.STORE -- the value on the expression stack into the SM.TY at SM.SEC SM.AD.
+SM.STORE:
+    GP.IF SM.TY = K.TY.LONG THEN
+        GOSUB EX.TOL
+        SL.S%(0) = SM.SEC : SL.V(0) = SM.AD : GP.SUB EMIT, T.STL.V.ID
+        RETURN
+    GP.ENDIF
+    GP.IF SM.TY = K.TY.BYTE THEN
+        GOSUB EX.TOB
+        SL.S%(0) = SM.SEC : SL.V(0) = SM.AD : GP.SUB EMIT, T.STB.V.ID
+    GP.ELSE
+        GOSUB EX.TOW
+        SL.S%(0) = SM.SEC : SL.V(0) = SM.AD : GP.SUB EMIT, T.STW.V.ID
+    GP.ENDIF
+    RETURN
+
+## name(i) = expr, with the array's record in SY.*. A constant index is a store to the
+## element. A BYTE array with a BYTE index pushes the index; any other index pushes the
+## element's address.
+SM.LET.ELEMENT:
+    SM.TY = SY.TYPE : SM.AD = SY.VAL : SM.SEC = K.SEC.BSS : SM.CNT = SY.CNT
+    GOSUB LX.NEXT : GOSUB EX.EXPR
+    IF TK.T <> K.TT.OP OR TK.K <> 41 THEN ER.M$ = "MISSING )" : GOTO ER.STOP
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.OP OR TK.K <> 61 THEN GOTO ER.SYNTAX
+    EX.I = EX.VN - 1
+    GP.IF EX.VK%(EX.I) = K.EK.CONST THEN
+        IF EX.VV(EX.I) >= SM.CNT THEN ER.M$ = "BAD SUBSCRIPT" : GOTO ER.STOP
+        TY.CODE = SM.TY
+        GOSUB TY.SIZE
+        SM.AD = SM.AD + EX.VV(EX.I) * TY.BYTES : EX.VN = EX.VN - 1
+        GOSUB LX.NEXT : GOSUB EX.EXPR
+        GOTO SM.STORE
+    GP.ENDIF
+    GP.IF SM.TY = K.TY.BYTE AND EX.VT%(EX.I) <> K.TY.WORD AND EX.VT%(EX.I) <> K.TY.LONG THEN
+        GOSUB EX.TOB
+        GP.IF SM.ERRORS.ON = 1 AND SM.CNT < 256 THEN
+            SL.S%(0) = K.SEC.CONST : SL.V(0) = SM.CNT : GP.SUB EMIT, T.CHKB.ID
+        GP.ENDIF
+        GP.SUB EMIT, T.PUSHB.ID : EX.SD = EX.SD + 1
+        GOSUB LX.NEXT : GOSUB EX.EXPR : GOSUB EX.TOB
+        SL.S%(0) = K.SEC.BSS : SL.V(0) = SM.AD : GP.SUB EMIT, T.STB.SY.ID
+        EX.SD = EX.SD - 1
+        RETURN
+    GP.ENDIF
+    GOSUB EX.TOW
+    GP.IF SM.ERRORS.ON = 1 THEN
+        SL.S%(0) = K.SEC.CONST : SL.V(0) = SM.CNT : GP.SUB EMIT, T.CHKW.ID
+    GP.ENDIF
+    SL.S%(0) = K.SEC.BSS : SL.V(0) = SM.AD
+    IF SM.TY = K.TY.BYTE THEN GP.SUB EMIT, T.IDXB.ID
+    IF SM.TY = K.TY.WORD THEN GP.SUB EMIT, T.IDXW.ID
+    IF SM.TY = K.TY.LONG THEN GP.SUB EMIT, T.IDXL.ID
+## SM.STORE.THROUGH -- the address in A/Y is pushed, and the value after the next token is
+## stored through it as an SM.TY.
+SM.STORE.THROUGH:
+    GP.SUB EMIT, T.PUSH.ID : EX.SD = EX.SD + 1
+    GOSUB LX.NEXT : GOSUB EX.EXPR
+    GP.IF SM.TY = K.TY.BYTE THEN
+        GOSUB EX.TOB : GP.SUB EMIT, T.POKE.ID
+    GP.ELSEIF SM.TY = K.TY.LONG THEN
+        GOSUB EX.TOL : GP.SUB EMIT, T.POKEL.ID
+    GP.ELSE
+        GOSUB EX.TOW : GP.SUB EMIT, T.POKEW.ID
+    GP.ENDIF
+    EX.SD = EX.SD - 1
+    RETURN
+
+## ContentsAt(a) = v stores a BYTE, as POKE a, v does. ContentsAtW(a) = v stores a WORD.
+SM.CONTENTS:
+    SM.TY = K.TY.BYTE
+    IF SM.W$ = "CONTENTSATW" THEN SM.TY = K.TY.WORD
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.OP OR TK.K <> 40 THEN ER.M$ = "MISSING ( AFTER " + SM.W$ : GOTO ER.STOP
+    GOSUB LX.NEXT
+    GOSUB EX.EXPR
+    IF TK.T <> K.TT.OP OR TK.K <> 41 THEN ER.M$ = "MISSING )" : GOTO ER.STOP
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.OP OR TK.K <> 61 THEN GOTO ER.SYNTAX
+    GOTO SM.POKE.ADDRESS
+
+## POS(0) = v moves the cursor to column v. POS(1) = v moves it to row v.
+SM.POS:
+    GOSUB EX.POS.AXIS
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.OP OR TK.K <> 61 THEN GOTO ER.SYNTAX
+    GOSUB LX.NEXT
+    GOSUB EX.EXPR
+    GOSUB EX.TOB
+    IF EX.POS.ROW = 0 THEN GP.SUB EMIT, T.POSSETCOL.ID
+    IF EX.POS.ROW = 1 THEN GP.SUB EMIT, T.POSSETROW.ID
+    RETURN
+
+## POKE a, v -- a constant address, or @name, is the operand of the store. Any other
+## address is pushed, and T_POKE stores through it.
+SM.POKE:
+    SM.TY = K.TY.BYTE
+    GOSUB LX.NEXT
+    GOSUB EX.EXPR
+    IF TK.T <> K.TT.OP OR TK.K <> 44 THEN GOTO ER.SYNTAX
+## SM.POKE.ADDRESS -- the address is the top entry, and the token before the value is in
+## TK.*. The value is stored as an SM.TY.
+SM.POKE.ADDRESS:
+    EX.I = EX.VN - 1
+    SM.K = EX.VK%(EX.I)
+    IF EX.VT%(EX.I) = K.TY.STR THEN GOTO ER.MISMATCH
+    GP.IF SM.K = K.EK.CONST OR SM.K = K.EK.ADDR THEN
+        IF SM.K = K.EK.CONST THEN GOSUB EX.CONST.WORD
+        SM.SEC = EX.VS%(EX.I)
+        SM.AD = EX.VV(EX.I)
+        EX.VN = EX.VN - 1
+        GOSUB LX.NEXT
+        GOSUB EX.EXPR
+        GOTO SM.STORE
+    GP.ENDIF
+    GOSUB EX.TOW
+    GOTO SM.STORE.THROUGH
+
+## PRINT a; b, c ... as MS BASIC does: ; joins two items, a comma moves to the next print
+## zone, and two items with nothing between them are joined as by ;. A trailing ; or comma
+## leaves the cursor on the line.
+SM.PRINT:
+    SM.NL = 1
+    SM.FILE = 0
+    GOSUB LX.NEXT
+    IF TK.T = K.TT.OP AND TK.K = 35 THEN GOSUB SM.PRINT.HANDLE
+SM.PRINT.ITEM:
+    IF TK.T = K.TT.EOL THEN GOTO SM.PRINT.END
+    IF TK.T = K.TT.NAME AND TK.S$ = "ELSE" THEN GOTO SM.PRINT.END
+    IF TK.T = K.TT.OP AND TK.K = 59 THEN SM.NL = 0 : GOSUB LX.NEXT : GOTO SM.PRINT.ITEM
+    IF TK.T = K.TT.OP AND TK.K = 44 THEN SM.NL = 0 : GOSUB SM.PRINT.COMMA : GOSUB LX.NEXT : GOTO SM.PRINT.ITEM
+    SM.NL = 1 : GOSUB SM.PRINT.ONE
+    GOTO SM.PRINT.ITEM
+SM.PRINT.END:
+    IF SM.NL <> 0 THEN GP.SUB EMIT, T.PRNL.ID
+    IF SM.FILE = 1 THEN GP.SUB EMIT, T.CLRCHN.ID
+    RETURN
+
+## SM.PRINT.HANDLE -- #handle and the comma after it, with the token at the #. A constant
+## handle 0-2 is the screen and needs no code.
+SM.PRINT.HANDLE:
+    GOSUB LX.NEXT
+    GOSUB EX.EXPR
+    EX.I = EX.VN - 1
+    GP.IF EX.VK%(EX.I) = K.EK.CONST AND EX.VV(EX.I) <= 2 THEN
+        EX.VN = EX.VN - 1
+    GP.ELSE
+        GOSUB EX.TOB
+        GP.SUB EMIT, T.CHKOUT.ID
+        SM.FILE = 1
+    GP.ENDIF
+    IF TK.T = K.TT.EOL THEN RETURN
+    IF TK.T <> K.TT.OP OR TK.K <> 44 THEN GOTO ER.SYNTAX
+    GOSUB LX.NEXT
+    RETURN
+
+## SM.PRINT.COMMA -- the next print zone on the screen. In a file, a ",", so that INPUT #
+## reads the items back as fields.
+SM.PRINT.COMMA:
+    GP.IF SM.FILE = 0 THEN
+        GP.SUB EMIT, T.PRCOMMA.ID
+        RETURN
+    GP.ENDIF
+    SL.S%(0) = K.SEC.CONST
+    SL.V(0) = 44
+    GP.SUB EMIT, T.LDB.C.ID
+    GP.SUB EMIT, T.PRCHR.ID
+    RETURN
+
+## CLOSE handle
+SM.CLOSE:
+    GOSUB LX.NEXT
+    GOSUB EX.EXPR
+    GOSUB EX.TOB
+    GP.SUB EMIT, T.CLOSE.ID
+    RETURN
+
+## SM.PRINT.ONE -- one item. SG.PRINT.ITEM prints a string.
+SM.PRINT.ONE:
+    GOSUB SG.PRINT.ITEM : IF SG.PRINTED = 1 THEN RETURN
+    GP.IF EX.VT%(EX.VN - 1) = K.TY.LONG THEN
+        SM.PRINT.SIGNED = EX.VG%(EX.VN - 1)
+        GOSUB EX.TOL
+        IF SM.PRINT.SIGNED = 0 THEN GP.SUB EMIT, T.PRLONG.ID
+        IF SM.PRINT.SIGNED = 1 THEN GP.SUB EMIT, T.PRSLONG.ID
+        RETURN
+    GP.ENDIF
+    GP.IF EX.VG%(EX.VN - 1) = 1 THEN
+        GOSUB EX.TOW
+        GP.SUB EMIT, T.PRSWORD.ID
+        RETURN
+    GP.ENDIF
+    GP.IF EX.VT%(EX.VN - 1) = K.TY.BYTE THEN
+        GOSUB EX.TOB : GP.SUB EMIT, T.PRBYTE.ID
+    GP.ELSE
+        GOSUB EX.TOW : GP.SUB EMIT, T.PRWORD.ID
+    GP.ENDIF
+    RETURN

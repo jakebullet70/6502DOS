@@ -1,0 +1,188 @@
+## UXC-DEFS.BL -- the compiler's constants.
+##
+## Every name here starts with K. and no variable does. BASLOAD replaces a #DEFINE name
+## where it begins a longer name, so a variable that began with one would be broken.
+
+## The program: the default start, and the first address it may not reach.
+#DEFINE K.ORG $0801
+#DEFINE K.TOP $9F00
+
+## Token types, in TK.T.
+#DEFINE K.TT.EOL 0
+#DEFINE K.TT.NUM 1
+#DEFINE K.TT.STR 2
+#DEFINE K.TT.NAME 3
+#DEFINE K.TT.OP 4
+
+## Types: a name's type mark, and a variable's type. TY.SIZE gives a type's size.
+## Trap: an expression entry of type 0 is a constant that fits a BYTE.
+#DEFINE K.TY.BYTE 1
+#DEFINE K.TY.WORD 2
+#DEFINE K.TY.STR 3
+#DEFINE K.TY.LONG 4
+## A record's type is K.TY.RECORD plus its TYPE's number, below K.RD.TYPES.
+#DEFINE K.TY.RECORD 16
+#DEFINE K.RD.TYPES 240
+
+## Symbol kinds.
+#DEFINE K.SK.VAR 1
+#DEFINE K.SK.LABEL 2
+#DEFINE K.SK.SUB 3
+#DEFINE K.SK.ARRAY 4
+#DEFINE K.SK.SPACE 5
+#DEFINE K.SK.BIND 6
+#DEFINE K.SK.CALL 7
+#DEFINE K.SK.CONST 8
+#DEFINE K.SK.ENUM 9
+#DEFINE K.SK.TYPE 10
+#DEFINE K.SK.FIELD 11
+
+## A symbol flag: the variable is DIM ... AT, and its value is its address.
+#DEFINE K.SY.FIXED 2
+## A symbol flag: the variable is a string temp, and its value is its offset in its owner's
+## pool of temps.
+#DEFINE K.SY.TEMP 4
+## A symbol flag: the BIND was made by the first pass, and the second pass has not met it.
+#DEFINE K.SY.SCANNED 8
+## A symbol flag: the variable is a record in the block space, and its value is its offset there.
+#DEFINE K.SY.BLOCK 16
+## A symbol flag: NM.FIND gave a field of a record variable, not a record of the table.
+#DEFINE K.SY.MEMBER 32
+## A symbol flag: the variable, array, field, parameter or FUNCTION result is signed, or the
+## CONST is below 0.
+#DEFINE K.SY.SIGNED 64
+## The field of a record variable's record that holds its TYPE's record (word).
+#DEFINE K.SY.RECORD.TYPE 30
+
+## The fields of a SUB record the link step uses (UXC-SYM.BL): its level in the call graph
+## (byte), the number of temps it needs (byte), and the bytes of its frame, then the offset
+## of its pool (word).
+#DEFINE K.SY.LEVEL 28
+#DEFINE K.SY.TEMPS 29
+#DEFINE K.SY.POOL 30
+
+## A VAR or BSS value from K.FRAME.BASE up is a local in its owner's frame: 65536 less its
+## distance below the owner's pool. A frame holds at most K.FRAME.MAX bytes.
+#DEFINE K.FRAME.BASE 49152
+#DEFINE K.FRAME.MAX 16384
+
+## Sections: what a slot value or a fixup value is counted from. CONST is a plain number and
+## is never left for the link step. BSS is the array space after the end of the PRG. TEMP is
+## a string temp, counted from the start of its owner's pool, which the link step places
+## after the array space.
+#DEFINE K.SEC.CONST 0
+#DEFINE K.SEC.CODE 1
+#DEFINE K.SEC.REC 2
+#DEFINE K.SEC.STR 3
+#DEFINE K.SEC.VAR 4
+#DEFINE K.SEC.LABEL 5
+#DEFINE K.SEC.BSS 6
+#DEFINE K.SEC.TEMP 7
+
+## The value of a K.SEC.TEMP entry for a part of a PRINT item already printed (UXC-STR.BL).
+#DEFINE K.TEMP.PRINTED 65535
+
+## Fixup kinds, the same numbers as F_* in tpl/MACROS.ASM.
+#DEFINE K.F.ABS 1
+#DEFINE K.F.LO 2
+#DEFINE K.F.HI 3
+#DEFINE K.F.SELF 4
+#DEFINE K.F.REC 5
+
+## Banked RAM, in banks from BANKMGR.
+#DEFINE K.CODE.BANKS 5
+#DEFINE K.SYM.BANKS 2
+#DEFINE K.FIX.BANKS 4
+
+## The runtime record table, in bank RT.BANK, for at most 1024 records: a byte per record
+## that is 1 once it is used, the used ids in order as words, and each record's address.
+#DEFINE K.RT.USED $A000
+#DEFINE K.RT.LIST $A800
+#DEFINE K.RT.ADDR $B000
+
+## The symbol table: bucket heads, then 32-byte records.
+#DEFINE K.SY.HEADS 512
+#DEFINE K.SY.MAX 496
+
+## A fixup is 8 bytes, so K.FX.MAX fills the K.FIX.BANKS banks.
+#DEFINE K.FX.MAX 4096
+
+## The two-character operators, in TK.K. A one-character operator is its character.
+#DEFINE K.OP.NE 256
+#DEFINE K.OP.LE 257
+#DEFINE K.OP.GE 258
+#DEFINE K.OP.SHL 259
+#DEFINE K.OP.SHR 260
+
+## The kinds of an entry on the expression parser's value stack.
+#DEFINE K.EK.CONST 1
+#DEFINE K.EK.MEM 2
+#DEFINE K.EK.ADDR 3
+#DEFINE K.EK.REG 4
+#DEFINE K.EK.STK 5
+#DEFINE K.EK.CMP 6
+#DEFINE K.EK.JMP 7
+
+## The expression operators, in the order of their precedence groups (EX.PREC). PAR is an
+## open bracket, PEEK the function and INDEX an array element, waiting on the operator
+## stack for their ). INDEX keeps its array's record in EX.OA%().
+#DEFINE K.EO.OR 1
+#DEFINE K.EO.XOR 2
+#DEFINE K.EO.AND 3
+#DEFINE K.EO.NOT 4
+#DEFINE K.EO.EQ 5
+#DEFINE K.EO.NE 6
+#DEFINE K.EO.LT 7
+#DEFINE K.EO.GT 8
+#DEFINE K.EO.LE 9
+#DEFINE K.EO.GE 10
+#DEFINE K.EO.SHL 11
+#DEFINE K.EO.SHR 12
+#DEFINE K.EO.ADD 13
+#DEFINE K.EO.SUB 14
+#DEFINE K.EO.MUL 15
+#DEFINE K.EO.DIV 16
+#DEFINE K.EO.MOD 17
+#DEFINE K.EO.MINUS 18
+#DEFINE K.EO.PAR 19
+#DEFINE K.EO.PEEK 20
+#DEFINE K.EO.INDEX 21
+#DEFINE K.EO.WORDPEEK 22
+## AND and OR between compares in a condition: jumps, not values (UXC-FLOW.BL). They are
+## the last two.
+#DEFINE K.EO.LOR 23
+#DEFINE K.EO.LAND 24
+
+## The expression stacks: entries in each, and words on the run-time stack.
+#DEFINE K.EX.MAX 32
+#DEFINE K.EX.DEPTH 16
+
+## The kinds of an entry on the nesting stack of IF, ON CASE and the loops. IFL is a one-line
+## IF. The loops are the kinds from K.NS.DO up: NS.FIND counts on it.
+#DEFINE K.NS.IFB 1
+#DEFINE K.NS.IFL 2
+#DEFINE K.NS.CASE 3
+#DEFINE K.NS.DO 4
+#DEFINE K.NS.FOR 5
+#DEFINE K.NS.REP 6
+#DEFINE K.NS.MAX 16
+## ON CASE: the targets of the ON CASE at depth d are 256 words at (d - 1) * K.CS.SIZE in
+## CS.BANK. K.NS.MAX of them fill the bank.
+#DEFINE K.CS.SIZE 512
+
+## A jump target, in JP.K: a known code offset, a list of jumps still to patch, a label.
+#DEFINE K.JP.CODE 1
+#DEFINE K.JP.LIST 2
+#DEFINE K.JP.LABEL 3
+
+## SUB calls nested inside the arguments of SUB calls, at most.
+#DEFINE K.SB.DEPTH 8
+
+## BINDs to a word of the language, at most.
+#DEFINE K.ALIASES 64
+
+## ASM blocks: the labels of one block, and the uses of a label further down. Kinds of use:
+## the offset byte of a branch, and the address word of JMP or JSR.
+#DEFINE K.ASM.LABELS 32
+#DEFINE K.ASM.BRANCH 1
+#DEFINE K.ASM.WORD 2

@@ -1,0 +1,36 @@
+' Addresses of locals and parameters, and pointers passed to SUBs.
+DIM G AS UBYTE, Q AS UWORD
+SUB FILL(PTR AS UWORD, COUNT AS UBYTE, VALUE AS UBYTE)
+DIM K AS UBYTE
+FOR K = 0 TO COUNT - 1
+POKE PTR + K, VALUE
+NEXT K
+ENDSUB
+FUNCTION SUM(PTR AS UWORD, COUNT AS UBYTE) AS UWORD
+DIM K AS UBYTE, T AS UWORD
+FOR K = 0 TO COUNT - 1
+T = T + PEEK(PTR + K)
+NEXT K
+RETURN T
+ENDFUNCTION
+SUB LOCAL()
+DIM M AS UBYTE, R(5) AS UWORD, P AS UWORD
+P = @M
+P = @R
+P = AddrOf(R)
+P = @P
+POKE @M, 1
+ContentsAtW(@R) = 2
+M = PEEK(@M)
+P = ContentsAtW(@R + 2)
+ENDSUB
+SUB PARAM(X AS UWORD)
+Q = @X
+Q = ContentsAtW(@X)
+ContentsAtW(@X) = 9
+ENDSUB
+FILL(@G, 1, 0)
+FILL($0400, 10, G)
+Q = SUM(@Q, 2) + SUM($0400, G)
+LOCAL()
+PARAM(@Q)

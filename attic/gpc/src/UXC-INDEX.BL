@@ -1,0 +1,59 @@
+## UXC-INDEX.BL -- PEEK and array elements in expressions, for EX.CLOSE in UXC-EXPR.BL. It
+## is in the FOR region, so EX.CLOSE reaches it by GOSUB.
+
+## PEEK(a) or ContentsAt(a), the BYTE at the top entry; ContentsAtW(a), the WORD. The
+## operator is EX.OP%(EX.ON). A constant or @name is a load from that address.
+EX.PEEK:
+    EX.PEEK.TYPE = K.TY.BYTE
+    IF EX.OP%(EX.ON) = K.EO.WORDPEEK THEN EX.PEEK.TYPE = K.TY.WORD
+    EX.I = EX.VN - 1 : EX.LK = EX.VK%(EX.I)
+    IF EX.VT%(EX.I) = K.TY.STR THEN GOTO ER.MISMATCH
+    EX.VG%(EX.I) = 0
+    IF EX.LK = K.EK.CONST THEN GOSUB EX.CONST.WORD
+    IF EX.LK = K.EK.CONST OR EX.LK = K.EK.ADDR THEN EX.VK%(EX.I) = K.EK.MEM : EX.VT%(EX.I) = EX.PEEK.TYPE : RETURN
+    EX.FB = EX.I : GOSUB EX.FLUSH
+    EX.I = EX.VN - 1 : EX.WD = 1 : GOSUB EX.LOAD
+    IF EX.PEEK.TYPE = K.TY.BYTE THEN GP.SUB EMIT, T.PEEK.ID
+    IF EX.PEEK.TYPE = K.TY.WORD THEN GP.SUB EMIT, T.PEEKW.ID
+    EX.VK%(EX.I) = K.EK.REG : EX.VT%(EX.I) = EX.PEEK.TYPE
+    RETURN
+
+## EX.INDEX -- array EX.OA%(EX.ON), element of the top entry. A constant index is checked
+## here, and the element becomes a K.EK.MEM entry. A BYTE array with a BYTE index is read
+## with the index in Y. Any other index is a WORD, made the element's address.
+EX.INDEX:
+    SY.R = EX.OA%(EX.ON) : GOSUB SY.GET
+    IF SY.TYPE >= K.TY.RECORD THEN GOSUB RD.INDEX : RETURN
+    EX.I = EX.VN - 1 : IF EX.VT%(EX.I) = K.TY.STR THEN GOTO ER.MISMATCH
+    EX.INDEX.SIGNED = 0
+    IF (SY.FLAGS AND K.SY.SIGNED) <> 0 THEN EX.INDEX.SIGNED = 1
+    GP.IF EX.VK%(EX.I) = K.EK.CONST THEN
+        IF EX.VV(EX.I) >= SY.CNT THEN ER.M$ = "BAD SUBSCRIPT" : GOTO ER.STOP
+        EX.VK%(EX.I) = K.EK.MEM : EX.VS%(EX.I) = K.SEC.BSS
+        TY.CODE = SY.TYPE
+        GOSUB TY.SIZE
+        EX.VV(EX.I) = SY.VAL + EX.VV(EX.I) * TY.BYTES : EX.VT%(EX.I) = SY.TYPE
+        EX.VG%(EX.I) = EX.INDEX.SIGNED
+        RETURN
+    GP.ENDIF
+    EX.FB = EX.I : GOSUB EX.FLUSH
+    EX.I = EX.VN - 1
+    GP.IF SY.TYPE = K.TY.BYTE AND EX.VT%(EX.I) = K.TY.BYTE THEN
+        EX.WD = 0 : GOSUB EX.LOAD
+        GP.IF SM.ERRORS.ON = 1 AND SY.CNT < 256 THEN
+            SL.S%(0) = K.SEC.CONST : SL.V(0) = SY.CNT : GP.SUB EMIT, T.CHKB.ID
+        GP.ENDIF
+        SL.S%(0) = K.SEC.BSS : SL.V(0) = SY.VAL : GP.SUB EMIT, T.LDB.AY.ID
+    GP.ELSE
+        EX.WD = 1 : GOSUB EX.LOAD
+        GP.IF SM.ERRORS.ON = 1 THEN
+            SL.S%(0) = K.SEC.CONST : SL.V(0) = SY.CNT : GP.SUB EMIT, T.CHKW.ID
+        GP.ENDIF
+        SL.S%(0) = K.SEC.BSS : SL.V(0) = SY.VAL
+        IF SY.TYPE = K.TY.BYTE THEN GP.SUB EMIT, T.IDXB.ID : GP.SUB EMIT, T.PEEK.ID
+        IF SY.TYPE = K.TY.WORD THEN GP.SUB EMIT, T.IDXW.ID : GP.SUB EMIT, T.PEEKW.ID
+        IF SY.TYPE = K.TY.LONG THEN GP.SUB EMIT, T.IDXL.ID : GP.SUB EMIT, T.PEEKL.ID
+    GP.ENDIF
+    EX.VK%(EX.I) = K.EK.REG : EX.VT%(EX.I) = SY.TYPE
+    EX.VG%(EX.I) = EX.INDEX.SIGNED
+    RETURN

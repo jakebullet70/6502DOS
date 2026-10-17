@@ -1,0 +1,40 @@
+@CONST
+.
+=CONST
+.
+.CONST name AS type = value makes a named constant. The type is BYTE, UBYTE,
+.WORD, UWORD, LONG or ULONG. Several go on one line, separated by commas. The
+.value is a constant expression.
+.
+:CONST MAX_LEN AS UBYTE = 80
+:CONST ROWS AS UBYTE = 2 * 30, COLS AS UBYTE = MAX_LEN + 1
+:CONST BASE AS UWORD = $9F20
+:CONST BIG AS UWORD = 1000
+:PRINT MAX_LEN; ROWS; COLS; BASE; BIG
+.
+.This prints 80 60 81 40736 1000.
+.
+.  - A CONST with no AS stops the compile with MISSING AS: name.
+.  - The value must fit the type: CONST LOW AS BYTE = -100 is fine.
+.  - A value over the type's range stops the compile with TOO BIG FOR A BYTE:
+.    name, TOO BIG FOR A WORD: name or TOO BIG FOR A LONG: name. A WORD takes
+.    at most 32767, a UWORD 65535, a LONG 2147483647 and a ULONG 4294967295.
+.  - CONST BIG AS LONG = -70000 and CONST HUGE AS ULONG = 4000000000 are
+.    valid.
+.  - A value under the type's range stops the compile with TOO SMALL: name,
+.    as CONST N AS UBYTE = -1 does.
+.  - A $ mark or AS STRING stops the compile with A CONST IS A NUMBER.
+.  - A value that is not a constant stops the compile with VALUE NOT A
+.    CONSTANT.
+.  - A constant belongs to the SUB or namespace it is in. BIND can name it.
+.  - A constant is used like a number. It takes no RAM and no space in the
+.    PRG.
+.  - An assignment to a constant stops the compile with NOT A VARIABLE: name.
+.
+.See Types, Namespaces, BIND.
+.
+=SEE ALSO
+.
+>5|Types
+>35|Namespaces
+>36|BIND

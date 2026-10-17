@@ -1,0 +1,120 @@
+"""UXC-ONCE.BL: the code that runs once, at the start and at the end.
+
+    start(tpl_folder)   claim the banks, load the templates, run the first pass, open the
+                        source for the second, and emit the program's start
+    finish()            the link step, the PRG and the result line
+    cb_init()           claim the banks of the code buffer, the fixups, the strings and the
+                        records
+    er_report()         the error message on the screen and in g.ui_line
+
+GPC UXC reads the source name and the result file from UXC.INPUT (UI.READ). pyuxc has them
+from its command line, and pyuxc.compile_file sets g.ui_src, g.ui_obj and the folders before
+start. GPC UXC claims its own code banks, K.BANK.EXPR to K.BANK.ONCE; pyuxc has none. The PRG
+is not chained to (UI.CHAIN).
+"""
+
+import uxc_asm
+import uxc_code
+from uxc_code import emit
+import uxc_dead
+from uxc_defs import K_CODE_BANKS, K_FIX_BANKS, K_ORG
+import uxc_flow
+import uxc_lex
+import uxc_link
+import uxc_name
+import uxc_record
+import uxc_sub
+import uxc_sym
+import uxc_tpl as T
+from uxc_state import g, put, uxc_bank
+
+
+def start(tpl_folder):
+    put("UXCBASIC 0.1")
+    g.lx_no = 0
+    g.lx_including = 0
+    g.lx_l = ""
+    uxc_code.tp_load(tpl_folder)
+    uxc_sym.sy_init()
+    cb_init()
+    g.lx_name = g.ui_src
+    uxc_lex.lx_open()
+    put("COMPILING " + g.ui_src)
+    g.lk_org = K_ORG
+    g.vr_n = 0
+    g.rt_n = 0
+    g.bs_n = 0
+    g.sm_errors_on = 1
+    g.as_block = 0
+    g.nm_enum_record = 0
+    g.rd_type_record = 0
+    g.rd_type_count = 0
+    uxc_sub.sb_scan()
+    uxc_lex.close_2()
+    uxc_lex.lx_open()
+    emit(T.T_STUB)
+    emit(T.T_START)
+    uxc_link.lk_init_call()
+
+
+def finish():
+    """UXC.FINISH. The result line goes into g.ui_line."""
+    uxc_lex.close_2()
+    uxc_flow.ct_open()
+    uxc_sub.sb_open()
+    uxc_record.rd_open()
+    uxc_name.nm_open()
+    uxc_asm.as_open()
+    uxc_dead.dd_open()
+    emit(T.T_END)
+    g.lx_no = 0
+    uxc_link.lk_link()
+    uxc_link.lk_write()
+    # The emulator's echo shows the file's bytes too, so start a fresh line.
+    put("")
+    put(g.ui_obj + " " + str(g.cb_n + 2) + " BYTES")
+    g.ui_line = "OK," + g.ui_obj + "," + str(g.cb_n + 2)
+    if g.dd_subs > 0:
+        g.ui_line = g.ui_line + ",REMOVED " + str(g.dd_subs) + " SUBS " + str(g.dd_bytes) + \
+            " BYTES"
+    if g.dv_bytes > 0:
+        g.ui_line = g.ui_line + ",REMOVED " + str(g.dv_vars) + " VARS " + str(g.dv_bytes) + \
+            " BYTES"
+    if g.ds_bytes > 0:
+        g.ui_line = g.ui_line + ",REMOVED " + str(g.ds_strings) + " STRINGS " + \
+            str(g.ds_bytes) + " BYTES"
+
+
+def cb_init():
+    for g.cb_i in range(K_CODE_BANKS):
+        uxc_bank()
+        g.cb_bank[g.cb_i] = g.uxc_b
+    for g.cb_i in range(K_FIX_BANKS):
+        uxc_bank()
+        g.fx_bank[g.cb_i] = g.uxc_b
+    uxc_bank()
+    g.sp_bank = g.uxc_b
+    uxc_bank()
+    g.rt_bank = g.uxc_b
+    uxc_bank()
+    g.cs_bank = g.uxc_b
+    uxc_bank()
+    g.cn_bank = g.uxc_b
+    g.cn_n = 0
+    uxc_code.rt_clear()
+    g.cb_n = 0
+    g.fx_n = 0
+    g.sp_n = 0
+
+
+def er_report():
+    """ER.REPORT. The result line goes into g.ui_line."""
+    if g.lx_including != 0:
+        g.er_m = g.er_m + " (" + g.lx_name + " " + str(g.lx_no) + ")"
+        g.lx_no = g.lx_source_no
+    if g.lx_no > 0:
+        put("?" + g.er_m + " IN " + str(g.lx_no))
+        put(g.lx_l)
+    else:
+        put("?" + g.er_m)
+    g.ui_line = "ERROR," + str(g.lx_no) + "," + g.er_m

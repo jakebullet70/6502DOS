@@ -1,0 +1,11 @@
+SUB Instr(Text$, Search$) AS BYTE
+
+  IF LEN(Search$) = 0 THEN return 1
+  
+	dim i
+    FOR I = 1 TO LEN(Text$) - LEN(Search$) + 1
+        IF MID$(Text$, I, LEN(Search$)) = Search$ THEN return I
+    NEXT I
+    return 0
+
+END FUNCTION

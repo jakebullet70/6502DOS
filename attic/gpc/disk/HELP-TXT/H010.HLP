@@ -1,0 +1,37 @@
+@Pointers
+.
+=POINTERS
+.
+.AddrOf(name) is the address of a variable, an array or a string, as a UWORD.
+.@name is the same. ContentsAt and ContentsAtW read and write memory at any
+.address.
+.
+:DIM X AS UBYTE, P AS UWORD, W AS UWORD
+:X = 42
+:P = AddrOf(X)
+:PRINT ContentsAt(P)          ' 42
+:ContentsAt(P) = 7            ' X is now 7
+:ContentsAtW(AddrOf(W)) = 1000
+.
+.  - ContentsAt(a) is the UBYTE at address a, as PEEK(a) is.
+.  - ContentsAt(a) = v writes the UBYTE v to a, as POKE a, v does.
+.  - ContentsAtW(a) is the UWORD at a and a + 1, low byte first.
+.  - ContentsAtW(a) = v writes the UWORD v to a and a + 1.
+.  - The address is any UWORD expression: ContentsAt(P + 3) = 33.
+.  - A constant address or AddrOf(name) compiles to one load or store. Any
+.    other address goes through a pointer at run time.
+.  - In ASM, AddrOf(name) is two bytes, as @name is.
+.  - PEEK and POKE work as well.
+.  - Case does not matter: AddrOf and ADDROF are the same word.
+.  - ADDROF, CONTENTSAT and CONTENTSATW are reserved words.
+.  - AddrOf(X with no closing bracket stops the compile with MISSING ).
+.  - ContentsAt 5 = 1 stops the compile with MISSING ( AFTER CONTENTSAT.
+.
+.See Arrays, Strings, Declarations, ASM.
+.
+=SEE ALSO
+.
+>16|Arrays
+>18|Strings
+>12|Declarations
+>42|ASM

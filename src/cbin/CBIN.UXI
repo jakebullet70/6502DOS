@@ -1,0 +1,12 @@
+' CBIN.UXI: the argument slots and the SILENT flag of a commandlet. Include DOS.UXI and HEAP.UXI
+' first.
+'
+' The shell puts the arguments in P1$ to P9$, VARBANK system strings 0 to 8, before the run.
+' HEAP.SYS_STRINGS_GET(SLOT_P1) reads P1$, and HEAP.SYS_STRINGS_SET(SLOT_P1, text) writes it.
+' P1$ to P9$ keep their values after the program ends.
+' SILENT is 1 when the commandlet is to print nothing. The commandlet sets it from its arguments.
+
+CONST SLOT_P1 AS UBYTE = 0, SLOT_P2 AS UBYTE = 1, SLOT_P3 AS UBYTE = 2
+CONST SLOT_P4 AS UBYTE = 3, SLOT_P5 AS UBYTE = 4, SLOT_P6 AS UBYTE = 5
+CONST SLOT_P7 AS UBYTE = 6, SLOT_P8 AS UBYTE = 7, SLOT_P9 AS UBYTE = 8
+DIM SILENT AS UBYTE

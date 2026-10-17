@@ -1,0 +1,33 @@
+' String variables, joins, the functions and the compares.
+DIM S$ * 20, T$ * 5, N AS UBYTE, W AS UWORD, C AS BYTE, I AS INT, L AS LONG, U AS ULONG
+S$ = "AB"
+T$ = S$
+S$ = S$ + "X"
+S$ = S$ + T$ + S$
+S$ = T$ + S$
+S$ = ""
+S$ = S$
+T$ = "LONGER THAN FIVE"
+PRINT S$ + T$
+PRINT "A"; "BC"; S$ + "D"
+PRINT CHR$(65); CHR$(N); CHR$(N) + "!"
+PRINT LEN(S$); LEN("ABC"); LEN(S$ + T$); ASC(S$); ASC(""); ASC("Q"); ASC(S$ + T$)
+W = VAL(S$)
+L = LVAL(T$)
+W = VAL("12")
+S$ = STR$(N) + STR$(W) + STR$(C) + STR$(I)
+S$ = STR$(L) + STR$(U) + STR$(5) + STR$(-7) + STR$(70000)
+S$ = MID$(T$, 2) + MID$(T$, N, 3) + MID$("HELLO", 2, W)
+N = INSTR(S$, "B") + INSTR(S$, T$, 2) + INSTR("ABC", "C", N)
+IF S$ = T$ THEN PRINT 1
+IF S$ <> T$ THEN PRINT 2
+IF S$ < T$ THEN PRINT 3
+IF S$ > T$ THEN PRINT 4
+IF S$ <= T$ THEN PRINT 5
+IF S$ >= T$ THEN PRINT 6
+IF S$ = "" THEN PRINT 7
+IF "" < S$ THEN PRINT 8
+IF "" >= S$ THEN PRINT 9
+IF S$ + "A" > T$ + "B" THEN PRINT 10
+N = S$ = T$
+PRINT S$ = "Q"; LEN(MID$(S$, 1, 2))

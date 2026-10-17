@@ -1,0 +1,70 @@
+RUN CMDSHELL.COM
+A$ = "0123456789012345678901234567890123456789012345678901234567890123"
+A$ = A$ + A$ + A$ + "ABC"
+PRINT A$
+B$ = "KEEP"
+P1$ = "ONE"
+p9$ = P1$ + B$
+PRINT P1$; "|"; P9$; "|"; P2$; "|"
+P0$ = "X"
+P10$ = "X"
+INPUT P3$
+typed
+PRINT P3$
+C$ = A$
+C$ = A$
+C$ = A$
+C$ = A$
+C$ = A$
+C$ = A$
+C$ = A$
+C$ = A$
+C$ = A$
+C$ = A$
+C$ = A$
+C$ = A$
+C$ = A$
+C$ = A$
+C$ = A$
+C$ = A$
+C$ = A$
+C$ = A$
+C$ = A$
+C$ = A$
+C$ = A$
+C$ = A$
+C$ = A$
+C$ = A$
+C$ = A$
+C$ = A$
+C$ = A$
+C$ = A$
+C$ = A$
+C$ = A$
+C$ = A$
+C$ = A$
+C$ = A$
+C$ = A$
+C$ = A$
+C$ = A$
+C$ = A$
+C$ = A$
+C$ = A$
+C$ = A$
+PRINT B$; " "; P1$; " "; C$
+A$ = ""
+PRINT A$; "|"
+EDITOR$ = "EDIT"
+PROMPT$ = "X16" + ">"
+PRINT EDITOR$; "|"; PROMPT$
+PROMPT$ = "$p$G"
+PROMPT$ = "[$N$Q$L$B$$$X]$_$P$g"
+PROMPT$ = ""
+SETSYS EDITOR$ = "ED" + "IT2"
+SETSYS PROMPT$="X16>"
+SETSYS
+SETSYS CURDIR$ = "C:\"
+SETSYS A$ = "X"
+SETSYS PROMPT$
+SETSYS PROMPT$ = ""
+END

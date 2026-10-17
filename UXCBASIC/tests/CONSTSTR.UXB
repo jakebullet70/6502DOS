@@ -1,0 +1,25 @@
+' String CONSTs: literals, CHR$ of a constant and other string CONSTs joined by +, the AS
+' STRING form, in a namespace and a SUB, BIND, and uses in expressions
+CONST HELLO$ = "HELLO"
+CONST BANG$ = CHR$(33), STAR AS STRING = CHR$(40 + 2)
+CONST GREETING$ = HELLO$ + ", WORLD" + BANG$
+CONST EMPTY$ = ""
+DIM S$ * 20
+NAMESPACE CONS
+  CONST LT AS UBYTE = 60
+  CONST PRE$ = CHR$(LT) + "[", POST$ = "]>"
+  CONST WRAP$ = PRE$ + POST$
+END NAMESPACE
+SUB SHOUT()
+  CONST TAIL$ = BANG$ + BANG$
+  PRINT HELLO$ + TAIL$
+ENDSUB
+BIND W$ = CONS.WRAP$
+PRINT GREETING$
+PRINT STAR; LEN(GREETING$); LEN(EMPTY$)
+PRINT CONS.PRE$; CONS.POST$
+PRINT W$
+SHOUT()
+S$ = CONS.WRAP$ + HELLO$
+PRINT S$
+IF S$ = CONS.PRE$ + "]>HELLO" THEN PRINT "SAME"

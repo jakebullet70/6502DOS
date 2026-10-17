@@ -1,0 +1,6 @@
+' FILEERR -- PRINT # to a handle that is not open stops the program
+DIM F AS UWORD
+F = OPEN("NOPE", O.READ)
+PRINT "A"
+PRINT #F, "B"
+PRINT "C"

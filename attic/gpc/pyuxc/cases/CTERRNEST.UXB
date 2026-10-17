@@ -1,0 +1,4 @@
+DO
+IF 1 THEN
+LOOP
+ENDIF

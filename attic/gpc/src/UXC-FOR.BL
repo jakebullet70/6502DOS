@@ -1,0 +1,310 @@
+## UXC-FOR.BL -- FOR ... NEXT: CT.FOR and CT.NEXT, called from SM.STMT. The nesting stack
+## is in UXC-FLOW.BL, the jumps in UXC-COND.BL.
+##
+## FOR v = a TO b [STEP k]. STEP is a constant, 1 when it is left out. The body runs zero
+## times when the range is empty. The test at the bottom is made before the step, on the
+## value the body saw, so v never wraps, and after the loop v is the last value the body
+## saw. A limit that is not a constant is copied once into the hidden word of the depth.
+##
+## The bottom, with H the limit, or the bound the limit gives for a bigger step:
+##   STEP 1 or -1       out when v = H, else INC or DEC v
+##   STEP k, k > 1      out when v >= H, H = the limit - (k - 1), at least 0
+##   STEP -k, constant  out when v < H, H = the limit + k
+##   STEP -k, variable  out when v <= H, H = the limit + (k - 1), at most the type's top
+## When H cannot be reached, there is no jump back: the body runs once.
+##
+## A signed v is worked in the biased range: FR.BIAS adds half the range, so -128 to 127
+## becomes 0 to 255, and the rules above hold. The compares are the signed ones. FR.BIAS is
+## its own inverse, and turns each constant the code is given back into v's form. A signed
+## STEP is at most half the range.
+
+CT.FOR:
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.NAME THEN GOTO ER.SYNTAX
+    SM.N$ = TK.S$ : GOSUB SM.VAR
+    FR.SG = 0
+    IF (SY.FLAGS AND K.SY.SIGNED) <> 0 THEN FR.SG = 1
+    GOSUB RD.SECTION.COUNTER
+    NS.KN = K.NS.FOR : GOSUB NS.PUSH : CT.I = NS.D
+    FR.VA = SY.VAL : FR.VT = SY.TYPE : FR.VS = RD.SEC
+    IF FR.VT = K.TY.LONG THEN ER.M$ = "A FOR COUNTER IS A BYTE OR A WORD" : GOTO ER.STOP
+    FR.M = 255 : IF FR.VT = K.TY.WORD THEN FR.M = 65535
+    FR.HALF = INT(FR.M / 2) + 1
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.OP OR TK.K <> 61 THEN GOTO ER.SYNTAX
+    ## v = a
+    GOSUB LX.NEXT : GOSUB EX.EXPR
+    FR.AC = 0
+    GP.IF EX.VK%(EX.VN - 1) = K.EK.CONST THEN
+        FR.AC = 1 : FR.A = EX.VV(EX.VN - 1)
+        IF FR.VT = K.TY.BYTE THEN FR.A = FR.A - INT(FR.A / 256) * 256
+        IF FR.VT = K.TY.WORD THEN FR.A = FR.A - INT(FR.A / 65536) * 65536
+        FR.X = FR.A
+        GOSUB FR.BIAS
+        FR.A = FR.X
+    GP.ENDIF
+    GP.IF FR.VT = K.TY.BYTE THEN
+        GOSUB EX.TOB : FR.T = T.STB.V.ID
+    GP.ELSE
+        GOSUB EX.TOW : FR.T = T.STW.V.ID
+    GP.ENDIF
+    FR.OF = 0 : GOSUB FR.V
+    IF TK.T <> K.TT.NAME OR TK.S$ <> "TO" THEN GOTO ER.SYNTAX
+    ## The limit stays an entry on the value stack until the step is known.
+    GOSUB LX.NEXT : GOSUB EX.EXPR
+    FR.UP = 1 : FR.K = 1
+    GP.IF TK.T = K.TT.NAME AND TK.S$ = "STEP" THEN
+        GOSUB LX.NEXT
+        IF TK.T = K.TT.OP AND TK.K = 45 THEN FR.UP = 0 : GOSUB LX.NEXT
+        GOSUB EX.EXPR
+        IF EX.VK%(EX.VN - 1) <> K.EK.CONST THEN ER.M$ = "STEP MUST BE A CONSTANT" : GOTO ER.STOP
+        FR.K = EX.VV(EX.VN - 1) : EX.VN = EX.VN - 1
+        IF EX.VT%(EX.VN) = K.TY.LONG THEN ER.M$ = "STEP TOO BIG" : GOTO ER.STOP
+        GP.IF EX.VG%(EX.VN) = 1 THEN
+            FR.UP = 1 - FR.UP
+            FR.K = 65536 - FR.K
+        GP.ENDIF
+        IF FR.K = 0 THEN ER.M$ = "STEP 0" : GOTO ER.STOP
+        IF FR.K > FR.M THEN ER.M$ = "STEP TOO BIG" : GOTO ER.STOP
+        IF FR.SG = 1 AND FR.K > FR.HALF THEN ER.M$ = "STEP TOO BIG" : GOTO ER.STOP
+    GP.ENDIF
+    FR.NB = 0 : FR.HV = 0
+    GP.IF EX.VK%(EX.VN - 1) = K.EK.CONST THEN
+        FR.LC = 1 : FR.L = EX.VV(EX.VN - 1) : EX.VN = EX.VN - 1
+        GOSUB FR.LIMIT
+        GOSUB FR.CONST
+        FR.X = FR.H
+        GOSUB FR.BIAS
+        FR.H = FR.X
+    GP.ELSE
+        FR.LC = 0 : GOSUB FR.VAR
+    GP.ENDIF
+    NS.VA(CT.I) = FR.VA : NS.VS%(CT.I) = FR.VS : NS.VT%(CT.I) = FR.VT + 4 * FR.SG : NS.LC%(CT.I) = FR.LC : NS.LV(CT.I) = FR.H
+    NS.ST(CT.I) = FR.K : NS.SN%(CT.I) = FR.UP : NS.NB%(CT.I) = FR.NB : NS.HA(CT.I) = FR.HV
+    NS.TOP(CT.I) = CB.N
+    RETURN
+
+## FR.CONST -- a constant limit FR.L. A/Y still holds v.
+FR.CONST:
+    ## The test before the first pass, left out when it cannot fail.
+    FR.ZT = 1
+    IF FR.UP = 1 AND FR.L = FR.M THEN FR.ZT = 0
+    IF FR.UP = 0 AND FR.L = 0 THEN FR.ZT = 0
+    GP.IF FR.AC = 1 THEN
+        FR.ZT = 0 : FR.Z = 0
+        IF FR.UP = 1 AND FR.A > FR.L THEN FR.Z = 1
+        IF FR.UP = 0 AND FR.A < FR.L THEN FR.Z = 1
+        IF FR.Z = 1 THEN JP.B = T.BRA.ID : GOSUB FR.OUT
+    GP.ENDIF
+    GP.IF FR.ZT = 1 THEN
+        GP.IF FR.UP = 1 THEN
+            FR.C = FR.L + 1 : JP.B = T.BCS.ID
+        GP.ELSE
+            FR.C = FR.L : JP.B = T.BCC.ID
+        GP.ENDIF
+        GOSUB FR.CMPC
+        FR.X = FR.C
+        GOSUB FR.BIAS
+        FR.C = FR.X
+        GOSUB FR.CE : GOSUB FR.OUT
+    GP.ENDIF
+    FR.H = FR.L
+    IF FR.K = 1 THEN RETURN
+    GP.IF FR.UP = 1 THEN
+        FR.H = FR.L - FR.K + 1 : IF FR.H <= 0 THEN FR.NB = 1
+    GP.ELSE
+        FR.H = FR.L + FR.K : IF FR.H > FR.M THEN FR.NB = 1
+    GP.ENDIF
+    RETURN
+
+## FR.VAR -- the limit is the top entry: copy it into the hidden word.
+FR.VAR:
+    GOSUB NS.HIDDEN : FR.HV = NS.HV : FR.H = 0
+    GP.IF FR.VT = K.TY.BYTE THEN
+        GOSUB EX.TOB : FR.T = T.STB.V.ID
+    GP.ELSE
+        GOSUB EX.TOW : FR.T = T.STW.V.ID
+    GP.ENDIF
+    FR.OF = 0 : GOSUB FR.HE
+    ## The test before the first pass. A/Y holds the limit.
+    GP.IF FR.UP = 1 THEN
+        GOSUB FR.CMPV : FR.OF = 0 : GOSUB FR.V
+    GP.ELSE
+        GOSUB FR.LOAD : FR.OF = 0 : GOSUB FR.V
+        GOSUB FR.CMPV : FR.OF = 0 : GOSUB FR.HE
+    GP.ENDIF
+    JP.B = T.BCC.ID : GOSUB FR.OUT
+    IF FR.K = 1 THEN RETURN
+    ## The bound, worked out once.
+    GOSUB FR.LOAD : FR.OF = 0 : GOSUB FR.HE
+    FR.C = FR.K - 1
+    GP.IF FR.UP = 1 THEN
+        FR.T = T.SUBB.C.ID : IF FR.VT = K.TY.WORD THEN FR.T = T.SUBW.C.ID
+        GOSUB FR.CE : JP.B = T.BCS.ID : FR.C = 0
+    GP.ELSE
+        FR.T = T.ADDB.C.ID : IF FR.VT = K.TY.WORD THEN FR.T = T.ADDW.C.ID
+        GOSUB FR.CE : JP.B = T.BCC.ID : FR.C = FR.M
+    GP.ENDIF
+    IF FR.SG = 1 THEN JP.B = T.BVC.ID
+    FR.X = FR.C
+    GOSUB FR.BIAS
+    FR.C = FR.X
+    GOSUB JP.FWD
+    FR.T = T.LDB.C.ID : IF FR.VT = K.TY.WORD THEN FR.T = T.LDW.C.ID
+    GOSUB FR.CE : GOSUB JP.LAND
+    FR.T = T.STB.V.ID : IF FR.VT = K.TY.WORD THEN FR.T = T.STW.V.ID
+    FR.OF = 0 : GOTO FR.HE
+
+## FR.OUT -- a jump of kind JP.B to the end of the loop.
+FR.OUT:
+    JP.K = K.JP.LIST : JP.H = NS.EX(CT.I) : GOSUB JP.BR : NS.EX(CT.I) = JP.H
+    RETURN
+
+## Emit FR.T with: FR.V the variable + FR.OF in section FR.VS, FR.HE the hidden word + FR.OF, FR.CE the
+## constant FR.C. FR.LOAD and FR.CMPV set FR.T to the load or the compare with a variable,
+## of v's width and sign; FR.CMPC to the compare with a constant.
+FR.V:
+    SL.S%(0) = FR.VS : SL.V(0) = FR.VA + FR.OF : GP.SUB EMIT, FR.T
+    RETURN
+FR.HE:
+    SL.S%(0) = K.SEC.VAR : SL.V(0) = FR.HV + FR.OF : GP.SUB EMIT, FR.T
+    RETURN
+FR.CE:
+    SL.S%(0) = K.SEC.CONST : SL.V(0) = FR.C : GP.SUB EMIT, FR.T
+    RETURN
+FR.LOAD:
+    FR.T = T.LDB.V.ID : IF FR.VT = K.TY.WORD THEN FR.T = T.LDW.V.ID
+    RETURN
+FR.CMPV:
+    FR.T = T.CMPB.V.ID : IF FR.VT = K.TY.WORD THEN FR.T = T.CMPW.V.ID
+    IF FR.SG = 0 THEN RETURN
+    FR.T = T.SCMPB.V.ID : IF FR.VT = K.TY.WORD THEN FR.T = T.SCMPW.V.ID
+    RETURN
+FR.CMPC:
+    FR.T = T.CMPB.C.ID : IF FR.VT = K.TY.WORD THEN FR.T = T.CMPW.C.ID
+    IF FR.SG = 0 THEN RETURN
+    FR.T = T.SCMPB.C.ID : IF FR.VT = K.TY.WORD THEN FR.T = T.SCMPW.C.ID
+    RETURN
+
+CT.NEXT:
+    CT.W$ = "NEXT WITHOUT FOR" : NS.KN = K.NS.FOR : GOSUB NS.TOPK
+    GOSUB LX.NEXT
+    GP.IF TK.T = K.TT.NAME THEN
+        SM.N$ = TK.S$ : GOSUB SM.VAR
+        IF SY.VAL <> NS.VA(CT.I) THEN ER.M$ = "NEXT " + SM.N$ + " IS NOT THE FOR VARIABLE" : GOTO ER.STOP
+        GOSUB LX.NEXT
+    GP.ENDIF
+    JP.L = NS.CT(CT.I) : GOSUB JP.HERE
+    FR.VA = NS.VA(CT.I) : FR.VS = NS.VS%(CT.I) : FR.SG = INT(NS.VT%(CT.I) / 4) : FR.VT = NS.VT%(CT.I) - 4 * FR.SG : FR.LC = NS.LC%(CT.I) : FR.H = NS.LV(CT.I)
+    FR.K = NS.ST(CT.I) : FR.UP = NS.SN%(CT.I) : FR.HV = NS.HA(CT.I) : FR.TOP = NS.TOP(CT.I)
+    IF NS.NB%(CT.I) = 0 THEN GOSUB FR.BOTTOM
+    JP.L = NS.EX(CT.I) : GOSUB JP.HERE
+    NS.D = NS.D - 1
+    RETURN
+
+## FR.BOTTOM -- the test, the step, and the jump back to the top.
+FR.BOTTOM:
+    FR.W = 0 : IF FR.VT = K.TY.WORD THEN FR.W = 1
+    GP.IF FR.K = 1 THEN
+        ## Out when v = H, a byte at a time.
+        FR.T = T.LDB.V.ID : FR.OF = 0 : GOSUB FR.V
+        FR.OF = 0 : GOSUB FR.CMPH
+        GP.IF FR.W = 0 THEN
+            JP.B = T.BEQ.ID : GOSUB JP.FWD : FR.O = JP.AT
+            FR.T = T.INCB.V.ID : IF FR.UP = 0 THEN FR.T = T.DECB.V.ID
+            FR.OF = 0 : GOSUB FR.V
+        GP.ELSE
+            JP.B = T.BNE.ID : GOSUB JP.FWD : FR.N = JP.AT
+            FR.T = T.LDB.V.ID : FR.OF = 1 : GOSUB FR.V
+            FR.OF = 1 : GOSUB FR.CMPH
+            JP.B = T.BEQ.ID : GOSUB JP.FWD : FR.O = JP.AT
+            JP.AT = FR.N : GOSUB JP.LAND
+            GP.IF FR.UP = 1 THEN
+                FR.T = T.INCB.V.ID : FR.OF = 0 : GOSUB FR.V
+                JP.V = FR.TOP : JP.B = T.BNE.ID : GOSUB JP.BACK
+                FR.T = T.INCB.V.ID : FR.OF = 1 : GOSUB FR.V
+            GP.ELSE
+                FR.T = T.DECW.V.ID : FR.OF = 0 : GOSUB FR.V
+            GP.ENDIF
+        GP.ENDIF
+        JP.V = FR.TOP : JP.B = T.BRA.ID : GOSUB JP.BACK
+        JP.AT = FR.O : GOSUB JP.LAND : RETURN
+    GP.ENDIF
+    ## A bigger step: the test.
+    FR.RL = FR.SG
+    GP.IF FR.UP = 0 AND FR.LC = 0 THEN
+        ## out when H >= v
+        GOSUB FR.LOAD : FR.OF = 0 : GOSUB FR.HE
+        GOSUB FR.CMPV : FR.OF = 0 : GOSUB FR.V
+        JP.B = T.BCS.ID : FR.RL = 1
+    GP.ELSE
+        ## out when v >= H (up), or v < H (down)
+        GOSUB FR.LOAD : FR.OF = 0 : GOSUB FR.V
+        GP.IF FR.LC = 1 THEN
+            GOSUB FR.CMPC
+            FR.C = FR.H : GOSUB FR.CE
+        GP.ELSE
+            GOSUB FR.CMPV : FR.OF = 0 : GOSUB FR.HE
+        GP.ENDIF
+        JP.B = T.BCS.ID : IF FR.UP = 0 THEN JP.B = T.BCC.ID
+    GP.ENDIF
+    GOSUB JP.FWD : FR.O = JP.AT
+    ## The step. An unsigned BYTE v is still in A after a compare with the bound.
+    FR.C = FR.K
+    GP.IF FR.W = 0 THEN
+        IF FR.RL = 1 THEN FR.T = T.LDB.V.ID : FR.OF = 0 : GOSUB FR.V
+        FR.T = T.ADDB.C.ID : IF FR.UP = 0 THEN FR.T = T.SUBB.C.ID
+        GOSUB FR.CE
+        FR.T = T.STB.V.ID : FR.OF = 0 : GOSUB FR.V
+    GP.ELSE
+        GP.IF FR.K < 256 THEN
+            FR.T = T.LDB.V.ID : FR.OF = 0 : GOSUB FR.V
+            FR.T = T.ADDB.C.ID : IF FR.UP = 0 THEN FR.T = T.SUBB.C.ID
+            GOSUB FR.CE
+            FR.T = T.STB.V.ID : FR.OF = 0 : GOSUB FR.V
+            JP.B = T.BCC.ID : IF FR.UP = 0 THEN JP.B = T.BCS.ID
+            GOSUB JP.FWD : FR.N = JP.AT
+            FR.T = T.INCB.V.ID : IF FR.UP = 0 THEN FR.T = T.DECB.V.ID
+            FR.OF = 1 : GOSUB FR.V
+            JP.AT = FR.N : GOSUB JP.LAND
+        GP.ELSE
+            FR.T = T.LDW.V.ID : FR.OF = 0 : GOSUB FR.V
+            FR.T = T.ADDW.C.ID : IF FR.UP = 0 THEN FR.T = T.SUBW.C.ID
+            GOSUB FR.CE
+            FR.T = T.STW.V.ID : FR.OF = 0 : GOSUB FR.V
+        GP.ENDIF
+    GP.ENDIF
+    JP.V = FR.TOP : JP.B = T.BRA.ID : GOSUB JP.BACK
+    JP.AT = FR.O : GOSUB JP.LAND : RETURN
+
+## FR.CMPH -- the compare of A with byte FR.OF of H: the constant, or the hidden word.
+FR.CMPH:
+    GP.IF FR.LC = 1 THEN
+        FR.C = FR.H - INT(FR.H / 256) * 256 : IF FR.OF = 1 THEN FR.C = INT(FR.H / 256)
+        FR.T = T.CMPB.C.ID : GOTO FR.CE
+    GP.ENDIF
+    FR.T = T.CMPB.V.ID : GOTO FR.HE
+
+## FR.BIAS -- FR.X moved half v's range up, for a signed v. It is its own inverse.
+FR.BIAS:
+    IF FR.SG = 0 THEN RETURN
+    FR.X = FR.X + FR.HALF
+    IF FR.X > FR.M THEN FR.X = FR.X - FR.M - 1
+    RETURN
+
+## FR.LIMIT -- the constant limit FR.L checked against v's range, and biased. EX.VG%(EX.VN)
+## is the limit's sign.
+FR.LIMIT:
+    GP.IF FR.SG = 0 THEN
+        IF FR.L > FR.M THEN ER.M$ = "TO VALUE TOO BIG" : GOTO ER.STOP
+        RETURN
+    GP.ENDIF
+    FR.BAD = 0
+    IF EX.VT%(EX.VN) = K.TY.LONG THEN FR.BAD = 1
+    IF EX.VG%(EX.VN) = 0 AND FR.L >= FR.HALF THEN FR.BAD = 1
+    IF EX.VG%(EX.VN) = 1 AND FR.L < 65536 - FR.HALF THEN FR.BAD = 1
+    IF FR.BAD = 1 THEN ER.M$ = "TO VALUE OUT OF RANGE" : GOTO ER.STOP
+    FR.X = FR.L - INT(FR.L / (FR.M + 1)) * (FR.M + 1)
+    GOSUB FR.BIAS
+    FR.L = FR.X
+    RETURN

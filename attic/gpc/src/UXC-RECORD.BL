@@ -1,0 +1,713 @@
+## UXC-RECORD.BL -- record types: TYPE ... END TYPE, and LEN of a TYPE name.
+##
+##   RD.TYPE          in  SM.W$     TYPE name, with the token at TYPE, or a stray ENDTYPE
+##   RD.FIELDS                      one line inside a TYPE
+##   RD.AS.TYPE                     the TYPE named by the token, after AS; out SM.TY,
+##                                  RD.AS.RECORD and RD.AS.SIZE
+##   RD.DIM           in  SM.N$ SM.TY SM.CNT    DIM name[(n)] AS type [AT address], with
+##                                  the token after the type
+##   RD.MEMBER        in  SY.* NM.REST$     out SY.*, the field NM.REST$ of the record variable
+##   RD.INDEX         in  SY.*      from EX.INDEX: the field after an element, as the top entry
+##   RD.AT.ELEMENT    in  SY.*      from EX.AT.NAME: @array, @array(i) or @array(i).field
+##   RD.LET.ELEMENT   in  SY.*      array(i).field = value or array(i) = record, with the
+##                                  token at the (
+##   RD.MAXES         in  SY.*      at startup, the max of each string field of a record or
+##                                  of every element of an array of records
+##   RD.SECTION       in  SY.*      out RD.SEC, the section of a variable's value or block
+##   RD.SECTION.VALUE               the same, and stop when the variable is a record
+##   RD.SECTION.COUNTER             the same, and stop when it is no FOR counter
+##   RD.LET           in  SY.*      record = record, with the token at the =
+##   RD.LEN                         LEN(name) of a TYPE name or a record variable, with the
+##                                  token at the (; out RD.LEN.FOUND
+##   RD.OPEN                        at the end of the source, a TYPE still open is an error
+##
+## A TYPE is a K.SK.TYPE record. Its type is K.TY.RECORD plus its number, and its value is its
+## size. Each field is a K.SK.FIELD record owned by its TYPE: its type is the field's type,
+## its value the field's offset, and its count a string field's max.
+##
+## A record variable is a K.SK.VAR record of its TYPE's type. It is a block in the block
+## space, flag K.SY.BLOCK, or at a fixed address, flag K.SY.FIXED. Its TYPE's record is at
+## K.SY.RECORD.TYPE. A field of it is not in the table: RD.MEMBER makes SY.* a variable at
+## the record's value plus the field's offset, with the record's flags and K.SY.MEMBER.
+## A string field's count is its max, as a string variable's is.
+## Checklist: a new reader of a variable record takes its section from RD.SECTION.
+##
+## A string field gets its max at startup in a record of the main program, and each time
+## the DIM runs in a local record. A record at a fixed address gets no max: the memory is
+## not the program's.
+##
+## An array of records is a K.SK.ARRAY record of its TYPE's type, with its TYPE's record at
+## K.SY.RECORD.TYPE. Its elements are in the block space, or in the frame of a SUB.
+## An element at a constant index is a fixed address. At a variable index, the address is
+## computed into A/Y. A string field there is read through a hidden WORD, %E 1 and on,
+## counted with the statement's %P words by SG.POINTERS.
+
+## RD.TYPE -- RD.TYPE.RECORD is the TYPE's record from here to its END TYPE, and SM.LINE
+## sends each line to RD.FIELDS.
+RD.TYPE:
+    IF SM.W$ = "ENDTYPE" THEN GOTO RD.ERROR.END
+    IF SB.CURRENT <> 0 THEN GOTO RD.ERROR.IN.SUB
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.NAME OR TK.M <> 0 THEN GOTO ER.SYNTAX
+    SM.N$ = TK.S$
+    GOSUB NM.RESERVED
+    SY.NAME$ = SM.N$
+    SY.OW = NM.SCOPE
+    GOSUB SY.FIND
+    IF SY.R <> 0 THEN GOTO RD.ERROR.DUPLICATE
+    IF RD.TYPE.COUNT >= K.RD.TYPES THEN GOTO RD.ERROR.TOO.MANY
+    SY.KIND = K.SK.TYPE
+    SY.TYPE = K.TY.RECORD + RD.TYPE.COUNT
+    SY.VAL = 0
+    SY.FLAGS = 0
+    SY.CNT = 0
+    GOSUB SY.ADD
+    RD.TYPE.COUNT = RD.TYPE.COUNT + 1
+    RD.TYPE.RECORD = SY.R
+    RD.TYPE.SIZE = 0
+    RD.TYPE.START.LINE = LX.NO
+    RD.TYPE.START.TEXT$ = LX.L$
+    GOSUB LX.NEXT
+    RETURN
+
+## RD.FIELDS -- one field, name AS BYTE, name AS WORD or name AS STRING * n, or END TYPE.
+RD.FIELDS:
+    IF TK.T = K.TT.EOL THEN RETURN
+    IF TK.T <> K.TT.NAME THEN GOTO ER.SYNTAX
+    IF TK.S$ = "ENDTYPE" THEN GOTO RD.TYPE.END
+    IF TK.S$ = "END" THEN GOTO RD.TYPE.END.WORD
+    SM.N$ = TK.S$
+    IF TK.M <> 0 THEN GOTO RD.ERROR.MARK
+    GOSUB NM.RESERVED
+    SY.NAME$ = SM.N$
+    SY.OW = RD.TYPE.RECORD
+    GOSUB SY.FIND
+    IF SY.R <> 0 THEN GOTO RD.ERROR.DUPLICATE
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.NAME OR TK.S$ <> "AS" THEN GOTO ER.SYNTAX
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.NAME THEN GOTO ER.SYNTAX
+    RD.FIELD.TYPE = 0
+    RD.FIELD.MAX = 0
+    GOSUB NM.TYPE.NAME
+    IF NM.TYPE.CODE <> K.TY.STR THEN RD.FIELD.TYPE = NM.TYPE.CODE
+    IF NM.TYPE.CODE = K.TY.STR THEN GOSUB RD.STRING.SIZE
+    IF RD.FIELD.TYPE = 0 THEN GOTO RD.ERROR.FIELD.TYPE
+    TY.CODE = RD.FIELD.TYPE
+    GOSUB TY.SIZE
+    RD.FIELD.SIZE = TY.BYTES
+    IF RD.FIELD.TYPE = K.TY.STR THEN RD.FIELD.SIZE = RD.FIELD.MAX + 2
+    IF RD.TYPE.SIZE + RD.FIELD.SIZE > 255 THEN GOTO RD.ERROR.TOO.BIG
+    SY.NAME$ = SM.N$
+    SY.OW = RD.TYPE.RECORD
+    SY.KIND = K.SK.FIELD
+    SY.TYPE = RD.FIELD.TYPE
+    SY.VAL = RD.TYPE.SIZE
+    SY.FLAGS = NM.TYPE.SIGNED * K.SY.SIGNED
+    SY.CNT = RD.FIELD.MAX
+    GOSUB SY.ADD
+    RD.TYPE.SIZE = RD.TYPE.SIZE + RD.FIELD.SIZE
+    GOSUB LX.NEXT
+    RETURN
+
+## RD.STRING.SIZE -- * n, with the token at STRING. It leaves the token at n.
+RD.STRING.SIZE:
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.OP OR TK.K <> 42 THEN GOTO RD.ERROR.NO.SIZE
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.NUM THEN GOTO RD.ERROR.SIZE
+    IF TK.V < 1 OR TK.V > 255 THEN GOTO RD.ERROR.SIZE
+    RD.FIELD.TYPE = K.TY.STR
+    RD.FIELD.MAX = TK.V
+    RETURN
+
+RD.TYPE.END.WORD:
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.NAME OR TK.S$ <> "TYPE" THEN GOTO ER.SYNTAX
+## RD.TYPE.END -- the TYPE's value becomes its size.
+RD.TYPE.END:
+    IF RD.TYPE.SIZE = 0 THEN GOTO RD.ERROR.EMPTY
+    SY.R = RD.TYPE.RECORD
+    GOSUB SY.GET
+    SY.VAL = RD.TYPE.SIZE
+    GOSUB SY.SET
+    RD.TYPE.RECORD = 0
+    GOSUB LX.NEXT
+    RETURN
+
+## ---------------------------------------------------------------------------------
+## Record variables
+
+## RD.AS.TYPE -- a name that is no TYPE is a syntax error.
+RD.AS.TYPE:
+    RD.AS.NAME$ = SM.N$
+    SM.N$ = TK.S$
+    NM.FIND.QUIET = 1
+    GOSUB NM.FIND
+    NM.FIND.QUIET = 0
+    SM.N$ = RD.AS.NAME$
+    IF SY.R = 0 THEN GOTO ER.SYNTAX
+    IF SY.KIND <> K.SK.TYPE THEN GOTO ER.SYNTAX
+    SM.TY = SY.TYPE
+    RD.AS.RECORD = SY.R
+    RD.AS.SIZE = SY.VAL
+    RETURN
+
+RD.DIM:
+    RD.DIM.RECORD = RD.AS.RECORD
+    GP.IF TK.T = K.TT.NAME THEN
+        GOSUB NM.AT
+    GP.ELSEIF SM.CNT <> 0 THEN
+        GOSUB RD.DIM.ARRAY
+    GP.ELSE
+        SY.NAME$ = SM.N$
+        SY.OW = NM.SCOPE
+        GOSUB SY.FIND
+        IF SY.R <> 0 THEN GOTO RD.ERROR.DUPLICATE
+        SB.PLACE.SIZE = RD.AS.SIZE
+        GOSUB SB.PLACE.BLOCK
+        IF BS.N > K.TOP THEN GOTO RD.ERROR.TOO.BIG.SPACE
+        SY.NAME$ = SM.N$
+        SY.OW = NM.SCOPE
+        SY.KIND = K.SK.VAR
+        SY.TYPE = SM.TY
+        SY.VAL = SB.PLACE
+        SY.FLAGS = K.SY.BLOCK
+        SY.CNT = 0
+        GOSUB SY.ADD
+    GP.ENDIF
+    SB.FIELD = K.SY.RECORD.TYPE
+    SB.WORD = RD.DIM.RECORD
+    GOSUB SB.FIELD.SET
+    IF SB.CURRENT = 0 OR (SY.FLAGS AND K.SY.FIXED) <> 0 THEN RETURN
+    RD.MAXES.LOCAL = 1
+    GOTO RD.STRING.MAXES
+
+## RD.DIM.ARRAY -- SM.CNT records in the block space, or in the frame of the SUB being
+## compiled.
+RD.DIM.ARRAY:
+    SY.NAME$ = SM.N$
+    SY.OW = NM.SCOPE
+    GOSUB SY.FIND
+    IF SY.R <> 0 THEN GOTO RD.ERROR.DUPLICATE
+    SB.PLACE.SIZE = SM.CNT * RD.AS.SIZE
+    GOSUB SB.PLACE.BLOCK
+    IF BS.N > K.TOP THEN GOTO RD.ERROR.TOO.BIG.SPACE
+    SY.NAME$ = SM.N$
+    SY.OW = NM.SCOPE
+    SY.KIND = K.SK.ARRAY
+    SY.TYPE = SM.TY
+    SY.VAL = SB.PLACE
+    SY.FLAGS = 0
+    SY.CNT = SM.CNT
+    GOSUB SY.ADD
+    RETURN
+
+## RD.MEMBER -- with NM.FIND.QUIET set, a name that is no field gives SY.R = 0.
+RD.MEMBER:
+    RD.MEMBER.VALUE = SY.VAL
+    RD.MEMBER.FLAGS = SY.FLAGS + K.SY.MEMBER
+    SB.FIELD = K.SY.RECORD.TYPE
+    GOSUB SB.FIELD.GET
+    SY.NAME$ = NM.REST$
+    SY.OW = SB.WORD
+    GOSUB SY.FIND
+    IF SY.R = 0 AND NM.FIND.QUIET <> 0 THEN RETURN
+    IF SY.R = 0 THEN GOTO RD.ERROR.NOT.FIELD
+    GOSUB SY.GET
+    SY.KIND = K.SK.VAR
+    SY.VAL = RD.MEMBER.VALUE + SY.VAL
+    IF SY.VAL > 65535 THEN SY.VAL = SY.VAL - 65536
+    SY.FLAGS = RD.MEMBER.FLAGS + (SY.FLAGS AND K.SY.SIGNED)
+    RETURN
+
+## RD.MAXES -- a record of a SUB gets its maxes in RD.DIM. Clobbers SY.*.
+RD.MAXES:
+    IF (SY.FLAGS AND K.SY.FIXED) <> 0 THEN RETURN
+    IF SY.VAL >= K.FRAME.BASE THEN RETURN
+    RD.MAXES.LOCAL = 0
+## RD.STRING.MAXES -- a field is after its TYPE in the table, with the TYPE as its owner.
+## In a local record the length byte is set to 0 with the max; the array space is cleared
+## at startup.
+RD.STRING.MAXES:
+    RD.MAXES.VALUE = SY.VAL
+    RD.MAXES.COUNT = 0
+    IF SY.KIND = K.SK.ARRAY THEN RD.MAXES.COUNT = SY.CNT
+    GOSUB RD.SECTION
+    RD.MAXES.SECTION = RD.SEC
+    IF RD.MAXES.COUNT > 0 THEN RD.MAXES.SECTION = K.SEC.BSS
+    SB.FIELD = K.SY.RECORD.TYPE
+    GOSUB SB.FIELD.GET
+    RD.MAXES.TYPE = SB.WORD
+    RD.MAXES.FIELD = SB.WORD + 1
+    SY.R = SB.WORD
+    GOSUB SY.GET
+    RD.MAXES.SIZE = SY.VAL
+RD.STRING.MAXES.NEXT:
+    IF RD.MAXES.FIELD > SY.N THEN RETURN
+    SY.R = RD.MAXES.FIELD
+    GOSUB SY.GET
+    IF SY.KIND <> K.SK.FIELD OR SY.OWNER <> RD.MAXES.TYPE THEN RETURN
+    IF SY.TYPE = K.TY.STR THEN GOSUB RD.STRING.MAX
+    RD.MAXES.FIELD = RD.MAXES.FIELD + 1
+    GOTO RD.STRING.MAXES.NEXT
+
+## RD.STRING.MAX -- the max of the string field in SY.*. In an array, T_RMAX sets it in
+## every element, with a 0 length.
+RD.STRING.MAX:
+    RD.MAXES.AT = RD.MAXES.VALUE + SY.VAL
+    IF RD.MAXES.AT > 65535 THEN RD.MAXES.AT = RD.MAXES.AT - 65536
+    GP.IF RD.MAXES.COUNT > 0 THEN
+        SL.S%(0) = RD.MAXES.SECTION
+        SL.V(0) = RD.MAXES.AT
+        SL.S%(1) = K.SEC.CONST
+        SL.V(1) = RD.MAXES.SIZE
+        SL.S%(2) = K.SEC.CONST
+        SL.V(2) = RD.MAXES.COUNT
+        SL.S%(3) = K.SEC.CONST
+        SL.V(3) = SY.CNT
+        GP.SUB EMIT, T.RMAX.ID
+        SG.LOADED = 0
+        RETURN
+    GP.ENDIF
+    SL.S%(0) = K.SEC.CONST
+    SL.V(0) = SY.CNT
+    GP.IF RD.MAXES.LOCAL = 1 THEN
+        GP.SUB EMIT, T.LDW.C.ID
+        SL.S%(0) = RD.MAXES.SECTION
+        SL.V(0) = RD.MAXES.AT
+        GP.SUB EMIT, T.STW.V.ID
+        RETURN
+    GP.ENDIF
+    IF SY.CNT <> SG.LOADED THEN GP.SUB EMIT, T.LDB.C.ID
+    SG.LOADED = SY.CNT
+    SL.S%(0) = RD.MAXES.SECTION
+    SL.V(0) = RD.MAXES.AT
+    GP.SUB EMIT, T.STB.V.ID
+    RETURN
+
+## RD.SECTION -- K.SEC.VAR, K.SEC.BSS for a string block, K.SEC.CONST for a fixed address,
+## K.SEC.BSS for a record in the block space.
+RD.SECTION:
+    RD.SEC = K.SEC.VAR
+    IF SY.TYPE = K.TY.STR AND SY.CNT > 0 THEN RD.SEC = K.SEC.BSS
+    IF (SY.FLAGS AND K.SY.FIXED) <> 0 THEN RD.SEC = K.SEC.CONST
+    IF (SY.FLAGS AND K.SY.BLOCK) <> 0 THEN RD.SEC = K.SEC.BSS
+    RETURN
+
+RD.SECTION.VALUE:
+    IF SY.TYPE >= K.TY.RECORD THEN GOTO RD.ERROR.NOT.VALUE.RECORD
+    GOTO RD.SECTION
+
+RD.SECTION.COUNTER:
+    IF SY.TYPE = K.TY.STR THEN GOTO ER.MISMATCH
+    IF (SY.FLAGS AND K.SY.MEMBER) <> 0 THEN GOTO RD.ERROR.COUNTER
+    GOTO RD.SECTION.VALUE
+
+## RD.LET -- record = record, with the record variable on the left in SY.*.
+RD.LET:
+    RD.LET.TYPE = SY.TYPE
+    GOSUB RD.SECTION
+    EX.K = K.EK.ADDR
+    EX.S = RD.SEC
+    EX.V = SY.VAL
+    EX.TY = K.TY.WORD
+    GOSUB EX.PUSHV
+    SB.FIELD = K.SY.RECORD.TYPE
+    GOSUB SB.FIELD.GET
+    SY.R = SB.WORD
+    GOSUB SY.GET
+    RD.LET.SIZE = SY.VAL
+    GOTO RD.LET.SOURCE
+
+## RD.LET.SOURCE -- the record after the =, of type RD.LET.TYPE and RD.LET.SIZE bytes. The
+## destination's address is the top entry. A copy between two fixed addresses is T_RCOPY;
+## any other is T_RCOPY_P.
+RD.LET.SOURCE:
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.NAME THEN GOTO ER.MISMATCH
+    SM.N$ = TK.S$
+    GOSUB NM.FIND
+    IF SY.TYPE <> RD.LET.TYPE THEN GOTO ER.MISMATCH
+    GP.IF SY.KIND = K.SK.VAR THEN
+        GOSUB RD.SECTION
+        EX.K = K.EK.ADDR
+        EX.S = RD.SEC
+        EX.V = SY.VAL
+        EX.TY = K.TY.WORD
+        GOSUB EX.PUSHV
+        GOSUB LX.NEXT
+    GP.ELSEIF SY.KIND = K.SK.ARRAY THEN
+        RD.LET.ARRAY = SY.R
+        GOSUB LX.NEXT
+        IF TK.T <> K.TT.OP OR TK.K <> 40 THEN GOTO ER.MISMATCH
+        GOSUB LX.NEXT
+        GOSUB EX.EXPR
+        IF TK.T <> K.TT.OP OR TK.K <> 41 THEN GOTO RD.ERROR.MISSING.CLOSE
+        GOSUB LX.NEXT
+        IF TK.T = K.TT.OP AND TK.K = 46 THEN GOTO ER.MISMATCH
+        SY.R = RD.LET.ARRAY
+        GOSUB SY.GET
+        GOSUB RD.ARRAY
+        RD.ELEMENT.OFFSET = 0
+        GOSUB RD.ELEMENT
+    GP.ELSE
+        GOTO ER.MISMATCH
+    GP.ENDIF
+    RD.LET.TARGET = EX.VN - 2
+    RD.LET.FROM = EX.VN - 1
+    GP.IF EX.VK%(RD.LET.TARGET) = K.EK.ADDR AND EX.VK%(RD.LET.FROM) = K.EK.ADDR THEN
+        SL.S%(0) = EX.VS%(RD.LET.TARGET)
+        SL.V(0) = EX.VV(RD.LET.TARGET)
+        SL.S%(1) = EX.VS%(RD.LET.FROM)
+        SL.V(1) = EX.VV(RD.LET.FROM)
+        SL.S%(2) = K.SEC.CONST
+        SL.V(2) = RD.LET.SIZE
+        GP.SUB EMIT, T.RCOPY.ID
+    GP.ELSE
+        EX.FB = RD.LET.FROM
+        GOSUB EX.FLUSH
+        EX.I = RD.LET.FROM
+        EX.WD = 1
+        GOSUB EX.LOAD
+        SL.S%(0) = K.SEC.CONST
+        SL.V(0) = RD.LET.SIZE
+        GP.SUB EMIT, T.RCOPY.P.ID
+        EX.SD = EX.SD - 1
+    GP.ENDIF
+    EX.VN = EX.VN - 2
+    RETURN
+
+## ---------------------------------------------------------------------------------
+## Arrays of records
+
+## RD.ARRAY -- the array of records in SY.*: RD.ARRAY.BASE, RD.ARRAY.COUNT, RD.ARRAY.RECORD
+## (its TYPE's record) and RD.ARRAY.SIZE. Clobbers SY.*.
+RD.ARRAY:
+    RD.ARRAY.BASE = SY.VAL
+    RD.ARRAY.COUNT = SY.CNT
+    SB.FIELD = K.SY.RECORD.TYPE
+    GOSUB SB.FIELD.GET
+    RD.ARRAY.RECORD = SB.WORD
+    SY.R = SB.WORD
+    GOSUB SY.GET
+    RD.ARRAY.SIZE = SY.VAL
+    RETURN
+
+## RD.FIELD.AFTER -- with the token after the ) of an element: RD.FIELD.FOUND = 1 when a
+## .name follows, with the field of RD.ARRAY.RECORD in SY.* and the token after the name.
+RD.FIELD.AFTER:
+    RD.FIELD.FOUND = 0
+    IF TK.T <> K.TT.OP OR TK.K <> 46 THEN RETURN
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.NAME THEN GOTO ER.SYNTAX
+    SY.NAME$ = TK.S$
+    SY.OW = RD.ARRAY.RECORD
+    GOSUB SY.FIND
+    IF SY.R = 0 THEN SM.N$ = TK.S$
+    IF SY.R = 0 THEN GOTO RD.ERROR.NOT.FIELD
+    GOSUB SY.GET
+    RD.FIELD.FOUND = 1
+    GOSUB LX.NEXT
+    RETURN
+
+## RD.ELEMENT -- the address of the element of RD.ARRAY.* at the index in the top entry,
+## plus RD.ELEMENT.OFFSET, becomes the top entry: K.EK.ADDR for a constant index, else
+## K.EK.REG in A/Y.
+RD.ELEMENT:
+    EX.I = EX.VN - 1
+    IF EX.VT%(EX.I) = K.TY.STR THEN GOTO ER.MISMATCH
+    GP.IF EX.VK%(EX.I) = K.EK.CONST THEN
+        IF EX.VV(EX.I) >= RD.ARRAY.COUNT THEN GOTO RD.ERROR.SUBSCRIPT
+        EX.VK%(EX.I) = K.EK.ADDR
+        EX.VS%(EX.I) = K.SEC.BSS
+        EX.VV(EX.I) = RD.ARRAY.BASE + EX.VV(EX.I) * RD.ARRAY.SIZE + RD.ELEMENT.OFFSET
+        EX.VT%(EX.I) = K.TY.WORD
+        EX.VG%(EX.I) = 0
+        RETURN
+    GP.ENDIF
+    EX.FB = EX.I
+    GOSUB EX.FLUSH
+    EX.I = EX.VN - 1
+    EX.WD = 1
+    GOSUB EX.LOAD
+    SL.S%(0) = K.SEC.CONST
+    SL.V(0) = 0
+    IF SM.ERRORS.ON = 1 THEN SL.V(0) = RD.ARRAY.COUNT
+    SL.S%(1) = K.SEC.CONST
+    SL.V(1) = RD.ARRAY.SIZE
+    SL.S%(2) = K.SEC.BSS
+    SL.V(2) = RD.ARRAY.BASE + RD.ELEMENT.OFFSET
+    GP.SUB EMIT, T.RELEM.ID
+    EX.I = EX.VN - 1
+    EX.VK%(EX.I) = K.EK.REG
+    EX.VT%(EX.I) = K.TY.WORD
+    EX.VG%(EX.I) = 0
+    RETURN
+
+## RD.POINTER -- A/Y is stored in the statement's next %E word. Out: SG.POINTER.
+## Clobbers SY.*.
+RD.POINTER:
+    SG.POINTERS = SG.POINTERS + 1
+    SY.NAME$ = "%E" + STR$(SG.POINTERS)
+    GOSUB SG.POINTER.WORD
+    RETURN
+
+RD.INDEX:
+    GOSUB RD.ARRAY
+    GOSUB RD.FIELD.AFTER
+    IF RD.FIELD.FOUND = 0 THEN GOTO RD.ERROR.ELEMENT
+    RD.ELEMENT.OFFSET = SY.VAL
+    RD.FIELD.TYPE = SY.TYPE
+    RD.FIELD.SIGNED = 0
+    IF (SY.FLAGS AND K.SY.SIGNED) <> 0 THEN RD.FIELD.SIGNED = 1
+    GOSUB RD.ELEMENT
+    EX.I = EX.VN - 1
+    IF RD.FIELD.TYPE = K.TY.STR THEN GOTO RD.INDEX.STRING
+    GP.IF EX.VK%(EX.I) = K.EK.ADDR THEN
+        EX.VK%(EX.I) = K.EK.MEM
+    GP.ELSE
+        IF RD.FIELD.TYPE = K.TY.BYTE THEN GP.SUB EMIT, T.PEEK.ID
+        IF RD.FIELD.TYPE = K.TY.WORD THEN GP.SUB EMIT, T.PEEKW.ID
+        IF RD.FIELD.TYPE = K.TY.LONG THEN GP.SUB EMIT, T.PEEKL.ID
+    GP.ENDIF
+    EX.VT%(EX.I) = RD.FIELD.TYPE
+    EX.VG%(EX.I) = RD.FIELD.SIGNED
+    RETURN
+RD.INDEX.STRING:
+    EX.VT%(EX.I) = K.TY.STR
+    IF EX.VK%(EX.I) = K.EK.ADDR THEN RETURN
+    GOSUB RD.POINTER
+    EX.I = EX.VN - 1
+    EX.VK%(EX.I) = K.EK.MEM
+    EX.VS%(EX.I) = K.SEC.VAR
+    EX.VV(EX.I) = SG.POINTER
+    RETURN
+
+## RD.AT.ELEMENT -- the index is parsed nested, as a function's argument is. The array's
+## record waits in EX.OA%() under a ( of its own, so an element inside the index cannot
+## overwrite it.
+RD.AT.ELEMENT:
+    GOSUB LX.NEXT
+    GP.IF TK.T <> K.TT.OP OR TK.K <> 40 THEN
+        EX.K = K.EK.ADDR
+        EX.S = K.SEC.BSS
+        EX.V = SY.VAL
+        EX.TY = K.TY.WORD
+        GOSUB EX.PUSHV
+        RETURN
+    GP.ENDIF
+    GOSUB SB.NEST
+    EX.O = K.EO.PAR
+    GOSUB EX.PUSHO
+    EX.OA%(EX.ON - 1) = SY.R
+    GOSUB LX.NEXT
+    EX.OP.BASE = EX.ON
+    EX.CM = 0
+    GOSUB EX.EXPR
+    IF TK.T <> K.TT.OP OR TK.K <> 41 THEN GOTO RD.ERROR.MISSING.CLOSE
+    GOSUB SB.UNNEST
+    SY.R = EX.OA%(EX.ON)
+    GOSUB SY.GET
+    GOSUB RD.ARRAY
+    GOSUB LX.NEXT
+    RD.ELEMENT.OFFSET = 0
+    GOSUB RD.FIELD.AFTER
+    IF RD.FIELD.FOUND = 1 THEN RD.ELEMENT.OFFSET = SY.VAL
+    GOSUB RD.ELEMENT
+    RETURN
+
+RD.LET.ELEMENT:
+    RD.LET.ARRAY = SY.R
+    RD.LET.NAME$ = SM.N$
+    GOSUB LX.NEXT
+    GOSUB EX.EXPR
+    IF TK.T <> K.TT.OP OR TK.K <> 41 THEN GOTO RD.ERROR.MISSING.CLOSE
+    GOSUB LX.NEXT
+    SY.R = RD.LET.ARRAY
+    GOSUB SY.GET
+    RD.LET.TYPE = SY.TYPE
+    GOSUB RD.ARRAY
+    RD.LET.SIZE = RD.ARRAY.SIZE
+    RD.ELEMENT.OFFSET = 0
+    GOSUB RD.FIELD.AFTER
+    IF TK.T <> K.TT.OP OR TK.K <> 61 THEN GOTO ER.SYNTAX
+    GP.IF RD.FIELD.FOUND = 0 THEN
+        GOSUB RD.ELEMENT
+        GOTO RD.LET.SOURCE
+    GP.ENDIF
+    RD.ELEMENT.OFFSET = SY.VAL
+    RD.FIELD.TYPE = SY.TYPE
+    RD.FIELD.MAX = SY.CNT
+    GOSUB RD.ELEMENT
+    EX.I = EX.VN - 1
+    IF RD.FIELD.TYPE = K.TY.STR THEN GOTO RD.LET.STRING
+    SM.TY = RD.FIELD.TYPE
+    GP.IF EX.VK%(EX.I) = K.EK.ADDR THEN
+        SM.AD = EX.VV(EX.I)
+        SM.SEC = K.SEC.BSS
+        EX.VN = EX.VN - 1
+        GOSUB LX.NEXT
+        GOSUB EX.EXPR
+        GOSUB SM.STORE
+        RETURN
+    GP.ENDIF
+    EX.VN = EX.VN - 1
+    GOSUB SM.STORE.THROUGH
+    RETURN
+
+## RD.LET.STRING -- SY.* becomes a string variable at the field, and SG.LET stores into it:
+## a block at a constant index, else a block through a %E word, as a STRING parameter's.
+RD.LET.STRING:
+    GP.IF EX.VK%(EX.I) = K.EK.ADDR THEN
+        SY.VAL = EX.VV(EX.I)
+        SY.CNT = RD.FIELD.MAX
+    GP.ELSE
+        GOSUB RD.POINTER
+        SY.VAL = SG.POINTER
+        SY.CNT = 0
+    GP.ENDIF
+    EX.VN = EX.VN - 1
+    SY.KIND = K.SK.VAR
+    SY.TYPE = K.TY.STR
+    SY.FLAGS = 0
+    SM.N$ = RD.LET.NAME$
+    GOSUB SG.LET
+    RETURN
+
+## ---------------------------------------------------------------------------------
+## LEN
+
+## RD.LEN -- LEN of a TYPE name or of a record variable is the TYPE's size, a constant. On
+## RD.LEN.FOUND = 1 the token is after the ). On 0 the argument is something else, and the
+## token is back at the (.
+RD.LEN:
+    RD.LEN.FOUND = 0
+    RD.LEN.POSITION = LX.P
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.NAME THEN GOTO RD.LEN.OTHER
+    SM.N$ = TK.S$
+    NM.FIND.QUIET = 1
+    GOSUB NM.FIND
+    NM.FIND.QUIET = 0
+    IF SY.R = 0 THEN GOTO RD.LEN.OTHER
+    RD.LEN.KIND = SY.KIND
+    GP.IF SY.KIND = K.SK.ARRAY AND SY.TYPE >= K.TY.RECORD THEN
+        GOSUB RD.SKIP.INDEX
+        IF RD.SKIPPED = 0 THEN GOTO RD.LEN.OTHER
+        RD.LEN.KIND = K.SK.VAR
+    GP.ENDIF
+    GP.IF RD.LEN.KIND = K.SK.VAR AND SY.TYPE >= K.TY.RECORD THEN
+        SB.FIELD = K.SY.RECORD.TYPE
+        GOSUB SB.FIELD.GET
+        SY.R = SB.WORD
+        GOSUB SY.GET
+    GP.ENDIF
+    IF SY.KIND <> K.SK.TYPE THEN GOTO RD.LEN.OTHER
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.OP OR TK.K <> 41 THEN GOTO RD.LEN.NOT.VALUE
+    EX.K = K.EK.CONST
+    EX.S = K.SEC.CONST
+    EX.V = SY.VAL
+    EX.TY = 0
+    GOSUB EX.PUSHV
+    GOSUB LX.NEXT
+    RD.LEN.FOUND = 1
+    RETURN
+RD.LEN.OTHER:
+    LX.P = RD.LEN.POSITION
+    TK.T = K.TT.OP
+    TK.K = 40
+    RETURN
+RD.LEN.NOT.VALUE:
+    IF RD.LEN.KIND = K.SK.VAR THEN GOTO RD.ERROR.NOT.VALUE.RECORD
+    GOTO RD.ERROR.NOT.VALUE
+
+## RD.SKIP.INDEX -- with the token at the name of an array of records: the (index) after
+## it is passed over, and no code is made for it. RD.SKIPPED = 1 when a .field does not
+## follow, with the token at the ) that closes the index.
+RD.SKIP.INDEX:
+    RD.SKIPPED = 0
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.OP OR TK.K <> 40 THEN RETURN
+    RD.SKIP.DEPTH = 1
+RD.SKIP.INDEX.NEXT:
+    GOSUB LX.NEXT
+    IF TK.T = K.TT.EOL THEN RETURN
+    IF TK.T = K.TT.OP AND TK.K = 40 THEN RD.SKIP.DEPTH = RD.SKIP.DEPTH + 1
+    IF TK.T = K.TT.OP AND TK.K = 41 THEN RD.SKIP.DEPTH = RD.SKIP.DEPTH - 1
+    IF RD.SKIP.DEPTH > 0 THEN GOTO RD.SKIP.INDEX.NEXT
+    RD.SKIP.POSITION = LX.P
+    GOSUB LX.NEXT
+    IF TK.T = K.TT.OP AND TK.K = 46 THEN RETURN
+    LX.P = RD.SKIP.POSITION
+    TK.T = K.TT.OP
+    TK.K = 41
+    RD.SKIPPED = 1
+    RETURN
+
+## RD.OPEN -- the error is at the line of the open TYPE.
+RD.OPEN:
+    IF RD.TYPE.RECORD = 0 THEN RETURN
+    LX.NO = RD.TYPE.START.LINE
+    LX.L$ = RD.TYPE.START.TEXT$
+    ER.M$ = "TYPE WITHOUT END TYPE"
+    GOTO ER.STOP
+
+## ---------------------------------------------------------------------------------
+## Errors
+
+RD.ERROR.END:
+    ER.M$ = "END TYPE WITHOUT TYPE"
+    GOTO ER.STOP
+RD.ERROR.IN.SUB:
+    ER.M$ = "TYPE IN A SUB"
+    GOTO ER.STOP
+RD.ERROR.DUPLICATE:
+    ER.M$ = "DUPLICATE NAME " + SM.N$
+    GOTO ER.STOP
+RD.ERROR.TOO.MANY:
+    ER.M$ = "TOO MANY TYPES"
+    GOTO ER.STOP
+RD.ERROR.MARK:
+    ER.M$ = "A FIELD HAS NO MARK: " + SM.N$
+    GOTO ER.STOP
+RD.ERROR.FIELD.TYPE:
+    ER.M$ = "NOT A FIELD TYPE: " + TK.S$
+    GOTO ER.STOP
+RD.ERROR.NO.SIZE:
+    ER.M$ = "NO SIZE FOR " + SM.N$
+    GOTO ER.STOP
+RD.ERROR.SIZE:
+    ER.M$ = "BAD STRING SIZE"
+    GOTO ER.STOP
+RD.ERROR.TOO.BIG:
+    ER.M$ = "TYPE OVER 255 BYTES"
+    GOTO ER.STOP
+RD.ERROR.EMPTY:
+    ER.M$ = "TYPE WITH NO FIELDS"
+    GOTO ER.STOP
+RD.ERROR.NOT.VALUE:
+    ER.M$ = "A TYPE IS NOT A VALUE: " + SM.N$
+    GOTO ER.STOP
+RD.ERROR.NOT.VALUE.RECORD:
+    ER.M$ = "A RECORD IS NOT A VALUE: " + SM.N$
+    GOTO ER.STOP
+RD.ERROR.ELEMENT:
+    ER.M$ = "A RECORD IS NOT A VALUE"
+    GOTO ER.STOP
+RD.ERROR.SUBSCRIPT:
+    ER.M$ = "BAD SUBSCRIPT"
+    GOTO ER.STOP
+RD.ERROR.MISSING.CLOSE:
+    ER.M$ = "MISSING )"
+    GOTO ER.STOP
+RD.ERROR.TOO.BIG.SPACE:
+    ER.M$ = "ARRAYS TOO BIG"
+    GOTO ER.STOP
+RD.ERROR.NOT.FIELD:
+    ER.M$ = "NOT A FIELD: " + SM.N$
+    GOTO ER.STOP
+RD.ERROR.COUNTER:
+    ER.M$ = "A FIELD IS NO FOR COUNTER: " + SM.N$
+    GOTO ER.STOP

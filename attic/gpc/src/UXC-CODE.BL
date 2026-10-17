@@ -1,0 +1,205 @@
+## UXC-CODE.BL -- the template table, the code buffer, the string literals, the fixups,
+## and EMIT, which copies a template into the code.
+##
+##   TP.LOAD                       claim a bank and load UXC.TPL.BIN into it
+##   CB.PUT   in  CB.AT CB.B       the byte at offset CB.AT of the code
+##   CB.GET   in  CB.AT            out CB.B
+##   CB.ADD   in  CB.B             append a byte; CB.N is the length of the code
+##   SP.ADD   in  SP.S$            out SP.V, the string's offset among the strings, and
+##                                 SP.NEW, 0 when an equal string was there already
+##   FX.ADD   in  FX.AT FX.K FX.S FX.V    a fixup, owned by SB.CURRENT
+##   GP.SUB EMIT, id               copy record id into the code, with slots SL.S%() SL.V()
+##   CS.CLEAR CS.PUT CS.GET        the ON CASE targets in CS.BANK, for UXC-CASE.BL
+##
+## Code offset 0 is the program's first byte, at LK.ORG when it runs. The buffer is
+## K.CODE.BANKS banks, and offset n is at $A000 + (n MOD 8192) in bank CB.BANK%(n / 8192).
+## The link step appends the runtime routines, the strings and the variables to it, so it
+## holds the whole program at the end.
+##
+## A slot is an operand: SL.S%(i) is its section and SL.V(i) its value in that section. A
+## K.SEC.CONST slot goes straight into the code. Any other becomes a fixup, which the link
+## step resolves once every section has its address. A fixup is 8 bytes:
+##
+##   +0  the code offset (word)
+##   +2  kind: K.F.ABS, K.F.LO or K.F.HI
+##   +3  section
+##   +4  value in the section (word); for K.SEC.REC, the record id
+##   +6  owner (word): the SUB being compiled, 0 for the main program. A K.SEC.TEMP
+##       value is counted from the owner's pool.
+##
+## K.F.ABS adds the value's address to the word already in the code, the addend the
+## template was assembled with. K.F.LO and K.F.HI set one byte.
+
+TP.LOAD:
+    GOSUB UXC.BANK : TP.BANK = UXC.B
+    ## BLOAD stops the program when the file is not there, so look first.
+    OPEN 4, 8, 4, "UXC.TPL.BIN,S,R" : GET# 4, TP.C$ : TP.ST = ST : CLOSE 4
+    IF (TP.ST AND 2) <> 0 THEN ER.M$ = "FILE NOT FOUND: UXC.TPL.BIN" : GOTO ER.STOP
+    BLOAD "UXC.TPL.BIN", 8, TP.BANK, $A000
+    BANK TP.BANK
+    TP.OK = 0
+    IF PEEK($A000) = 85 AND PEEK($A001) = 88 AND PEEK($A002) = 84 AND PEEK($A003) = 1 THEN TP.OK = 1
+    IF TP.OK = 0 THEN ER.M$ = "UXC.TPL.BIN IS NOT A TEMPLATE TABLE" : GOTO ER.STOP
+    ## UXC.TPL.BL gave this program the record ids. A table from another build has others.
+    IF PEEK($A004) + 256 * PEEK($A005) <> TPL.COUNT THEN ER.M$ = "UXC.TPL.BIN DOES NOT MATCH UXC" : GOTO ER.STOP
+    TP.IX = $A000 + PEEK($A006) + 256 * PEEK($A007)
+    RETURN
+
+CB.PUT:
+    CB.BI = INT(CB.AT / 8192)
+    BANK CB.BANK%(CB.BI) : POKE $A000 + CB.AT - CB.BI * 8192, CB.B
+    RETURN
+
+CB.GET:
+    CB.BI = INT(CB.AT / 8192)
+    BANK CB.BANK%(CB.BI) : CB.B = PEEK($A000 + CB.AT - CB.BI * 8192)
+    RETURN
+
+CB.ADD:
+    IF CB.N >= K.CODE.BANKS * 8192 THEN ER.M$ = "PROGRAM TOO BIG" : GOTO ER.STOP
+    CB.AT = CB.N : GOSUB CB.PUT : CB.N = CB.N + 1
+    RETURN
+
+## SP.ADD -- a string literal, kept as [max][len][data] with max = len. A literal equal to
+## one kept already is that one.
+SP.ADD:
+    SP.L = LEN(SP.S$)
+    SP.PT = GP.STRPTR(SP.S$)
+    SP.V = 0 : SP.NEW = 0
+    BANK SP.BANK
+SP.ADD.FIND:
+    IF SP.V >= SP.N THEN GOTO SP.ADD.NEW
+    IF PEEK($A001 + SP.V) <> SP.L THEN GOTO SP.ADD.SKIP
+    SP.I = 1
+SP.ADD.SAME:
+    IF SP.I > SP.L THEN RETURN
+    IF PEEK($A001 + SP.V + SP.I) <> PEEK(SP.PT + SP.I) THEN GOTO SP.ADD.SKIP
+    SP.I = SP.I + 1 : GOTO SP.ADD.SAME
+SP.ADD.SKIP:
+    SP.V = SP.V + PEEK($A000 + SP.V) + 2 : GOTO SP.ADD.FIND
+SP.ADD.NEW:
+    IF SP.N + SP.L + 2 > 8192 THEN ER.M$ = "TOO MANY STRINGS" : GOTO ER.STOP
+    SP.NEW = 1
+    POKE $A000 + SP.N, SP.L : POKE $A001 + SP.N, SP.L
+    FOR SP.I = 1 TO SP.L : POKE $A001 + SP.N + SP.I, PEEK(SP.PT + SP.I) : NEXT SP.I
+    SP.V = SP.N : SP.N = SP.N + SP.L + 2
+    RETURN
+
+FX.ADD:
+    IF FX.N >= K.FX.MAX THEN ER.M$ = "TOO MANY FIXUPS" : GOTO ER.STOP
+    FX.OFF = FX.N * 8 : FX.BI = INT(FX.OFF / 8192)
+    BANK FX.BANK%(FX.BI) : FX.AD = $A000 + FX.OFF - FX.BI * 8192
+    FX.HI = INT(FX.AT / 256) : POKE FX.AD, FX.AT - FX.HI * 256 : POKE FX.AD + 1, FX.HI
+    POKE FX.AD + 2, FX.K : POKE FX.AD + 3, FX.S
+    FX.HI = INT(FX.V / 256) : POKE FX.AD + 4, FX.V - FX.HI * 256 : POKE FX.AD + 5, FX.HI
+    FX.HI = INT(SB.CURRENT / 256) : POKE FX.AD + 6, SB.CURRENT - FX.HI * 256 : POKE FX.AD + 7, FX.HI
+    FX.N = FX.N + 1
+    RETURN
+
+## FX.READ -- fixup FX.I into FX.AT FX.K FX.S FX.V FX.OW.
+FX.READ:
+    FX.OFF = FX.I * 8 : FX.BI = INT(FX.OFF / 8192)
+    BANK FX.BANK%(FX.BI) : FX.AD = $A000 + FX.OFF - FX.BI * 8192
+    FX.AT = PEEK(FX.AD) + 256 * PEEK(FX.AD + 1)
+    FX.K = PEEK(FX.AD + 2) : FX.S = PEEK(FX.AD + 3)
+    FX.V = PEEK(FX.AD + 4) + 256 * PEEK(FX.AD + 5)
+    FX.OW = PEEK(FX.AD + 6) + 256 * PEEK(FX.AD + 7)
+    RETURN
+
+## EMIT -- the record's code is read out of the table first, into EM.B%(), because the code
+## buffer is in another bank. EM.FIX reads each fixup from the table at EM.FA.
+EM.EMIT:
+    GP.DEFPROC EMIT, EM.ID
+    BANK TP.BANK
+    EM.A = $A000 + PEEK(TP.IX + EM.ID * 2) + 256 * PEEK(TP.IX + EM.ID * 2 + 1)
+    EM.LEN = PEEK(EM.A) : EM.NF = PEEK(EM.A + 1)
+    FOR EM.I = 0 TO EM.LEN - 1 : EM.B%(EM.I) = PEEK(EM.A + 2 + EM.I) : NEXT EM.I
+    EM.FA = EM.A + 2 + EM.LEN
+    EM.START = CB.N
+    GP.IF EM.NF > 0 THEN
+        FOR EM.J = 0 TO EM.NF - 1 : GOSUB EM.FIX : NEXT EM.J
+    GP.ENDIF
+    FOR EM.I = 0 TO EM.LEN - 1 : CB.B = EM.B%(EM.I) : GOSUB CB.ADD : NEXT EM.I
+    RETURN
+
+## EM.FIX -- fixup EM.J of the record being emitted. RT.USE and FX.ADD leave other banks
+## selected, so TP.BANK is selected again for each fixup.
+EM.FIX:
+    BANK TP.BANK
+    EM.FP = EM.FA + EM.J * 3
+    EM.O = PEEK(EM.FP) : EM.K = PEEK(EM.FP + 1) : EM.G = PEEK(EM.FP + 2)
+    FX.AT = EM.START + EM.O
+    ## SELF: the record's own address, which is its code offset from the program's start.
+    IF EM.K = K.F.SELF THEN FX.K = K.F.ABS : FX.S = K.SEC.CODE : FX.V = EM.START : GOTO FX.ADD
+    ## REC: another record, which the link step places once.
+    IF EM.K = K.F.REC THEN RT.ID = EM.G : GOSUB RT.USE : FX.K = K.F.ABS : FX.S = K.SEC.REC : FX.V = EM.G : GOTO FX.ADD
+    EM.S = SL.S%(EM.G) : EM.V = SL.V(EM.G)
+    IF EM.S <> K.SEC.CONST THEN FX.K = EM.K : FX.S = EM.S : FX.V = EM.V : GOTO FX.ADD
+    ## A constant goes into the code now.
+    EM.HI = INT(EM.V / 256) : EM.LO = EM.V - EM.HI * 256
+    IF EM.K = K.F.LO THEN EM.B%(EM.O) = EM.LO : RETURN
+    IF EM.K = K.F.HI THEN EM.B%(EM.O) = EM.HI : RETURN
+    EM.W = EM.B%(EM.O) + 256 * EM.B%(EM.O + 1) + EM.V
+    IF EM.W > 65535 THEN EM.W = EM.W - 65536
+    EM.HI = INT(EM.W / 256) : EM.B%(EM.O) = EM.W - EM.HI * 256 : EM.B%(EM.O + 1) = EM.HI
+    RETURN
+
+## RT.USE -- record RT.ID is needed at the end of the program. K.RT.LIST lists them in the
+## order they were first needed. It leaves RT.BANK selected.
+RT.USE:
+    BANK RT.BANK
+    IF PEEK(K.RT.USED + RT.ID) <> 0 THEN RETURN
+    POKE K.RT.USED + RT.ID, 1
+    POKE K.RT.LIST + RT.N * 2, RT.ID AND 255
+    POKE K.RT.LIST + RT.N * 2 + 1, INT(RT.ID / 256)
+    RT.N = RT.N + 1
+    RETURN
+
+## RT.CLEAR -- no record is needed yet.
+RT.CLEAR:
+    BANK RT.BANK
+    FOR CB.I = 0 TO TPL.COUNT : POKE K.RT.USED + CB.I, 0 : NEXT CB.I
+    RETURN
+
+## RT.PLACE -- in LK.I, out RT.ID: record LK.I of K.RT.LIST, whose address is set to the end
+## of the code.
+RT.PLACE:
+    BANK RT.BANK
+    RT.ID = PEEK(K.RT.LIST + LK.I * 2) + 256 * PEEK(K.RT.LIST + LK.I * 2 + 1)
+    RT.AT = LK.ORG + CB.N : RT.HI = INT(RT.AT / 256)
+    POKE K.RT.ADDR + RT.ID * 2, RT.AT - RT.HI * 256
+    POKE K.RT.ADDR + RT.ID * 2 + 1, RT.HI
+    RETURN
+
+## RT.ADDRESS -- in FX.V, out LK.V: the address RT.PLACE gave record FX.V.
+RT.ADDRESS:
+    BANK RT.BANK
+    LK.V = PEEK(K.RT.ADDR + FX.V * 2) + 256 * PEEK(K.RT.ADDR + FX.V * 2 + 1)
+    RETURN
+
+## CS.CLEAR -- in CS.AT: the K.CS.SIZE bytes of ON CASE targets at CS.AT in CS.BANK are 0.
+CS.CLEAR:
+    BANK CS.BANK
+    FOR CS.I = 0 TO K.CS.SIZE - 1 : POKE $A000 + CS.AT + CS.I, 0 : NEXT CS.I
+    RETURN
+
+## CS.PUT -- in CS.AT CS.W: the word at CS.AT in CS.BANK.
+CS.PUT:
+    BANK CS.BANK
+    CS.HI = INT(CS.W / 256)
+    POKE $A000 + CS.AT, CS.W - CS.HI * 256 : POKE $A001 + CS.AT, CS.HI
+    RETURN
+
+## CS.GET -- in CS.AT, out CS.W: the word at CS.AT in CS.BANK.
+CS.GET:
+    BANK CS.BANK
+    CS.W = PEEK($A000 + CS.AT) + 256 * PEEK($A001 + CS.AT)
+    RETURN
+
+## SP.COPY -- append the strings to the code.
+SP.COPY:
+    IF SP.N = 0 THEN RETURN
+    FOR SP.I = 0 TO SP.N - 1
+        BANK SP.BANK : CB.B = PEEK($A000 + SP.I) : GOSUB CB.ADD
+    NEXT SP.I
+    RETURN

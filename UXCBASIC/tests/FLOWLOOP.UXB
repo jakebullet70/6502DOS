@@ -1,0 +1,50 @@
+' FLOWLOOP -- DO ... LOOP with tests at the top and the bottom, EXIT and CONTINUE
+DIM I AS UBYTE, N AS UWORD, S AS UWORD
+I = 0
+DO WHILE I < 5
+  PRINT I;
+  I = I + 1
+LOOP
+PRINT
+I = 0
+DO UNTIL I = 3
+  PRINT I;
+  I = I + 1
+LOOP
+PRINT
+I = 10
+DO WHILE I < 5
+  PRINT "NO"
+LOOP
+DO
+  PRINT I;
+  I = I + 1
+LOOP WHILE I < 5
+PRINT
+I = 0
+DO
+  I = I + 1
+  IF I = 2 THEN CONTINUE
+  IF I = 5 THEN EXIT DO
+  PRINT I;
+LOOP
+PRINT
+I = 0
+DO
+  I = I + 1
+LOOP UNTIL I >= 7
+PRINT I
+N = 0
+S = 0
+DO WHILE N < 300
+  N = N + 1
+  S = S + N
+LOOP UNTIL S > 1000
+PRINT N; S
+I = 0
+DO WHILE I < 10
+  I = I + 1
+  IF I AND 1 THEN CONTINUE
+  PRINT I;
+LOOP
+PRINT

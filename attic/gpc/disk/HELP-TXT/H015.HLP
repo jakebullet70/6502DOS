@@ -1,0 +1,13 @@
+@REPEAT
+.
+=REPEAT
+.
+.REPEAT n ... END REPEAT runs the body n times. n is read once. REPEAT 0
+.skips the body. With no count the loop runs until EXIT REPEAT. ENDREPEAT is
+.the same as END REPEAT.
+.
+:REPEAT 3
+:  PRINT "HI"
+:END REPEAT
+.
+.It has no loop variable, so it is the fastest counted loop.

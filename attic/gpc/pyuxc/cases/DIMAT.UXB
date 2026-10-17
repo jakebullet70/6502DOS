@@ -1,0 +1,28 @@
+' DIMAT -- DIM name AT address: BYTE and WORD variables at fixed addresses
+DIM REG_A AS UBYTE AT $030C, REG_X AS UBYTE AT $030D, REG_Y AS UBYTE AT $030E, REG_P AS UBYTE AT $030F
+DIM PAIR AS UWORD AT $0400, LOW AS UBYTE AT $0400
+DIM HIGH AS UBYTE AT $0400 + 1, I AS UBYTE AT $0402
+PAIR = $1234
+PRINT LOW; HIGH; PEEK($0401)
+LOW = 7
+PRINT PAIR
+PRINT @REG_P
+' SYS with the registers by name
+REG_P = 0
+REG_A = 65
+SYS $FFD2
+PRINT
+' sec and rts at $0410: the carry comes back in REG_P
+POKE $0410, $38
+POKE $0411, $60
+SYS $0410
+IF REG_P AND 1 THEN PRINT "CARRY"
+' FOR over a variable at an address
+FOR I = 1 TO 3
+    PRINT PEEK($0402);
+NEXT I
+PRINT
+' ASM: @name of a variable at an address is two bytes
+ASM $AD, @HIGH               ' lda $0401
+ASM $8D, @REG_A              ' sta $030C
+PRINT REG_A

@@ -1,0 +1,4 @@
+CONST ZP AS UBYTE = $22
+ASM
+top: bbr0 ZP top
+END ASM

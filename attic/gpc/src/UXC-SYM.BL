@@ -1,0 +1,117 @@
+## UXC-SYM.BL -- the symbol table, in banked RAM.
+##
+##   SY.INIT                       claim the banks, empty the table
+##   SY.FIND  in  SY.NAME$ SY.OW   out SY.R, the record, or 0 when the name is not there
+##   SY.ADD   in  SY.NAME$ SY.OW SY.KIND SY.TYPE SY.VAL SY.FLAGS SY.CNT     out SY.R
+##   SY.GET   in  SY.R             out SY.KIND SY.TYPE SY.VAL SY.FLAGS SY.NP SY.CNT SY.OWNER
+##   SY.SET   in  SY.R SY.TYPE SY.VAL SY.FLAGS SY.NP
+##
+## The first bank starts with 256 bucket heads, one word each: the first record whose name
+## hashes to that bucket. Records follow from offset K.SY.HEADS, 32 bytes each, numbered
+## from 1. A record never crosses a bank, because 512 and 8192 are multiples of 32.
+##
+##   +0  the next record in the bucket (word), 0 at the end
+##   +2  kind: K.SK.VAR, K.SK.LABEL, K.SK.SUB, K.SK.ARRAY, K.SK.SPACE, K.SK.BIND,
+##       K.SK.CALL, K.SK.CONST, K.SK.ENUM, K.SK.TYPE or K.SK.FIELD
+##   +3  type: K.TY.BYTE, K.TY.WORD, K.TY.LONG or K.TY.STR; a SUB's result type, 0 for
+##       none; a BIND's target's type; an ENUM's members' type; a TYPE's K.TY.RECORD plus
+##       its number
+##   +4  value (word): a variable's offset in the variables or its K.SY.FIXED address, an
+##       array's offset in the array space, a label's or a SUB's offset in the code, a
+##       BIND's target record, a constant's low word, a TYPE's size, a field's offset
+##   +6  flags: bit 0 set when a label or a SUB has been placed; K.SY.FIXED on a variable
+##       DIM ... AT an address; K.SY.BLOCK on a record in the block space; K.SY.SIGNED on
+##       a signed number
+##   +7  the name's length, then the name, up to 17 bytes with its mark. A qualified name
+##       is kept as its last part.
+##   +25 owner (word): the SUB, namespace, ENUM or TYPE record a name belongs to, 0 for
+##       the main program
+##   +27 a SUB's parameter count. Its parameters are the records after it, in order.
+##   +28 an array's element count (word); a constant's high word (word); a string field's
+##       max; a SUB's level in the call graph (byte), then the number of temps it needs
+##       (byte), at link
+##   +30 a SUB's frame bytes, then its pool's offset at link (word); a record variable's
+##       TYPE record (word)
+##
+## A name is kept as the lexer gives it: upper case, with its mark. A, A% and A$ differ.
+## The same name may be in the table once for each owner.
+
+SY.INIT:
+    FOR SY.I = 0 TO K.SYM.BANKS - 1
+        GOSUB UXC.BANK : SY.BANK%(SY.I) = UXC.B
+    NEXT SY.I
+    BANK SY.BANK%(0)
+    FOR SY.I = 0 TO K.SY.HEADS - 1 : POKE $A000 + SY.I, 0 : NEXT SY.I
+    SY.N = 0
+    RETURN
+
+## SY.HASH -- SY.H, the bucket of SY.NAME$. SY.PT and SY.L are its address and length.
+SY.HASH:
+    SY.PT = GP.STRPTR(SY.NAME$) : SY.L = PEEK(SY.PT) : SY.H = 0
+    FOR SY.I = 1 TO SY.L
+        SY.H = SY.H * 3 + PEEK(SY.PT + SY.I) : SY.H = SY.H - INT(SY.H / 256) * 256
+    NEXT SY.I
+    RETURN
+
+## SY.AT -- the address of record SY.R in SY.AD, with its bank selected.
+SY.AT:
+    SY.OFF = K.SY.HEADS + (SY.R - 1) * 32 : SY.BI = INT(SY.OFF / 8192)
+    BANK SY.BANK%(SY.BI) : SY.AD = $A000 + SY.OFF - SY.BI * 8192
+    RETURN
+
+SY.FIND:
+    GOSUB SY.HASH
+    BANK SY.BANK%(0) : SY.R = PEEK($A000 + SY.H * 2) + 256 * PEEK($A001 + SY.H * 2)
+SY.FIND.NEXT:
+    IF SY.R = 0 THEN RETURN
+    GOSUB SY.AT
+    IF PEEK(SY.AD + 7) <> SY.L THEN GOTO SY.FIND.CHAIN
+    SY.I = 1
+SY.FIND.CMP:
+    IF SY.I > SY.L THEN GOTO SY.FIND.OWNER
+    IF PEEK(SY.AD + 7 + SY.I) <> PEEK(SY.PT + SY.I) THEN GOTO SY.FIND.CHAIN
+    SY.I = SY.I + 1 : GOTO SY.FIND.CMP
+SY.FIND.OWNER:
+    IF PEEK(SY.AD + 25) + 256 * PEEK(SY.AD + 26) = SY.OW THEN RETURN
+SY.FIND.CHAIN:
+    SY.R = PEEK(SY.AD) + 256 * PEEK(SY.AD + 1) : GOTO SY.FIND.NEXT
+
+## SY.ADD -- a new record at the head of its bucket. The caller has found that the name is
+## not there.
+SY.ADD:
+    IF SY.N >= K.SY.MAX THEN ER.M$ = "TOO MANY NAMES" : GOTO ER.STOP
+    GOSUB SY.HASH : SY.N = SY.N + 1 : SY.R = SY.N
+    BANK SY.BANK%(0) : SY.HD = $A000 + SY.H * 2
+    SY.OLD = PEEK(SY.HD) + 256 * PEEK(SY.HD + 1)
+    SY.HI = INT(SY.R / 256) : POKE SY.HD, SY.R - SY.HI * 256 : POKE SY.HD + 1, SY.HI
+    GOSUB SY.AT
+    SY.HI = INT(SY.OLD / 256) : POKE SY.AD, SY.OLD - SY.HI * 256 : POKE SY.AD + 1, SY.HI
+    POKE SY.AD + 2, SY.KIND : POKE SY.AD + 3, SY.TYPE
+    POKE SY.AD + 7, SY.L
+    FOR SY.I = 1 TO SY.L : POKE SY.AD + 7 + SY.I, PEEK(SY.PT + SY.I) : NEXT SY.I
+    SY.HI = INT(SY.OW / 256) : POKE SY.AD + 25, SY.OW - SY.HI * 256 : POKE SY.AD + 26, SY.HI
+    SY.HI = INT(SY.CNT / 256) : POKE SY.AD + 28, SY.CNT - SY.HI * 256 : POKE SY.AD + 29, SY.HI
+    SY.NP = 0
+    GOTO SY.SET
+
+SY.GET:
+    GOSUB SY.AT
+    SY.KIND = PEEK(SY.AD + 2) : SY.TYPE = PEEK(SY.AD + 3)
+    SY.VAL = PEEK(SY.AD + 4) + 256 * PEEK(SY.AD + 5) : SY.FLAGS = PEEK(SY.AD + 6)
+    SY.NP = PEEK(SY.AD + 27) : SY.CNT = PEEK(SY.AD + 28) + 256 * PEEK(SY.AD + 29)
+    SY.OWNER = PEEK(SY.AD + 25) + 256 * PEEK(SY.AD + 26)
+    RETURN
+
+SY.SET:
+    GOSUB SY.AT
+    SY.HI = INT(SY.VAL / 256) : POKE SY.AD + 4, SY.VAL - SY.HI * 256 : POKE SY.AD + 5, SY.HI
+    POKE SY.AD + 3, SY.TYPE : POKE SY.AD + 6, SY.FLAGS : POKE SY.AD + 27, SY.NP
+    RETURN
+
+## TY.SIZE -- TY.BYTES, the bytes one value of type TY.CODE takes in a variable, an element
+## or a parameter. A STRING there is the 2-byte address of its block.
+TY.SIZE:
+    TY.BYTES = 2
+    IF TY.CODE = K.TY.BYTE THEN TY.BYTES = 1
+    IF TY.CODE = K.TY.LONG THEN TY.BYTES = 4
+    RETURN

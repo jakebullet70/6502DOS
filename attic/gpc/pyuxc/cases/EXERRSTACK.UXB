@@ -1,0 +1,2 @@
+DIM A AS UWORD
+PRINT A + (A + (A + (A + (A + (A + (A + (A + (A + (A + (A + (A + (A + (A + (A + (A + (A + (A + (A + (A + (A))))))))))))))))))))

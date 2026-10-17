@@ -1,0 +1,3 @@
+DIM C AS BYTE
+FOR C = 1 TO -129
+NEXT

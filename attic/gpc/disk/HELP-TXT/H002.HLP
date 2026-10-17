@@ -1,0 +1,13 @@
+@Using this help
+.
+=USING THIS HELP
+.
+.Up and down move through the index. RETURN opens a topic. ESC goes back one
+.link, then to the index, then quits.
+.
+.  - / or F finds a word in the index, and N finds the next match.
+.  - L lists a topic's cross references.
+.  - X writes a topic's code lines out as a .UXB file.
+.  - T changes the theme, and ? shows the about box.
+.
+.The content is built on the PC by help/MKHELP.PY from help/UXC-HELP.md.

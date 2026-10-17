@@ -1,0 +1,3 @@
+SUB S(T$)
+ENDSUB
+S(5)

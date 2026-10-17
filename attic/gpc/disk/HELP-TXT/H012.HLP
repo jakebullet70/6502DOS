@@ -1,0 +1,21 @@
+@IF
+.
+=IF
+.
+.A block, with any number of ELSEIF parts and one ELSE. THEN is optional at
+.the end of the line. ENDIF can be written END IF.
+.
+:DIM N AS UWORD
+:IF N = 0
+:  PRINT "NONE"
+:ELSEIF N < 10 THEN
+:  PRINT "A FEW"
+:ELSE
+:  PRINT "MANY"
+:ENDIF
+.
+.On one line, with THEN and one statement. A one-line IF has no ELSE.
+.
+:IF K = 27 THEN PRINT "ESC"
+:IF K = 13 THEN EXIT DO
+:IF N > 100 GOTO DONE

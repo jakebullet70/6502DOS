@@ -1,0 +1,37 @@
+' Every operand form, bit instructions, bit branches, jumps, and names that are no mnemonic.
+CONST ZP AS UBYTE = $22, VEC AS UWORD = $0314, BASE AS UWORD = $9F20, LOW AS UBYTE = 5
+CONST NOP1 AS UBYTE = 9, SMB AS UBYTE = 10
+DIM N AS UBYTE, W AS UWORD
+DIM ZW AS UWORD AT $24
+ASM
+top: nop
+    lda (@ZW)
+    lda (ZP,x)
+    lda (ZP),y
+    lda ZP,x
+    ldx ZP,y
+    lda $1234,y
+    lda ZP,y
+    lda @W,x
+    sta @W,y
+    jmp (VEC)
+    jmp (VEC,x)
+    jmp VEC + 0
+    jsr VEC + 1
+    inc a
+    rmb3 ZP
+    smb7 ZP
+    bbr0 ZP, top
+    bbs7 ZP, later
+    bra later
+    jmp top
+    jsr later
+    lda #>@W
+    ldy #<@W
+    5, $1234, @W
+    BASE, LOW
+    NOP1, SMB
+later: rol a
+    rts
+ENDASM
+ASM 1, 2, $1234, @W, VEC

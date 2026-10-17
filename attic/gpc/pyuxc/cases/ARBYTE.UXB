@@ -1,0 +1,57 @@
+' UBYTE and BYTE arrays: each kind of index, with ERRORS ON and OFF.
+DIM A(10) AS UBYTE, S(20) AS BYTE, H(300) AS UBYTE
+DIM N AS UBYTE, C AS BYTE, W AS UWORD, I AS INT, L AS LONG, U AS ULONG
+N = A(0)
+N = A(9)
+N = A(N)
+N = A(C)
+N = A(W)
+N = A(I)
+N = A(L)
+N = A(N + 1)
+N = A(A(N))
+N = A(W + 1)
+N = H(N)
+N = H(W)
+N = H(299)
+C = S(1)
+C = S(N)
+C = S(W)
+I = S(N)
+L = S(N)
+W = S(5)
+A(0) = 1
+A(9) = N
+A(N) = 2
+A(C) = N
+A(W) = W
+A(I) = L
+A(L) = 3
+A(N + 1) = A(N)
+H(N) = 1
+H(W) = N
+H(299) = 1
+S(N) = -1
+S(W) = C
+S(2) = I
+ERRORS ON
+N = A(N)
+N = A(W)
+N = H(N)
+N = H(W)
+C = S(N)
+A(N) = 1
+A(W) = 1
+H(N) = 1
+H(W) = 1
+S(N) = C
+A(3) = 1
+N = A(3)
+ERRORS OFF
+N = A(N)
+A(N) = 1
+IF A(N) = 1 THEN PRINT 1
+IF S(N) < 0 THEN PRINT 2
+IF S(N) < C THEN PRINT 3
+IF A(N) > A(N + 1) THEN PRINT 4
+PRINT A(N); S(N); A(1) + S(1); H(W)

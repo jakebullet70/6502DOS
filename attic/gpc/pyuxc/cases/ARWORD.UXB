@@ -1,0 +1,52 @@
+' UWORD, INT, LONG and ULONG arrays: each kind of index, with ERRORS ON and OFF.
+DIM W(10) AS UWORD, I(10) AS INT, L(10) AS LONG, U(10) AS ULONG
+DIM N AS UBYTE, C AS BYTE, X AS UWORD, Y AS INT, Z AS LONG
+X = W(0)
+X = W(9)
+X = W(N)
+X = W(X)
+X = W(C)
+X = W(Z)
+X = W(W(N))
+Y = I(N)
+Y = I(X)
+Z = I(N)
+Z = L(N)
+Z = L(X)
+Z = U(N)
+Z = L(9)
+Z = U(0)
+N = W(N)
+N = L(N)
+C = I(N)
+X = L(X) + W(X)
+W(0) = 1
+W(N) = X
+W(X) = N
+W(C) = Z
+I(N) = -1
+I(X) = Y
+L(0) = 70000
+L(N) = Z
+L(X) = -1
+U(N) = X
+U(9) = Z
+L(N) = L(N + 1) + L(N - 1)
+W(N) = W(N) * 2
+ERRORS ON
+X = W(N)
+X = W(X)
+Z = L(N)
+Z = U(X)
+W(N) = 1
+W(X) = 1
+L(N) = 1
+U(X) = 1
+W(2) = 1
+X = W(2)
+ERRORS OFF
+IF I(N) < 0 THEN PRINT 1
+IF L(N) < Z THEN PRINT 2
+IF U(N) > Z THEN PRINT 3
+IF W(N) = X THEN PRINT 4
+PRINT W(N); I(N); L(N); U(N)

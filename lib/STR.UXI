@@ -1,0 +1,36 @@
+' STR.UXI: the string words of the language under STR, and string routines.
+'
+' STR.name is the built-in of that name: STR.MID$ is MID$.
+'
+' Its BINDs add no bytes to a program, and a FUNCTION adds bytes only when called. Include it
+' in any file, with or without DOS.UXI.
+
+NAMESPACE STR
+  BIND LEN LEN        ' STR.LEN(S$)                  the length of S$
+  BIND ASC ASC        ' STR.ASC(S$)                  the code of the first character
+  BIND VAL VAL        ' STR.VAL(S$)                  the number in S$, 16 bits
+  BIND LVAL LVAL      ' STR.LVAL(S$)                 the number in S$, 32 bits
+  BIND CHR$ CHR$      ' STR.CHR$(N)                  the character with code N
+  BIND STR$ STR$      ' STR.STR$(N)                  N as a string
+  BIND MID$ MID$      ' STR.MID$(S$, START[, COUNT]) COUNT characters from START
+  BIND INSTR INSTR    ' STR.INSTR(S$, F$[, START])   the position of F$ in S$, or 0
+  BIND LEFT$ LEFT$    ' STR.LEFT$(S$, N)             the first N characters of S$
+  BIND RIGHT$ RIGHT$  ' STR.RIGHT$(S$, N)            the last N characters of S$
+  BIND AddressOf AddrOf
+
+  ' The position of the last FIND$ in TEXT$ that starts at or before START, or 0. START 0
+  ' searches the whole of TEXT$. An empty FIND$ gives 0. It calls INSTR once for each match up
+  ' to START.
+  FUNCTION INSTR_REV(TEXT$, FIND$, START AS UBYTE) AS UBYTE
+    DIM POSITION AS UBYTE, LAST AS UBYTE
+    POSITION = 0
+    LAST = 0
+    IF START = 0 THEN START = 255
+    DO
+      POSITION = INSTR(TEXT$, FIND$, POSITION + 1)
+      IF POSITION = 0 OR POSITION > START THEN RETURN LAST
+      LAST = POSITION
+    LOOP UNTIL POSITION = START
+    RETURN LAST
+  END FUNCTION
+END NAMESPACE

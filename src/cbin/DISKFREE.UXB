@@ -1,0 +1,48 @@
+'=============================================================================================
+' -- Callable Commandlet -----> DISKFREE [d:] [SILENT]
+' -- prints the free kilobytes of drive d, or of the current drive with no d: 885 KB free.
+' -- Sets P1$ to the number, 885, and to an empty string on an invalid drive.
+' -- The colon may be left off, and a small letter is the same as a capital.
+' -- SILENT, in capitals, prints nothing. It is P1$ with no d:, else P2$.
+' -- A drive that is not a letter, or that the kernel does not know, prints Invalid drive and
+' -- gives exit code 1. Exit code 0 otherwise.
+' -- The kernel's diskfree call reads the whole FAT, so a large card takes a while.
+' --
+' -- From a script:
+' --     DISKFREE C: SILENT
+' --     PRINT "Free: " + P1$ + " KB"
+'=============================================================================================
+#INCLUDE "DOS.UXI"
+#INCLUDE "HEAP.UXI"
+#INCLUDE "CBIN.UXI"
+DIM DRIVE_NAME AS STRING * 255, DRIVE AS UBYTE, FREE_KB AS ULONG, FREE_TEXT AS STRING * 10
+
+' Clears P1$, prints Invalid drive unless SILENT, and ends with exit code 1.
+SUB INVALID_DRIVE()
+  HEAP.SYS_STRINGS_SET(SLOT_P1, "")
+  IF SILENT = 0 THEN PRINT "Invalid drive"
+  END 1
+END SUB
+
+DRIVE_NAME = HEAP.SYS_STRINGS_GET(SLOT_P1)
+IF HEAP.SYS_STRINGS_GET(SLOT_P2) = "SILENT" THEN SILENT = 1
+IF DRIVE_NAME = "SILENT" THEN
+  SILENT = 1
+  DRIVE_NAME = ""
+END IF
+IF DRIVE_NAME <> "" THEN
+  ' a to z give 1 to 26. Any other first character gives 0 or wraps past 26.
+  DRIVE = (ASC(DRIVE_NAME) OR $20) - ASC("a") + 1
+  IF DRIVE = 0 OR DRIVE > 26 OR (MID$(DRIVE_NAME, 2) <> "" AND MID$(DRIVE_NAME, 2) <> ":") THEN
+    INVALID_DRIVE()
+  END IF
+END IF
+DOS.DISKFREE(DRIVE)
+IF DOS.ERROR <> 0 THEN INVALID_DRIVE()
+' Sectors are 512 bytes, so 2 sectors make 1 KB.
+FREE_KB = DOS.FREE_HIGH
+FREE_KB = ((FREE_KB << 16) OR DOS.FREE_LOW) * DOS.CLUSTER_SECTORS
+FREE_TEXT = MID$(STR$(FREE_KB >> 1), 2)
+HEAP.SYS_STRINGS_SET(SLOT_P1, FREE_TEXT)
+IF SILENT = 0 THEN PRINT FREE_TEXT; " KB free"
+END 0

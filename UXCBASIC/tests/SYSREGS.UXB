@@ -1,0 +1,29 @@
+' SYSREGS -- SYS with A, X, Y and P in $030C-$030F
+DIM W AS UWORD, I AS UBYTE
+POKE $030F, 0
+POKE $030C, 65
+SYS $03B8                    ' con_out "A"
+POKE $030C, 66
+W = $03B8
+SYS W                       ' con_out "B"
+PRINT
+' A routine at $9E00: inc a, inx, iny, sec, rts
+POKE $9E00, $1A
+POKE $9E01, $E8
+POKE $9E02, $C8
+POKE $9E03, $38
+POKE $9E04, $60
+POKE $030C, 10
+POKE $030D, 20
+POKE $030E, 30
+POKE $030F, $0C              ' D and I set: SYS clears both
+SYS $9E00
+PRINT PEEK($030C); PEEK($030D); PEEK($030E); PEEK($030F) AND 1; PEEK($030F) AND 12
+' X is the expression stack: an expression after SYS still works
+FOR I = 1 TO 3
+    SYS $9E00
+    W = (I + 1) * (I + 2)
+    PRINT W;
+NEXT I
+PRINT
+PRINT "OK"

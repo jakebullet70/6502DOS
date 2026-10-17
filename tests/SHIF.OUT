@@ -1,0 +1,48 @@
+UXDOS16 V0.1.0
+For the Commander X16
+>>RUN CMDSHELL.COM
+C>PATH$ = "C:\SCRIPTS"
+C>A = 1
+C>IF A = 1 PRINT "YES"
+YES
+C>IF A = 2 PRINT "NO"
+C>IF A = 2
+C>PRINT "PROMPT BLOCK"
+PROMPT BLOCK
+C>ENDIF
+C>IF A$ = 1
+Syntax error
+C>IF A = "X"
+Type mismatch
+C>IF A PRINT
+Syntax error
+C>IF A = 1 / 0 PRINT
+Division by zero
+C>ENDIF X
+Syntax error
+C>IF
+Syntax error
+C>REM COMMENT | TO X
+C>' COMMENT
+C>  // COMMENT
+C>IF A = 1 ' COMMENT
+C>/ X
+Syntax error
+C>REMARK
+Bad command or file name
+C>RUN IF
+EQ
+LT
+LE
+SIGNED
+S EQ
+S LT
+S GT
+NESTED
+BLOCK
+AFTER
+C>PRINT "PROMPT"
+PROMPT
+C>END
+
+>>

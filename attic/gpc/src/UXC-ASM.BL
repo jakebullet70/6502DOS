@@ -1,0 +1,511 @@
+## UXC-ASM.BL -- ASM: 65C02 instructions and bytes put straight into the code.
+##
+##   AS.ASM                         ASM b, b, ... or ASM alone, with the token at ASM
+##   AS.SYS                         SYS a, with the token at SYS
+##   AS.LINE                        a line inside an ASM block, with the token at its start
+##   AS.STRAY                       stop: END ASM with no block open
+##   AS.OPEN                        at the end of the source, a block still open is an error
+##
+## AS.BLOCK is 1 between ASM alone and its END ASM. SM.LINE then sends each line to AS.LINE.
+## A line in a block is an optional label, name:, then an instruction or a list of bytes. A
+## line whose first word is a 65C02 mnemonic is an instruction.
+## The code must keep X: it is the expression stack.
+##
+## The addressing modes are letters, in the table and in AS.MODE$:
+##   A implied    B A          C #n         D zp         E zp,X       F zp,Y
+##   G abs        H abs,X      I abs,Y      J (zp)       K (zp,X)     L (zp),Y
+##   M (abs)      N (abs,X)    O a branch   P zp and a branch (BBR, BBS)
+## The operand forms are numbers, in AS.FORM:
+##   0 none  1 A  2 #n  3 n  4 n,X  5 n,Y  6 (n)  7 (n,X)  8 (n),Y
+
+## ASM b, b, ... with the token at ASM. ASM alone opens a block, up to END ASM or ENDASM.
+AS.ASM:
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.EOL THEN GOTO AS.ITEMS
+    AS.BLOCK = 1
+    AS.NO = LX.NO
+    AS.TEXT$ = LX.L$
+    AS.LABEL.COUNT = 0
+    AS.REFERENCE.COUNT = 0
+    RETURN
+
+## SYS a -- T_SYS calls a with A, X, Y and P from $030C-$030F, and stores the four back.
+AS.SYS:
+    GOSUB LX.NEXT
+    GOSUB EX.EXPR
+    GOSUB EX.TOW
+    GP.SUB EMIT, T.SYS.ID
+    RETURN
+
+AS.LINE:
+    IF TK.T <> K.TT.NAME OR TK.M <> 0 THEN GOTO AS.BODY
+    AS.NAME$ = TK.S$
+    GOSUB LX.NEXT
+    GP.IF TK.T = K.TT.OP AND TK.K = 58 THEN
+        GOSUB AS.LABEL.DEFINE
+        GOSUB LX.NEXT
+        GOTO AS.BODY
+    GP.ENDIF
+    ## Not a label: the line is read again from its first word.
+    GOSUB LX.WHOLE
+    GOSUB LX.NEXT
+AS.BODY:
+    IF TK.T = K.TT.EOL THEN RETURN
+    IF TK.T <> K.TT.NAME THEN GOTO AS.ITEMS
+    GP.IF TK.S$ = "END" THEN
+        GOSUB LX.NEXT
+        IF TK.T <> K.TT.NAME THEN GOTO ER.SYNTAX
+        IF TK.S$ <> "ASM" THEN GOTO ER.SYNTAX
+        GOTO AS.END
+    GP.ENDIF
+    IF TK.S$ = "ENDASM" THEN GOTO AS.END
+    GOSUB AS.LOOKUP
+    IF AS.ENTRY = 0 THEN GOTO AS.ITEMS
+    GOTO AS.INSTRUCTION
+
+AS.END:
+    GOSUB AS.RESOLVE
+    AS.BLOCK = 0
+    GOSUB LX.NEXT
+    RETURN
+
+## AS.ITEMS -- a list of bytes, with the token at the first. A constant of 0-255 is one
+## byte. A constant of 256-65535 is two, low byte first. @name is two, fixed up at link.
+AS.ITEMS:
+    GOSUB AS.VALUE
+    IF AS.K = K.EK.CONST THEN GOSUB AS.CONSTANT
+    IF AS.K = K.EK.ADDR THEN GOSUB AS.WORD
+    IF TK.T <> K.TT.OP OR TK.K <> 44 THEN RETURN
+    GOSUB LX.NEXT
+    GOTO AS.ITEMS
+
+AS.CONSTANT:
+    AS.HIGH = INT(AS.V / 256)
+    CB.B = AS.V - AS.HIGH * 256
+    GOSUB CB.ADD
+    IF AS.HIGH = 0 THEN RETURN
+    CB.B = AS.HIGH
+    GOSUB CB.ADD
+    RETURN
+
+## AS.VALUE -- a constant or an @name, with the token at its start. Out: AS.K, AS.V, AS.S,
+## and AS.KNOWN = 1 when AS.V is the value itself and needs no fixup.
+AS.VALUE:
+    EX.VN = 0
+    EX.SD = 0
+    EX.OP.BASE = 0
+    GOSUB EX.EXPR
+    EX.I = EX.VN - 1
+    AS.K = EX.VK%(EX.I)
+    AS.V = EX.VV(EX.I)
+    AS.S = EX.VS%(EX.I)
+    IF EX.VT%(EX.I) = K.TY.STR THEN GOTO ER.MISMATCH
+    IF AS.K <> K.EK.CONST AND AS.K <> K.EK.ADDR THEN GOTO AS.ERROR.CONSTANT
+    IF AS.K = K.EK.CONST THEN GOSUB EX.CONST.WORD
+    AS.KNOWN = 0
+    IF AS.K = K.EK.CONST OR AS.S = K.SEC.CONST THEN AS.KNOWN = 1
+    RETURN
+
+## AS.WORD -- AS.V as two bytes, low byte first. A value not known now is a K.F.ABS fixup.
+AS.WORD:
+    GP.IF AS.KNOWN = 1 THEN
+        AS.HIGH = INT(AS.V / 256)
+        CB.B = AS.V - AS.HIGH * 256
+        GOSUB CB.ADD
+        CB.B = AS.HIGH
+        GOSUB CB.ADD
+        RETURN
+    GP.ENDIF
+    FX.AT = CB.N
+    FX.K = K.F.ABS
+    FX.S = AS.S
+    FX.V = AS.V
+    GOSUB FX.ADD
+    CB.B = 0
+    GOSUB CB.ADD
+    CB.B = 0
+    GOSUB CB.ADD
+    RETURN
+
+## AS.BYTE -- one byte: AS.V, or its low byte when AS.PART is 1, or its high byte when 2.
+## A value not known now takes a K.F.LO or K.F.HI fixup, and needs AS.PART.
+AS.BYTE:
+    GP.IF AS.KNOWN = 0 THEN
+        IF AS.PART = 0 THEN GOTO AS.ERROR.BYTE
+        FX.AT = CB.N
+        FX.K = K.F.LO
+        IF AS.PART = 2 THEN FX.K = K.F.HI
+        FX.S = AS.S
+        FX.V = AS.V
+        GOSUB FX.ADD
+        CB.B = 0
+        GOSUB CB.ADD
+        RETURN
+    GP.ENDIF
+    AS.HIGH = INT(AS.V / 256)
+    IF AS.PART = 0 AND AS.HIGH <> 0 THEN GOTO AS.ERROR.BYTE
+    CB.B = AS.V - AS.HIGH * 256
+    IF AS.PART = 2 THEN CB.B = AS.HIGH
+    GOSUB CB.ADD
+    RETURN
+
+## ---- instructions ----
+
+## AS.LOOKUP -- the mnemonic in TK.S$. Out: AS.ENTRY, the place of its entry in AS.TABLE$, or
+## 0 when TK.S$ is not a mnemonic. AS.BIT is the bit number times 16 of RMB, SMB, BBR and BBS.
+## An entry is /, the mnemonic, then a mode letter and two hex digits for each opcode.
+AS.LOOKUP:
+    AS.ENTRY = 0
+    AS.BIT = 0
+    AS.HAS.BIT = 0
+    AS.MNEMONIC$ = TK.S$
+    IF LEN(AS.MNEMONIC$) = 4 THEN GOSUB AS.LOOKUP.BIT
+    IF LEN(AS.MNEMONIC$) <> 3 THEN RETURN
+    AS.KEY$ = "/" + AS.MNEMONIC$
+    AS.CHUNK = 1
+AS.LOOKUP.NEXT:
+    GOSUB AS.TABLE.CHUNK
+    AS.ENTRY = GP.INSTR(AS.TABLE$, AS.KEY$, 1)
+    IF AS.ENTRY <> 0 THEN GOTO AS.LOOKUP.FOUND
+    AS.CHUNK = AS.CHUNK + 1
+    IF AS.CHUNK <= 6 THEN GOTO AS.LOOKUP.NEXT
+    RETURN
+AS.LOOKUP.FOUND:
+    AS.BIT.FAMILY = 0
+    IF AS.MNEMONIC$ = "RMB" OR AS.MNEMONIC$ = "SMB" THEN AS.BIT.FAMILY = 1
+    IF AS.MNEMONIC$ = "BBR" OR AS.MNEMONIC$ = "BBS" THEN AS.BIT.FAMILY = 1
+    IF AS.BIT.FAMILY <> AS.HAS.BIT THEN AS.ENTRY = 0
+    RETURN
+AS.LOOKUP.BIT:
+    AS.DIGIT = ASC(RIGHT$(AS.MNEMONIC$, 1)) - 48
+    IF AS.DIGIT < 0 OR AS.DIGIT > 7 THEN RETURN
+    AS.BIT = AS.DIGIT * 16
+    AS.HAS.BIT = 1
+    AS.MNEMONIC$ = LEFT$(AS.MNEMONIC$, 3)
+    RETURN
+
+## AS.TABLE.CHUNK -- part AS.CHUNK of the opcode table, in AS.TABLE$.
+AS.TABLE.CHUNK:
+    IF AS.CHUNK = 1 THEN AS.TABLE$ = "/ADCC69D65E75G6DH7DI79K61L71J72/ANDC29D25E35G2DH3DI39K21L31J32/ASLB0AD06E16G0EH1E/BBRP0F/BBSP8F/BCCO90/BCSOB0/BEQOF0/BITC89D24E34G2CH3C/BMIO30/BNEOD0"
+    IF AS.CHUNK = 2 THEN AS.TABLE$ = "/BPLO10/BRAO80/BRKA00/BVCO50/BVSO70/CLCA18/CLDAD8/CLIA58/CLVAB8/CMPCC9DC5ED5GCDHDDID9KC1LD1JD2/CPXCE0DE4GEC/CPYCC0DC4GCC/DECB3ADC6ED6GCEHDE/DEXACA"
+    IF AS.CHUNK = 3 THEN AS.TABLE$ = "/DEYA88/EORC49D45E55G4DH5DI59K41L51J52/INCB1ADE6EF6GEEHFE/INXAE8/INYAC8/JMPG4CM6CN7C/JSRG20/LDACA9DA5EB5GADHBDIB9KA1LB1JB2/LDXCA2DA6FB6GAEIBE"
+    IF AS.CHUNK = 4 THEN AS.TABLE$ = "/LDYCA0DA4EB4GACHBC/LSRB4AD46E56G4EH5E/NOPAEA/ORAC09D05E15G0DH1DI19K01L11J12/PHAA48/PHPA08/PHXADA/PHYA5A/PLAA68/PLPA28/PLXAFA/PLYA7A/RMBD07"
+    IF AS.CHUNK = 5 THEN AS.TABLE$ = "/ROLB2AD26E36G2EH3E/RORB6AD66E76G6EH7E/RTIA40/RTSA60/SBCCE9DE5EF5GEDHFDIF9KE1LF1JF2/SECA38/SEDAF8/SEIA78/SMBD87/STAD85E95G8DH9DI99K81L91J92/STPADB"
+    IF AS.CHUNK = 6 THEN AS.TABLE$ = "/STXD86F96G8E/STYD84E94G8C/STZD64E74G9CH9E/TAXAAA/TAYAA8/TRBD14G1C/TSBD04G0C/TSXABA/TXAA8A/TXSA9A/TYAA98/WAIACB"
+    RETURN
+
+## AS.OPCODE -- the opcode of the mnemonic at AS.ENTRY in mode AS.MODE$, in AS.CODE, or -1
+## when the mnemonic has no such mode.
+AS.OPCODE:
+    AS.CODE = -1
+    AS.MODE = ASC(AS.MODE$)
+    AS.A = GP.STRPTR(AS.TABLE$)
+    AS.N = LEN(AS.TABLE$)
+    AS.P = AS.ENTRY + 4
+AS.OPCODE.NEXT:
+    IF AS.P > AS.N THEN RETURN
+    AS.C = PEEK(AS.A + AS.P)
+    IF AS.C = 47 THEN RETURN
+    IF AS.C = AS.MODE THEN GOTO AS.OPCODE.FOUND
+    AS.P = AS.P + 3
+    GOTO AS.OPCODE.NEXT
+AS.OPCODE.FOUND:
+    AS.P = AS.P + 1
+    GOSUB AS.HEX.DIGIT
+    AS.CODE = AS.H * 16 + AS.BIT
+    AS.P = AS.P + 1
+    GOSUB AS.HEX.DIGIT
+    AS.CODE = AS.CODE + AS.H
+    RETURN
+AS.HEX.DIGIT:
+    AS.H = PEEK(AS.A + AS.P) - 48
+    IF AS.H > 9 THEN AS.H = AS.H - 7
+    RETURN
+
+## AS.INSTRUCTION -- an instruction, with the token at its mnemonic.
+AS.INSTRUCTION:
+    AS.OPERAND.P = LX.P
+    GOSUB LX.NEXT
+    AS.MODE$ = "O"
+    GOSUB AS.OPCODE
+    IF AS.CODE >= 0 THEN GOTO AS.BRANCH
+    AS.MODE$ = "P"
+    GOSUB AS.OPCODE
+    IF AS.CODE >= 0 THEN GOTO AS.BIT.BRANCH
+    AS.JUMPED = 0
+    IF AS.MNEMONIC$ = "JMP" OR AS.MNEMONIC$ = "JSR" THEN GOSUB AS.JUMP
+    IF AS.JUMPED = 1 THEN RETURN
+    GOSUB AS.OPERAND
+    GOSUB AS.CHOOSE
+    CB.B = AS.CODE
+    GOSUB CB.ADD
+    IF AS.MODE$ = "A" OR AS.MODE$ = "B" THEN RETURN
+    IF GP.INSTR("GHIMN", AS.MODE$, 1) <> 0 THEN GOTO AS.WORD
+    GOTO AS.BYTE
+
+## AS.OPERAND -- the operand, with the token after the mnemonic. Out: AS.FORM, AS.PART, and
+## the value from AS.VALUE.
+AS.OPERAND:
+    AS.FORM = 0
+    AS.PART = 0
+    IF TK.T = K.TT.EOL THEN RETURN
+    GP.IF TK.T = K.TT.NAME AND TK.S$ = "A" THEN
+        AS.FORM = 1
+        GOSUB LX.NEXT
+        RETURN
+    GP.ENDIF
+    IF TK.T = K.TT.OP AND TK.K = 35 THEN GOTO AS.IMMEDIATE
+    IF TK.T = K.TT.OP AND TK.K = 40 THEN GOTO AS.INDIRECT
+    GOSUB AS.VALUE
+    AS.FORM = 3
+    IF TK.T <> K.TT.OP OR TK.K <> 44 THEN RETURN
+    GOSUB AS.INDEX
+    IF AS.REGISTER$ = "X" THEN AS.FORM = 4
+    IF AS.REGISTER$ = "Y" THEN AS.FORM = 5
+    RETURN
+
+## #n, #<n or #>n. < and > take the low and the high byte.
+AS.IMMEDIATE:
+    AS.FORM = 2
+    GOSUB LX.NEXT
+    IF TK.T = K.TT.OP AND TK.K = 60 THEN AS.PART = 1
+    IF TK.T = K.TT.OP AND TK.K = 62 THEN AS.PART = 2
+    IF AS.PART <> 0 THEN GOSUB LX.NEXT
+    GOTO AS.VALUE
+
+## (n), (n,X) or (n),Y, with the token at the (.
+AS.INDIRECT:
+    GOSUB LX.NEXT
+    GOSUB AS.VALUE
+    AS.FORM = 6
+    GP.IF TK.T = K.TT.OP AND TK.K = 44 THEN
+        GOSUB AS.INDEX
+        IF AS.REGISTER$ <> "X" THEN GOTO ER.SYNTAX
+        AS.FORM = 7
+    GP.ENDIF
+    IF TK.T <> K.TT.OP OR TK.K <> 41 THEN GOTO AS.ERROR.PARENTHESIS
+    GOSUB LX.NEXT
+    IF AS.FORM = 7 THEN RETURN
+    IF TK.T <> K.TT.OP OR TK.K <> 44 THEN RETURN
+    GOSUB AS.INDEX
+    IF AS.REGISTER$ <> "Y" THEN GOTO ER.SYNTAX
+    AS.FORM = 8
+    RETURN
+
+## AS.INDEX -- ,X or ,Y with the token at the comma. Out: AS.REGISTER$.
+AS.INDEX:
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.NAME THEN GOTO ER.SYNTAX
+    AS.REGISTER$ = TK.S$
+    IF AS.REGISTER$ <> "X" AND AS.REGISTER$ <> "Y" THEN GOTO ER.SYNTAX
+    GOSUB LX.NEXT
+    RETURN
+
+## AS.CHOOSE -- the mode for AS.FORM, in AS.MODE$, and its opcode. The short mode, the zero
+## page one, is taken when the value is known and below 256 and the mnemonic has it.
+AS.CHOOSE:
+    GP.IF AS.FORM < 3 OR (AS.KNOWN = 1 AND AS.V < 256) THEN
+        AS.MODE$ = MID$("ABCDEFJKL", AS.FORM + 1, 1)
+        GOSUB AS.OPCODE
+        IF AS.CODE >= 0 THEN RETURN
+    GP.ENDIF
+    AS.MODE$ = MID$("BBCGHIMN-", AS.FORM + 1, 1)
+    GOSUB AS.OPCODE
+    IF AS.CODE < 0 THEN GOTO AS.ERROR.MODE
+    RETURN
+
+## ---- labels and branches ----
+
+## AS.BRANCH -- a branch to a label, with the token after the mnemonic.
+AS.BRANCH:
+    CB.B = AS.CODE
+    GOSUB CB.ADD
+    GOTO AS.TARGET
+
+## AS.BIT.BRANCH -- BBRn or BBSn zp, label.
+AS.BIT.BRANCH:
+    CB.B = AS.CODE
+    GOSUB CB.ADD
+    AS.PART = 0
+    GOSUB AS.VALUE
+    GOSUB AS.BYTE
+    IF TK.T <> K.TT.OP OR TK.K <> 44 THEN GOTO ER.SYNTAX
+    GOSUB LX.NEXT
+    GOTO AS.TARGET
+
+## AS.TARGET -- the offset byte of a branch, with the token at the label. A label further
+## down is patched at END ASM.
+AS.TARGET:
+    IF TK.T <> K.TT.NAME OR TK.M <> 0 THEN GOTO AS.ERROR.TARGET
+    AS.NAME$ = TK.S$
+    GOSUB LX.NEXT
+    GOSUB AS.LABEL.FIND
+    GP.IF AS.FOUND < 0 THEN
+        AS.KIND = K.ASM.BRANCH
+        GOSUB AS.REFERENCE.ADD
+        CB.B = 0
+        GOSUB CB.ADD
+        RETURN
+    GP.ENDIF
+    AS.AT = CB.N
+    AS.TO = AS.LABEL.AT(AS.FOUND)
+    GOSUB AS.OFFSET
+    IF AS.FAR = 1 THEN GOTO AS.ERROR.RANGE
+    GOSUB CB.ADD
+    RETURN
+
+## AS.OFFSET -- the offset in CB.B of a branch whose offset byte is at AS.AT, to AS.TO.
+## AS.FAR = 1 when the label is out of reach.
+AS.OFFSET:
+    AS.FAR = 0
+    AS.DISTANCE = AS.TO - AS.AT - 1
+    IF AS.DISTANCE < -128 OR AS.DISTANCE > 127 THEN AS.FAR = 1
+    IF AS.DISTANCE < 0 THEN AS.DISTANCE = AS.DISTANCE + 256
+    CB.B = AS.DISTANCE
+    RETURN
+
+## AS.JUMP -- JMP label or JSR label, with the token after the mnemonic. A name alone on
+## the rest of the line is a label. AS.JUMPED = 1 when it was one; else the operand is
+## read again from AS.OPERAND.P.
+AS.JUMP:
+    IF TK.T <> K.TT.NAME OR TK.M <> 0 THEN RETURN
+    AS.NAME$ = TK.S$
+    GOSUB LX.NEXT
+    GP.IF TK.T <> K.TT.EOL THEN
+        LX.P = AS.OPERAND.P
+        GOSUB LX.NEXT
+        RETURN
+    GP.ENDIF
+    AS.JUMPED = 1
+    AS.MODE$ = "G"
+    GOSUB AS.OPCODE
+    CB.B = AS.CODE
+    GOSUB CB.ADD
+    AS.AT = CB.N
+    CB.B = 0
+    GOSUB CB.ADD
+    CB.B = 0
+    GOSUB CB.ADD
+    GOSUB AS.LABEL.FIND
+    GP.IF AS.FOUND < 0 THEN
+        AS.KIND = K.ASM.WORD
+        GOTO AS.REFERENCE.ADD
+    GP.ENDIF
+    AS.TO = AS.LABEL.AT(AS.FOUND)
+    GOTO AS.LABEL.WORD
+
+## AS.LABEL.WORD -- a K.F.ABS fixup at AS.AT to the code at AS.TO.
+AS.LABEL.WORD:
+    FX.AT = AS.AT
+    FX.K = K.F.ABS
+    FX.S = K.SEC.CODE
+    FX.V = AS.TO
+    GOSUB FX.ADD
+    RETURN
+
+AS.LABEL.DEFINE:
+    GOSUB AS.LABEL.FIND
+    IF AS.FOUND >= 0 THEN GOTO AS.ERROR.DUPLICATE
+    IF AS.LABEL.COUNT = K.ASM.LABELS THEN GOTO AS.ERROR.LABELS
+    AS.LABEL.NAME$(AS.LABEL.COUNT) = AS.NAME$
+    AS.LABEL.AT(AS.LABEL.COUNT) = CB.N
+    AS.LABEL.COUNT = AS.LABEL.COUNT + 1
+    RETURN
+
+## AS.LABEL.FIND -- the label AS.NAME$ of this block. Out: AS.FOUND, its index, or -1.
+AS.LABEL.FIND:
+    AS.FOUND = AS.LABEL.COUNT - 1
+AS.LABEL.FIND.NEXT:
+    IF AS.FOUND < 0 THEN RETURN
+    IF AS.LABEL.NAME$(AS.FOUND) = AS.NAME$ THEN RETURN
+    AS.FOUND = AS.FOUND - 1
+    GOTO AS.LABEL.FIND.NEXT
+
+## AS.REFERENCE.ADD -- the label AS.NAME$, not yet defined, is wanted at CB.N, or at AS.AT
+## for a K.ASM.WORD.
+AS.REFERENCE.ADD:
+    IF AS.REFERENCE.COUNT = K.ASM.LABELS THEN GOTO AS.ERROR.LABELS
+    AS.REFERENCE.NAME$(AS.REFERENCE.COUNT) = AS.NAME$
+    AS.REFERENCE.AT(AS.REFERENCE.COUNT) = CB.N
+    IF AS.KIND = K.ASM.WORD THEN AS.REFERENCE.AT(AS.REFERENCE.COUNT) = AS.AT
+    AS.REFERENCE.KIND%(AS.REFERENCE.COUNT) = AS.KIND
+    AS.REFERENCE.NO%(AS.REFERENCE.COUNT) = LX.NO
+    AS.REFERENCE.COUNT = AS.REFERENCE.COUNT + 1
+    RETURN
+
+## AS.RESOLVE -- at END ASM, every branch and jump to a label further down.
+AS.RESOLVE:
+    AS.R = 0
+AS.RESOLVE.NEXT:
+    IF AS.R >= AS.REFERENCE.COUNT THEN RETURN
+    AS.NAME$ = AS.REFERENCE.NAME$(AS.R)
+    GOSUB AS.LABEL.FIND
+    IF AS.FOUND < 0 THEN GOTO AS.ERROR.UNKNOWN
+    AS.AT = AS.REFERENCE.AT(AS.R)
+    AS.TO = AS.LABEL.AT(AS.FOUND)
+    GP.IF AS.REFERENCE.KIND%(AS.R) = K.ASM.BRANCH THEN
+        GOSUB AS.OFFSET
+        IF AS.FAR = 1 THEN GOTO AS.ERROR.FAR
+        CB.AT = AS.AT
+        GOSUB CB.PUT
+    GP.ENDIF
+    IF AS.REFERENCE.KIND%(AS.R) = K.ASM.WORD THEN GOSUB AS.LABEL.WORD
+    AS.R = AS.R + 1
+    GOTO AS.RESOLVE.NEXT
+
+## ---- errors ----
+
+AS.ERROR.CONSTANT:
+    ER.M$ = "ASM TAKES A CONSTANT OR @NAME"
+    GOTO ER.STOP
+
+AS.ERROR.BYTE:
+    ER.M$ = "NOT A BYTE"
+    GOTO ER.STOP
+
+AS.ERROR.MODE:
+    ER.M$ = "NO SUCH ADDRESS MODE"
+    GOTO ER.STOP
+
+AS.ERROR.PARENTHESIS:
+    ER.M$ = "MISSING )"
+    GOTO ER.STOP
+
+AS.ERROR.TARGET:
+    ER.M$ = "BRANCH TAKES A LABEL"
+    GOTO ER.STOP
+
+AS.ERROR.RANGE:
+    ER.M$ = "BRANCH OUT OF RANGE"
+    GOTO ER.STOP
+
+AS.ERROR.DUPLICATE:
+    ER.M$ = "DUPLICATE LABEL " + AS.NAME$
+    GOTO ER.STOP
+
+AS.ERROR.LABELS:
+    ER.M$ = "TOO MANY ASM LABELS"
+    GOTO ER.STOP
+
+## The errors found at END ASM name the line of the branch. The text printed is empty.
+AS.ERROR.UNKNOWN:
+    LX.NO = AS.REFERENCE.NO%(AS.R)
+    LX.L$ = ""
+    ER.M$ = "LABEL NOT FOUND: " + AS.NAME$
+    GOTO ER.STOP
+
+AS.ERROR.FAR:
+    LX.NO = AS.REFERENCE.NO%(AS.R)
+    LX.L$ = ""
+    GOTO AS.ERROR.RANGE
+
+AS.STRAY:
+    ER.M$ = "END ASM WITHOUT ASM"
+    GOTO ER.STOP
+
+AS.OPEN:
+    IF AS.BLOCK = 0 THEN RETURN
+    LX.NO = AS.NO
+    LX.L$ = AS.TEXT$
+    ER.M$ = "ASM WITHOUT END ASM"
+    GOTO ER.STOP

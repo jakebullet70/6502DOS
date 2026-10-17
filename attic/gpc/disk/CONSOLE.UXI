@@ -1,0 +1,65 @@
+//===============================================================
+//   UXCBASIC program
+//
+//
+//   CONSOLE.UXB
+//===============================================================
+
+ENUM eCONSOLE_POSITIONS
+  CurCol = 0
+  CurRow = 1
+END ENUM
+
+
+SUB LOCATE(x AS UBYTE,y AS UBYTE)
+  // --- refactor later to ASM
+  POS(eCONSOLE_POSITIONS.CurCol) = x
+  POS(eCONSOLE_POSITIONS.CurRow) = y
+END SUB
+
+
+NAMESPACE console
+  BIND LOCATE LOCATE
+  BIND CursorCol POS(0)
+  BIND CursorRow POS(1)
+  BIND nl PRINT 
+  BIND spc PRINT " ";
+  BIND PRINT PRINT
+  BIND INPUT INPUT
+  BIND LINPUT LINPUT
+  //BIND clS CLS
+  //BIND bell
+  
+  
+  SUB print_bool(v as ubyte)
+    IF v THEN
+      PRINT "true";
+    ELSE
+      PRINT "false";
+    END IF
+  END SUB
+
+  
+  SUB PrintAt(x AS UBYTE,y AS UBYTE,s$,clr as uword)
+    POS(eCONSOLE_POSITIONS.CurCol) = x
+    POS(eCONSOLE_POSITIONS.CurRow) = y 
+    '--- STILL NEEDs COLOR!
+    PRINT s$
+  end sub
+  
+
+  SUB PRINT_USING(v$)
+    ' --- do the print using stuff here in ASM or?
+    ' --- as the compiler will not include this is its not using it so...
+    ' --- copy from GPC
+
+  END SUB
+
+  
+  ;BIND home()  chrout(19)
+  ;BIND rvs_on() 
+  ;BIND rvs_off()
+
+END NAMESPACE
+BIND con console
+BIND txt console

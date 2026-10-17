@@ -1,0 +1,2 @@
+DIM S$ * 9
+S$ = MID$(MID$(MID$(MID$(MID$(MID$(MID$(MID$(MID$(S$, 1), 1), 1), 1), 1), 1), 1), 1), 1)

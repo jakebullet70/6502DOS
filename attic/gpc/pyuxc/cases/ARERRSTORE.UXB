@@ -1,0 +1,2 @@
+DIM A(5) AS UWORD
+A(5) = 1

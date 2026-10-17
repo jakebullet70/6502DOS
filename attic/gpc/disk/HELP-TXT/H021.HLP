@@ -1,0 +1,113 @@
+@Subroutines
+.
+=SUBROUTINES
+.
+.A SUB runs its body and has no value. A FUNCTION has a value and is used in
+.an expression.
+.
+.SUB name(parameters) ... ENDSUB. ENDSUB can be written END SUB. A SUB is
+.called by its name and its brackets. CALL in front is optional. The brackets
+.are not: they make the name a call, even with no arguments.
+.
+:SUB SHOW(N AS UBYTE)
+:  PRINT N
+:ENDSUB
+:SHOW(7)
+:CALL SHOW(7)
+.
+.  - A parameter is a BYTE, UBYTE, WORD, UWORD or STRING. A number parameter
+.    needs AS: SUB SHOW(N) stops the compile with MISSING AS: N. A STRING
+.    parameter takes the $ mark or AS STRING.
+.  - An argument is worked into its parameter's type: a UWORD into a UBYTE
+.    parameter keeps its low byte. A STRING parameter has no size, and the
+.    SUB works on the caller's string. See Strings.
+.  - The number of arguments must match the parameters.
+.  - RETURN leaves the SUB at once. In a SUB, RETURN has nothing after it.
+.  - A SUB name with a $, or an AS type after the brackets, stops the compile
+.    with SUB WITH A TYPE: USE FUNCTION.
+.  - A SUB or a FUNCTION may be called before it is written.
+.  - The main program jumps over a SUB or a FUNCTION, so either can sit
+.    anywhere outside a block.
+.  - A SUB or a FUNCTION cannot call itself. One that calls itself stops the
+.    compile with A SUB CANNOT CALL ITSELF.
+.  - SUBs and FUNCTIONs cannot call each other. A loop of calls between them,
+.    A calls B and B calls A or a longer loop, stops the compile with SUBS
+.    CALL EACH OTHER at the line of one of the calls.
+.
+=FUNCTION
+.
+.FUNCTION name(parameters) AS type ... ENDFUNCTION. ENDFUNCTION can be
+.written END FUNCTION. The parameters and the call are as in a SUB. AS after
+.the brackets gives the type of the value. RETURN gives the value.
+.
+:FUNCTION MAX(A AS UWORD, B AS UWORD) AS UWORD
+:  IF A > B THEN RETURN A
+:  RETURN B
+:ENDFUNCTION
+:FUNCT HALF(N AS UWORD) AS UWORD
+:  RETURN N / 2
+:END FUNCT
+:DIM T AS UWORD
+:T = MAX(3, HALF(100))
+.
+.  - A number FUNCTION with no AS stops the compile with MISSING AS: name. A
+.    STRING FUNCTION may take the $ mark in place of AS, as in STRING results
+.    below.
+.  - FUNCT is FUNCTION and ENDFUNCT is ENDFUNCTION, so END FUNCT is END
+.    FUNCTION. Every source has them, as if it began with BIND FUNCT FUNCTION
+.    and BIND ENDFUNCT ENDFUNCTION.
+.  - A FUNCTION needs at least one RETURN with a value. Its end, when the
+.    body reaches it, gives 0, or "" in a STRING FUNCTION.
+.  - A FUNCTION may be called as a statement. The value is lost.
+.  - The end must match the start. END SUB or ENDSUB in a FUNCTION stops the
+.    compile with ENDSUB IN A FUNCTION. END FUNCTION or ENDFUNCTION in a SUB
+.    stops it with ENDFUNCTION IN A SUB.
+.  - END FUNCTION outside a SUB or a FUNCTION stops the compile with
+.    ENDFUNCTION WITHOUT FUNCTION.
+.  - A FUNCTION still open at the end of the source stops the compile with
+.    FUNCTION WITHOUT ENDFUNCTION at the FUNCTION line. A SUB gives SUB
+.    WITHOUT ENDSUB.
+.
+=STRING results
+.
+.A FUNCTION that returns a STRING has the $ mark or AS STRING: FUNCTION
+.FIRST3$(S$) or FUNCTION WRAP(T AS STRING) AS STRING. Its value is assigned,
+.printed, compared and joined with + as any string is.
+.
+:DIM A$ * 20
+:FUNCTION FIRST3$(S$)
+:  RETURN MID$(S$, 1, 3)
+:ENDFUNCTION
+:A$ = FIRST3$("HELLO")
+:PRINT FIRST3$("WORLD") + "!"
+.
+.  - A STRING result is at most 255 characters. An assignment cuts it to the
+.    size of the destination.
+.  - A STRING result passed to a SUB or a FUNCTION is passed as a copy.
+.
+=Locals
+.
+.Parameters, and names DIMed in a SUB or a FUNCTION, are its locals. In this
+.section SUB means either. A local with the same name as a main program
+.variable hides it inside the SUB. Main program variables DIMed before the
+.SUB can be used in it. Labels belong to the SUB too, so no GOTO crosses into
+.or out of one.
+.
+.  - A local does not keep its value between calls.
+.  - A UBYTE or UWORD local, and a local array, starts undefined. Set it
+.    before you read it.
+.  - A local string is set empty each time its DIM line runs.
+.  - Only the SUB itself can name its locals. Inside SHOW, SHOW.N is N.
+.    Outside SHOW, PRINT SHOW.N stops the compile with LOCAL TO A SUB:
+.    SHOW.N.
+.  - The locals of one SUB take at most 16384 bytes. The DIM that passes it
+.    stops the compile with LOCALS TOO BIG.
+.  - The SUBs of one level of the call graph share the memory of their
+.    locals. The compiler does not see a call through a pointer or SYS. A SUB
+.    called that way may share that memory with a SUB that is running.
+.  - The main program's variables are not locals. Each has its own address
+.    and keeps its value.
+.
+=SEE ALSO
+.
+>18|Strings

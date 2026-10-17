@@ -1,0 +1,94 @@
+:HELP
+HELP [topic]
+  Prints the help on topic. With no topic it lists the topics.
+  HELP DISKFREE
+  DISKFREE and DISKINFO work at the prompt and in a script.
+  EXIST is for scripts and prints nothing.
+  Each puts its result in P1$ for a script to test.
+  SILENT prints nothing, not even an error. An error empties P1$.
+:EXIST
+EXIST name                     (Script only)
+  For scripts. Tells whether the file or directory name exists.
+  Name is one file. Wildcards are not allowed.
+  Sets P1$ to 1 or 0. Prints nothing.
+  EXIST DOCS\README.TXT
+  IF P1$ = "1"
+    PRINT "Found the readme"
+  ENDIF
+:DISKFREE
+DISKFREE [d:] [SILENT]          (Command line or Script)
+  Tells the free kilobytes of drive d, or of the current drive.
+  Prints a line such as 877 KB free. Sets P1$ to the number, such as 877.
+  At the prompt: DISKFREE C:
+  In a script:   DISKFREE C: SILENT
+                 PRINT P1$
+:DISKINFO
+DISKINFO [d:] [SILENT]          (Command line or Script)
+  Tells the size of drive d, or of the current drive.
+  Prints five numbers and sets P1$ to P5$ to them:
+    P1$ KB total      P2$ KB free      P3$ bytes a cluster
+    P4$ clusters      P5$ clusters free
+  At the prompt: DISKINFO C:
+  In a script:   DISKINFO C: SILENT
+                 PRINT P2$ + " KB free of " + P1$
+:CHDIR
+CHDIR name   or   CD name       (Command line or Script)
+  Makes directory name the current directory.
+  CHDIR DOCS
+  CD ..
+  CD \
+:CD
+CD is short for CHDIR. See HELP CHDIR.
+:DELETE
+DELETE name   or   DEL name     (Command line or Script)
+  Deletes the file name.
+  DELETE NEW\HI.TXT
+:DEL
+DEL is short for DELETE. See HELP DELETE.
+:MKDIR
+MKDIR name   or   MD name       (Command line or Script)
+  Makes the directory name.
+  MKDIR NEW
+:MD
+MD is short for MKDIR. See HELP MKDIR.
+:RMDIR
+RMDIR name   or   RD name       (Command line or Script)
+  Removes the directory name. The directory must be empty.
+  RMDIR NEW
+:RD
+RD is short for RMDIR. See HELP RMDIR.
+:RENAME
+RENAME old new  or  REN old new (Command line or Script)
+  Renames the file old to new.
+  RENAME NEW\HELLO.TXT NEW\HI.TXT
+:REN
+REN is short for RENAME. See HELP RENAME.
+:VERSION
+VERSION   or   VER              (Command line or Script)
+  Prints the version of UXDOS16, such as UXDOS16 V0.1.0.
+  VERSION
+:VER
+VER is short for VERSION. See HELP VERSION.
+:COLOR
+COLOR foreground, background    (Command line or Script)
+  Sets the colour of the text printed after it. Each value is 0 to 15.
+  The colour names are numbers too. See HELP COLORS.
+  COLOR WHITE, BLUE
+  COLOR 5, 0
+:COLORS
+The colour names, for COLOR and in any number:
+  BLACK    0    PURPLE   4    ORANGE    8    GRAY       12
+  WHITE    1    GREEN    5    BROWN     9    LIGHTGREEN 13
+  RED      2    BLUE     6    LIGHTRED 10    LIGHTBLUE  14
+  CYAN     3    YELLOW   7    DARKGRAY 11    LIGHTGRAY  15
+  PRINT LIGHTGRAY * 16 + WHITE
+:VIEW
+VIEW name                       (Command line only)
+  Shows the text file name a page at a time.
+  Up and Down move a line. PgUp and PgDn move a page. Space moves a page down.
+  Home goes to the first line, End to the last page.
+  Left and Right move the view 8 columns sideways.
+  W turns wrap on and off.
+  F or / asks for a text and finds it, in any case. N finds the next one.
+  Q or Esc ends it.
+  VIEW DOCS\README.TXT

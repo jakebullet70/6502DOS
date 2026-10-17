@@ -1,0 +1,6 @@
+SUB A()
+B()
+ENDSUB
+SUB B()
+A()
+ENDSUB

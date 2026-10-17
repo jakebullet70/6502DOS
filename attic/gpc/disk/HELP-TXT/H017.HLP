@@ -1,0 +1,10 @@
+@GOTO
+.
+=GOTO
+.
+.GOTO jumps to a label. A label is a name and a colon, alone on its line.
+.
+:GOTO DONE
+:PRINT "SKIPPED"
+:DONE:
+:END

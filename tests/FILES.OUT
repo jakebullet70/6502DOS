@@ -1,0 +1,57 @@
+UXDOS16 V0.1.0
+For the Commander X16
+>>DIR
+ARGS.COM            271
+ASK.COM             708
+CHILD.COM           174
+CMDSHELL.COM      18854
+CONSLIB.COM         586
+CWD.COM            2406
+DIRS.COM           5850
+DOCS              <DIR>
+DOS               <DIR>
+DOSAPI.COM         8562
+DUP.COM            3882
+ENDCHILD.COM        126
+HEAPKID.COM         128
+HELLO.TXT            25
+KEYTEST.COM        2697
+MANY              <DIR>
+SCRIPTS           <DIR>
+SCRSIZE.COM         239
+SEEK.COM           1943
+SHOW.COM            981
+SLOTKID.COM        1150
+STRLIB.COM         1981
+TARGET.COM         1671
+WRITE.COM          4798
+    24 File(s)
+>>DIR C:\DOCS\
+.                 <DIR>
+..                <DIR>
+LONG.TXT           3200
+README.TXT           44
+     4 File(s)
+>>dir c:/many/f3?.*
+F30.TXT               4
+F31.TXT               4
+F32.TXT               4
+F33.TXT               4
+     4 File(s)
+>>TYPE C:\HELLO.TXT
+Hello from the SD card.
+>>T \DOCS\README.TXT
+DOCS holds LONG.TXT, 50 lines of 64 bytes.
+>>TYPE C:\NOPE.TXT
+File not found
+>>TYPE C:\NOPE\A.TXT
+Path not found
+>>DIR Q:
+Invalid drive
+>>DIR \MANY\Z*.*
+File not found
+>>TYPE \MANY
+File not found
+>>DIR C:\ EXTRA
+          ^ Error
+>>

@@ -1,0 +1,16 @@
+@DO
+.
+=DO
+.
+.DO ... LOOP, with a WHILE or UNTIL test at the top, at the bottom, at both
+.or at neither. With no test the loop runs until EXIT DO.
+.
+:DIM N AS UWORD
+:DO WHILE N < 10
+:  N = N + 1
+:LOOP
+:DO
+:  N = N - 1
+:LOOP UNTIL N = 0
+.
+.A test at the top is compiled at the bottom, so it costs no more per pass.

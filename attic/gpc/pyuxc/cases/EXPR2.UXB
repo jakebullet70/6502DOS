@@ -1,0 +1,14 @@
+' EXPR2 -- PEEK, POKE, @name, nesting
+DIM A AS UBYTE, N AS UWORD, P AS UWORD
+POKE @A, 42
+PRINT A; PEEK(@A)
+N = @A
+POKE N, 43
+PRINT A; PEEK(N)
+POKE $0400, 7
+PRINT PEEK($0400); PEEK($0400) + 1
+P = $0400
+POKE P + 1, PEEK(P) * 3
+PRINT PEEK($0401)
+PRINT 1 + (2 + (3 + (4 + (5 + A))))
+PRINT (A + 1) * (A - 1) + (A = 43) * 1000

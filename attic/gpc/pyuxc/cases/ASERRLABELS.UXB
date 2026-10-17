@@ -1,0 +1,37 @@
+CONST ZP AS UBYTE = $22, VEC AS UWORD = $0314
+DIM N AS UBYTE, W AS UWORD
+ASM
+    L0: nop
+    L1: nop
+    L2: nop
+    L3: nop
+    L4: nop
+    L5: nop
+    L6: nop
+    L7: nop
+    L8: nop
+    L9: nop
+    L10: nop
+    L11: nop
+    L12: nop
+    L13: nop
+    L14: nop
+    L15: nop
+    L16: nop
+    L17: nop
+    L18: nop
+    L19: nop
+    L20: nop
+    L21: nop
+    L22: nop
+    L23: nop
+    L24: nop
+    L25: nop
+    L26: nop
+    L27: nop
+    L28: nop
+    L29: nop
+    L30: nop
+    L31: nop
+    L32: nop
+END ASM

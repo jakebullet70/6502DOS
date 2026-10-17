@@ -1,0 +1,250 @@
+## UXC-LEX.BL -- the source file, and the tokens of one line.
+##
+##   LX.OPEN    in  LX.NAME$     open the source on channel 2
+##   LX.READ    out LX.GOT       1 when LX.L$ holds the next line, numbered LX.NO
+##   LX.WHOLE                    start the line; a whole-line comment leaves nothing in it
+##   LX.NEXT    out TK.T         the next token:
+##                  TK.V         K.TT.NUM: the value, 0 to 4294967295
+##                  TK.S$        K.TT.STR: the text. K.TT.NAME: the name in upper case,
+##                               with its $ mark. A name in NM.ALIAS.NAME$() is
+##                               replaced by its word in NM.ALIAS.TARGET$().
+##                  TK.M         K.TT.NAME: K.TY.STR for a $ mark, else 0
+##                  TK.K         K.TT.OP: the character, or K.OP.* for <> <= >= << >>
+##
+## A character is read with PEEK through GP.STRPTR, so the scan makes no strings. The
+## pointer is taken again at each token, in case the string has moved.
+
+## LX.OPEN -- which line ending the file uses, then open it.
+##
+## TURBO writes CR, and files from the host are LF or CR LF. One probe read with delimiter
+## 10 tells them apart, as the cruncher does it:
+##   no CR at all        LF: delimiter 10
+##   a CR only at the end  CR LF: delimiter 10, and LX.READ drops the CR
+##   a CR before the end   CR: delimiter 13
+## The probe eats the first line, so the file is closed and opened again.
+LX.OPEN:
+    LX.DELIM = 10
+    OPEN 2, 8, 2, LX.NAME$ + ",S,R"
+    LINPUT# 2, LX.L$, 10 : LX.ST = ST
+    CLOSE 2
+    ## An OPEN that finds no file still opens. The read then sets bit 1 of ST.
+    IF (LX.ST AND 2) <> 0 THEN ER.M$ = "FILE NOT FOUND: " + LX.NAME$ : GOTO ER.STOP
+    LX.C = GP.INSTR(LX.L$, CHR$(13))
+    IF LX.C > 0 AND LX.C < LEN(LX.L$) THEN LX.DELIM = 13
+    OPEN 2, 8, 2, LX.NAME$ + ",S,R"
+    LX.EOF = 0 : LX.NO = 0
+    RETURN
+
+## LX.READ -- the next line into LX.L$. Bit 6 of ST marks the last line, which still holds
+## text. Only bit 6 ends the file: ST can read 128 on a good line.
+## The end of an included file goes back to the line after its #INCLUDE.
+LX.READ:
+    LX.GOT = 0
+LX.READ.NEXT:
+    IF LX.EOF <> 0 AND LX.INCLUDING <> 0 THEN GOSUB LX.INCLUDE.END
+    IF LX.EOF <> 0 THEN RETURN
+    LINPUT# 2, LX.L$, LX.DELIM : LX.ST = ST
+    IF (LX.ST AND 2) <> 0 THEN LX.EOF = 1 : GOTO LX.READ.NEXT
+    IF (LX.ST AND 64) <> 0 THEN LX.EOF = 1
+    LX.NO = LX.NO + 1 : LX.GOT = 1
+    IF LEN(LX.L$) >= 255 THEN ER.M$ = "LINE TOO LONG" : GOTO ER.STOP
+    IF LEN(LX.L$) = 0 THEN RETURN
+    IF ASC(RIGHT$(LX.L$, 1)) = 13 THEN LX.L$ = LEFT$(LX.L$, LEN(LX.L$) - 1)
+    GOSUB LX.INCLUDE.FIND
+    IF LX.INCLUDE.NAME$ = "" THEN RETURN
+    GOSUB LX.INCLUDE.START
+    GOTO LX.READ.NEXT
+
+## LX.INCLUDE.FIND -- out LX.INCLUDE.NAME$: the file named when LX.L$ is #INCLUDE "NAME",
+## else empty. Spaces may come before the #, and the word may be in either case.
+LX.INCLUDE.FIND:
+    LX.INCLUDE.NAME$ = ""
+    GOSUB LX.WHOLE
+    IF LX.P + 9 > LX.N THEN RETURN
+    IF PEEK(LX.A + LX.P) <> 35 THEN RETURN
+    LX.MATCH = 1
+    FOR LX.I = 1 TO 7
+        LX.C = PEEK(LX.A + LX.P + LX.I)
+        GOSUB LX.UPPER
+        IF LX.U <> ASC(MID$("INCLUDE", LX.I, 1)) THEN LX.MATCH = 0
+    NEXT LX.I
+    IF LX.MATCH = 0 THEN RETURN
+    LX.REST$ = MID$(LX.L$, LX.P + 8)
+    LX.C = GP.INSTR(LX.REST$, CHR$(34))
+    IF LX.C = 0 THEN ER.M$ = "BAD #INCLUDE" : GOTO ER.STOP
+    LX.REST$ = MID$(LX.REST$, LX.C + 1)
+    LX.C = GP.INSTR(LX.REST$, CHR$(34))
+    IF LX.C < 2 THEN ER.M$ = "BAD #INCLUDE" : GOTO ER.STOP
+    LX.INCLUDE.NAME$ = LEFT$(LX.REST$, LX.C - 1)
+    RETURN
+
+## LX.INCLUDE.START -- read LX.INCLUDE.NAME$ in place of the source. An included file may
+## not include another.
+LX.INCLUDE.START:
+    IF LX.INCLUDING <> 0 THEN ER.M$ = "#INCLUDE IN AN INCLUDED FILE" : GOTO ER.STOP
+    LX.SOURCE.NAME$ = LX.NAME$ : LX.SOURCE.NO = LX.NO
+    CLOSE 2
+    LX.NAME$ = LX.INCLUDE.NAME$ : GOSUB LX.OPEN
+    LX.INCLUDING = 1
+    RETURN
+
+## LX.INCLUDE.END -- open the source again and skip to the line after the #INCLUDE.
+LX.INCLUDE.END:
+    CLOSE 2
+    LX.NAME$ = LX.SOURCE.NAME$ : GOSUB LX.OPEN
+    LX.INCLUDING = 0
+    FOR LX.I = 1 TO LX.SOURCE.NO
+        LINPUT# 2, LX.L$, LX.DELIM : LX.ST = ST
+    NEXT LX.I
+    IF (LX.ST AND 66) <> 0 THEN LX.EOF = 1
+    LX.NO = LX.SOURCE.NO
+    RETURN
+
+## LX.WHOLE -- start a line at its first character. A line whose first characters, after
+## spaces, are ; or ## or // is a comment: LX.P is put past its end. REM and ' are found
+## by LX.NEXT, because they may also end a statement.
+LX.WHOLE:
+    LX.P = 1 : LX.N = LEN(LX.L$) : LX.A = GP.STRPTR(LX.L$)
+LX.WHOLE.SKIP:
+    IF LX.P > LX.N THEN RETURN
+    LX.C = PEEK(LX.A + LX.P)
+    IF LX.C = 32 OR LX.C = 160 OR LX.C = 9 THEN LX.P = LX.P + 1 : GOTO LX.WHOLE.SKIP
+    LX.D = 0 : IF LX.P < LX.N THEN LX.D = PEEK(LX.A + LX.P + 1)
+    IF LX.C = 59 THEN LX.P = LX.N + 1
+    IF LX.C = 35 AND LX.D = 35 THEN LX.P = LX.N + 1
+    IF LX.C = 47 AND LX.D = 47 THEN LX.P = LX.N + 1
+    RETURN
+
+## LX.UPPER -- LX.C folded to upper case in LX.U. ASCII a-z from the host and PETSCII
+## shifted letters from TURBO both become $41-$5A.
+LX.UPPER:
+    LX.U = LX.C
+    IF LX.C >= 97 AND LX.C <= 122 THEN LX.U = LX.C - 32
+    IF LX.C >= 193 AND LX.C <= 218 THEN LX.U = LX.C - 128
+    RETURN
+
+LX.NEXT:
+    LX.A = GP.STRPTR(LX.L$) : TK.S$ = "" : TK.M = 0 : TK.V = 0
+LX.NEXT.SKIP:
+    IF LX.P > LX.N THEN TK.T = K.TT.EOL : RETURN
+    LX.C = PEEK(LX.A + LX.P)
+    IF LX.C = 32 OR LX.C = 160 OR LX.C = 9 THEN LX.P = LX.P + 1 : GOTO LX.NEXT.SKIP
+    LX.P = LX.P + 1
+    ## ' ends the line, as a trailing comment.
+    IF LX.C = 39 THEN LX.P = LX.N + 1 : TK.T = K.TT.EOL : RETURN
+    IF LX.C = 34 THEN GOTO LX.STRING
+    IF LX.C >= 48 AND LX.C <= 57 THEN GOTO LX.DECIMAL
+    IF LX.C = 36 THEN LX.R = 16 : GOTO LX.RADIX
+    IF LX.C = 37 THEN LX.R = 2 : GOTO LX.RADIX
+    GOSUB LX.UPPER
+    IF LX.U >= 65 AND LX.U <= 90 THEN GOTO LX.WORD
+    TK.T = K.TT.OP : TK.K = LX.C
+    ## <> <= << >= >> are one token, written with no space inside.
+    IF LX.C <> 60 AND LX.C <> 62 THEN RETURN
+    IF LX.P > LX.N THEN RETURN
+    LX.D = PEEK(LX.A + LX.P)
+    IF LX.C = 60 AND LX.D = 62 THEN TK.K = K.OP.NE
+    IF LX.C = 60 AND LX.D = 61 THEN TK.K = K.OP.LE
+    IF LX.C = 60 AND LX.D = 60 THEN TK.K = K.OP.SHL
+    IF LX.C = 62 AND LX.D = 61 THEN TK.K = K.OP.GE
+    IF LX.C = 62 AND LX.D = 62 THEN TK.K = K.OP.SHR
+    IF TK.K > 255 THEN LX.P = LX.P + 1
+    RETURN
+
+## A name: parts joined by dots, then an optional $ mark. A part is a letter, then
+## letters, digits and _, 16 at most. REM is not a name: it ends the line. A % after a name
+## stops the compile.
+LX.WORD:
+    TK.S$ = CHR$(LX.U)
+    LX.PART.LENGTH = 1
+LX.WORD.MORE:
+    IF LX.P > LX.N THEN GOTO LX.WORD.END
+    LX.C = PEEK(LX.A + LX.P)
+    GOSUB LX.UPPER
+    IF LX.U = 46 THEN GOTO LX.WORD.DOT
+    LX.KEEP = 0
+    IF LX.U >= 65 AND LX.U <= 90 THEN LX.KEEP = 1
+    IF LX.U >= 48 AND LX.U <= 57 THEN LX.KEEP = 1
+    IF LX.U = 95 THEN LX.KEEP = 1
+    IF LX.KEEP = 0 THEN GOTO LX.WORD.END
+    TK.S$ = TK.S$ + CHR$(LX.U)
+    LX.P = LX.P + 1
+    LX.PART.LENGTH = LX.PART.LENGTH + 1
+    IF LX.PART.LENGTH > 16 THEN ER.M$ = "NAME TOO LONG" : GOTO ER.STOP
+    GOTO LX.WORD.MORE
+LX.WORD.DOT:
+    IF LX.P >= LX.N THEN GOTO LX.WORD.BAD
+    LX.C = PEEK(LX.A + LX.P + 1)
+    GOSUB LX.UPPER
+    IF LX.U < 65 OR LX.U > 90 THEN GOTO LX.WORD.BAD
+    TK.S$ = TK.S$ + "."
+    LX.P = LX.P + 1
+    LX.PART.LENGTH = 0
+    GOTO LX.WORD.MORE
+LX.WORD.BAD:
+    ER.M$ = "BAD NAME"
+    GOTO ER.STOP
+LX.WORD.END:
+    TK.T = K.TT.NAME
+    IF TK.S$ = "REM" THEN LX.P = LX.N + 1 : TK.T = K.TT.EOL : RETURN
+    IF LX.P > LX.N THEN GOTO LX.WORD.ALIAS
+    LX.C = PEEK(LX.A + LX.P)
+    IF LX.C = 37 THEN ER.M$ = "% IS NOT A MARK: USE AS UWORD" : GOTO ER.STOP
+    IF LX.C = 36 THEN TK.M = K.TY.STR
+    IF TK.M <> 0 THEN TK.S$ = TK.S$ + CHR$(LX.C) : LX.P = LX.P + 1
+LX.WORD.ALIAS:
+    LX.ALIAS.INDEX = 0
+LX.WORD.ALIAS.NEXT:
+    IF LX.ALIAS.INDEX >= NM.ALIAS.COUNT THEN RETURN
+    IF NM.ALIAS.NAME$(LX.ALIAS.INDEX) = TK.S$ THEN GOTO LX.WORD.ALIAS.FOUND
+    LX.ALIAS.INDEX = LX.ALIAS.INDEX + 1
+    GOTO LX.WORD.ALIAS.NEXT
+LX.WORD.ALIAS.FOUND:
+    TK.S$ = NM.ALIAS.TARGET$(LX.ALIAS.INDEX)
+    RETURN
+
+## A decimal number.
+## Trap: a GPC sum past 4294967295 wraps with no error, and an expression on a constant that
+## large is not reliable, so a digit is checked against small limits before it is added.
+LX.DECIMAL:
+    TK.V = LX.C - 48
+LX.DECIMAL.MORE:
+    IF LX.P > LX.N THEN GOTO LX.NUMBER
+    LX.C = PEEK(LX.A + LX.P)
+    IF LX.C < 48 OR LX.C > 57 THEN GOTO LX.NUMBER
+    IF TK.V > 429496729 THEN ER.M$ = "OVERFLOW" : GOTO ER.STOP
+    IF TK.V = 429496729 AND LX.C > 53 THEN ER.M$ = "OVERFLOW" : GOTO ER.STOP
+    TK.V = TK.V * 10 + (LX.C - 48) : LX.P = LX.P + 1
+    GOTO LX.DECIMAL.MORE
+
+## $hex or %binary, in radix LX.R. LX.D counts the digits.
+LX.RADIX:
+    LX.D = 0
+LX.RADIX.MORE:
+    IF LX.P > LX.N THEN GOTO LX.RADIX.END
+    LX.C = PEEK(LX.A + LX.P) : GOSUB LX.UPPER
+    LX.H = 99
+    IF LX.U >= 48 AND LX.U <= 57 THEN LX.H = LX.U - 48
+    IF LX.U >= 65 AND LX.U <= 70 THEN LX.H = LX.U - 55
+    IF LX.H >= LX.R THEN GOTO LX.RADIX.END
+    IF LX.R = 16 AND TK.V > 268435455 THEN ER.M$ = "OVERFLOW" : GOTO ER.STOP
+    IF LX.R = 2 AND TK.V > 2147483647 THEN ER.M$ = "OVERFLOW" : GOTO ER.STOP
+    TK.V = TK.V * LX.R + LX.H : LX.D = LX.D + 1 : LX.P = LX.P + 1
+    GOTO LX.RADIX.MORE
+LX.RADIX.END:
+    IF LX.D = 0 THEN GOTO ER.SYNTAX
+LX.NUMBER:
+    TK.T = K.TT.NUM
+    RETURN
+
+## A string literal, up to the closing quote. Its bytes are kept as they are.
+LX.STRING:
+    LX.Q = LX.P
+LX.STRING.MORE:
+    IF LX.P > LX.N THEN ER.M$ = "MISSING QUOTE" : GOTO ER.STOP
+    IF PEEK(LX.A + LX.P) = 34 THEN GOTO LX.STRING.END
+    LX.P = LX.P + 1 : GOTO LX.STRING.MORE
+LX.STRING.END:
+    TK.S$ = MID$(LX.L$, LX.Q, LX.P - LX.Q) : LX.P = LX.P + 1
+    TK.T = K.TT.STR
+    RETURN

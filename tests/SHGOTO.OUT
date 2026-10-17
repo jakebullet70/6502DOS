@@ -1,0 +1,42 @@
+UXDOS16 V0.1.0
+For the Commander X16
+>>RUN CMDSHELL.COM
+C>PATH$ = "C:\SCRIPTS"
+C>GOTO
+Syntax error
+C>GOTO X
+Syntax error
+C>GOTO XY
+C>GOSUB XY
+C>RETURN
+C>HERE:
+C>HERE: X
+Syntax error
+C>D:
+Bad command or file name
+C>RUN GOTO
+GOTO
+START
+BACK
+C>RUN GOSUB
+MAIN
+SHOW
+SHOW
+TWO
+SHOW
+MAIN END
+Syntax error
+in C:\SCRIPTS\GOSUB.CMD line 6
+C>NOLABEL
+Label not found
+STAYS
+RETURN without GOSUB
+Syntax error
+Label not found
+in C:\SCRIPTS\NOLABEL.CMD line 7
+C>DEEP
+Insufficient memory
+DEPTH 17
+C>END
+
+>>

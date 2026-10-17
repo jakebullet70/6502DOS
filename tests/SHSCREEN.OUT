@@ -1,0 +1,42 @@
+UXDOS16 V0.1.0
+For the Commander X16
+>>RUN CMDSHELL.COM
+C>LOCATE 29,79
+C>LOCATE 0, 0
+C>locate 2 + 3, (4 - 1) * 2
+C>LOCATE 30,0
+Syntax error
+C>LOCATE 0,80
+Syntax error
+C>LOCATE -1,0
+Syntax error
+C>LOCATE 1
+Syntax error
+C>LOCATE 1 2
+Syntax error
+C>LOCATE 1,2,3
+Syntax error
+C>LOCATE 1,"A"
+Type mismatch
+C>BEEP
+C>BEEP X
+Syntax error
+C>PAUSE
+C>
+C>PAUSE X
+Syntax error
+C>WAIT
+Syntax error
+C>WAIT -1
+Syntax error
+C>WAIT 1 2
+Syntax error
+C>WAIT "A"
+Type mismatch
+C>WAIT 0
+C>WAIT 1
+C>PRINT "DONE"
+DONE
+C>END
+
+>>

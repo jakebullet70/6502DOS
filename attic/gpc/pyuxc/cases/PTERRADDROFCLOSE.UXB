@@ -1,0 +1,2 @@
+DIM N AS UBYTE, P AS UWORD
+P = AddrOf(N

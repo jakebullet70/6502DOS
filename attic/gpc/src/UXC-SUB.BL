@@ -1,0 +1,763 @@
+## UXC-SUB.BL -- SUB, FUNCTION, their ends, RETURN and calls.
+##
+##   SB.SCAN              the first pass: declare every SUB and FUNCTION from its header
+##   SB.SUB               SUB name(params), or FUNCTION name(params) [AS type]: the body starts
+##   SB.ENDSUB            ENDSUB, END SUB, ENDFUNCTION or END FUNCTION
+##   SB.RETURN            RETURN, or RETURN expr in a FUNCTION
+##   SB.CALL.KEYWORD      CALL name(args)
+##   SB.CALL.STATEMENT    name(args) as a statement; SM.W$ is the name
+##   SB.FUNCTION          name(args) in an expression; SY.* is the SUB's record
+##   SB.OPEN              at the end of the source, a SUB still open is an error
+##   SB.PLACE.VARIABLE    in  SB.PLACE.SIZE   out SB.PLACE, a new variable's value
+##   SB.PLACE.BLOCK       in  SB.PLACE.SIZE   out SB.PLACE, a new block's value
+##   SB.POOLS             at link: the level of each SUB, and the pools of temps and locals
+##   SB.POOL.OF           at link: the offset of the pool of a fixup's owner
+##
+## A SUB is a record of kind K.SK.SUB, owned by its namespace. Its type is its result
+## type, 0 for none. A FUNCTION is a SUB whose type is not 0. Its value is the code offset of its body. Its parameters are the records after it, in order,
+## owned by it. A parameter, a DIM inside the body and each hidden word of the body are
+## locals in the SUB's frame. The frames of one level share their level's pool, so a local
+## does not keep its value between calls, and only the SUB itself can name it. A SUB cannot
+## call itself, and two SUBs cannot call each other.
+##
+## The code of a call: each argument is worked into its parameter's type and stored in the
+## parameter, then JSR. A STRING argument is the address of its block (UXC-STR.BL). The
+## result comes back in A (a BYTE) or A/Y (a WORD, or the address of a STRING result's
+## block). The main program jumps over each SUB body.
+
+## ---------------------------------------------------------------------------------
+## The first pass
+
+## SB.SCAN -- read the whole source, and declare each SUB or FUNCTION whose line starts
+## with SUB or FUNCTION, so that a call may come before it. A BIND to a word of the
+## language, or to a SUB declared above it outside a SUB body, is made here, so that it
+## works on every line. FUNCT and ENDFUNCT are BINDs that every source has. The caller
+## opens the source again after.
+SB.SCAN:
+    SB.CURRENT = 0
+    SB.SCAN.IN.SUB = 0
+    NM.CURRENT = 0
+    NM.SCOPE = 0
+    NM.SCAN.PATH$ = ""
+    NM.ALIAS.NAME$(0) = "FUNCT"
+    NM.ALIAS.TARGET$(0) = "FUNCTION"
+    NM.ALIAS.NAME$(1) = "ENDFUNCT"
+    NM.ALIAS.TARGET$(1) = "ENDFUNCTION"
+    NM.ALIAS.COUNT = 2
+SB.SCAN.LINE:
+    GOSUB LX.READ
+    IF LX.GOT = 0 THEN GOTO SB.SCAN.END
+    GOSUB LX.WHOLE
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.NAME THEN GOTO SB.SCAN.LINE
+    IF TK.S$ = "SUB" OR TK.S$ = "FUNCTION" THEN GOTO SB.SCAN.HEADER
+    IF TK.S$ = "ENDSUB" OR TK.S$ = "ENDFUNCTION" THEN SB.SCAN.IN.SUB = 0
+    GOSUB NM.SCAN
+    IF TK.T <> K.TT.NAME THEN GOTO SB.SCAN.LINE
+    IF TK.S$ = "SUB" OR TK.S$ = "FUNCTION" THEN SB.SCAN.IN.SUB = 0
+    IF TK.S$ = "BIND" THEN GOSUB NM.BIND.SCAN
+    GOTO SB.SCAN.LINE
+SB.SCAN.HEADER:
+    SB.SCAN.IN.SUB = 1
+    GOSUB SB.HEADER
+    GOTO SB.SCAN.LINE
+SB.SCAN.END:
+    NM.CURRENT = 0
+    RETURN
+
+## SB.HEADER -- SUB name ( [param, ...] ), or FUNCTION name[$] ( [param, ...] ) [AS type],
+## with the token at SUB or FUNCTION. A FUNCTION needs a $ or an AS.
+SB.HEADER:
+    SB.HEADER.FUNCTION = 0
+    IF TK.S$ = "FUNCTION" THEN SB.HEADER.FUNCTION = 1
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.NAME THEN GOTO ER.SYNTAX
+    SB.SUB.NAME$ = TK.S$
+    SB.RESULT.TYPE = TK.M
+    SM.N$ = SB.SUB.NAME$
+    GOSUB NM.RESERVED
+    SY.NAME$ = SB.SUB.NAME$
+    SY.OW = NM.CURRENT
+    GOSUB SY.FIND
+    IF SY.R <> 0 THEN GOTO SB.ERROR.DUPLICATE
+    SY.KIND = K.SK.SUB
+    SY.TYPE = 0
+    SY.VAL = 0
+    SY.FLAGS = 0
+    GOSUB SY.ADD
+    SB.RECORD = SY.R
+    SB.COUNT = 0
+    SB.FRAME = 0
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.OP OR TK.K <> 40 THEN GOTO SB.ERROR.MISSING.OPEN
+    GOSUB LX.NEXT
+    IF TK.T = K.TT.OP AND TK.K = 41 THEN GOTO SB.HEADER.CLOSE
+SB.HEADER.PARAMETER:
+    GOSUB SB.PARAMETER
+    IF TK.T <> K.TT.OP THEN GOTO ER.SYNTAX
+    IF TK.K = 41 THEN GOTO SB.HEADER.CLOSE
+    IF TK.K <> 44 THEN GOTO ER.SYNTAX
+    GOSUB LX.NEXT
+    GOTO SB.HEADER.PARAMETER
+SB.HEADER.CLOSE:
+    GOSUB LX.NEXT
+    SM.N$ = SB.SUB.NAME$
+    SB.TYPE = SB.RESULT.TYPE
+    GOSUB SB.AS
+    IF TK.T <> K.TT.EOL THEN GOTO ER.SYNTAX
+    IF SB.HEADER.FUNCTION = 0 AND SB.TYPE <> 0 THEN GOTO SB.ERROR.SUB.TYPE
+    IF SB.HEADER.FUNCTION = 1 AND SB.TYPE = 0 THEN GOTO ER.MISSING.AS
+    SY.R = SB.RECORD
+    GOSUB SY.GET
+    SY.TYPE = SB.TYPE
+    SY.FLAGS = SB.SIGNED * K.SY.SIGNED
+    SY.NP = SB.COUNT
+    GOSUB SY.SET
+    SB.FIELD = K.SY.POOL
+    SB.WORD = SB.FRAME
+    GOSUB SB.FIELD.SET
+    RETURN
+
+## SB.PARAMETER -- one parameter of SUB SB.RECORD: name$ or name AS type. It becomes
+## the next record, a variable owned by the SUB. A STRING parameter is a WORD that holds the
+## address of the caller's block, and its element count is 0.
+SB.PARAMETER:
+    IF TK.T <> K.TT.NAME THEN GOTO ER.SYNTAX
+    SB.PARAMETER.NAME$ = TK.S$
+    SB.TYPE = TK.M
+    SM.N$ = SB.PARAMETER.NAME$
+    GOSUB NM.RESERVED
+    GOSUB LX.NEXT
+    GOSUB SB.AS
+    IF SB.TYPE = 0 THEN GOTO ER.MISSING.AS
+    SY.NAME$ = SB.PARAMETER.NAME$
+    SY.OW = SB.RECORD
+    GOSUB SY.FIND
+    IF SY.R <> 0 THEN GOTO SB.ERROR.DUPLICATE
+    TY.CODE = SB.TYPE
+    GOSUB TY.SIZE
+    SB.PLACE.SIZE = TY.BYTES
+    GOSUB SB.PLACE.LOCAL
+    SY.KIND = K.SK.VAR
+    SY.TYPE = SB.TYPE
+    SY.VAL = SB.PLACE
+    SY.FLAGS = SB.SIGNED * K.SY.SIGNED
+    SY.CNT = 0
+    GOSUB SY.ADD
+    SB.COUNT = SB.COUNT + 1
+    RETURN
+
+## SB.AS -- an optional AS type after the name SM.N$, whose type mark is SB.TYPE. Out:
+## SB.TYPE, and SB.SIGNED, 1 for a signed type.
+SB.AS:
+    SB.SIGNED = 0
+    IF TK.T <> K.TT.NAME THEN RETURN
+    IF TK.S$ <> "AS" THEN RETURN
+    IF SB.TYPE <> 0 THEN GOTO SB.ERROR.MARK.AND.AS
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.NAME THEN GOTO ER.SYNTAX
+    GOSUB NM.TYPE.NAME
+    SB.TYPE = NM.TYPE.CODE
+    SB.SIGNED = NM.TYPE.SIGNED
+    IF SB.TYPE = 0 THEN GOTO ER.SYNTAX
+    GOSUB LX.NEXT
+    RETURN
+
+## ---------------------------------------------------------------------------------
+## The body
+
+## SB.SUB -- with the token at SUB or FUNCTION. The header was read by the first pass, so the rest of the line is skipped.
+## The FOR limits and REPEAT counts of the main program are put aside, so that the body
+## has its own.
+SB.SUB:
+    IF SB.CURRENT <> 0 THEN GOTO SB.ERROR.NESTED
+    IF NS.D <> 0 THEN GOTO SB.ERROR.IN.BLOCK
+    GOSUB LX.NEXT
+    SY.NAME$ = TK.S$
+    SY.OW = NM.CURRENT
+    GOSUB SY.FIND
+    IF SY.R = 0 THEN GOTO ER.SYNTAX
+    SB.CURRENT = SY.R
+    NM.SCOPE = SY.R
+    SB.SUB.NAME$ = TK.S$
+    SB.SUB.LINE = LX.NO
+    SB.SUB.TEXT$ = LX.L$
+    SB.HAS.VALUE = 0
+    JP.K = K.JP.LIST
+    JP.H = 0
+    JP.B = T.BRA.ID
+    GOSUB JP.BR
+    SB.AROUND = JP.H
+    SY.R = SB.CURRENT
+    GOSUB SY.GET
+    SY.VAL = CB.N
+    SY.FLAGS = 1 + (SY.FLAGS AND K.SY.SIGNED)
+    GOSUB SY.SET
+    SB.FIELD = K.SY.POOL
+    GOSUB SB.FIELD.GET
+    SB.FRAME = SB.WORD
+    FOR SB.I = 0 TO K.NS.MAX
+        SB.SAVED.HIDDEN(SB.I) = HV.AD(SB.I)
+        HV.AD(SB.I) = -1
+    NEXT SB.I
+SB.SUB.SKIP:
+    IF TK.T = K.TT.EOL THEN RETURN
+    GOSUB LX.NEXT
+    GOTO SB.SUB.SKIP
+
+## SB.ENDSUB -- with the token at ENDSUB or ENDFUNCTION, or at the SUB or FUNCTION of
+## END SUB or END FUNCTION. The end must match the start. A body whose last statement is
+## not a RETURN gets one: a FUNCTION gives 0.
+SB.ENDSUB:
+    SB.END.FUNCTION = 0
+    IF TK.S$ = "FUNCTION" OR TK.S$ = "ENDFUNCTION" THEN SB.END.FUNCTION = 1
+    IF SB.CURRENT = 0 THEN GOTO SB.ERROR.ENDSUB
+    SY.R = SB.CURRENT
+    GOSUB SY.GET
+    IF SY.TYPE = 0 AND SB.END.FUNCTION = 1 THEN GOTO SB.ERROR.END.FUNCTION
+    IF SY.TYPE <> 0 AND SB.END.FUNCTION = 0 THEN GOTO SB.ERROR.END.SUB
+    IF NS.D = 0 THEN GOTO SB.ENDSUB.CLOSE
+    IF NS.K%(NS.D) = K.NS.IFL THEN GOTO SB.ERROR.AFTER.THEN
+    GOSUB CT.OPEN
+SB.ENDSUB.CLOSE:
+    SY.R = SB.CURRENT
+    SB.FIELD = K.SY.POOL
+    SB.WORD = SB.FRAME
+    GOSUB SB.FIELD.SET
+    GOSUB SY.GET
+    IF SY.TYPE <> 0 AND SB.HAS.VALUE = 0 THEN GOTO SB.ERROR.NO.RETURN
+    IF SM.PREVIOUS.RETURN = 0 THEN GOSUB SB.FALL.OUT
+    JP.L = SB.AROUND
+    GOSUB JP.HERE
+    FOR SB.I = 0 TO K.NS.MAX
+        HV.AD(SB.I) = SB.SAVED.HIDDEN(SB.I)
+    NEXT SB.I
+    SB.CURRENT = 0
+    NM.SCOPE = NM.CURRENT
+    GOSUB LX.NEXT
+    RETURN
+
+## SB.FALL.OUT -- the return at the end of a body, for the SUB in SY.*.
+SB.FALL.OUT:
+    SL.S%(0) = K.SEC.CONST
+    SL.V(0) = 0
+    IF SY.TYPE = K.TY.BYTE THEN GP.SUB EMIT, T.LDB.C.ID
+    IF SY.TYPE = K.TY.WORD THEN GP.SUB EMIT, T.LDW.C.ID
+    IF SY.TYPE = K.TY.LONG THEN GP.SUB EMIT, T.LDW.C.ID : GP.SUB EMIT, T.LWIDEN.ID
+    IF SY.TYPE = K.TY.STR THEN GOSUB SG.RETURN.EMPTY
+    GP.SUB EMIT, T.RTS.ID
+    RETURN
+
+SB.RETURN:
+    IF SB.CURRENT = 0 THEN GOTO SB.ERROR.RETURN.OUTSIDE
+    GOSUB LX.NEXT
+    SY.R = SB.CURRENT
+    GOSUB SY.GET
+    SB.TYPE = SY.TYPE
+    IF SB.TYPE = 0 THEN GOTO SB.RETURN.PLAIN
+    IF TK.T = K.TT.EOL THEN GOTO SB.ERROR.NEEDS.VALUE
+    GOSUB EX.EXPR
+    IF SB.TYPE = K.TY.BYTE THEN GOSUB EX.TOB
+    IF SB.TYPE = K.TY.WORD THEN GOSUB EX.TOW
+    IF SB.TYPE = K.TY.LONG THEN GOSUB EX.TOL
+    IF SB.TYPE = K.TY.STR THEN GOSUB SG.TOS
+    SB.HAS.VALUE = 1
+    GP.SUB EMIT, T.RTS.ID
+    RETURN
+SB.RETURN.PLAIN:
+    SB.CALLED.NAME$ = SB.SUB.NAME$
+    IF TK.T <> K.TT.EOL THEN GOTO SB.ERROR.NO.VALUE
+    GP.SUB EMIT, T.RTS.ID
+    RETURN
+
+## SB.OPEN -- at the end of the source, a SUB or FUNCTION still open is an error at its
+## line.
+SB.OPEN:
+    IF SB.CURRENT = 0 THEN RETURN
+    SY.R = SB.CURRENT
+    GOSUB SY.GET
+    LX.NO = SB.SUB.LINE
+    LX.L$ = SB.SUB.TEXT$
+    ER.M$ = "SUB WITHOUT ENDSUB"
+    IF SY.TYPE <> 0 THEN ER.M$ = "FUNCTION WITHOUT ENDFUNCTION"
+    GOTO ER.STOP
+
+## ---------------------------------------------------------------------------------
+## Calls
+
+SB.CALL.KEYWORD:
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.NAME THEN GOTO ER.SYNTAX
+    SB.CALLED.NAME$ = TK.S$
+    GOSUB LX.NEXT
+    GOTO SB.CALL.NAMED
+SB.CALL.STATEMENT:
+    SB.CALLED.NAME$ = SM.W$
+SB.CALL.NAMED:
+    IF TK.T <> K.TT.OP OR TK.K <> 40 THEN GOTO SB.ERROR.MISSING.OPEN
+    SM.N$ = SB.CALLED.NAME$
+    GOSUB NM.FIND
+    IF SY.KIND <> K.SK.SUB THEN GOTO SB.ERROR.NOT.SUB
+    SB.CALLED.RECORD = SY.R
+    GOSUB SB.CALL
+    RETURN
+
+## SB.FUNCTION -- a call in an expression, with the token at the name. The result is a
+## new K.EK.REG entry, or for a STRING result the entry SG.RESULT makes. The call loses A/Y and the flags, so every entry under it is pushed
+## first.
+SB.FUNCTION:
+    SB.CALLED.NAME$ = TK.S$
+    SB.CALLED.RECORD = SY.R
+    IF SY.TYPE = 0 THEN GOTO SB.ERROR.NO.VALUE
+    GOSUB LX.NEXT
+    IF TK.T <> K.TT.OP OR TK.K <> 40 THEN GOTO SB.ERROR.MISSING.OPEN
+    EX.FB = EX.VN
+    GOSUB EX.FLUSH
+    GOSUB SB.CALL
+    GP.IF SB.CALL.TYPE = K.TY.STR THEN
+        GOSUB SG.RESULT
+        RETURN
+    GP.ENDIF
+    EX.K = K.EK.REG
+    EX.S = K.SEC.CONST
+    EX.V = 0
+    EX.TY = SB.CALL.TYPE
+    EX.SG = SB.CALL.SIGNED
+    GOSUB EX.PUSHV
+    RETURN
+
+## SB.CALL -- the call of SUB SB.CALLED.RECORD, with the token at its (. The token is left
+## after the ). Out: SB.CALL.TYPE, the SUB's result type, and SB.CALL.SIGNED.
+##
+## WARNING: an argument with a call in it can run this same SUB before this call's JSR, as
+## MAX%(A%, MAX%(B%, C%)) does, and that would overwrite the parameters already stored.
+## So when a ( comes anywhere in the arguments, each argument but the last is pushed, and
+## the pushes are popped into the parameters just before the JSR.
+##
+## An argument is an expression, and it can hold a call, so SB.CALL runs inside itself.
+## What it keeps across an argument is in the SB.CALL arrays, one entry per depth.
+SB.CALL:
+    IF SB.CALLED.RECORD = SB.CURRENT THEN GOTO SB.ERROR.ITSELF
+    GOSUB SB.EDGE
+    GOSUB SB.NEST
+    SY.R = SB.CALLED.RECORD
+    GOSUB SY.GET
+    SB.CALL.RECORD%(SB.DEPTH) = SB.CALLED.RECORD
+    SB.CALL.PARAMETERS%(SB.DEPTH) = SY.NP
+    SB.CALL.RESULT%(SB.DEPTH) = SY.TYPE
+    IF (SY.FLAGS AND K.SY.SIGNED) <> 0 THEN SB.CALL.RESULT%(SB.DEPTH) = SY.TYPE + 256
+    SB.CALL.ARGUMENT%(SB.DEPTH) = 0
+    GOSUB SB.LOOK.AHEAD
+    SB.CALL.STACKED%(SB.DEPTH) = SB.NESTED
+    GOSUB LX.NEXT
+    IF TK.T = K.TT.OP AND TK.K = 41 THEN GOTO SB.CALL.JUMP
+SB.CALL.NEXT.ARGUMENT:
+    SB.CALL.ARGUMENT%(SB.DEPTH) = SB.CALL.ARGUMENT%(SB.DEPTH) + 1
+    IF SB.CALL.ARGUMENT%(SB.DEPTH) > SB.CALL.PARAMETERS%(SB.DEPTH) THEN GOTO SB.ERROR.ARGUMENTS
+    EX.OP.BASE = EX.ON
+    EX.CM = 0
+    GOSUB EX.EXPR
+    SY.R = SB.CALL.RECORD%(SB.DEPTH) + SB.CALL.ARGUMENT%(SB.DEPTH)
+    GOSUB SY.GET
+    SB.PARAMETER.TYPE = SY.TYPE
+    SB.PARAMETER.ADDRESS = SY.VAL
+    IF SB.PARAMETER.TYPE = K.TY.BYTE THEN GOSUB EX.TOB
+    IF SB.PARAMETER.TYPE = K.TY.WORD THEN GOSUB EX.TOW
+    IF SB.PARAMETER.TYPE = K.TY.LONG THEN GOSUB EX.TOL
+    IF SB.PARAMETER.TYPE = K.TY.STR THEN GOSUB SG.PASS
+    GOSUB SB.CALL.PASS
+    IF TK.T <> K.TT.OP THEN GOTO ER.SYNTAX
+    IF TK.K = 41 THEN GOTO SB.CALL.JUMP
+    IF TK.K <> 44 THEN GOTO ER.SYNTAX
+    GOSUB LX.NEXT
+    GOTO SB.CALL.NEXT.ARGUMENT
+SB.CALL.JUMP:
+    IF SB.CALL.ARGUMENT%(SB.DEPTH) <> SB.CALL.PARAMETERS%(SB.DEPTH) THEN GOTO SB.ERROR.ARGUMENTS
+    GOSUB SB.CALL.POP
+    SL.S%(0) = K.SEC.LABEL
+    SL.V(0) = SB.CALL.RECORD%(SB.DEPTH)
+    GP.SUB EMIT, T.JSR.ID
+    SB.CALL.SIGNED = INT(SB.CALL.RESULT%(SB.DEPTH) / 256)
+    SB.CALL.TYPE = SB.CALL.RESULT%(SB.DEPTH) - 256 * SB.CALL.SIGNED
+    GOSUB SB.UNNEST
+    GOSUB LX.NEXT
+    RETURN
+
+## SB.NEST -- one level deeper into the arguments of a call or a function. The operator
+## stack, the brackets and the condition flag of the expression around are kept.
+SB.NEST:
+    IF SB.DEPTH >= K.SB.DEPTH THEN GOTO SB.ERROR.TOO.DEEP
+    SB.DEPTH = SB.DEPTH + 1
+    SB.SAVED.OPERATORS%(SB.DEPTH) = EX.ON
+    SB.SAVED.OPERATOR.BASE%(SB.DEPTH) = EX.OP.BASE
+    SB.SAVED.PARENTHESES%(SB.DEPTH) = EX.PD
+    SB.SAVED.CONDITION%(SB.DEPTH) = EX.CM
+    RETURN
+
+## SB.UNNEST -- back out of SB.NEST.
+SB.UNNEST:
+    EX.ON = SB.SAVED.OPERATORS%(SB.DEPTH)
+    EX.OP.BASE = SB.SAVED.OPERATOR.BASE%(SB.DEPTH)
+    EX.PD = SB.SAVED.PARENTHESES%(SB.DEPTH)
+    EX.CM = SB.SAVED.CONDITION%(SB.DEPTH)
+    SB.DEPTH = SB.DEPTH - 1
+    RETURN
+
+## SB.CALL.PASS -- the argument in A or A/Y goes to its parameter SB.PARAMETER.*: stored
+## now, or pushed for SB.CALL.POP.
+## WARNING: a parameter is in the frame of the SUB called, and FX.ADD takes a fixup's owner
+## from SB.CURRENT. So SB.CURRENT is the SUB called while a store into a parameter is
+## emitted, here and in SB.CALL.POP.
+SB.CALL.PASS:
+    SL.S%(0) = K.SEC.VAR
+    SL.V(0) = SB.PARAMETER.ADDRESS
+    IF SB.CALL.STACKED%(SB.DEPTH) = 0 THEN GOTO SB.CALL.STORE
+    IF SB.CALL.ARGUMENT%(SB.DEPTH) = SB.CALL.PARAMETERS%(SB.DEPTH) THEN GOTO SB.CALL.STORE
+    IF SB.PARAMETER.TYPE = K.TY.BYTE THEN GP.SUB EMIT, T.PUSHB.ID
+    IF SB.PARAMETER.TYPE = K.TY.LONG THEN GP.SUB EMIT, T.PUSHL.ID
+    IF SB.PARAMETER.TYPE <> K.TY.BYTE AND SB.PARAMETER.TYPE <> K.TY.LONG THEN GP.SUB EMIT, T.PUSH.ID
+    EX.SD = EX.SD + 1
+    IF EX.SD > K.EX.DEPTH THEN GOTO SB.ERROR.COMPLEX
+    RETURN
+SB.CALL.STORE:
+    SB.CALLER = SB.CURRENT
+    SB.CURRENT = SB.CALL.RECORD%(SB.DEPTH)
+    IF SB.PARAMETER.TYPE = K.TY.BYTE THEN GP.SUB EMIT, T.STB.V.ID
+    IF SB.PARAMETER.TYPE = K.TY.LONG THEN GP.SUB EMIT, T.STL.V.ID
+    IF SB.PARAMETER.TYPE <> K.TY.BYTE AND SB.PARAMETER.TYPE <> K.TY.LONG THEN GP.SUB EMIT, T.STW.V.ID
+    SB.CURRENT = SB.CALLER
+    RETURN
+
+## SB.CALL.POP -- the pushed arguments into their parameters, the last pushed first.
+SB.CALL.POP:
+    IF SB.CALL.STACKED%(SB.DEPTH) = 0 THEN RETURN
+    SB.POP.ARGUMENT = SB.CALL.PARAMETERS%(SB.DEPTH) - 1
+SB.CALL.POP.NEXT:
+    IF SB.POP.ARGUMENT < 1 THEN RETURN
+    SY.R = SB.CALL.RECORD%(SB.DEPTH) + SB.POP.ARGUMENT
+    GOSUB SY.GET
+    SL.S%(0) = K.SEC.VAR
+    SL.V(0) = SY.VAL
+    SB.CALLER = SB.CURRENT
+    SB.CURRENT = SB.CALL.RECORD%(SB.DEPTH)
+    IF SY.TYPE = K.TY.BYTE THEN GP.SUB EMIT, T.POPB.V.ID
+    IF SY.TYPE = K.TY.LONG THEN GP.SUB EMIT, T.POPL.V.ID
+    IF SY.TYPE <> K.TY.BYTE AND SY.TYPE <> K.TY.LONG THEN GP.SUB EMIT, T.POPW.V.ID
+    SB.CURRENT = SB.CALLER
+    EX.SD = EX.SD - 1
+    SB.POP.ARGUMENT = SB.POP.ARGUMENT - 1
+    GOTO SB.CALL.POP.NEXT
+
+## SB.LOOK.AHEAD -- SB.NESTED = 1 when a ( comes before the first ) after the call's own (.
+## The token is at that ( and is put back after, with LX.P.
+SB.LOOK.AHEAD:
+    SB.SAVED.POSITION = LX.P
+    SB.NESTED = 0
+SB.LOOK.AHEAD.NEXT:
+    GOSUB LX.NEXT
+    IF TK.T = K.TT.EOL THEN GOTO SB.LOOK.AHEAD.END
+    IF TK.T <> K.TT.OP THEN GOTO SB.LOOK.AHEAD.NEXT
+    IF TK.K = 41 THEN GOTO SB.LOOK.AHEAD.END
+    IF TK.K = 40 THEN SB.NESTED = 1
+    IF TK.K <> 40 THEN GOTO SB.LOOK.AHEAD.NEXT
+SB.LOOK.AHEAD.END:
+    LX.P = SB.SAVED.POSITION
+    TK.T = K.TT.OP
+    TK.K = 40
+    TK.S$ = ""
+    TK.M = 0
+    TK.V = 0
+    RETURN
+
+## ---------------------------------------------------------------------------------
+## Placing variables
+
+## SB.PLACE.VARIABLE -- SB.PLACE, the value of a new variable of SB.PLACE.SIZE bytes: in
+## the variables, or in the frame of the SUB being compiled.
+SB.PLACE.VARIABLE:
+    IF SB.CURRENT <> 0 THEN GOTO SB.PLACE.LOCAL
+    SB.PLACE = VR.N
+    VR.N = VR.N + SB.PLACE.SIZE
+    RETURN
+
+## SB.PLACE.BLOCK -- SB.PLACE, the value of a new block of SB.PLACE.SIZE bytes: in the
+## array space, or in the frame of the SUB being compiled.
+SB.PLACE.BLOCK:
+    IF SB.CURRENT <> 0 THEN GOTO SB.PLACE.LOCAL
+    SB.PLACE = BS.N
+    BS.N = BS.N + SB.PLACE.SIZE
+    RETURN
+
+## SB.PLACE.LOCAL -- the frame SB.FRAME grows down from its pool's offset, so a local's
+## value is 65536 less the frame's size with the local in it.
+SB.PLACE.LOCAL:
+    SB.FRAME = SB.FRAME + SB.PLACE.SIZE
+    IF SB.FRAME > K.FRAME.MAX THEN GOTO SB.ERROR.LOCALS
+    SB.PLACE = 65536 - SB.FRAME
+    RETURN
+
+## ---------------------------------------------------------------------------------
+## The pools of temps and locals
+
+## SB.EDGE -- record that SB.CURRENT calls SB.CALLED.RECORD: a record of kind K.SK.CALL,
+## owned by the caller. Its value is the SUB called, and its count is the line of the first
+## such call. A call from the main program needs none.
+SB.EDGE:
+    IF SB.CURRENT = 0 THEN RETURN
+    SY.NAME$ = "%C" + STR$(SB.CALLED.RECORD)
+    SY.OW = SB.CURRENT
+    GOSUB SY.FIND
+    IF SY.R <> 0 THEN RETURN
+    SY.KIND = K.SK.CALL
+    SY.TYPE = 0
+    SY.VAL = SB.CALLED.RECORD
+    SY.FLAGS = 0
+    SY.CNT = LX.NO
+    GOSUB SY.ADD
+    RETURN
+
+## SB.POOLS -- at link, place the pools from BS.N up, and emit the max of each temp. Each
+## SUB gets a level: at least 1, and 1 more than the level of each SUB that calls it. Two
+## SUBs of one level are never active at once, so the frames and the temps of one level
+## share one pool: the frames below the pool's offset, the temps from it up. The main
+## program has a pool of its own, of temps only. Out: BS.N, the end of the pools.
+## WARNING: two SUBs that call each other have no level; the link stops with an error.
+SB.POOLS:
+    SB.SUBS = 0
+    SB.TOP.LEVEL = 0
+    SB.MAIN.NEED = 0
+    SB.MAX.LOADED = 0
+    FOR SB.RECORD = 1 TO SY.N
+        SY.R = SB.RECORD
+        GOSUB SY.GET
+        IF SY.KIND = K.SK.SUB THEN GOSUB SB.POOLS.START
+    NEXT SB.RECORD
+    SB.PASSES = 0
+SB.POOLS.PASS:
+    SB.CHANGED = 0
+    FOR SB.RECORD = 1 TO SY.N
+        SY.R = SB.RECORD
+        GOSUB SY.GET
+        IF SY.KIND = K.SK.CALL THEN GOSUB SB.POOLS.RAISE
+    NEXT SB.RECORD
+    SB.PASSES = SB.PASSES + 1
+    IF SB.CHANGED = 0 THEN GOTO SB.POOLS.NEEDS
+    IF SB.PASSES >= SB.SUBS THEN GOTO SB.ERROR.EACH.OTHER
+    GOTO SB.POOLS.PASS
+SB.POOLS.NEEDS:
+    FOR SB.RECORD = 1 TO SY.N
+        SY.R = SB.RECORD
+        GOSUB SY.GET
+        IF SY.KIND = K.SK.VAR AND (SY.FLAGS AND K.SY.TEMP) <> 0 THEN GOSUB SB.POOLS.NEED
+    NEXT SB.RECORD
+    SB.MAIN.POOL = BS.N
+    SB.POOL.AT = BS.N
+    SB.POOL.TEMPS = SB.MAIN.NEED
+    GOSUB SB.POOLS.MAXES
+    BS.N = BS.N + SB.POOL.TEMPS
+    GP.IF SB.TOP.LEVEL > 0 THEN
+        FOR SB.LEVEL.NOW = 1 TO SB.TOP.LEVEL
+            GOSUB SB.POOLS.LEVEL
+        NEXT SB.LEVEL.NOW
+    GP.ENDIF
+    RETURN
+
+## SB.POOLS.START -- SUB SY.R has level 1 and needs no temps yet.
+SB.POOLS.START:
+    SB.SUBS = SB.SUBS + 1
+    SB.TOP.LEVEL = 1
+    GOSUB SY.AT
+    POKE SY.AD + K.SY.LEVEL, 1
+    POKE SY.AD + K.SY.TEMPS, 0
+    RETURN
+
+## SB.POOLS.RAISE -- with the call record read: the SUB called is at least 1 level below
+## its caller.
+SB.POOLS.RAISE:
+    SB.CALLEE = SY.VAL
+    SB.CALL.LINE = SY.CNT
+    SY.R = SY.OWNER
+    GOSUB SB.LEVEL.OF
+    SB.CALLER.LEVEL = SB.LEVEL
+    SY.R = SB.CALLEE
+    GOSUB SB.LEVEL.OF
+    IF SB.LEVEL > SB.CALLER.LEVEL THEN RETURN
+    SB.LEVEL = SB.CALLER.LEVEL + 1
+    POKE SY.AD + K.SY.LEVEL, SB.LEVEL
+    IF SB.LEVEL > SB.TOP.LEVEL THEN SB.TOP.LEVEL = SB.LEVEL
+    SB.CHANGED = 1
+    SB.EACH.OTHER.LINE = SB.CALL.LINE
+    RETURN
+
+## SB.POOLS.NEED -- with a temp's record read: its owner's pool holds at least its block.
+SB.POOLS.NEED:
+    SB.NEED = SY.VAL + 257
+    IF SY.OWNER = 0 THEN GOTO SB.POOLS.NEED.MAIN
+    SB.NEED = INT(SB.NEED / 257 + 0.5)
+    SY.R = SY.OWNER
+    GOSUB SY.AT
+    IF PEEK(SY.AD + K.SY.TEMPS) >= SB.NEED THEN RETURN
+    POKE SY.AD + K.SY.TEMPS, SB.NEED
+    RETURN
+SB.POOLS.NEED.MAIN:
+    IF SB.NEED > SB.MAIN.NEED THEN SB.MAIN.NEED = SB.NEED
+    RETURN
+
+## SB.POOLS.LEVEL -- the pool of level SB.LEVEL.NOW at BS.N: room below its offset for the
+## biggest frame of its SUBs, and room from it up for the most temps any of them needs.
+## Each of its SUBs gets the pool's offset in place of its frame bytes.
+SB.POOLS.LEVEL:
+    SB.POOL.FRAME = 0
+    SB.POOL.TEMPS = 0
+    FOR SB.RECORD = 1 TO SY.N
+        SY.R = SB.RECORD
+        GOSUB SY.GET
+        IF SY.KIND = K.SK.SUB THEN GOSUB SB.POOLS.MEASURE
+    NEXT SB.RECORD
+    SB.POOL.AT = BS.N + SB.POOL.FRAME
+    FOR SB.RECORD = 1 TO SY.N
+        SY.R = SB.RECORD
+        GOSUB SY.GET
+        IF SY.KIND = K.SK.SUB THEN GOSUB SB.POOLS.PLACE
+    NEXT SB.RECORD
+    GOSUB SB.POOLS.MAXES
+    BS.N = SB.POOL.AT + SB.POOL.TEMPS
+    RETURN
+
+SB.POOLS.MEASURE:
+    GOSUB SB.LEVEL.OF
+    IF SB.LEVEL <> SB.LEVEL.NOW THEN RETURN
+    SB.NEED = PEEK(SY.AD + K.SY.TEMPS) * 257
+    IF SB.NEED > SB.POOL.TEMPS THEN SB.POOL.TEMPS = SB.NEED
+    SB.FIELD = K.SY.POOL
+    GOSUB SB.FIELD.GET
+    IF SB.WORD > SB.POOL.FRAME THEN SB.POOL.FRAME = SB.WORD
+    RETURN
+
+SB.POOLS.PLACE:
+    GOSUB SB.LEVEL.OF
+    IF SB.LEVEL <> SB.LEVEL.NOW THEN RETURN
+    SB.FIELD = K.SY.POOL
+    SB.WORD = SB.POOL.AT
+    GOTO SB.FIELD.SET
+
+## SB.POOLS.MAXES -- the max, 255, of each temp from SB.POOL.AT, SB.POOL.TEMPS bytes.
+SB.POOLS.MAXES:
+    SB.SLOT = 0
+SB.POOLS.MAXES.NEXT:
+    IF SB.SLOT >= SB.POOL.TEMPS THEN RETURN
+    GP.IF SB.MAX.LOADED = 0 THEN
+        SL.S%(0) = K.SEC.CONST
+        SL.V(0) = 255
+        GP.SUB EMIT, T.LDB.C.ID
+        SB.MAX.LOADED = 1
+    GP.ENDIF
+    SL.S%(0) = K.SEC.BSS
+    SL.V(0) = SB.POOL.AT + SB.SLOT
+    GP.SUB EMIT, T.STB.V.ID
+    SB.SLOT = SB.SLOT + 257
+    GOTO SB.POOLS.MAXES.NEXT
+
+## SB.POOL.OF -- SB.POOL, the offset in the array space of the pool of SUB FX.OW, or of the
+## main program's pool when FX.OW is 0.
+SB.POOL.OF:
+    SB.POOL = SB.MAIN.POOL
+    IF FX.OW = 0 THEN RETURN
+    SY.R = FX.OW
+    SB.FIELD = K.SY.POOL
+    GOSUB SB.FIELD.GET
+    SB.POOL = SB.WORD
+    RETURN
+
+## SB.LEVEL.OF -- SB.LEVEL, the level of SUB SY.R; 0 for the main program, SY.R = 0.
+## When SY.R is a SUB, SY.AD is its record, with its bank selected.
+SB.LEVEL.OF:
+    SB.LEVEL = 0
+    IF SY.R = 0 THEN RETURN
+    GOSUB SY.AT
+    SB.LEVEL = PEEK(SY.AD + K.SY.LEVEL)
+    RETURN
+
+## SB.FIELD.GET -- SB.WORD, the word at offset SB.FIELD of record SY.R.
+SB.FIELD.GET:
+    GOSUB SY.AT
+    SB.WORD = PEEK(SY.AD + SB.FIELD) + 256 * PEEK(SY.AD + SB.FIELD + 1)
+    RETURN
+
+## SB.FIELD.SET -- the word at offset SB.FIELD of record SY.R is SB.WORD.
+SB.FIELD.SET:
+    GOSUB SY.AT
+    SB.HIGH = INT(SB.WORD / 256)
+    POKE SY.AD + SB.FIELD, SB.WORD - SB.HIGH * 256
+    POKE SY.AD + SB.FIELD + 1, SB.HIGH
+    RETURN
+
+## ---------------------------------------------------------------------------------
+## The errors
+
+SB.ERROR.DUPLICATE:
+    ER.M$ = "DUPLICATE NAME " + SM.N$
+    GOTO ER.STOP
+SB.ERROR.MISSING.OPEN:
+    ER.M$ = "MISSING ("
+    GOTO ER.STOP
+SB.ERROR.MARK.AND.AS:
+    ER.M$ = "A MARK AND AS"
+    GOTO ER.STOP
+SB.ERROR.NESTED:
+    ER.M$ = "SUB INSIDE SUB"
+    GOTO ER.STOP
+SB.ERROR.IN.BLOCK:
+    ER.M$ = "SUB INSIDE A BLOCK"
+    GOTO ER.STOP
+SB.ERROR.ENDSUB:
+    ER.M$ = "ENDSUB WITHOUT SUB"
+    IF SB.END.FUNCTION = 1 THEN ER.M$ = "ENDFUNCTION WITHOUT FUNCTION"
+    GOTO ER.STOP
+SB.ERROR.END.FUNCTION:
+    ER.M$ = "ENDFUNCTION IN A SUB"
+    GOTO ER.STOP
+SB.ERROR.END.SUB:
+    ER.M$ = "ENDSUB IN A FUNCTION"
+    GOTO ER.STOP
+SB.ERROR.SUB.TYPE:
+    ER.M$ = "SUB WITH A TYPE: USE FUNCTION"
+    GOTO ER.STOP
+SB.ERROR.AFTER.THEN:
+    ER.M$ = "BLOCK STATEMENT AFTER THEN"
+    GOTO ER.STOP
+SB.ERROR.NO.RETURN:
+    ER.M$ = "NO RETURN VALUE IN " + SB.SUB.NAME$
+    GOTO ER.STOP
+SB.ERROR.RETURN.OUTSIDE:
+    ER.M$ = "RETURN OUTSIDE SUB"
+    GOTO ER.STOP
+SB.ERROR.NEEDS.VALUE:
+    ER.M$ = "RETURN NEEDS A VALUE"
+    GOTO ER.STOP
+SB.ERROR.NO.VALUE:
+    ER.M$ = "SUB " + SB.CALLED.NAME$ + " HAS NO VALUE"
+    GOTO ER.STOP
+SB.ERROR.NOT.SUB:
+    ER.M$ = "NOT A SUB: " + SB.CALLED.NAME$
+    GOTO ER.STOP
+SB.ERROR.TOO.DEEP:
+    ER.M$ = "CALLS NESTED TOO DEEP"
+    GOTO ER.STOP
+SB.ERROR.EACH.OTHER:
+    LX.NO = SB.EACH.OTHER.LINE
+    LX.L$ = ""
+    ER.M$ = "SUBS CALL EACH OTHER"
+    GOTO ER.STOP
+SB.ERROR.LOCALS:
+    ER.M$ = "LOCALS TOO BIG"
+    GOTO ER.STOP
+SB.ERROR.ITSELF:
+    ER.M$ = "A SUB CANNOT CALL ITSELF"
+    GOTO ER.STOP
+SB.ERROR.ARGUMENTS:
+    ER.M$ = "WRONG NUMBER OF ARGUMENTS"
+    GOTO ER.STOP
+SB.ERROR.COMPLEX:
+    ER.M$ = "EXPRESSION TOO COMPLEX"
+    GOTO ER.STOP

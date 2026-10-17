@@ -1,0 +1,162 @@
+#SAVEAS "@:UXC.SRC.PRG"
+#REM 0
+#SYMFILE "@:UXC.SRC.SYM"
+#GPC SHARED
+#GPC OBJECT "UXC.PRG"
+#GPC MAP "UXC.MAP"
+#INCLUDE "GPC-BASIC/GPB.INC.BL"
+#INCLUDE "UXC.TPL.BL"
+#INCLUDE "UXC-DEFS.BL"
+## ============================================================================
+## UXC -- the UXCBASIC compiler, v1, in GPC. docs/UXCBASIC.PLAN.md is the design.
+##
+## UXC.INPUT names the source and the result file. The source is read a line at a
+## time, and each statement copies template records out of UXC.TPL.BIN into the
+## code buffer. At the end of the source the link step adds the runtime routines,
+## the strings and the variables, resolves every fixup, and the PRG is written.
+##
+## The modules, each a file of subroutines:
+##   UXC-LEX.BL    the source file, and the tokens of a line
+##   UXC-SYM.BL    the symbol table, in banked RAM
+##   UXC-CODE.BL   the template table, the code buffer, the strings, the fixups; EMIT
+##   UXC-LINK.BL   the link step, and the PRG writer
+##   UXC-EXPR.BL   expressions
+##   UXC-STMT.BL   the statements
+##   UXC-COND.BL   jumps and conditions
+##   UXC-FLOW.BL   IF and the loops
+##   UXC-CASE.BL   ON CASE
+##   UXC-FOR.BL    FOR ... NEXT
+##   UXC-FOLD.BL   constant folding
+##   UXC-SUB.BL    SUB, FUNCTION, their ends, RETURN and calls
+##   UXC-NAME.BL   scopes: finding a name, NAMESPACE, BIND, the reserved words
+##   UXC-STR.BL    strings: DIM, assignment, +, the compares, the functions
+##   UXC-RECORD.BL record types: TYPE ... END TYPE
+##   UXC-ONCE.BL   the start and the end of the compile, and the error report
+## UXC.TPL.BL is written by tpl/MKTPL.PY: the id of each template record.
+##
+## The source is read twice. The first pass declares every namespace, and every SUB from its
+## header, so a call may come before its SUB. The second compiles.
+##
+## The first error stops the compile. It prints ?<ERROR> IN <line> and the line,
+## and goes into the result file too.
+## ============================================================================
+## The arrays come first in the text: GPC gives an array used before its DIM an implicit
+## one, and allows only 32 of those.
+    DIM SY.BANK%(K.SYM.BANKS - 1), CB.BANK%(K.CODE.BANKS - 1), FX.BANK%(K.FIX.BANKS - 1)
+    DIM EM.B%(255), SL.S%(3), SL.V(3)
+    DIM EX.OP%(K.EX.MAX), EX.VK%(K.EX.MAX), EX.VS%(K.EX.MAX), EX.VT%(K.EX.MAX), EX.VV(K.EX.MAX)
+    DIM EX.JT(K.EX.MAX), EX.JF(K.EX.MAX), EX.OA%(K.EX.MAX), EX.VG%(K.EX.MAX)
+    DIM NS.K%(K.NS.MAX), NS.NO%(K.NS.MAX), NS.L$(K.NS.MAX), NS.P%(K.NS.MAX), NS.SN%(K.NS.MAX)
+    DIM NS.TOP(K.NS.MAX), NS.EX(K.NS.MAX), NS.CT(K.NS.MAX), NS.FL(K.NS.MAX), NS.EL%(K.NS.MAX)
+    DIM NS.VA(K.NS.MAX), NS.VT%(K.NS.MAX), NS.LC%(K.NS.MAX), NS.LV(K.NS.MAX), NS.ST(K.NS.MAX)
+    DIM NS.VS%(K.NS.MAX)
+    DIM NS.NB%(K.NS.MAX), NS.HA(K.NS.MAX), HV.AD(K.NS.MAX), SB.SAVED.HIDDEN(K.NS.MAX)
+    DIM SB.CALL.RECORD%(K.SB.DEPTH), SB.CALL.PARAMETERS%(K.SB.DEPTH), SB.CALL.RESULT%(K.SB.DEPTH)
+    DIM SB.CALL.ARGUMENT%(K.SB.DEPTH), SB.CALL.STACKED%(K.SB.DEPTH)
+    DIM SB.SAVED.OPERATORS%(K.SB.DEPTH), SB.SAVED.OPERATOR.BASE%(K.SB.DEPTH)
+    DIM SB.SAVED.PARENTHESES%(K.SB.DEPTH), SB.SAVED.CONDITION%(K.SB.DEPTH), SG.CALLED$(K.SB.DEPTH)
+    DIM AS.LABEL.NAME$(K.ASM.LABELS - 1), AS.LABEL.AT(K.ASM.LABELS - 1)
+    DIM NM.ALIAS.NAME$(K.ALIASES - 1), NM.ALIAS.TARGET$(K.ALIASES - 1)
+    DIM AS.REFERENCE.NAME$(K.ASM.LABELS - 1), AS.REFERENCE.AT(K.ASM.LABELS - 1)
+    DIM AS.REFERENCE.KIND%(K.ASM.LABELS - 1), AS.REFERENCE.NO%(K.ASM.LABELS - 1)
+    FOR NS.I = 0 TO K.NS.MAX : HV.AD(NS.I) = -1 : NEXT NS.I
+    NS.D = 0 : EX.CM = 0
+GOTO UXC.MAIN
+## ---- what stays in low memory ----
+## SYM and CODE execute BANK, which a region may not. BANKMGR runs before the regions are
+## claimed.
+#INCLUDE "GPC-BASIC/BANKMGR.INC.BL"
+#INCLUDE "UXC-SYM.BL"
+#INCLUDE "UXC-CODE.BL"
+
+## ---- the rest runs from RAM banks ----
+## The p-code and the string and array space share low memory under the runtime, and with
+## all of it there the compiler ran out of memory at startup. Each region is 8K at most:
+## the expressions and the conditions in one, the statements in the second, the SUBs in
+## the third, the strings in the fourth, the assembler in the fifth, the names in the sixth,
+## the record types in the seventh, FOR, the constant folding, PEEK and the array elements
+## in the eighth, LONG, the lexer and ON CASE in the ninth, the code that runs once and the
+## link step in the tenth.
+## GPC-BASIC/BANKED-OR-NOT.md has the rules. The two that shape the code here:
+##   A GOTO into a region from outside it is refused, so a jump from one region to the
+##   other is GOSUB target : RETURN.
+##   A GOTO out of a region to a low routine that executes BANK would return into the
+##   region under the wrong bank, so those are GOSUB target : RETURN too.
+## UXC.START claims the banks before anything asks BANKMGR for a free one.
+#DEFINE K.BANK.EXPR 20
+#DEFINE K.BANK.FLOW 21
+#DEFINE K.BANK.SUB 22
+#DEFINE K.BANK.STR 23
+#DEFINE K.BANK.ASM 24
+#DEFINE K.BANK.NAME 25
+#DEFINE K.BANK.RECORD 26
+#DEFINE K.BANK.FOR 27
+#DEFINE K.BANK.LONG 28
+#DEFINE K.BANK.ONCE 29
+## The KERNAL's kbdbuf_put, called with ROM bank 0.
+#DEFINE K.KBDBUF.PUT $FEC3
+GOTO UXC.CODE.END
+GP.BANKED K.BANK.EXPR
+#INCLUDE "UXC-EXPR.BL"
+#INCLUDE "UXC-COND.BL"
+GP.ENDBANKED
+GP.BANKED K.BANK.FLOW
+#INCLUDE "UXC-STMT.BL"
+#INCLUDE "UXC-FLOW.BL"
+GP.ENDBANKED
+GP.BANKED K.BANK.SUB
+#INCLUDE "UXC-SUB.BL"
+GP.ENDBANKED
+GP.BANKED K.BANK.NAME
+#INCLUDE "UXC-NAME.BL"
+GP.ENDBANKED
+GP.BANKED K.BANK.STR
+#INCLUDE "UXC-STR.BL"
+GP.ENDBANKED
+GP.BANKED K.BANK.ASM
+#INCLUDE "UXC-ASM.BL"
+GP.ENDBANKED
+GP.BANKED K.BANK.RECORD
+#INCLUDE "UXC-RECORD.BL"
+GP.ENDBANKED
+GP.BANKED K.BANK.FOR
+#INCLUDE "UXC-FOR.BL"
+#INCLUDE "UXC-FOLD.BL"
+#INCLUDE "UXC-INDEX.BL"
+GP.ENDBANKED
+GP.BANKED K.BANK.LONG
+#INCLUDE "UXC-LONG.BL"
+#INCLUDE "UXC-LEX.BL"
+#INCLUDE "UXC-CASE.BL"
+GP.ENDBANKED
+GP.BANKED K.BANK.ONCE
+#INCLUDE "UXC-ONCE.BL"
+#INCLUDE "UXC-LINK.BL"
+GP.ENDBANKED
+UXC.CODE.END:
+
+## UXC.BANK -- a free RAM bank in UXC.B.
+UXC.BANK:
+    GOSUB BANKMGR.GET.FREE.BANK
+    IF BANKMGR.BANK% = 0 THEN ER.M$ = "OUT OF RAM BANKS" : GOTO ER.STOP
+    UXC.B = BANKMGR.BANK%
+    RETURN
+
+ER.MISMATCH:
+    ER.M$ = "TYPE MISMATCH" : GOTO ER.STOP
+ER.MISSING.AS:
+    ER.M$ = "MISSING AS: " + SM.N$
+    GOTO ER.STOP
+ER.SYNTAX:
+    ER.M$ = "SYNTAX ERROR"
+ER.STOP:
+    GOSUB ER.REPORT
+
+UXC.MAIN:
+    GOSUB UXC.START
+UXC.LINE:
+    GOSUB LX.READ : IF LX.GOT = 0 THEN GOTO UXC.LINK
+    GOSUB SM.LINE
+    GOTO UXC.LINE
+UXC.LINK:
+    GOSUB UXC.FINISH
