@@ -250,7 +250,7 @@ def sg_scan_known():
     A new built-in function in ex_operand goes in this list too, or sg_scan_array reports it
     as UNDECLARED NAME."""
     g.sg_scan_unknown = 1
-    if g.tk_s in ("LEN", "ASC", "VAL", "CHR$", "STR$", "MID$", "LEFT$", "RIGHT$", "PEEK", "NOT", "INSTR", "POS",
+    if g.tk_s in ("LEN", "ASC", "VAL", "CHR$", "STR$", "MID$", "LEFT$", "RIGHT$", "UCASE$", "LCASE$", "PEEK", "NOT", "INSTR", "POS",
                   "LVAL", "AND", "OR", "XOR", "MOD", "GETKEY", "OPEN", "EOF", "READ", "ADDROF",
                   "CONTENTSAT", "CONTENTSATW", "GETEXTKEY", "WAITKEY", "KEYMODS"):
         g.sg_scan_unknown = 0
@@ -337,7 +337,7 @@ def sg_function():
     own, nested as a SUB call's arguments are, and g.sg_called keeps the function's name for
     each depth."""
     g.sg_found = 0
-    if uxc_lex.instr("|LEN|ASC|VAL|LVAL|CHR$|STR$|MID$|LEFT$|RIGHT$|INSTR|OPEN|EOF|READ|",
+    if uxc_lex.instr("|LEN|ASC|VAL|LVAL|CHR$|STR$|MID$|LEFT$|RIGHT$|UCASE$|LCASE$|INSTR|OPEN|EOF|READ|",
                      "|" + g.tk_s + "|") == 0:
         return
     g.sg_name = g.tk_s
@@ -402,8 +402,36 @@ def sg_one():
         sg_chr()
     elif g.sg_name == "EOF":
         sg_eof()
+    elif g.sg_name == "UCASE$" or g.sg_name == "LCASE$":
+        sg_case()
     else:
         sg_str()
+
+
+def sg_case():
+    """SG.CASE. UCASE$ and LCASE$, as g.sg_name. Of a literal it is a literal."""
+    if g.ex_vt[g.ex_i] != K_TY_STR:
+        er_mismatch()
+    g.sg_case_from = "abcdefghijklmnopqrstuvwxyz"
+    g.sg_case_to = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    if g.sg_name == "LCASE$":
+        g.sg_case_from = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        g.sg_case_to = "abcdefghijklmnopqrstuvwxyz"
+    sg_take_literal()
+    if g.sg_was_literal == 1:
+        g.ex_vn = g.ex_vn - 1
+        g.sg_text = g.sg_last_text.translate(str.maketrans(g.sg_case_from, g.sg_case_to))
+        sg_push_literal()
+        return
+    sg_tos()
+    sg_new_temp()
+    g.sl_s[0] = K_SEC_TEMP
+    g.sl_v[0] = g.sg_temp
+    if g.sg_name == "UCASE$":
+        emit(T.T_UCASE)
+    else:
+        emit(T.T_LCASE)
+    sg_push_temp()
 
 
 def sg_eof():

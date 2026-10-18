@@ -679,3 +679,39 @@ R_RIGHT .block
         #rec jmp, R_MID, R_MID.take - R_MID.rec_code
         #endtpl
         .endblock
+
+; The temp at A/Y = UCASE$ of the string at ZP_PTR when C is set, LCASE$ when C is clear. Only
+; A to Z and a to z change. The temp may be the source block. Keeps X.
+R_CASE  .block
+        #tpl
+        sta ZP_DST
+        sty ZP_DST+1
+        lda #$41                ; LCASE$ changes A to Z
+        bcc +
+        lda #$61                ; UCASE$ changes a to z
++       sta ZP_TMP
+        clc
+        adc #26
+        sta ZP_TMP+1            ; past the last letter to change
+        inc ZP_PTR              ; (ZP_PTR),y with y = 1 is the first character
+        bne +
+        inc ZP_PTR+1
++       inc ZP_DST              ; (ZP_DST),y with y = 1 is the first character of the temp
+        bne +
+        inc ZP_DST+1
++       lda (ZP_PTR)            ; the length
+        sta (ZP_DST)
+        tay
+        beq done
+copy    lda (ZP_PTR),y
+        cmp ZP_TMP
+        bcc +
+        cmp ZP_TMP+1
+        bcs +
+        eor #$20
++       sta (ZP_DST),y
+        dey
+        bne copy
+done    rts
+        #endtpl
+        .endblock

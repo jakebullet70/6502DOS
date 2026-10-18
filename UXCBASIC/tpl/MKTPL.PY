@@ -29,7 +29,7 @@ IDS = os.path.join(HERE, "UXC.TPL.IDS")
 DEFS = os.path.join(HERE, "UXC.TPL.BL")
 UXDOS_DIR = os.path.join(HERE, "UXDOS")
 
-F_ABS, F_LO, F_HI, F_SELF, F_REC = 1, 2, 3, 4, 5
+F_ABS, F_LO, F_HI, F_SELF, F_REC, F_REC_HI = 1, 2, 3, 4, 5, 6
 KINDS = {F_ABS: "ABS", F_LO: "LO", F_HI: "HI", F_SELF: "SELF", F_REC: "REC"}
 
 
@@ -60,7 +60,10 @@ def load(data):
         length, nfix = data[at], data[at + 1]
         code = data[at + 2:at + 2 + length]
         fix = data[at + 2 + length:at + 2 + length + 3 * nfix]
-        records.append((code, [tuple(fix[j:j + 3]) for j in range(0, len(fix), 3)]))
+        fixups = [tuple(fix[j:j + 3]) for j in range(0, len(fix), 3)]
+        # F_REC_HI is F_REC of record <arg> + 256.
+        records.append((code, [(o, F_REC, a + 256) if k == F_REC_HI else (o, k, a)
+                               for o, k, a in fixups]))
     return records
 
 

@@ -96,11 +96,12 @@ K_F_LO = 2
 K_F_HI = 3
 K_F_SELF = 4
 K_F_REC = 5
+K_F_REC_HI = 6
 
 # Banked RAM, in banks from BANKMGR.
 K_CODE_BANKS = 5
 K_SYM_BANKS = 4
-K_FIX_BANKS = 4
+K_FIX_BANKS = 8
 
 # The runtime record table, in bank RT.BANK, for at most 1024 records: a byte per record
 # that is 1 once it is used, the used ids in order as words, and each record's address.
@@ -121,7 +122,7 @@ K_DV_MAX = 1024
 K_DS_MAX = 4096
 
 # A fixup is 8 bytes, so K.FX.MAX fills the K.FIX.BANKS banks.
-K_FX_MAX = 4096
+K_FX_MAX = 8192
 
 # The two-character operators, in TK.K. A one-character operator is its character.
 K_OP_NE = 256

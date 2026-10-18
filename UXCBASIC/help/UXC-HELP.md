@@ -435,9 +435,12 @@ The functions:
 - INSTR(s, find, start) is the position of the first find in s at or after
   position start, a UBYTE. It is 0 when there is none, or when find is empty.
   Without start, the search starts at 1, and 0 is the same as 1.
+- UCASE$(s) is s with a to z made A to Z, and LCASE$(s) is s with A to Z made a
+  to z. Other characters stay as they are: UCASE$("dir a1") is "DIR A1". Both
+  are reserved words.
 
-LEN and ASC of a literal, and CHR$ and STR$ of a constant, are worked out by
-the compiler.
+LEN, ASC, UCASE$ and LCASE$ of a literal, and CHR$ and STR$ of a constant, are
+worked out by the compiler.
 
 A SUB takes a STRING parameter with no size: SUB SHOW(T$). The SUB works on the
 caller's string, so an assignment to T$ changes it. A literal argument is

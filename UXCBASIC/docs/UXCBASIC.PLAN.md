@@ -103,8 +103,9 @@ DIM C AS UBYTE = 1, P AS UWORD = $1000
 - The compiler copies the bytes of a string literal into the PRG unchanged. UXCEDIT saves
   ASCII. A compiled program starts in ISO mode, so an ASCII literal prints as typed.
 - v1 string operations: assignment, `+` (join), the six compares, `LEN`, `MID$`, `LEFT$`, `RIGHT$`,
-  `CHR$`, `ASC`, `STR$`, `VAL`, `LVAL` and `INSTR`. `R_LEFT` and `R_RIGHT` enter `R_MID`.
-  `UCASE$` and `LCASE$` become built-ins with `R_*` routines, as `INSTR` is.
+  `CHR$`, `ASC`, `STR$`, `VAL`, `LVAL`, `INSTR`, `UCASE$` and `LCASE$`. `R_LEFT` and `R_RIGHT`
+  enter `R_MID`. `T_UCASE` and `T_LCASE` call `R_CASE`, with C set for `UCASE$`.
+- A record id past 255 takes the fixup kind `F_REC_HI`, `F_REC` + 1, in `tpl/MACROS.ASM`.
 
 **Expressions (v1).**
 
@@ -401,7 +402,7 @@ Every other option comes from `#DEFINE UXC.*` lines in the source.
 **Compiler memory.** pyuxc keeps the GPC UXC's banks, each a `bytearray` of 8,192 bytes.
 - The code buffer is `K_CODE_BANKS`, 5 banks: a program's code is at most 40,960 bytes. Past
   that the compile stops with `PROGRAM TOO BIG`.
-- The symbol table is `K_SYM_BANKS`, 4 banks, and the fixups `K_FIX_BANKS`, 4 banks.
+- The symbol table is `K_SYM_BANKS`, 4 banks, and the fixups `K_FIX_BANKS`, 8 banks: 8,192 fixups of 8 bytes.
 - The program and its arrays must end below `K_TOP`, `$9F00`, or the link stops with
   `PROGRAM TOO BIG`.
 

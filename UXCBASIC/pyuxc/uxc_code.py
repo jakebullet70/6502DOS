@@ -22,7 +22,7 @@ n MOD 8192 of g.cb_bank[n // 8192]. A K_RT_ address is index K_RT_x - $A000 of g
 
 import os
 
-from uxc_defs import K_CODE_BANKS, K_CS_SIZE, K_F_ABS, K_F_HI, K_F_LO, K_F_REC, K_F_SELF, \
+from uxc_defs import K_CODE_BANKS, K_CS_SIZE, K_F_ABS, K_F_HI, K_F_LO, K_F_REC, K_F_REC_HI, K_F_SELF, \
     K_FX_MAX, K_RT_ADDR, K_RT_LIST, K_RT_USED, K_SEC_CODE, K_SEC_CONST, K_SEC_REC
 import uxc_tpl as T
 from uxc_state import er_stop, g, uxc_bank
@@ -179,7 +179,10 @@ def em_fix():
         g.fx_v = g.em_start
         fx_add()
         return
-    # REC: another record, which the link step places once.
+    # REC: another record, which the link step places once. REC_HI is record <arg> + 256.
+    if g.em_k == K_F_REC_HI:
+        g.em_k = K_F_REC
+        g.em_g = g.em_g + 256
     if g.em_k == K_F_REC:
         g.rt_id = g.em_g
         rt_use()

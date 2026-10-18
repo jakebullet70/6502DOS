@@ -32,6 +32,7 @@ F_LO    = 2             ; the byte at the offset = the low byte of slot <arg>
 F_HI    = 3             ; the byte at the offset = the high byte of slot <arg>
 F_SELF  = 4             ; the word at the offset += the address this record's code is placed at
 F_REC   = 5             ; the word at the offset += the address of record <arg>
+F_REC_HI = 6            ; the word at the offset += the address of record <arg> + 256
 
 ; Slots: the operands the compiler passes to a template. A slot's value is an address (a
 ; variable, a string, a label) or a constant.
@@ -106,15 +107,16 @@ rel     .segment op, slot
         \op * + 2
         .endsegment
 
-; op <another record> + add, usually JSR or JMP. add is an entry point after the start.
+; op <another record> + add, usually JSR or JMP. add is an entry point after the start. A record
+; past id 255 takes F_REC_HI, F_REC + 1.
 rec     .segment op, target, add=0
-        tpl_fix ::= tpl_fix .. [(* + 1 - rec_code, F_REC, \target.rec_id)]
+        tpl_fix ::= tpl_fix .. [(* + 1 - rec_code, F_REC + \target.rec_id / 256, \target.rec_id % 256)]
         \op @w \add
         .endsegment
 
 ; op <another record> + add, x: R_ESTKH, the high words of the expression stack.
 recx    .segment op, target, add=0
-        tpl_fix ::= tpl_fix .. [(* + 1 - rec_code, F_REC, \target.rec_id)]
+        tpl_fix ::= tpl_fix .. [(* + 1 - rec_code, F_REC + \target.rec_id / 256, \target.rec_id % 256)]
         \op @w \add, x
         .endsegment
 

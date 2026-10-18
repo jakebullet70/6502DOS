@@ -249,3 +249,27 @@ T_RIGHT .block
         #rec jsr, R_RIGHT
         #endtpl
         .endblock
+
+; The temp S0 = UCASE$ of the string at A/Y.
+T_UCASE .block
+        #tpl
+        sta ZP_PTR
+        sty ZP_PTR+1
+        #lo lda, S0
+        #hi ldy, S0
+        sec
+        #rec jsr, R_CASE
+        #endtpl
+        .endblock
+
+; The temp S0 = LCASE$ of the string at A/Y.
+T_LCASE .block
+        #tpl
+        sta ZP_PTR
+        sty ZP_PTR+1
+        #lo lda, S0
+        #hi ldy, S0
+        clc
+        #rec jsr, R_CASE
+        #endtpl
+        .endblock
