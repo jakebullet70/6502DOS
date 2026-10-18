@@ -65,6 +65,7 @@ Conventions:
 | `str_gc` | 44 | `$03C4` | none | none | `r0` free bytes | none | yes |
 | `str_heap` | 45 | `$03C7` | none | `A` bank, 21 or higher<br>`r0` the first block, $A00C or higher; not for bank 21 | none | 9 | yes |
 | `con_colour` | 46 | `$03CA` | none | `carry` set: get, clear: set<br>`A` colour, to set | `A` colour | none | yes |
+| `con_break` | 47 | `$03CD` | 33h | `carry` set: get, clear: set<br>`A` mode, to set: 0 to 2 | `A` mode<br>`X` flag: 1 when Ctrl+C came in mode 2 since the last get, else 0 | 13 | yes |
 
 ## What each call does
 
@@ -115,6 +116,7 @@ Conventions:
 - `str_gc`: Compacts the program's string heap.
 - `str_heap`: Chooses the program's string heap. Bank 21 is the shared heap, every program's at its start. A higher bank becomes a new, empty heap whose blocks start at r0; the bytes from $A00C to r0 are the program's.
 - `con_colour`: Gets the console colour with carry set, sets it with carry clear. The high nibble is the background and the low nibble the foreground, from VERA's palette. A new colour takes effect for the characters written after the call.
+- `con_break`: Gets the break mode and the break flag with carry set, sets the mode with carry clear. The mode says what Ctrl+C from the console does: 0 nothing, it is the character $03; 1 prints ^C and ends the program with exit code 0, and `exitcode` then gives X = 1; 2 drops the key and sets the flag. A get clears the flag. `exec` starts each program in mode 1. The console sees Ctrl+C only while a program asks it for a key.
 
 ## Errors
 
@@ -149,3 +151,11 @@ Conventions:
 | 24 | 2 | date |
 | 26 | 4 | size |
 | 30 | 33 | name: a length byte, then up to 32 characters |
+
+## Break modes
+
+| Mode | Asm name |
+|---|---|
+| 0 | `BREAK_OFF` |
+| 1 | `BREAK_END` |
+| 2 | `BREAK_CATCH` |

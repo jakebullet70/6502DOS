@@ -78,6 +78,9 @@ DIM SCRIPT_PATH AS STRING * 128
 DIM SCRIPT_LOW AS UWORD, SCRIPT_HIGH AS UWORD, SCRIPT_LINE AS UWORD
 DIM SCRIPT_ACTIVE AS UBYTE, IN_SCRIPT AS UBYTE, RESUMING AS UBYTE
 DIM BUFFER_COUNT AS UBYTE, BUFFER_INDEX AS UBYTE, SCRIPT_HANDLE AS UWORD
+' The shell runs in DOS.STOP.CATCH. STOPPED is set when Ctrl+C was pressed during a line, or ended
+' the program the line ran. After a script line, it asks whether to end the script.
+DIM STOPPED AS UBYTE
 
 ' The flow stack: a script position for each GOSUB and REPEAT open. FLOW_TIMES is the runs a
 ' REPEAT has left, from its count down to 1, or 0 for a GOSUB. RETURN and ENDREP pop it.
@@ -107,6 +110,15 @@ END SUB
 ' Starts a new line when the cursor is not in column 0.
 SUB START_LINE()
   IF POS(0) > 0 THEN PRINT
+END SUB
+
+
+' Sets STOPPED when Ctrl+C was pressed. con_status reads the key waiting, so a Ctrl+C typed
+' while no program asked for a key counts.
+' Trap: a Ctrl+C behind another key waiting is not read.
+SUB POLL_BREAK()
+  SYS DOS.API_CON_STATUS
+  IF DOS.STOP_PRESSED() THEN STOPPED = 1
 END SUB
 
 ' Prints the message on a line of its own, on the screen, and sets FAILED. A line being skipped
@@ -462,6 +474,8 @@ SUB DO_WAIT()
     DO
     LOOP UNTIL DOS.TICKS() - START >= 60
     SECONDS = SECONDS - 1
+    POLL_BREAK()
+    IF STOPPED THEN EXIT DO
   LOOP
 END SUB
 
@@ -1086,7 +1100,13 @@ SUB RUN_PROGRAM()
     RETURN
   ENDIF
   DOS.EXEC(PROGRAM_PATH, TAIL_TEXT)
-  REPORT_DOS(DOS.ERROR)
+  IF DOS.ERROR
+    REPORT_DOS(DOS.ERROR)
+    RETURN
+  ENDIF
+  ' X = 1: Ctrl+C ended the program.
+  SYS DOS.API_EXITCODE
+  IF DOS.REG_X = 1 THEN STOPPED = 1
 END SUB
 
 ' ONERROR(1): an error in a script line goes on to the next line. ONERROR(0): an error ends
@@ -1541,7 +1561,8 @@ SUB RUN_LINE()
         EXPECT_END()
         IF FAILED = 0
           DO
-          LOOP UNTIL GETKEY()
+            POLL_BREAK()
+          LOOP UNTIL GETKEY() OR STOPPED
         ENDIF
       CASE "SETSYS"
         DO_SETSYS()
@@ -1616,6 +1637,27 @@ SUB PRINT_PROMPT()
   NEXT
 END SUB
 
+' Asks "Terminate CMD job (Y/N)?" until Y or N, in either case, and prints it. Ctrl+C counts as
+' Y. Y ends the script.
+SUB ASK_TERMINATE()
+  DIM ANSWER AS UBYTE
+  START_LINE()
+  DO
+    PRINT "Terminate CMD job (Y/N)? ";
+    DO
+      ANSWER = GETKEY()
+      IF DOS.STOP_PRESSED() THEN ANSWER = 89
+    LOOP UNTIL ANSWER
+    ' Capital Y and N; no other key becomes either.
+    ANSWER = ANSWER AND 223
+    IF ANSWER = 89 OR ANSWER = 78 THEN EXIT DO
+    PRINT
+  LOOP
+  PRINT CHR$(ANSWER)
+  IF ANSWER = 89 THEN SCRIPT_ACTIVE = 0
+END SUB
+
+DOS.STOP_KEY(DOS.STOP.CATCH)
 RUNNING = 1
 PIPE_PATH = "C:\PIPE1.$$$"
 PROGRAM_PATH = "C:\STARTUP.CMD"
@@ -1628,6 +1670,9 @@ DO WHILE RUNNING
     SKIP_DEPTH = 0
     PRINT_PROMPT()
     DOS.CON_LINE(LINE_TEXT)
+    ' A Ctrl+C in the line does nothing: STOP_PRESSED clears the flag, so a script the line starts
+    ' does not see it.
+    IF DOS.STOP_PRESSED() THEN STOPPED = 0
   ENDIF
   RUN_LINE()
   END_REDIRECT()
@@ -1636,4 +1681,9 @@ DO WHILE RUNNING
     PRINT "in "; SCRIPT_PATH; " line "; MID$(STR$(SCRIPT_LINE), 2)
     SCRIPT_ACTIVE = 0
   ENDIF
+  IF SCRIPT_ACTIVE
+    POLL_BREAK()
+    IF STOPPED THEN ASK_TERMINATE()
+  ENDIF
+  STOPPED = 0
 LOOP

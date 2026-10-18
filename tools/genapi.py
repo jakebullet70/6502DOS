@@ -103,6 +103,9 @@ def api_inc():
             lines.append("FIND_%-17s = %d" % (name, start))
     last = api.FIND_BUFFER[-1]
     lines.append("FIND_BUFFER_SIZE      = %d" % (last[0] + last[1]))
+    lines.append("")
+    for number, name in api.BREAK_MODES:
+        lines.append("BREAK_%-16s = %d" % (name, number))
     return lines
 
 
@@ -173,6 +176,9 @@ def api_md():
     lines += ["", "## Find buffer", "", "| Offset | Size | Field |", "|---|---|---|"]
     for offset, size, name, field in api.FIND_BUFFER:
         lines.append("| %d | %d | %s |" % (offset, size, field))
+    lines += ["", "## Break modes", "", "| Mode | Asm name |", "|---|---|"]
+    for number, name in api.BREAK_MODES:
+        lines.append("| %d | `BREAK_%s` |" % (number, name))
     return lines
 
 

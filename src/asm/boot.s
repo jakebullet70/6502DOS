@@ -35,6 +35,7 @@ reset:
         jsr heap_init
         lda #>PROGRAM_END
         sta PSP_TOP
+        stz PSP_BREAK           ; BREAK_OFF for the monitor
         lda #$01                ; VSYNC
         sta VERA_IEN
         cli

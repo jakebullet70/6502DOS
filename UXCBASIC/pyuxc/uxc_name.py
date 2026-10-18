@@ -13,10 +13,12 @@
     nm_as_type()    in  g.sm_ty     AS type, with the token at AS; out g.sm_ty, and the token
                                     after the type
     nm_type_name()  in  g.tk_s      out g.nm_type_code, the type a word names, 0 for none;
-                                    g.nm_type_signed, 1 for a signed type
+                                    g.nm_type_signed, 1 for a signed type; g.nm_type_enum, the
+                                    ENUM's record for ENUM.name, else 0
 
     nm_bind()                       BIND name [=] target
     nm_bind_scan()                  the first pass: BIND name [=] word, with the token at BIND
+    nm_enum_scan()                  the first pass: ENUM name, with the token at ENUM
     nm_enum()       in  g.sm_w      ENUM name, with the token at ENUM, or a stray ENDENUM
     nm_enum_members()               one line inside an ENUM
 
@@ -24,7 +26,7 @@ UXC-NAME.BL has the rules of the scopes.
 """
 
 from uxc_defs import K_ALIASES, K_CN_SIZE, K_EK_CONST, K_SK_BIND, K_SK_CONST, K_SK_ENUM, \
-    K_SK_LABEL, K_SK_SPACE, K_SK_SUB, K_SK_VAR, K_SY_FIXED, K_SY_MEMBER, K_SY_SCANNED, \
+    K_SK_LABEL, K_SK_SPACE, K_SK_SUB, K_SK_VAR, K_SY_ENUM_PARAMETER, K_SY_FIXED, K_SY_MEMBER, K_SY_SCANNED, \
     K_SY_SIGNED, K_TT_EOL, K_TT_NAME, K_TT_NUM, K_TT_OP, K_TT_STR, K_TY_BYTE, K_TY_LONG, K_TY_RECORD, K_TY_STR, K_TY_WORD
 import uxc_expr
 import uxc_fold
@@ -324,9 +326,14 @@ def nm_as_type():
 
 def nm_type_name():
     """NM.TYPE.NAME. UBYTE and BYTE, UWORD or UINT and WORD or INT, ULONG and LONG, and
-    STRING. BYTE, WORD, INT and LONG are signed."""
+    STRING. BYTE, WORD, INT and LONG are signed. ENUM.name is the type of that ENUM's
+    members, unsigned. An ENUM's name without ENUM. stops the compile."""
     g.nm_type_code = 0
     g.nm_type_signed = 0
+    g.nm_type_enum = 0
+    if g.tk_s[:5] == "ENUM.":
+        nm_type_enum()
+        return
     if g.tk_s == "BYTE" or g.tk_s == "WORD" or g.tk_s == "INT" or g.tk_s == "LONG":
         g.nm_type_signed = 1
     if g.tk_s == "UBYTE" or g.tk_s == "BYTE":
@@ -339,6 +346,34 @@ def nm_type_name():
         g.nm_type_code = K_TY_STR
     if g.tk_s == "LONG" or g.tk_s == "ULONG":
         g.nm_type_code = K_TY_LONG
+    if g.nm_type_code == 0:
+        nm_type_bare_enum()
+
+
+def nm_type_enum():
+    """NM.TYPE.ENUM. ENUM.name, with the token at it."""
+    g.nm_type_saved_name = g.sm_n
+    g.sm_n = g.tk_s[5:]
+    g.nm_find_quiet = 1
+    nm_find()
+    g.nm_find_quiet = 0
+    if g.sy_r == 0 or g.sy_kind != K_SK_ENUM:
+        er_stop("NOT AN ENUM: " + g.sm_n)
+    g.sm_n = g.nm_type_saved_name
+    g.nm_type_code = g.sy_type
+    g.nm_type_enum = g.sy_r
+
+
+def nm_type_bare_enum():
+    """NM.TYPE.BARE.ENUM. A word that names an ENUM stops the compile."""
+    g.nm_type_saved_name = g.sm_n
+    g.sm_n = g.tk_s
+    g.nm_find_quiet = 1
+    nm_find()
+    g.nm_find_quiet = 0
+    g.sm_n = g.nm_type_saved_name
+    if g.sy_r != 0 and g.sy_kind == K_SK_ENUM:
+        er_stop("USE AS ENUM." + g.tk_s)
 
 
 def nm_const():
@@ -652,6 +687,32 @@ def nm_bind_scan_sub():
 
 # Enums
 
+def nm_enum_scan():
+    """NM.ENUM.SCAN. The first pass makes the record of an ENUM outside a SUB body, so that a
+    parameter can be of its type. Its members are the second pass's. A bad or duplicate name
+    is left for nm_enum, which gives the error."""
+    if g.sb_scan_in_sub != 0:
+        return
+    uxc_lex.lx_next()
+    if g.tk_t != K_TT_NAME or g.tk_m != 0:
+        return
+    g.sm_n = g.tk_s
+    nm_word()
+    if g.nm_word_found != 0:
+        return
+    g.sy_name = g.tk_s
+    g.sy_ow = g.nm_current
+    uxc_sym.sy_find()
+    if g.sy_r != 0:
+        return
+    g.sy_kind = K_SK_ENUM
+    g.sy_type = K_TY_BYTE
+    g.sy_val = 0
+    g.sy_flags = K_SY_SCANNED
+    g.sy_cnt = 0
+    uxc_sym.sy_add()
+
+
 def nm_enum():
     """NM.ENUM. g.nm_enum_record is the ENUM's record from here to its END ENUM, and sm_line
     sends each line to nm_enum_members. g.nm_scope is the ENUM meanwhile, so that a value can
@@ -667,14 +728,17 @@ def nm_enum():
     g.sy_ow = g.nm_scope
     uxc_sym.sy_find()
     if g.sy_r != 0:
-        nm_error_duplicate()
-    g.sy_kind = K_SK_ENUM
-    g.sy_type = K_TY_BYTE
-    g.sy_val = 0
-    g.sy_flags = 0
-    g.sy_cnt = 0
-    uxc_sym.sy_add()
+        nm_enum_scanned()
+    else:
+        g.sy_kind = K_SK_ENUM
+        g.sy_type = K_TY_BYTE
+        g.sy_val = 0
+        g.sy_flags = 0
+        g.sy_cnt = 0
+        uxc_sym.sy_add()
     g.nm_enum_record = g.sy_r
+    g.nm_enum_name = g.sm_n
+    g.nm_enum_first = g.sy_n + 1
     g.nm_enum_outer_scope = g.nm_scope
     g.nm_scope = g.sy_r
     g.nm_enum_next = 0
@@ -682,6 +746,16 @@ def nm_enum():
     g.nm_enum_start_line = g.lx_no
     g.nm_enum_start_text = g.lx_l
     uxc_lex.lx_next()
+
+
+def nm_enum_scanned():
+    """NM.ENUM.SCANNED. Record g.sy_r has the ENUM's name: the first pass's record of this
+    ENUM, which the second pass now meets, or a duplicate."""
+    uxc_sym.sy_get()
+    if g.sy_kind != K_SK_ENUM or (g.sy_flags & K_SY_SCANNED) == 0:
+        nm_error_duplicate()
+    g.sy_flags = g.sy_flags - K_SY_SCANNED
+    uxc_sym.sy_set()
 
 
 def nm_enum_members():
@@ -749,12 +823,19 @@ def nm_enum_value():
 
 
 def nm_enum_end():
-    """NM.ENUM.END. The members are the records after the ENUM's record, up to g.sy_n. When
-    one passes 255, the ENUM and every member become WORD."""
+    """NM.ENUM.END. The members are the records from g.nm_enum_first up to g.sy_n. When one
+    passes 255, the ENUM and every member become WORD. The first pass gave the parameters
+    of its type a BYTE, so then such a parameter stops the compile."""
     g.nm_scope = g.nm_enum_outer_scope
     uxc_lex.lx_next()
     if g.nm_enum_type != K_TY_BYTE:
-        for g.nm_enum_member_record in range(g.nm_enum_record, g.sy_n + 1):
+        g.sy_r = g.nm_enum_record
+        uxc_sym.sy_get()
+        if (g.sy_flags & K_SY_ENUM_PARAMETER) != 0:
+            er_stop("TOO BIG FOR A PARAMETER: " + g.nm_enum_name)
+        g.sy_type = K_TY_WORD
+        uxc_sym.sy_set()
+        for g.nm_enum_member_record in range(g.nm_enum_first, g.sy_n + 1):
             g.sy_r = g.nm_enum_member_record
             uxc_sym.sy_get()
             g.sy_type = K_TY_WORD

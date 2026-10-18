@@ -46,6 +46,7 @@ PSP_STACK     = $0700           ; the stack pointer exec called the program with
 PSP_HEAP      = $0701           ; the RAM bank of the program's string heap
 PSP_TOP       = $0702           ; the program's last page, the last one exec saves; >PROGRAM_END
                                 ; until the program sets it
+PSP_BREAK     = $0703           ; what Ctrl+C does: a BREAK_ mode of api.inc
 PSP_HANDLES   = $0718           ; 20 handles, each an SFT entry number, $FF when closed
 HANDLES       = 20
 COMMAND_TAIL  = $0780           ; a length byte, then the text after the program's name, then CR

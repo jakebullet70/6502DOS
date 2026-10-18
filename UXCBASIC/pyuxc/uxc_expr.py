@@ -33,6 +33,7 @@ import uxc_record
 import uxc_stmt
 import uxc_str
 import uxc_sub
+import uxc_sym
 import uxc_tpl as T
 from uxc_state import er_mismatch, er_stop, er_syntax, g
 
@@ -117,7 +118,9 @@ def ex_operand():
     if g.sg_found == 1:
         return _OPERATOR
     g.sm_n = g.tk_s
-    uxc_name.nm_find()
+    ex_enum_member()
+    if g.sy_r == 0:
+        uxc_name.nm_find()
     if g.sy_kind == K_SK_CONST and g.sy_type == K_TY_STR:
         uxc_name.nm_const_get()
         g.sg_text = g.nm_const_got
@@ -125,6 +128,7 @@ def ex_operand():
         uxc_lex.lx_next()
         return _OPERATOR
     if g.sy_kind == K_SK_CONST:
+        g.ex_const_record = g.sy_r
         g.ex_k = K_EK_CONST
         g.ex_s = K_SEC_CONST
         g.ex_v = g.sy_val + 65536 * g.sy_cnt
@@ -149,6 +153,22 @@ def ex_operand():
     ex_pushv()
     uxc_lex.lx_next()
     return _OPERATOR
+
+
+def ex_enum_member():
+    """EX.ENUM.MEMBER. In an argument to a parameter of an ENUM's type, a name without a dot
+    is first looked for among that ENUM's members. Out: g.sy_r, the member's record, read, or
+    0."""
+    g.sy_r = 0
+    if g.sb_call_enum[g.sb_depth] == 0:
+        return
+    if uxc_lex.instr(g.sm_n, ".") != 0:
+        return
+    g.sy_name = g.sm_n
+    g.sy_ow = g.sb_call_enum[g.sb_depth]
+    uxc_sym.sy_find()
+    if g.sy_r != 0:
+        uxc_sym.sy_get()
 
 
 def ex_operand_push():

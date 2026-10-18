@@ -13,9 +13,9 @@
 """
 
 from uxc_code import emit
-from uxc_defs import K_EK_REG, K_EX_DEPTH, K_FRAME_MAX, K_JP_LIST, K_NS_IFL, K_NS_MAX, \
+from uxc_defs import K_EK_CONST, K_EK_REG, K_EX_DEPTH, K_FRAME_MAX, K_JP_LIST, K_NS_IFL, K_NS_MAX, \
     K_SB_DEPTH, K_SEC_BSS, K_SEC_CONST, K_SEC_LABEL, K_SEC_VAR, K_SK_CALL, K_SK_SUB, K_SK_VAR, \
-    K_SY_END, \
+    K_SY_END, K_SY_ENUM_PARAMETER, K_SY_ENUM_TYPE, \
     K_SY_LEVEL, K_SY_LIVE, K_SY_POOL, K_SY_SIGNED, K_SY_TEMP, K_SY_TEMPS, K_TT_EOL, K_TT_NAME, K_TT_OP, \
     K_TY_BYTE, K_TY_LONG, K_TY_STR, K_TY_WORD
 import uxc_cond
@@ -67,6 +67,8 @@ def sb_scan():
             g.sb_scan_in_sub = 0
         if g.tk_s == "BIND":
             uxc_name.nm_bind_scan()
+        if g.tk_s == "ENUM":
+            uxc_name.nm_enum_scan()
     g.nm_current = 0
 
 
@@ -160,13 +162,18 @@ def sb_parameter():
     g.sy_flags = g.sb_signed * K_SY_SIGNED
     g.sy_cnt = 0
     uxc_sym.sy_add()
+    g.sb_field = K_SY_ENUM_TYPE
+    g.sb_word = g.sb_enum
+    sb_field_set()
     g.sb_count = g.sb_count + 1
 
 
 def sb_as():
     """SB.AS. An optional AS type after the name g.sm_n, whose type mark is g.sb_type. Out:
-    g.sb_type, and g.sb_signed, 1 for a signed type."""
+    g.sb_type, g.sb_signed, 1 for a signed type, and g.sb_enum, the ENUM's record for AS
+    ENUM.name, else 0."""
     g.sb_signed = 0
+    g.sb_enum = 0
     if g.tk_t != K_TT_NAME:
         return
     if g.tk_s != "AS":
@@ -176,11 +183,19 @@ def sb_as():
     uxc_lex.lx_next()
     if g.tk_t != K_TT_NAME:
         er_syntax()
+    g.nm_scope = g.nm_current
     uxc_name.nm_type_name()
+    g.nm_scope = 0
     g.sb_type = g.nm_type_code
     g.sb_signed = g.nm_type_signed
     if g.sb_type == 0:
         er_syntax()
+    g.sb_enum = g.nm_type_enum
+    if g.sb_enum != 0:
+        g.sy_r = g.sb_enum
+        uxc_sym.sy_get()
+        g.sy_flags = g.sy_flags | K_SY_ENUM_PARAMETER
+        uxc_sym.sy_set()
     uxc_lex.lx_next()
 
 
@@ -404,13 +419,21 @@ def sb_call():
             g.sb_call_argument[d] = g.sb_call_argument[d] + 1
             if g.sb_call_argument[d] > g.sb_call_parameters[d]:
                 sb_error_arguments()
+            g.sy_r = g.sb_call_record[d] + g.sb_call_argument[d]
+            g.sb_field = K_SY_ENUM_TYPE
+            sb_field_get()
+            g.sb_call_enum[d] = g.sb_word
             g.ex_op_base = g.ex_on
             g.ex_cm = 0
+            g.ex_const_record = 0
             uxc_expr.ex_expr()
             g.sy_r = g.sb_call_record[d] + g.sb_call_argument[d]
             uxc_sym.sy_get()
             g.sb_parameter_type = g.sy_type
             g.sb_parameter_address = g.sy_val
+            g.sb_word = g.sb_call_enum[d]
+            if g.sb_word != 0:
+                sb_call_member()
             if g.sb_parameter_type == K_TY_BYTE:
                 uxc_expr.ex_tob()
             if g.sb_parameter_type == K_TY_WORD:
@@ -439,12 +462,33 @@ def sb_call():
     uxc_lex.lx_next()
 
 
+def sb_call_member():
+    """SB.CALL.MEMBER. A constant argument to a parameter of ENUM g.sb_word must be one of
+    its members: g.ex_const_record, the last CONST the expression read, owned by that ENUM
+    and of the value the expression gave. A variable passes unchecked."""
+    g.ex_i = g.ex_vn - 1
+    if g.ex_vk[g.ex_i] != K_EK_CONST:
+        return
+    if g.ex_const_record != 0:
+        g.sy_r = g.ex_const_record
+        uxc_sym.sy_get()
+        if g.sy_owner == g.sb_word and g.sy_val == g.ex_vv[g.ex_i]:
+            return
+    g.sy_r = g.sb_word
+    uxc_sym.sy_at()
+    g.sb_member_enum = ""
+    for g.sb_member_i in range(g.ram[g.sy_ad + 7]):
+        g.sb_member_enum = g.sb_member_enum + chr(g.ram[g.sy_ad + 8 + g.sb_member_i])
+    er_stop("NOT A MEMBER OF " + g.sb_member_enum)
+
+
 def sb_nest():
     """SB.NEST. One level deeper into the arguments of a call or a function. The operator
     stack, the brackets and the condition flag of the expression around are kept."""
     if g.sb_depth >= K_SB_DEPTH:
         er_stop("CALLS NESTED TOO DEEP")
     g.sb_depth = g.sb_depth + 1
+    g.sb_call_enum[g.sb_depth] = 0
     g.sb_saved_operators[g.sb_depth] = g.ex_on
     g.sb_saved_operator_base[g.sb_depth] = g.ex_op_base
     g.sb_saved_parentheses[g.sb_depth] = g.ex_pd

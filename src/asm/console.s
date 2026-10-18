@@ -27,11 +27,12 @@
 .setcpu "65C02"
 
 .include "mem.inc"
+.include "api.inc"
 
 .export con_init, api_con_line, api_con_status, api_con_out, api_con_in, api_con_cursor
-.export api_con_colour
+.export api_con_colour, api_con_break
 .export CHRIN, CHROUT
-.import font, i2c_read_byte, sft_find, bank_restore, api_read
+.import font, i2c_read_byte, sft_find, bank_restore, api_read, exec_break
 .importzp ticks
 
 COLUMNS       = 80
@@ -78,6 +79,7 @@ ansi_state:   .res 1            ; 0, ANSI_ESC after Esc, ANSI_CSI after Esc [
 .segment "KERNELRAM"
 
 con_default:  .res 1            ; the colour Esc[0m sets: the one api_con_colour last set
+con_broke:    .res 1            ; 1 when Ctrl+C came in BREAK_CATCH since api_con_break's last get
 ansi_bold:    .res 1            ; bit 7 set after Esc[1m
 ansi_count:   .res 1            ; the index of the parameter being read
 ansi_params:  .res ANSI_PARAMS  ; the parameters, each modulo 256
@@ -100,6 +102,7 @@ con_init:
         lsr a                   ; 2 to 1 down: 640 by 240
         sta VERA_DC_VSCALE
         stz VERA_DC_BORDER
+        stz con_broke
         lda #$60                ; map 64 rows by 128 columns, 1 bpp tiles
         sta VERA_L1_CONFIG
         lda #SCREEN_MAP >> 9
@@ -535,7 +538,8 @@ con_in:
         rts
 
 ; con_status: returns A nonzero with Z clear when a character waits, or A = 0 with Z set when
-; none waits. The character stays waiting for con_in. Changes X and Y.
+; none waits. The character stays waiting for con_in. Ctrl+C obeys PSP_BREAK: BREAK_END does
+; not return, BREAK_CATCH drops it and sets con_broke. Changes X and Y.
 con_status:
         lda con_key
         ora con_scan
@@ -565,9 +569,41 @@ con_status:
         plp
         jsr kbd_get
 @key:
+        cmp #$03                ; Ctrl+C
+        beq @break
+@store:
         sta con_key
         ora con_scan            ; kbd_get sets con_scan for an extended key
 @done:
+        rts
+@break:
+        ldx PSP_BREAK
+        beq @store              ; BREAK_OFF: a character
+        dex
+        bne @catch
+        jmp exec_break          ; BREAK_END
+@catch:
+        stx con_broke           ; X = 1
+        lda #0                  ; no character
+        rts
+        .assert BREAK_OFF = 0 && BREAK_END = 1 && BREAK_CATCH = 2, error, "con_status counts the modes with dex"
+
+; api_con_break: with carry set returns PSP_BREAK in A and con_broke in X, and clears con_broke.
+; With carry clear sets PSP_BREAK to A, a BREAK_ mode, else returns ERR_BAD_DATA.
+api_con_break:
+        bcc @set
+        lda PSP_BREAK
+        ldx con_broke
+        stz con_broke
+        clc
+        rts
+@set:
+        cmp #BREAK_CATCH + 1
+        bcs @bad
+        sta PSP_BREAK
+        rts                     ; carry clear
+@bad:
+        lda #ERR_BAD_DATA       ; carry set
         rts
 
 ; api_con_cursor: with carry set returns the cursor's row in X and column in Y, and the screen's

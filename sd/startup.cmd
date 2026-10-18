@@ -6,20 +6,19 @@ print "- And it's in ";
 gosub PrintColor 
 print "-"
 print "-------------------------------------------------------------------------"
-print "Target --> Commander X16" 
-print "512k System - Emulator running - Fat32 SD" 
-print "BASICShell v0.1.0, setting path and binds"
+print "Target ---> Commander X16, 512k System - Emulator running"
+print "Disk   ---> Fat32 SD card image" 
 print
-
+print "Loading: BASICShell v0.1.0, setting path and binds"
+print
+print "Checking disk..."
+diskinfo c:
 
 PATH$ = "C:\DOS;C:\"
-print "Checking disk..."
 REM BIND LS FILES
-diskinfo c:
 BIND SET=SETSYS
 SETSYS PROMPT$="$p$g"
 goto out
-
 
 PrintColor:
 color red,black

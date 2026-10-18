@@ -74,6 +74,9 @@ The UXCBASIC library is the folder `lib/`. Each file holds one namespace of the 
   UXDOS16 jump table through `SYS`.
 - `tools/genapi.py` writes the `API_` constants of `DOS.UXI`, one for each call's entry,
   between two marker lines. The rest of the file is written by hand.
+- `DOS.STOP_KEY(mode)` sets the mode of the STOP key, Ctrl+C, with call 47. The modes are the
+  members of `ENUM STOP`: `DOS.STOP.OFF` 0, `DOS.STOP.ENDS` 1, `DOS.STOP.CATCH` 2.
+  `DOS.STOP_PRESSED()` gives 1 when Ctrl+C was pressed in `CATCH`, and clears the flag.
 - A constant or a `BIND` adds no bytes to a program. pyuxc leaves out each `SUB` and `FUNCTION`
   that the program does not call.
 - A program holds at most 64 `BIND`s (`K_ALIASES` in pyuxc). `CONS.UXI` takes 5, `KEYS.UXI` 1

@@ -924,8 +924,9 @@
 - Build after 7c: 0.75 s with the shell compile, the new baseline.
 - Tests after 7c, one at a time: `SHFILES` ok 0.7 s, `SHELL` 0.5, `FILES` 0.4, `DIRS` 0.8,
   `DISK` 0.4.
-- Steps since the last full suite: 0. It ran after library refactor step 8b (generated `ERR_`
-  and `FIND_`), 2026-10-18: 34 tests, 0 failed, 19.5 s, the longest `CMDLETS` 1.6 s.
+- Steps since the last full suite: 5 (break steps B1, B2, B3, B4, B5). It ran after library refactor step 8b
+  (generated `ERR_` and `FIND_`), 2026-10-18: 34 tests, 0 failed, 19.5 s, the longest
+  `CMDLETS` 1.6 s.
 - UXCBASIC: 174 tests, 0 failed, 43 s. `compare.py`: 566 MATCH, 5 RESULT, 31 NO GOLDEN of 602,
   1.7 s. The RESULTs are `STRLR`, `STRNS`, `EXERRCONSTSTR`, and the two below, all expected:
   `EXERRPOS` (`POS(2)`) now compiles, and `EXERRPOSVAR` says `POS NEEDS 0 TO 3`.
@@ -1815,6 +1816,8 @@
      line), `SHSCREEN` (after `LOCATE 29,79` and `LOCATE 5,6` the prompt moves to a new
      line). Tests: `SHELL` ok 0.4 s, `SHVARS` 0.6, `SHRUN` 0.7, `SHSCREEN` 0.6, `SHBOOT`
      0.4. Docs owed: PLAN section 8, the prompt starts in column 0.
+   - Bug, to do (the user, 2026-10-18): `VIEW.COM` must eat the keyboard queue between Up and
+     Down arrow moves.
    - To do: 7i4, renamed `WHERE` (the user, 2026-10-17). It is still put off.
    - To do, commands the user listed (2026-10-17). None is in PLAN section 11 yet; each needs a
      step and a talk with the user first.
@@ -1842,10 +1845,92 @@
    above the parent with no copy. Measured on the shell: 2518 fixups, 2178 bytes to patch (1838
    addresses, 340 high bytes), the runtime templates not counted; a table of 2.2 to 4.4 KB.
    To do, after 7e2, taken from MS-DOS 2.0's `COMMAND` (agreed 2026-10-15):
-   - The break handler (PLAN section 7) and the shell's own: STOP in a script asks to end the
-     script, as `COMMAND`'s "Terminate batch job (Y/N)?" does, in place of ending the shell.
-   - A UXCBASIC statement that turns the STOP key off and on, for a program. It goes in PLAN
-     section 12 and in UXCBASIC's `docs/UXCBASIC.PLAN.md`.
+   - Break, in 3 steps (the user, 2026-10-18): B1 the kernel, B2 the shell, B3 UXCBASIC.
+     The STOP key is Ctrl+C (the user's choice over Ctrl+Break and Esc). The asm was agreed.
+     - Done, B1 (2026-10-18): call 47 `con_break` (MS-DOS 33h). Carry set gets the mode in A
+       and the flag in X and clears the flag; carry clear sets the mode from A, 0 to 2, else
+       error 13. `api.py` `BREAK_MODES`: `BREAK_OFF` 0 (Ctrl+C is $03), `BREAK_END` 1 (prints
+       `^C` CR LF and ends the program with code 0; `exitcode` gives X = 1), `BREAK_CATCH` 2
+       (drops the key, sets the flag). `genapi.py` writes them to `api.inc` and a table in
+       `API.md`.
+       - The mode is `PSP_BREAK` (`$0703`). `tail_copy` sets a child's to `BREAK_END`; the
+         parent's comes back with its PSP. Boot sets 0 for the monitor. The flag is
+         `con_broke` (KERNELRAM), cleared by `con_init`.
+       - `con_status` checks at `@key`, so the key queue and the SMC both count, and so do
+         `con_in`, `con_line` and `GETKEY`. Ctrl+C is seen only while a program asks for a
+         key. `exec_break` (`exec.s`) unwinds to `PSP_STACK` from inside any call;
+         `exit_how` (KERNELRAM) holds X for `exitcode`. `api_exit` and the RTS path go through
+         `exit_normal` and `exec_quit`.
+       - Trap: the store of `PSP_BREAK` in `api_exec` put `bcs @no_memory` out of range; it
+         went into `tail_copy`.
+       - ROM: CODE +84, RODATA +4 (`^C` CR LF), KERNELRAM +2. RODATA ends at `$EC9A`; 4916
+         bytes free below `$FFCF`. Byte saving not applied: `con_broke` in zero page saves 6
+         bytes (no `stz` in `con_init`, 1 byte shorter each use) and takes 1 of the 2 zp
+         bytes left.
+       - New test `BREAK` (`tests/BREAK.UXB`, child `tests/com/BRKKID.UXB`): the start mode 1,
+         set 2, Ctrl+C then A reads 65 with flag 1, a second get flag 0, set 0 reads 3, set 3
+         gives carry and 13, the child ends at `^C` with exit 0 how 1, the parent's mode 0
+         back. `BREAK.IN` holds raw $03 bytes: x16emu `-bas` pastes them. `BREAK` ok 0.4 s.
+       - Build 1508 ms with every program recompiled, then 603 ms for the ROM alone, the new
+         baseline. Tests: `EXEC` ok 0.7 s, `ENDCODE` 0.5, `SHBOOT` 0.5, `SHELL` 0.5, `ASK`
+         0.4, `DUP` 0.4. Golden churn of the 2 new files, rewritten and diffed: `FILES` ok 0.4,
+         `DIRS` 0.9, `DISK` 0.4, `CMDLETS` 1.5.
+       - Docs owed: PLAN section 4 (call 47), section 7 (lines on the break handler: the PSP
+         byte, the modes; `getvect`/`setvect` vector 1 is not used).
+     - Done, B2 (2026-10-18): `CMDSHELL` sets `BREAK_CATCH` at start. `STOPPED` is set by `POLL_BREAK` (`con_status`, then `BREAK_FLAG`,
+       the get) or by `RUN_PROGRAM` when `exitcode` gives X = 1. After each line while
+       `SCRIPT_ACTIVE`, the main loop polls, and `STOPPED` runs `ASK_TERMINATE`: `Terminate
+       CMD job (Y/N)?` until y, Y, n or N (`AND 223`), echoed in capitals; Ctrl+C counts as
+       Y; Y clears `SCRIPT_ACTIVE`. The main loop clears `STOPPED` after each line. At the
+       prompt the flag is read and dropped after `CON_LINE`, so a Ctrl+C in the line does
+       nothing. `PAUSE` and `WAIT` (once a second) poll too and end at Ctrl+C.
+       - Trap: the poll reads only the key at the head of the queue. A Ctrl+C typed ahead is
+         seen after the line before the program that would read it; one behind another key
+         is seen only when a program reads up to it.
+       - `BRKKID` now prints `KEY` and the code of each key until Ctrl+C. `BREAK.OUT` holds.
+       - `CMDSHELL.COM` 18864 to 19163 bytes (+299; `AND 223` saved 11).
+       - New test `SHBREAK` (`SHBREAK.IN` written by Python, raw $03 bytes; scripts
+         `tests/sd/SCRIPTS/BRKRUN.CMD`, `BRKPOLL.CMD`): Ctrl+C in a prompt line, `PAUSE` at
+         the prompt after it, a child ended twice (N, then x and Y), the poll path (n, then
+         Ctrl+C as Y). Not tested: Ctrl+C inside `PAUSE` or `WAIT` in a script, since the
+         poll before them takes a typed-ahead one.
+       - Build 1578 ms, then 1077 ms (shell only). Tests: `SHBREAK` ok 0.5 s, `BREAK` 0.4,
+         `SHELL` 0.5, `SHSCRIPT` 0.8, `SHSCREEN` 0.6, `SHBOOT` 0.5, `SHRUN` 0.7, `DISK` 0.4,
+         `SHFILES` 0.6, `SHGOTO` 0.6, `SHIF` 0.5, `SHREPEAT` 0.6, `SHREDIR` 0.9, `SHVARS` 0.5,
+         `SHBIND` 0.4. Churn, rewritten and diffed: `FILES` ok 0.4, `DIRS` 0.8, `CMDLETS` 1.4.
+       - Docs owed: PLAN section 8 (Ctrl+C in scripts, the question, `PAUSE` and `WAIT`).
+     - Done, B3 (2026-10-18): `lib/DOS.UXI` has `ENUM STOP` (`OFF` 0, `ENDS` 1, `CATCH` 2),
+       `SUB STOP_KEY(MODE)` (sets the mode, then `READ_ERR_STATUS`: a bad mode gives error 13)
+       and `FUNCT STOP_PRESSED()` (the get; returns the flag, leaves `ERROR`). `CMDSHELL` calls
+       `DOS.STOP_KEY(DOS.STOP.CATCH)` and `DOS.STOP_PRESSED()`; its `BREAK_FLAG` is gone.
+       - Trap: `ON` is a reserved name in UXCBASIC (`?RESERVED NAME ON`), so the mode that
+         ends the program is `ENDS`.
+       - `CMDSHELL.COM` 19163 to 19179 bytes (+16: the call of `STOP_KEY` with its parameter
+         and `READ_ERR_STATUS` is longer than the 3 stores and `SYS` inline). Programs that do
+         not call them keep their sizes. PLAN section 2 (`DOS.UXI`) has the names. No compiler work, so
+         nothing goes in `UXCBASIC.PLAN.md` or PLAN section 12.
+       - Build 1624 ms (every program), the new baseline. Tests: `SHBREAK` ok 0.6 s, `BREAK`
+         0.4, `FILES` ok 0.4 (golden rewritten: `CMDSHELL.COM` 19179, diffed), `DIRS` 0.8,
+         `CMDLETS` 1.5, `SHELL` 0.5, `SHSCRIPT` 0.7.
+       - Docs owed for break, a batch: PLAN section 4 (call 47), section 7 (the PSP byte, the
+         modes), section 8 (Ctrl+C in scripts); `UXC-HELP.md` has no topic on the STOP key.
+     - Done, B4 (2026-10-18), in pyuxc: `AS ENUM.name` types a parameter, a FUNCTION result,
+       a variable or a field (the user chose the `ENUM.` prefix). A constant passed to such a
+       parameter must be a member of that ENUM (`NOT A MEMBER OF STOP`). `STOP_KEY` takes
+       `MODE AS ENUM.STOP`. UXCBASIC's `docs/HANDOFF.md` and `UXCBASIC.PLAN.md` have the
+       design; UXC-HELP "ENUM" has the reference.
+       - 0 bytes: `CMDSHELL.COM` stays 19179. Build 1548 ms, the new baseline.
+       - Tests: UXCBASIC `ENUMAS` ok 0.7 s (new), `ERRENUMMEMBER` ok 0.0 (new), `ENUM` 0.5,
+         `ERRENUMOPEN` 0.0, `SUB1` 0.5, `FUNC1` 0.6, `NAMES` 0.5, `ERRSUBTYPE` 0.0, `TYPEDEF`
+         0.5; repo `SHBREAK` 0.5, `BREAK` 0.4.
+     - Done, B5 (2026-10-18), in pyuxc: a bare member in an argument to a parameter of an
+       ENUM's type, `DOS.STOP_KEY(CATCH)`. The member hides a variable of the same name in
+       that argument. UXC-HELP "ENUM" and `UXCBASIC.PLAN.md` have it.
+       - 0 bytes: `CMDSHELL.COM` stays 19179. Build 1615 ms, the new baseline.
+       - Tests: UXCBASIC `ENUMBARE` ok 0.6 s (new), `ENUMAS` 0.5, `ERRENUMMEMBER` 0.0,
+         `ENUM` 0.5, `SUB1` 0.5, `FUNC1` 0.5, `NAMES` 0.5, `TYPEDEF` 0.5, `STRSUB` 0.5,
+         `STRNS` 0.6, `RECSTR` 0.5, `RECORD4` 0.5; repo `SHBREAK` 0.5, `BREAK` 0.4.
+       - Next: the docs batch owed for break (above), then the VIEW.COM key bug.
    - `ERRORLEVEL`: a read-only number variable, the code from `exitcode` (API 27) after each
      child ends.
    - `EXIST(file)` in `IF`: 1 when the file opens.

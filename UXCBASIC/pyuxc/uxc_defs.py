@@ -41,8 +41,10 @@ K_SY_FIXED = 2
 # A symbol flag: the variable is a string temp, and its value is its offset in its owner's
 # pool of temps.
 K_SY_TEMP = 4
-# A symbol flag: the BIND was made by the first pass, and the second pass has not met it.
+# A symbol flag: the BIND or ENUM was made by the first pass, and the second pass has not met it.
 K_SY_SCANNED = 8
+# A symbol flag of an ENUM: a parameter or a FUNCTION result is of its type, so it must stay BYTE.
+K_SY_ENUM_PARAMETER = 4
 # A symbol flag: the variable is a record in the block space, and its value is its offset there.
 K_SY_BLOCK = 16
 # A symbol flag: NM.FIND gave a field of a record variable, not a record of the table.
@@ -54,6 +56,8 @@ K_SY_SIGNED = 64
 K_SY_LIVE = 128
 # The field of a record variable's record that holds its TYPE's record (word).
 K_SY_RECORD_TYPE = 30
+# The field of a parameter's record that holds its ENUM's record (word), 0 for none.
+K_SY_ENUM_TYPE = 30
 
 # The fields of a SUB record the link step uses (UXC-SYM.BL): its level in the call graph
 # (byte), the number of temps it needs (byte), and the bytes of its frame, then the offset

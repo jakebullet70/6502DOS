@@ -271,6 +271,29 @@ This prints 0  1  10  11  16.
   it, END ENUM WITHOUT ENUM, TOO BIG FOR A WORD: name for a count past 65535,
   VALUE NOT A CONSTANT.
 
+AS ENUM.name gives a parameter, a FUNCTION result, a variable or a field the
+type of the ENUM's members.
+
+```
+SUB SHOW(S AS ENUM.STATE)
+  PRINT S
+END SUB
+SHOW(STATE.BLOCKED)
+DIM M AS ENUM.GFX.MODE
+```
+
+- Outside the ENUM's namespace the name is qualified: ENUM.GFX.MODE.
+- A constant passed to such a parameter must be a member of that ENUM, or the
+  compile stops with NOT A MEMBER OF name. A variable passes unchecked. The
+  check is made by the compiler and takes no space in the PRG.
+- In an argument to such a parameter, a name without a dot is first looked for
+  among the ENUM's members: SHOW(BLOCKED) passes STATE.BLOCKED. A member found
+  this way hides a variable of the same name in that argument.
+- A parameter can name an ENUM declared above its SUB, outside a SUB body.
+- Errors: USE AS ENUM.name for an ENUM's name after AS without ENUM., NOT AN
+  ENUM: name, TOO BIG FOR A PARAMETER: name when a member of an ENUM that a
+  parameter or a FUNCTION result uses passes 255.
+
 See [[CONST]], [[Namespaces]], [[Types]].
 
 ## Arrays

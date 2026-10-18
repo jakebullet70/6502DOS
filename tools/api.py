@@ -289,6 +289,24 @@ CALLS = [
          in_=[("carry", "set: get, clear: set"), ("A", "colour, to set")],
          out=[("A", "colour")],
          written=True),
+    call(47, "con_break", 0x33, ("Gets the break mode and the break flag with carry set, sets the "
+          "mode with carry clear. The mode says what Ctrl+C from the console does: 0 nothing, "
+          "it is the character $03; 1 prints ^C and ends the program with exit code 0, and "
+          "`exitcode` then gives X = 1; 2 drops the key and sets the flag. A get clears the flag. `exec` "
+          "starts each program in mode 1. The console sees Ctrl+C only while a program asks "
+          "it for a key."),
+         in_=[("carry", "set: get, clear: set"), ("A", "mode, to set: 0 to 2")],
+         out=[("A", "mode"), ("X", "flag: 1 when Ctrl+C came in mode 2 since the last get, "
+               "else 0")],
+         errors=[13],
+         written=True),
+]
+
+# The break modes of con_break: (number, name). The name becomes BREAK_NAME in asm.
+BREAK_MODES = [
+    (0, "OFF"),
+    (1, "END"),
+    (2, "CATCH"),
 ]
 
 # Errors: (number, name, message). The numbers and messages are MS-DOS 2.0's. 21, 29 and 30

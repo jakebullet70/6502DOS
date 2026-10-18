@@ -736,11 +736,22 @@ To do, not designed yet:
   - Inside the `ENUM` a member is used bare. Outside it is qualified: `STATE.READY`.
   - `ENDENUM` is the same as `END ENUM`.
   - A member is a `CONST` record.
-  - Typed enum parameters and variables (user, 2026-10-11): `SUB FOO(N AS ESTATE)` and
-    `DIM S AS ESTATE`. The value is a `BYTE` or `WORD`, as for the members. A constant passed
-    to it must be a member of that `ENUM`. A member's record owner (+25) names its `ENUM`, and
-    the check reads that owner. A member of another `ENUM` is a compile error. A plain variable
-    passes unchecked. No check runs in the program, so it costs no bytes.
+  - Typed enum parameters and variables (user, 2026-10-11; `ENUM.` prefix the user,
+    2026-10-18; done 2026-10-18: `nm_type_enum`, `nm_enum_scan` and `sb_call_member` in pyuxc,
+    tests ENUMAS and ERRENUMMEMBER): `SUB FOO(N AS ENUM.STATE)` and `DIM S AS ENUM.STATE`.
+    Outside the ENUM's namespace the name is qualified: `AS ENUM.GFX.MODE`. The value is a
+    `BYTE` or `WORD`, as for the members. A constant passed to it must be a member of that
+    `ENUM`. A member's record owner (+25) names its `ENUM`, and the check reads that owner. A
+    member of another `ENUM` is a compile error. A plain variable passes unchecked. No check
+    runs in the program, so it costs no bytes.
+    - The first pass makes the record of each `ENUM` outside a SUB body (`K_SY_SCANNED`), so
+      that a SUB header can name it. Its members are made in the second pass.
+    - The first pass gives such a parameter a `BYTE`. An `ENUM` that a parameter or a
+      FUNCTION result uses stops the compile with `TOO BIG FOR A PARAMETER` when a member
+      passes 255.
+    - A bare member in an argument (done 2026-10-18: `ex_enum_member`, `g.sb_call_enum`,
+      test ENUMBARE): `SHOW(BLOCKED)`. A name without a dot is first looked for among the
+      members of the parameter's `ENUM`; `sb_nest` clears the entry of each new depth.
   - Bare members in an argument (user, 2026-10-11). When an argument expects an `ENUM`, a bare
     name is looked for in that `ENUM` first, then as usual. The compiler gives its built-ins
     their own `ENUM`s the same way: `POS(POS.COL)`, `POS(COL)` and `POS(0)` all work.

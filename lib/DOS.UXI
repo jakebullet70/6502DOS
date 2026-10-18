@@ -30,6 +30,7 @@ NAMESPACE DOS
   CONST API_ERRMSG AS UWORD = $03B5, API_CON_OUT AS UWORD = $03B8, API_CON_IN AS UWORD = $03BB
   CONST API_CON_CURSOR AS UWORD = $03BE, API_STR_FREE AS UWORD = $03C1, API_STR_GC AS UWORD = $03C4
   CONST API_STR_HEAP AS UWORD = $03C7, API_CON_COLOUR AS UWORD = $03CA
+  CONST API_CON_BREAK AS UWORD = $03CD
   CONST ERR_BAD_FUNCTION AS UBYTE = 1, ERR_NOT_FOUND AS UBYTE = 2, ERR_NO_PATH AS UBYTE = 3
   CONST ERR_TOO_MANY AS UBYTE = 4, ERR_ACCESS AS UBYTE = 5, ERR_BAD_HANDLE AS UBYTE = 6
   CONST ERR_NO_MEMORY AS UBYTE = 8, ERR_BAD_BLOCK AS UBYTE = 9, ERR_BAD_FORMAT AS UBYTE = 11
@@ -56,6 +57,13 @@ NAMESPACE DOS
   CONST ORANGE AS UBYTE = 8, BROWN AS UBYTE = 9, LIGHTRED AS UBYTE = 10, DARKGRAY AS UBYTE = 11
   CONST GRAY AS UBYTE = 12, LIGHTGREEN AS UBYTE = 13, LIGHTBLUE AS UBYTE = 14
   CONST LIGHTGRAY AS UBYTE = 15
+
+  ' The modes of the STOP key, Ctrl+C, for STOP_KEY. A program starts in STOP.ENDS.
+  ' OFF: Ctrl+C is the key $03. ENDS: Ctrl+C prints ^C and ends the program, and the parent's
+  ' API_EXITCODE gives X = 1. CATCH: Ctrl+C is dropped, and STOP_PRESSED gives 1.
+  ENUM STOP
+    OFF, ENDS, CATCH
+  END ENUM
 
   DIM ERROR AS UBYTE
   ' FINDFIRST and FINDNEXT fill these. The size is 32-bit, in two words.
@@ -322,6 +330,23 @@ NAMESPACE DOS
     REG_P = 1
     SYS API_CON_COLOUR
     RETURN REG_A
+  END FUNCT
+
+  ' Sets the mode of the STOP key to a member of STOP. Another value gives error 13.
+  SUB STOP_KEY(MODE AS ENUM.STOP)
+    REG_A = MODE
+    REG_P = 0
+    SYS API_CON_BREAK
+    READ_ERR_STATUS()
+  END SUB
+
+  ' 1 when Ctrl+C was pressed in STOP.CATCH since the last call, else 0. It clears the flag.
+  ' Ctrl+C is seen only while a program reads a key or API_CON_STATUS looks at one. It leaves
+  ' ERROR as it is.
+  FUNCT STOP_PRESSED() AS UBYTE
+    REG_P = 1
+    SYS API_CON_BREAK
+    RETURN REG_X
   END FUNCT
 
   ' The message of error NUMBER. An unknown number gives "" and error 1.

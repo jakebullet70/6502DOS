@@ -9,8 +9,8 @@
 .include "mem.inc"
 .include "api.inc"
 
-.export api_exec, api_exit, api_exitcode
-.import file_find, file_copy, handles_inherit, handles_close, heap_exec, heap_exit
+.export api_exec, api_exit, api_exitcode, exec_break
+.import file_find, file_copy, handles_inherit, handles_close, heap_exec, heap_exit, CHROUT
 .importzp file_size
 .exportzp exec_depth
 
@@ -29,6 +29,7 @@ exec_entry:   .res 2            ; the load address, then the program's start
 .segment "KERNELRAM"
 
 exec_result:  .res 1            ; exec_unwind: A to return
+exit_how:     .res 1            ; how the last program ended: 0 exit, 1 break
 
 .segment "CODE"
 
@@ -92,7 +93,7 @@ api_exec:
         stx PSP_STACK
         jsr @start
         lda #0                  ; RTS from the program: exit code 0
-        bra exec_end
+        bra exit_normal
 @start:
         jmp (exec_entry)
 @bad_format:
@@ -113,17 +114,34 @@ exec_fail:                      ; A = the error; the child has not run
 
 api_exit:
         ldx exec_depth
-        bne @running
+        bne exit_normal
         lda #ERR_BAD_FUNCTION   ; no program to end
         sec
         rts
-@running:
-        ldx PSP_STACK
-        txs
+
+; exec_break: prints ^C and ends the running program with code 0, by break. con_status jumps
+; here for Ctrl+C in BREAK_END, from inside any call; exec sets that mode only for a child.
+exec_break:
+        ldx #0
+@echo:
+        lda break_text,x
+        jsr CHROUT              ; keeps X
+        inx
+        cpx #BREAK_TEXT_SIZE
+        bne @echo
+        lda #0
+        ldx #1                  ; ended by break
+        bra exec_quit
+
+exit_normal:
+        ldx #0                  ; ended by exit
         ; fall through
 
-; exec_end: the program ended with code A. S is PSP_STACK.
-exec_end:
+; exec_quit: the program ended with code A, in the way X. Unwinds the stack to PSP_STACK.
+exec_quit:
+        stx exit_how
+        ldx PSP_STACK
+        txs
         sta exit_code
         cld
         clc
@@ -147,15 +165,26 @@ exec_unwind:
 
 api_exitcode:
         lda exit_code
-        ldx #0                  ; ended by exit
+        ldx exit_how
         clc
         rts
 
-; tail_copy: sets PSP_TOP to the whole program area, copies the command tail at r1 to
-; COMMAND_TAIL, cut to TAIL_MAX characters, and puts CR after it. Changes A and Y.
+.segment "RODATA"
+
+break_text:
+        .byte "^C", $0D, $0A
+BREAK_TEXT_SIZE = * - break_text
+
+.segment "CODE"
+
+; tail_copy: sets PSP_TOP to the whole program area and PSP_BREAK to BREAK_END, copies the
+; command tail at r1 to COMMAND_TAIL, cut to TAIL_MAX characters, and puts CR after it. Changes A
+; and Y.
 tail_copy:
         lda #>PROGRAM_END
         sta PSP_TOP
+        lda #BREAK_END
+        sta PSP_BREAK
         lda (r1)
         cmp #TAIL_MAX + 1
         bcc @length

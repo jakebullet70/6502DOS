@@ -1,0 +1,37 @@
+' BREAK: con_break's modes and flag, and a child that Ctrl+C ends. BREAK.IN types the keys:
+' Ctrl+C and A for BREAK_CATCH, Ctrl+C for BREAK_OFF, Ctrl+C for the child.
+#INCLUDE "DOS.UXI"
+
+' Prints con_break's mode and flag. The get clears the flag.
+SUB SHOW_BREAK(LABEL AS STRING)
+  DOS.REG_P = 1
+  SYS DOS.API_CON_BREAK
+  PRINT LABEL; " MODE"; DOS.REG_A; " FLAG"; DOS.REG_X
+END SUB
+
+' Sets the mode, and prints the carry and A.
+SUB SET_BREAK(MODE AS UBYTE)
+  DOS.REG_A = MODE
+  DOS.REG_P = 0
+  SYS DOS.API_CON_BREAK
+  PRINT "SET"; MODE; " C"; DOS.REG_P AND 1; " A"; DOS.REG_A
+END SUB
+
+FUNCT WAIT_KEY() AS UBYTE
+  SYS DOS.API_CON_IN
+  RETURN DOS.REG_A
+END FUNCT
+
+SHOW_BREAK("START")
+SET_BREAK(2)
+PRINT "KEY"; WAIT_KEY()
+SHOW_BREAK("CATCH")
+SHOW_BREAK("AGAIN")
+SET_BREAK(0)
+PRINT "KEY"; WAIT_KEY()
+SET_BREAK(3)
+DOS.EXEC("\BRKKID.COM", "")
+PRINT "EXEC E"; DOS.ERROR
+SYS DOS.API_EXITCODE
+PRINT "EXIT"; DOS.REG_A; " HOW"; DOS.REG_X
+SHOW_BREAK("AFTER")

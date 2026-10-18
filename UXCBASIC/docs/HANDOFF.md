@@ -52,6 +52,8 @@ The stock ROM is not supported. pyuxc compiles for UXDOS16 and has no target opt
   `StartsWith`, `EndsWith`, upper and lower case in place, a `SYS2`, a `conv.UXI` with
   `CBYTE` and `CWORD`, a `TEXT_GUI` namespace and timers. `SYS2` and `TEXT_GUI` are not in
   the plan.
+- Typed ENUM parameters, done 2026-10-18: `AS ENUM.name`, the member check, and a bare
+  member in an argument (`DOS.STOP_KEY(CATCH)`). Plan section 5 `ENUM`, UXC-HELP "ENUM".
 - Record step 6, record parameters (`SUB SHOW(P AS ITEM)`): plan section 5 "Record types".
   TYPEs are declared in the second pass, and the first pass reads the SUB headers, so a record
   parameter needs its TYPE declared in the first pass.
