@@ -43,12 +43,11 @@ A test takes up to 1.1 s; past 5 s is a failure to investigate at once.
 
 | File | Lines |
 |---|---|
-| `docs/UXCBASIC.PLAN.md` | 1,563 |
-| `help/UXC-HELP.md` | 1,244 |
+| `docs/UXCBASIC.PLAN.md` | 1,559 |
+| `help/UXC-HELP.md` | 1,254 |
 | `pyuxc/uxc_str.py` | 1,141 |
 | `pyuxc/uxc_expr.py` | 1,053 |
-| `docs/HANDOFF.md` | 696 |
-| `docs/HISTORY.md` | 686 |
+| `docs/HISTORY.md` | 1,383 |
 
 Find the place first, then read only around it.
 

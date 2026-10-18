@@ -22,16 +22,12 @@
     ROM, `TEST.ROM` and every COM and CBI are byte-identical to the build before the move.
     UXCBASIC suite, run on the user's word: 175 tests, 0 failed, 45.7 s, the longest
     `ONCASE` 0.8 s.
-  - Docs batch: `UXCBASIC/docs/HANDOFF.md`, `UXCBASIC.PLAN.md` and `pyuxc/README.md` still
-    describe the old folder's layout (`build.py`, `disk/`, `compare.py`, `examples/`).
-    `UXCBASIC/docs/HANDOFF.md` lines 19 and 535 hold the absolute path `C:\dev\CmdrX16\UXDOS16`.
   - Open before `git init`: `dump.bin` (565 KB) in the root is not in `.gitignore`; the user
     has not said whether to ignore or delete it. `tools/64tass` ships a GPL-2 exe, so a public
     repo must name where its source is.
   - Every script finds its paths from its own location, so renaming the base folder breaks no
     build or test. The `.LST` files hold absolute paths; they are ignored and rebuilt.
-- pyuxc leaves out unused global variables (UXCBASIC HANDOFF, S3). Trap: `uxb.py` does not
-  count the compiler as an input, so a pyuxc change recompiles nothing until a source changes.
+- pyuxc leaves out unused global variables (UXCBASIC HANDOFF, S3).
 - `EXIST.UXB` (2026-10-16): the user's header tweak, and comments on how the shell calls it, where
   the arguments and the result go, and that the shell does not read the `END` exit code.
   `EXIST.CBI` 1578 bytes. Build 711 ms (`EXIST` 0.1 s, the ROM 0.57 s), the new baseline.
@@ -929,7 +925,7 @@
 - Build after 7c: 0.75 s with the shell compile, the new baseline.
 - Tests after 7c, one at a time: `SHFILES` ok 0.7 s, `SHELL` 0.5, `FILES` 0.4, `DIRS` 0.8,
   `DISK` 0.4.
-- Steps since the last full suite: 4. It ran after library refactor step 5 (`STR.UXI`),
+- Steps since the last full suite: 5. It ran after library refactor step 5 (`STR.UXI`),
   2026-10-17: 34 tests, 0 failed, 18.3 s, the longest `CMDLETS` 1.4 s.
 - UXCBASIC: 174 tests, 0 failed, 43 s. `compare.py`: 566 MATCH, 5 RESULT, 31 NO GOLDEN of 602,
   1.7 s. The RESULTs are `STRLR`, `STRNS`, `EXERRCONSTSTR`, and the two below, all expected:
@@ -1779,6 +1775,23 @@
         but `DOS.UXI` has shorter names, and pyuxc takes at most 16 characters a name part.
         `ERR_WRITE_FAULT` (29) is missing from `DOS.UXI`. Its `FIND_ATTRIBUTES` is `ATTR` in
         `api.py`.
+     9. Docs batch (2026-10-17), no code, no build:
+        - `tools/api.py`, so `docs/API.md`: `con_cursor` gives the screen's rows in r0L and
+          columns in r0H on a get. `genapi.py` 0.21 s; `DOS.UXI` unchanged.
+        - UXC-HELP topic POS: POS(2), POS(3), both errors. `MKHELP.PY` 0.20 s, 36 topics.
+        - PLAN section 2: a table of `lib/` (five files, their namespaces), the generated
+          `API_` block, dead-code stripping, the 64-BIND limit. Section 4: `con_cursor`.
+          Section 10: the `lib/` row, the include search, pyuxc as a rebuild input. 6a: `lib/`.
+        - UXCBASIC, by the doc-style agent: `docs/HANDOFF.md` rewritten to the current state,
+          103 lines; the old 694 lines appended to `docs/HISTORY.md`. `UXCBASIC.PLAN.md`: the
+          old layout lines (`examples/`, `disk/`, `DISK_FILEIO.UXI`, `BANK.UXI`, `CONSOLE.UXI`,
+          `compare.py`). `pyuxc/README.md` rewritten as a reference, 155 lines. `CLAUDE.md`'s
+          line counts.
+        - Stale, not yet fixed, for the next docs batch: UXC-HELP's "Compiling from UXCEDIT"
+          topic and line 7 (the GPC UXC), "Including files" (pyuxc searches the source's
+          folder, then each `-I` folder), "Files" (drive 8, KERNAL CHRIN, READST, CHROUT), the
+          GETKEY topic's "PETSCII code". `UXCBASIC.PLAN.md` section 3 names the GPC layout
+          (`src/UXC.BASL`, `uxc.py`, `RUNTESTS.BAT`, `run.py`).
      - Names follow ECMA-48 (CUU, CUD, CUF, CUB, CUP, ED, EL, SGR).
      - The user, 2026-10-17: the ANSI string CONSTs go in `NAMESPACE CONS`, as the key codes are
        in `NAMESPACE KEYS` (`lib/KEYS.UXI`). VIEW then writes `CONS.SGR_REVERSE$`.

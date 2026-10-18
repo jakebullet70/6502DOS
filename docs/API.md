@@ -60,7 +60,7 @@ Conventions:
 | `errmsg` | 39 | `$03B5` | none | `A` error number | `r0` message, length-prefixed | 1 | yes |
 | `con_out` | 40 | `$03B8` | 02h | `A` character | none | none | yes |
 | `con_in` | 41 | `$03BB` | 08h | none | `A` character | none | yes |
-| `con_cursor` | 42 | `$03BE` | none | `carry` set: get, clear: set<br>`X` row, to set<br>`Y` column, to set | `X` row<br>`Y` column | none | yes |
+| `con_cursor` | 42 | `$03BE` | none | `carry` set: get, clear: set<br>`X` row, to set<br>`Y` column, to set | `X` row<br>`Y` column<br>`r0L` the screen's rows, on a get<br>`r0H` the screen's columns, on a get | none | yes |
 | `str_free` | 43 | `$03C1` | none | `r0` descriptor address | none | 9 | yes |
 | `str_gc` | 44 | `$03C4` | none | none | `r0` free bytes | none | yes |
 | `str_heap` | 45 | `$03C7` | none | `A` bank, 21 or higher<br>`r0` the first block, $A00C or higher; not for bank 21 | none | 9 | yes |

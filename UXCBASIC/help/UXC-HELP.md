@@ -683,11 +683,21 @@ The value is the key's PETSCII code: 13 is RETURN.
 
 ## POS
 
-POS(0) gives the cursor column as a UBYTE, as in Commodore BASIC. POS(1) gives
-the cursor row as a UBYTE. Both count from 0. POS(0) = v moves the cursor to
-column v and keeps the row. POS(1) = v moves it to row v and keeps the column.
-v is any expression and is used as a UBYTE. The number in the brackets must be
-written as 0 or 1; anything else is the compile error "POS NEEDS 0 OR 1".
+POS(n) gives a UBYTE:
+
+- POS(0): the cursor column, from 0.
+- POS(1): the cursor row, from 0.
+- POS(2): the screen's rows, 30.
+- POS(3): the screen's columns, 80.
+
+POS(2) and POS(3) ask the DOS each time; no copy is stored.
+
+POS(0) = v moves the cursor to column v and keeps the row. POS(1) = v moves it
+to row v and keeps the column. v is any expression and is used as a UBYTE.
+
+The number in the brackets must be a number, not a variable or an expression.
+A read of anything but 0 to 3 is the compile error "POS NEEDS 0 TO 3". An assignment to anything but
+POS(0) or POS(1) is the compile error "POS NEEDS 0 OR 1".
 
 ```
 DIM C AS UBYTE

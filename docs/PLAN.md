@@ -59,24 +59,25 @@ The layers follow MS-DOS's split into `IO.SYS`, `MSDOS.SYS` and `COMMAND.COM`.
 
 ### `DOS.UXI`
 
-`DOS.UXI` has one `SUB` or `FUNCTION` for each API call in section 4. Every UXCBASIC program in
-UXDOS16 calls the API through it. It is `src/bas/DOS.UXI`, and each call goes to the UXDOS16
-jump table through `SYS`.
+The UXCBASIC library is the folder `lib/`. Each file holds one namespace of the same name. A
+`BIND` renames a built-in into its namespace.
 
-`src/bas/HEAP.UXI` holds the string heap calls, in the same namespace `DOS`. A program that uses
-a string heap includes it after `DOS.UXI`.
+| File | Namespace | Holds |
+|---|---|---|
+| `lib/DOS.UXI` | `DOS` | one `SUB` or `FUNCTION` for each API call in section 4; the whole-file routines `EXISTS`, `SIZE` and `COPY` |
+| `lib/HEAP.UXI` | `HEAP` | the string heap calls and the system descriptors; include it after `DOS.UXI` |
+| `lib/KEYS.UXI` | `KEYS` | the characters and scan codes the console gives for keys, the modifier bits of `con_status`, and a `BIND` of `GETKEY`: `KEYS.SCAN_UP`, `KEYS.MOD_CTRL` |
+| `lib/CONS.UXI` | `CONS` | the escape sequences the console obeys, as string constants with ECMA-48's names (`CONS.CSI$`, `CONS.SGR_REVERSE$`); `BIND`s of `PRINT`, `INPUT`, `LINPUT`, `POS`, and `NEWLINE` for `PRINT`; `LOCATE`, `PRINT_AT`, `PRINT_BOOL`, `SCREEN_ROWS`, `SCREEN_COLS` |
+| `lib/STR.UXI` | `STR` | a `BIND` of each string built-in; `INSTR_REV` |
 
-Two includes hold constants only, so they add no bytes to a program. A program includes them
-with or without `DOS.UXI`.
-
-- `src/bas/KEYS.UXI`, namespace `KEY`, names the characters and scan codes the console gives
-  for keys, and the modifier bits of `con_status`: `KEY.SCAN_UP`, `KEY.MOD_CTRL`.
-- `src/bas/CONS.UXI`, namespace `CONS`, names the escape sequences the console obeys, as string
-  constants with ECMA-48's names: `CONS.CSI$`, `CONS.EL$`, `CONS.SGR_REVERSE$`,
-  `CONS.SGR_FG_RED$`.
-
-Trap: pyuxc links every `SUB` of an include, used or not. A call added to `DOS.UXI` grows every
-program.
+- Every UXCBASIC program in UXDOS16 calls the API through `DOS.UXI`. Each call goes to the
+  UXDOS16 jump table through `SYS`.
+- `tools/genapi.py` writes the `API_` constants of `DOS.UXI`, one for each call's entry,
+  between two marker lines. The rest of the file is written by hand.
+- A constant or a `BIND` adds no bytes to a program. pyuxc leaves out each `SUB` and `FUNCTION`
+  that the program does not call.
+- A program holds at most 64 `BIND`s (`K_ALIASES` in pyuxc). `CONS.UXI` takes 5, `KEYS.UXI` 1
+  and `STR.UXI` 11.
 
 ## 3. Memory map
 
@@ -208,7 +209,7 @@ only; numbers stay at fixed addresses in the program.
   `exec` set it to VARBANK.
 - VARBANK's system descriptors 0 to 8 are the slots `P1$` to `P9$`, 9 is `PATH$`, 10 is
   `PROMPT$`, 11 is `EDITOR$`, and 12 holds the shell's `BIND` aliases (section 8). Their
-  addresses are constants in `src/bas/HEAP.UXI`: descriptor n is at `$A00C + 2n`.
+  addresses are constants in `lib/HEAP.UXI`: descriptor n is at `$A00C + 2n`.
 - `HEAP.UXI`'s `SYS_STRINGS_GET(slot)` reads system descriptor `slot`, 0 to 31, and
   `SYS_STRINGS_SET(slot, text)` sets it. Each sets `PSP_HEAP` to VARBANK for the call and
   restores it.
@@ -257,7 +258,7 @@ Calls, with the MS-DOS 2.0 function each matches:
 | `con_line` | 0Ah | reads a line from the console with editing |
 | `con_status` | 0Bh | whether a key is waiting |
 | `con_out`, `con_in` | 02h, 08h | write a character; wait for a key, with no echo |
-| `con_cursor` | none; BIOS 10h, 02h and 03h | get or set the cursor's row and column |
+| `con_cursor` | none; BIOS 10h, 02h and 03h | get or set the cursor's row and column; a get also gives the screen's rows and columns |
 | `con_colour` | none | get or set the console colour (section 6) |
 | `exec` | 4Bh | runs a program |
 | `exit`, `exitcode` | 4Ch, 4Dh | ends a program with a code; gives the last child's code |
@@ -851,7 +852,8 @@ Folders:
 | Folder | Holds |
 |---|---|
 | `src/asm/` | layer 0 and the asm parts of layer 1 |
-| `src/bas/` | the UXCBASIC sources, `DOS.UXI`, `HEAP.UXI`, `KEYS.UXI` and `CONS.UXI` |
+| `src/bas/` | the UXCBASIC programs |
+| `lib/` | the UXCBASIC library: `DOS.UXI`, `HEAP.UXI`, `KEYS.UXI`, `CONS.UXI` and `STR.UXI` |
 | `src/cbin/` | the commandlets and `CBIN.UXI` |
 | `src/dos/` | the DOS utilities and their text files |
 | `tools/` | `api.py`, the generator, `build.py`, `tests.py` |
@@ -866,7 +868,8 @@ Folders:
   0.1 s.
 - `uxb.py` compiles with pyuxc for its default target, UXDOS16. A source compiles again when its
   COM file is older than the source, than `UXCBASIC/tpl/UXDOS/UXC.TPL.BIN`, or than a
-  file of `src/bas` that the source includes.
+  file the source includes, or than a file of pyuxc. `#INCLUDE` looks in the source's folder,
+  then `lib/`.
 - `tools/mksd.py` writes an SD card image from a folder: an MBR, one partition of type `$0C` at
   sector 2048, and FAT32 with the files' 8.3 names. `build.py` makes `build/SD.IMG` from the
   folder `sd`, 4 MB with 1 sector per cluster: 6016 clusters, 3008 KB.
@@ -921,7 +924,7 @@ Each step boots and shows something, and each has a test.
    `READST`, `LKUPLA`, and logical file 15. A UXCBASIC program reads a file.
 6. CBM DOS leaves. A program works with handles only: no device numbers, logical files,
    secondary addresses, command channel, status lines, `@0:NAME,S,W` names or `$` listings.
-   6a. `src/bas/DOS.UXI`: each call goes to the jump table at `$0340` through `SYS`, with
+   6a. `lib/DOS.UXI`: each call goes to the jump table at `$0340` through `SYS`, with
        its arguments in A, X, Y and `r0–r15`. Calls not written give error 1. `DOSAPI` runs on
        UXDOS16 against `tests/sd`.
    6b. The kernel's file calls, each with a test: the current directory of each drive with `.`

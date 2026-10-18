@@ -441,7 +441,7 @@ result. With `--run` it then runs the PRG, and prints what the PRG printed.
 
 **Help.** `UXC.HELP.PRG` is the on-machine reference. It is GPC.HELP from the GPC repo with
 the GP.BASIC content taken out: `src/UXC.HELP.BASL` is the viewer. `help/MKHELP.PY` builds
-`HELP-TXT/` from `help/UXC-HELP.md`, and each program in `examples/` gets an index row. A
+`HELP-TXT/` from `help/UXC-HELP.md`, and each program in `samples/` gets an index row. A
 topic is written when its command is built.
 
 ## 4. Order of work
@@ -532,15 +532,11 @@ Each step ends with a build, a run and a check.
       `UINT`, `WORD` or `INT`, `LONG`, `ULONG`, and `STRING`.
 5. **UXCEDIT compile relay** for UXCBASIC (decided by the user, 2026-10-10). Done on
    2026-10-10, in four parts:
-   1. 5a: the user disk (done 2026-10-10: `publish` in build.py, `run.py --disk`). The folder
-      `disk/` holds what a real user sees. After the builds, `build.py` copies each program
-      built there, its PRG and its OVL, with the files it reads at run time: `UXC.TPL.BIN`
-      for UXC, `UXCEDIT.KEYS.BIN` for UXCEDIT, `HELP-TXT/` and `EXAMPLES/` for UXC.HELP.
-      `GPC.RT.133.BIN`, `GPB.RT.133.BIN` and `GP1.RT.133.BIN` go to `disk/GPC/`. A `.UXB`
-      sample in `examples/` or `samples/` is copied only when `disk/` has no file of that
-      name. A build deletes nothing in `disk/`. `RUNEDIT.BAT`, `RUNUXC.BAT` and
-      `RUNHELP.BAT` run from `disk/` with `run.py NAME --disk --window`. Builds and tests
-      still use `build/`. The headless log of `run.py --disk` is `build/RUN.LOG`.
+   1. 5a: the user disk (done 2026-10-10). It is part of the GPC build, in `attic/gpc`.
+      `publish` in `attic/gpc/build.py` copies the PRG and OVL of each program it builds,
+      with the files it reads at run time, to `attic/gpc/disk/`. `RUNEDIT.BAT`,
+      `RUNUXC.BAT` and `RUNHELP.BAT` in `attic/gpc` run from `disk/` with
+      `run.py NAME --disk --window`. Nothing uses the attic.
    2. 5b: UXC chains (done 2026-10-10: UI.CHAIN in src/UXC.BASL; test CHAIN, with
       `tests/CHAIN.NEXT`). `UXC.INPUT` gains an optional line 3: the program to load next.
       UXC loads it after it writes the result line, on `OK` and on `ERROR`. With no line 3
@@ -1325,8 +1321,8 @@ To do, not designed yet:
     first, on the command channel. The secondary address of a handle is the handle.
   - R_FIN holds the next byte of each handle in `ahead`. A seek empties it.
   - A position is 32 bits under FAT32. It takes a `ULONG`.
-  - Still to decide: a built-in or a `SUB` in `lib/DISK_FILEIO.UXI`, and how a seek past the
-    end reports.
+  - Still to decide: a built-in or a `SUB` in `lib/DOS.UXI` of the repo root, and how a seek
+    past the end reports. `lib/DOS.UXI` has `DOS.SEEK`, which calls `API_SEEK`.
 - **A RAM bank manager** (user, 2026-10-11). A compiled program asks for banked RAM instead
   of picking bank numbers, so its own code and its libraries never take the same bank.
 
@@ -1351,8 +1347,8 @@ To do, not designed yet:
   - It serves "Banked code that calls banked code" and "Passing variables between
     programs": each claims its banks through it. `FRE` can report its free count.
   - Built in, with the names in an include file (user, 2026-10-11). Asm is approved for it.
-    The compiler knows each routine under a raw name, and `lib/BANK.UXI` gives the program its
-    names, as `lib/CONSOLE.UXI` does for `PRINT`:
+    The compiler knows each routine under a raw name, and `lib/BANK.UXI` in the repo root
+    gives the program its names, as `lib/CONS.UXI` does for `PRINT`:
 
     ```
     NAMESPACE BANK
@@ -1463,9 +1459,9 @@ To do, not designed yet:
 - **A UXDOS16 target** (user, 2026-10-13; for UXDOS16). Done in pyuxc. The compiler emits a
   program that calls the UXDOS16 API through its jump table at `$0340` in place of the KERNAL.
   - The stock ROM is not supported (user, 2026-10-15). pyuxc compiles for UXDOS16 and has no
-    target option. `compile_file`'s `target` argument is `"stock"` in `compare.py` only, which
-    matches pyuxc to the GPC UXC's output until the port ends. The stock table and the stock
-    templates go then.
+    target option. `compile_file`'s `target` argument is `"stock"` only in
+    `attic/gpc/pyuxc/compare.py`, which matches pyuxc to the GPC UXC's output until the port
+    ends. The stock table and the stock templates go then.
   - `tests.py` runs each test on the UXDOS16 ROM: `TEST.COM` on a new SD card image, `RUN
     TEST.COM` typed at the monitor. The line editor echoes the keys of `NAME.IN`. Output to a
     file is not in the output.

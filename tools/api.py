@@ -266,7 +266,8 @@ CALLS = [
     call(42, "con_cursor", None, ("Gets the cursor's row and column with carry set, moves the cursor "
           "with carry clear. The screen has 30 rows and 80 columns."),
          in_=[("carry", "set: get, clear: set"), ("X", "row, to set"), ("Y", "column, to set")],
-         out=[("X", "row"), ("Y", "column")],
+         out=[("X", "row"), ("Y", "column"), ("r0L", "the screen's rows, on a get"),
+              ("r0H", "the screen's columns, on a get")],
          written=True),
     call(43, "str_free", None, ("Frees the string of the descriptor at r0 and sets the "
           "descriptor to 0. A descriptor of 0 does nothing."),
