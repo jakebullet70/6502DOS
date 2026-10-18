@@ -1,18 +1,25 @@
 ' KEYS.UXI: the codes the UXDOS16 console gives for keys, and the modifier bits.
 '
-' A key gives one character, or two: 0, then the IBM PC BIOS scan code of an extended key.
-' The SCAN_ names are those second characters. GETKEY() gives 0 for an extended key, and the
-' next GETKEY() gives its scan code.
+' GETEXTKEY() and WAITKEY() give a key as one UWORD: a plain key gives its character, 1 to 255,
+' and an extended key gives its IBM PC BIOS scan code * 256. GETEXTKEY() gives 0 when no key
+' waits. A key over 255 is extended. The KEY_ names are those UWORDs. KEYMODS() gives the
+' modifier bits of the last GETEXTKEY() or WAITKEY().
 '
-' It holds constants and a BIND only, so it adds no bytes to a program. Include it in any file, with or
+' GETKEY() gives one character a call: 0 for an extended key, then its scan code at the next
+' GETKEY(). The SCAN_ names are those scan codes.
+'
+' It holds constants and BINDs only, so it adds no bytes to a program. Include it in any file, with or
 ' without DOS.UXI.
 '
 ' Checklist: the codes come from kbd_get and its tables in src/asm/console.s. Change both
 ' together.
 
 NAMESPACE KEYS
-  ' GETKEY under KEYS.
+  ' The key functions under KEYS.
   BIND GETKEY GETKEY
+  BIND GETEXTKEY GETEXTKEY
+  BIND WAITKEY WAITKEY
+  BIND KEYMODS KEYMODS
 
   ' One-character keys. Ctrl+A to Ctrl+Z give 1 to 26, Ctrl+[ 27, Ctrl+\ 28, Ctrl+] 29,
   ' Ctrl+6 30, Ctrl+- 31.
@@ -21,7 +28,7 @@ NAMESPACE KEYS
   CONST SPACE AS UBYTE = 32
   CONST CTRL_A AS UBYTE = 1, CTRL_6 AS UBYTE = 30, CTRL_MINUS AS UBYTE = 31
 
-  ' The modifier bits that API_CON_STATUS returns in X.
+  ' The modifier bits that KEYMODS() gives and API_CON_STATUS returns in X.
   CONST MOD_SHIFT AS UBYTE = $01, MOD_CAPS AS UBYTE = $04, MOD_ALT AS UBYTE = $40
   CONST MOD_CTRL AS UBYTE = $80
 
@@ -62,4 +69,35 @@ NAMESPACE KEYS
   CONST SCAN_ALT_Z AS UBYTE = $2C, SCAN_ALT_X AS UBYTE = $2D, SCAN_ALT_C AS UBYTE = $2E
   CONST SCAN_ALT_V AS UBYTE = $2F, SCAN_ALT_B AS UBYTE = $30, SCAN_ALT_N AS UBYTE = $31
   CONST SCAN_ALT_M AS UBYTE = $32
+
+  ' The keys as GETEXTKEY() and WAITKEY() give them: KEY_name is SCAN_name * 256.
+  CONST KEY_HOME AS UWORD = SCAN_HOME * 256, KEY_UP AS UWORD = SCAN_UP * 256
+  CONST KEY_PGUP AS UWORD = SCAN_PGUP * 256, KEY_LEFT AS UWORD = SCAN_LEFT * 256
+  CONST KEY_RIGHT AS UWORD = SCAN_RIGHT * 256, KEY_END AS UWORD = SCAN_END * 256
+  CONST KEY_DOWN AS UWORD = SCAN_DOWN * 256, KEY_PGDN AS UWORD = SCAN_PGDN * 256
+  CONST KEY_INSERT AS UWORD = SCAN_INSERT * 256, KEY_DELETE AS UWORD = SCAN_DELETE * 256
+  CONST KEY_CTRL_LEFT AS UWORD = SCAN_CTRL_LEFT * 256
+  CONST KEY_CTRL_RIGHT AS UWORD = SCAN_CTRL_RIGHT * 256
+  CONST KEY_CTRL_END AS UWORD = SCAN_CTRL_END * 256, KEY_CTRL_PGDN AS UWORD = SCAN_CTRL_PGDN * 256
+  CONST KEY_CTRL_HOME AS UWORD = SCAN_CTRL_HOME * 256
+  CONST KEY_CTRL_PGUP AS UWORD = SCAN_CTRL_PGUP * 256, KEY_F1 AS UWORD = SCAN_F1 * 256
+  CONST KEY_F10 AS UWORD = SCAN_F10 * 256, KEY_SHIFT_F1 AS UWORD = SCAN_SHIFT_F1 * 256
+  CONST KEY_SHIFT_F10 AS UWORD = SCAN_SHIFT_F10 * 256, KEY_CTRL_F1 AS UWORD = SCAN_CTRL_F1 * 256
+  CONST KEY_CTRL_F10 AS UWORD = SCAN_CTRL_F10 * 256, KEY_ALT_F1 AS UWORD = SCAN_ALT_F1 * 256
+  CONST KEY_ALT_F10 AS UWORD = SCAN_ALT_F10 * 256, KEY_ALT_1 AS UWORD = SCAN_ALT_1 * 256
+  CONST KEY_ALT_0 AS UWORD = SCAN_ALT_0 * 256, KEY_ALT_MINUS AS UWORD = SCAN_ALT_MINUS * 256
+  CONST KEY_ALT_EQUALS AS UWORD = SCAN_ALT_EQUALS * 256, KEY_CTRL_2 AS UWORD = SCAN_CTRL_2 * 256
+  CONST KEY_ALT_Q AS UWORD = SCAN_ALT_Q * 256, KEY_ALT_W AS UWORD = SCAN_ALT_W * 256
+  CONST KEY_ALT_E AS UWORD = SCAN_ALT_E * 256, KEY_ALT_R AS UWORD = SCAN_ALT_R * 256
+  CONST KEY_ALT_T AS UWORD = SCAN_ALT_T * 256, KEY_ALT_Y AS UWORD = SCAN_ALT_Y * 256
+  CONST KEY_ALT_U AS UWORD = SCAN_ALT_U * 256, KEY_ALT_I AS UWORD = SCAN_ALT_I * 256
+  CONST KEY_ALT_O AS UWORD = SCAN_ALT_O * 256, KEY_ALT_P AS UWORD = SCAN_ALT_P * 256
+  CONST KEY_ALT_A AS UWORD = SCAN_ALT_A * 256, KEY_ALT_S AS UWORD = SCAN_ALT_S * 256
+  CONST KEY_ALT_D AS UWORD = SCAN_ALT_D * 256, KEY_ALT_F AS UWORD = SCAN_ALT_F * 256
+  CONST KEY_ALT_G AS UWORD = SCAN_ALT_G * 256, KEY_ALT_H AS UWORD = SCAN_ALT_H * 256
+  CONST KEY_ALT_J AS UWORD = SCAN_ALT_J * 256, KEY_ALT_K AS UWORD = SCAN_ALT_K * 256
+  CONST KEY_ALT_L AS UWORD = SCAN_ALT_L * 256, KEY_ALT_Z AS UWORD = SCAN_ALT_Z * 256
+  CONST KEY_ALT_X AS UWORD = SCAN_ALT_X * 256, KEY_ALT_C AS UWORD = SCAN_ALT_C * 256
+  CONST KEY_ALT_V AS UWORD = SCAN_ALT_V * 256, KEY_ALT_B AS UWORD = SCAN_ALT_B * 256
+  CONST KEY_ALT_N AS UWORD = SCAN_ALT_N * 256, KEY_ALT_M AS UWORD = SCAN_ALT_M * 256
 END NAMESPACE

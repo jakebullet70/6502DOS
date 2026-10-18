@@ -19,6 +19,7 @@ API_STATUS = $0388      ; con_status: A = $ff when a key waits, else 0
 API_EXIT   = $038e      ; exit: A exit code. Does not return
 API_IN     = $03bb      ; con_in: A = the next key, no echo
 API_CURSOR = $03be      ; con_cursor: C set gets the row in X and the column in Y; C clear sets them
+API_GETKEY = $03d0      ; con_getkey: C clear waits, C set does not. A character, X scan code, Y mods
 
 ; The handles every program starts with.
 STDOUT  = 1

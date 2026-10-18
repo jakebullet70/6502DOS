@@ -71,12 +71,12 @@ VERSION   or   VER              (Command line or Script)
 VER is short for VERSION. See HELP VERSION.
 :COLOR
 COLOR foreground, background    (Command line or Script)
-  Sets the colour of the text printed after it. Each value is 0 to 15.
-  The colour names are numbers too. See HELP COLORS.
+  Sets the color of the text printed after it. Each value is 0 to 15.
+  The color names are numbers too. See HELP COLORS.
   COLOR WHITE, BLUE
   COLOR 5, 0
 :COLORS
-The colour names, for COLOR and in any number:
+The color names, for COLOR and in any number:
   BLACK    0    PURPLE   4    ORANGE    8    GRAY       12
   WHITE    1    GREEN    5    BROWN     9    LIGHTGREEN 13
   RED      2    BLUE     6    LIGHTRED 10    LIGHTBLUE  14

@@ -61,14 +61,12 @@ save:
 ; Each sequence ends with 0, and the list with another 0.
 sequences:
         .byte ESC, "[5;10H", 0                          ; row 4, column 9
-        .byte ESC, "[2A", 0                             ; up 2
-        .byte ESC, "[B", 0                              ; down 1
-        .byte ESC, "[3C", 0                             ; right 3
-        .byte ESC, "[99D", 0                            ; left to column 0
-        .byte ESC, "[99;99f", 0                         ; the last row and column
-        .byte ESC, "[H", ESC, "[0;1;34;42m", 0          ; home; light blue on green
+        .byte ESC, "[2A", ESC, "[3C", 0                 ; A and C ignored
+        .byte ESC, "[99;99H", 0                         ; the last row and column
+        .byte ESC, "[1;1f", 0                           ; f ignored
+        .byte ESC, "[H", ESC, "[0;34;42m", 0            ; home; blue on green
         .byte ESC, "[0m", 0                             ; the boot colour
-        .byte ESC, "[37m", ESC, "[1m", 0                ; light grey, then bold: white
+        .byte ESC, "[37m", ESC, "[1m", 0                ; light grey; 1 ignored
         .byte ESC, "[7m", 0                             ; reversed: black on white
         .byte ESC, "[7m", 0                             ; back: white on black
         .byte ESC, "[0m", ESC, "[?7hX", 0               ; ? skipped, h ignored, X shown

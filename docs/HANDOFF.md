@@ -166,44 +166,44 @@
     - New test `SHBOOT`: `VER`, `END`, `VER`; the second `C>` is the shell run again. Build
       548 ms, the new baseline. `BOOT` ok 0.5 s, `SHBOOT` ok 0.4 s, `SHELL` ok 0.4 s.
     - Docs owed: PLAN section 11 step 8 and section 13 (boot).
-  - Console colour (2026-10-17): call 46 `con_colour`, entry `$03CA`. Carry set returns the
-    colour in A; carry clear sets it from A. High nibble background, low nibble foreground.
+  - Console color (2026-10-17): call 46 `con_colour`, entry `$03CA`. Carry set returns the
+    color in A; carry clear sets it from A. High nibble background, low nibble foreground.
     `console.s` keeps it in zp `con_colour`; `con_init` sets it to `CON_COLOUR` ($05, green on
-    black). `put` and `blank` write it, so FF and a scroll blank in the current colour.
-    - `cursor_flip` swaps the nibbles of its cell's colour (asl, adc #$80, rol twice) instead
+    black). `put` and `blank` write it, so FF and a scroll blank in the current color.
+    - `cursor_flip` swaps the nibbles of its cell's color (asl, adc #$80, rol twice) instead
       of an eor with a fixed mask; `CURSOR_COLOUR` is gone. A cell whose nibbles match shows
       no cursor.
     - ROM +22 bytes; bank 0: 5514 bytes free below `$FFCF`. Zero page +1: `KERNELZP` ends at
       `$FB`, 4 bytes free.
-    - Not tested on screen: the text tests do not see colour. No shell command uses the call
+    - Not tested on screen: the text tests do not see color. No shell command uses the call
       yet; a shell `COLOR` is the next step.
     - Build 919 ms, the new baseline (`CMDSHELL.COM` recompiled, since `api.py` changed).
       `BOOT` ok 0.5 s, `SHELL` ok 0.4 s.
-  - Colour names (2026-10-17): `DOS.UXI` has `API_CON_COLOUR` and the 16 palette names as
+  - Color names (2026-10-17): `DOS.UXI` has `API_CON_COLOUR` and the 16 palette names as
     CONSTs, `BLACK` 0 to `LIGHTGRAY` 15, as `DOS.BLUE` in UXCBASIC. The shell's numbers take
     the same names: `PRINT LIGHTGRAY * 16 + WHITE` prints 241. No `_` in the names, since
     `READ_NAME` does not take it.
     - `COLOR_NUMBER` in `CMDSHELL.UXB`: an `INSTR` in a 176-byte table, 11 characters a
       name, and the position less 1, divided by 11, is the value. EVAL_NUMBER calls it for a
-      name that is not a variable; an unknown name is a syntax error. A colour name cannot be
+      name that is not a variable; an unknown name is a syntax error. A color name cannot be
       assigned (syntax error).
     - Trap: the table's order is the values' order in `DOS.UXI`; change both together.
     - `CMDSHELL.COM` 18672 bytes, +369. Tried: string `SELECT CASE` +624; a word-count
       function with the table as an argument +428 (a literal argument is copied, 112 more).
     - `SHELL` test gained 3 lines. Build 887 ms, the new baseline. `SHELL` ok 0.6 s, `SHIF`
       ok 0.4 s.
-    - Docs owed: PLAN section 7 or the console bullets (the colour byte, the cursor rule);
-      PLAN line 364 says the colour is fixed.
+    - Docs owed: PLAN section 7 or the console bullets (the color byte, the cursor rule);
+      PLAN line 364 says the color is fixed.
   - Shell `COLOR foreground,background` (2026-10-17): each 0 to 15, else syntax error; both
-    are needed. `COLOR WHITE, BLUE`. It calls `DOS.SET_COLOUR(background * 16 + foreground)`.
-    - `DOS.UXI`: `SUB SET_COLOUR(COLOUR)` (REG_P 0) and `FUNCT GET_COLOUR() AS UBYTE` (REG_P
+    are needed. `COLOR WHITE, BLUE`. It calls `DOS.SET_COLOR(background * 16 + foreground)`.
+    - `DOS.UXI`: `SUB SET_COLOR(COLOR)` (REG_P 0) and `FUNCT GET_COLOR() AS UBYTE` (REG_P
       1). Neither touches ERROR. An uncalled one costs 0 bytes.
     - `EVAL_PAIR` reads `first,second` into the UWORDs `FIRST_NUMBER` and `SECOND_NUMBER`;
       LOCATE and COLOR share it, 48 bytes less than two copies.
-    - `CMDSHELL.COM` 18854 bytes, +182. The `SHELL` test gained 4 lines (the colour itself is
+    - `CMDSHELL.COM` 18854 bytes, +182. The `SHELL` test gained 4 lines (the color itself is
       not seen by the text tests).
     - Build 965 ms, the new baseline. `SHELL` ok 0.6 s, `SHSCREEN` ok 0.6 s.
-    - Docs owed: PLAN's shell statements list and `HELP.TXT` (COLOR, the colour names).
+    - Docs owed: PLAN's shell statements list and `HELP.TXT` (COLOR, the color names).
     - Full suite after it: 29 tests, 4 failed on golden churn only. The `DOS.UXI` change
       recompiled the test programs with pyuxc's dead-code pass (`uxc_dead.py`, 2026-10-16),
       1 to 1.6 KB smaller each: `CWD.COM` 2406, `DUP.COM` 3887, `SEEK.COM` 1948.
@@ -211,8 +211,8 @@
       `DISK` F33 cluster `$46`. Each then ok one at a time: `FILES` 0.4 s, `DIRS` 0.7,
       `DISK` 0.4, `CMDLETS` 1.3.
   - Docs step after `COLOR` (2026-10-17); no docs are owed from the bullets above. PLAN §4: the
-    `con_*` calls in the table. §6: the colour byte, the cursor rule. §8: the boot run, `COLOR`,
-    the short names table, the colour names and the table trap, the `PROMPT$` codes, `HELP` as a
+    `con_*` calls in the table. §6: the color byte, the cursor rule. §8: the boot run, `COLOR`,
+    the short names table, the color names and the table trap, the `PROMPT$` codes, `HELP` as a
     DOS utility and the `HELP.TXT` format, `EXIST` with no `SILENT`, `WHICH` renamed `WHERE`.
     §10: `src/cbin`, `src/dos`, `TEST.ROM`, `SHELL_ROM_TESTS`. §11: 7h `COLOR`, 7i4 put off,
     step 8 note. §13: what the ROM prints when the shell will not run. The `api_bad` claim
@@ -245,10 +245,10 @@
     header lists the sequences: `Esc[r;cH` and `f`, `Esc[nA` to `D`, `Esc[2J`, `Esc[K`,
     `Esc[...m` with 0, 1, 30 to 37 and 40 to 47. Up to 4 parameters, each modulo 256; parameter
     bytes `$30` to `$3F` other than digits and `;` are skipped, so `Esc[?7h` does nothing. Esc
-    then a byte other than `[` shows that byte. `Esc[0m` sets `con_default`, the colour
+    then a byte other than `[` shows that byte. `Esc[0m` sets `con_default`, the color
     `api_con_colour` last set (boot: `CON_COLOUR`), so a program's reset keeps the user's
     `COLOR`. Bold maps the foreground through `ansi_bright`, now and for each 3x after it, so
-    `Esc[37;1m` and `Esc[1;37m` both give white. The ANSI colours are X16 palette entries 0, 2,
+    `Esc[37;1m` and `Esc[1;37m` both give white. The ANSI colors are X16 palette entries 0, 2,
     5, 9, 6, 4, 3, 15 (brown for yellow, light grey for white); bright black is 11, red 10,
     green 13, yellow 7, blue 14, white 1; magenta and cyan stay 4 and 3. Not done: 7 reverse,
     `s` and `u` save and restore, `n` status report, `J` other than 2. The normal path costs
@@ -256,7 +256,7 @@
     after `vscroll`, reached by `jmp`, so `write`'s branches stay in range. Cost: CODE +305,
     RODATA +26, ZP +1 (`ansi_state`; KERNELZP now ends at $FD, 2 bytes left), KERNELRAM +7 (ends
     at $06B8). About 5080 bytes of ROM stay free. New test `ANSI` (`tests/ANSI.S`): 14
-    sequences, the cursor and colour after each; the dump was checked by hand against the
+    sequences, the cursor and color after each; the dump was checked by hand against the
     expected values. Tests: `ANSI` ok 0.4 s, `SHELL` 0.4, `SHBOOT` 0.4, `MONITOR` 0.3. Then
     `inc ansi_state` for `Esc[` saved 2 bytes: `ANSI` ok 0.5 s, `SHELL` 0.4. Build 507 ms, the
     new baseline. Not yet seen on screen by hand. API.md (`con_out`) and PLAN section 6 have it.
@@ -379,7 +379,7 @@
     - `tests/VIEW.IN`: `Fline 45` finds `Line 45`; the golden differs only in the echo and
       `Not found: LINE 45`, diffed. `VIEW` ok 0.9 s. Build 655 ms, the new baseline.
     - The user, 2026-10-17: no G (go to a line). VIEW's steps end at V3.
-  - VIEW step V3c (2026-10-17), the user's change: the highlight is the colours reversed. The
+  - VIEW step V3c (2026-10-17), the user's change: the highlight is the colors reversed. The
     asm was agreed. `console.s` `sgr`: parameter 7 swaps the nibbles of `con_colour` (asl, adc
     #$80, rol twice, as `cursor_flip`), so a second 7 swaps them back; there is no 27. `Esc[0m`
     restores `con_default`. `SHOW_LINE` writes `Esc[7m` in place of `Esc[30;43m`.
@@ -924,9 +924,8 @@
 - Build after 7c: 0.75 s with the shell compile, the new baseline.
 - Tests after 7c, one at a time: `SHFILES` ok 0.7 s, `SHELL` 0.5, `FILES` 0.4, `DIRS` 0.8,
   `DISK` 0.4.
-- Steps since the last full suite: 5 (break steps B1, B2, B3, B4, B5). It ran after library refactor step 8b
-  (generated `ERR_` and `FIND_`), 2026-10-18: 34 tests, 0 failed, 19.5 s, the longest
-  `CMDLETS` 1.6 s.
+- Steps since the last full suite: 1. It ran after the `con_getkey` step, 2026-10-18: 37 tests,
+  0 failed, 21.9 s, the longest `CMDLETS` 1.6 s.
 - UXCBASIC: 174 tests, 0 failed, 43 s. `compare.py`: 566 MATCH, 5 RESULT, 31 NO GOLDEN of 602,
   1.7 s. The RESULTs are `STRLR`, `STRNS`, `EXERRCONSTSTR`, and the two below, all expected:
   `EXERRPOS` (`POS(2)`) now compiles, and `EXERRPOSVAR` says `POS NEEDS 0 TO 3`.
@@ -1595,7 +1594,7 @@
    after 7h are done. `DATE` and `TIME` wait for a clock call. 7i1 (`EXIST`), 7i2 (`DISKFREE`) and
    7i3 (`DISKINFO`) are done, and the docs step after them (PLAN section 8: `CBIN.UXI`,
    `DISKFREE`, `DISKINFO`). 7i4 (`WHICH`) is put off by the user (2026-10-16). 7i5
-   (`HELP`), `PROMPT$` codes, short names, the boot shell, console colour and `COLOR` are done,
+   (`HELP`), `PROMPT$` codes, short names, the boot shell, console color and `COLOR` are done,
    and the docs step after them, the 4 MB card, extended keys, ANSI output and Alt and Ctrl
    keys. Next, agreed with the user on 2026-10-17:
    - UXCBASIC, in `UXCBASIC.PLAN.md` first, then pyuxc: `GETKEY()` stays a UBYTE; on an
@@ -1634,7 +1633,7 @@
      6. Docs batch (2026-10-17):
         - `tools/api.py`, so `docs/API.md`: `con_status` gives the modifiers in X; `con_out`
           lists the ANSI sequences; `con_in` lists every scan code, Alt and Ctrl.
-        - PLAN section 2: `KEYS.UXI` and `CONS.UXI`. Section 6: ANSI, the ANSI colours,
+        - PLAN section 2: `KEYS.UXI` and `CONS.UXI`. Section 6: ANSI, the ANSI colors,
           extended keys, Alt, the `GETKEY()` trap. Section 8: `VIEW`. Section 10: the
           `src/bas` row.
         - `src/dos/HELP.TXT`: topic `VIEW`, for the command line only.
@@ -1798,11 +1797,16 @@
           old layout lines (`examples/`, `disk/`, `DISK_FILEIO.UXI`, `BANK.UXI`, `CONSOLE.UXI`,
           `compare.py`). `pyuxc/README.md` rewritten as a reference, 155 lines. `CLAUDE.md`'s
           line counts.
-        - Stale, not yet fixed, for the next docs batch: UXC-HELP's "Compiling from UXCEDIT"
-          topic and line 7 (the GPC UXC), "Including files" (pyuxc searches the source's
-          folder, then each `-I` folder), "Files" (drive 8, KERNAL CHRIN, READST, CHROUT), the
-          GETKEY topic's "PETSCII code". `UXCBASIC.PLAN.md` section 3 names the GPC layout
-          (`src/UXC.BASL`, `uxc.py`, `RUNTESTS.BAT`, `run.py`).
+        - Fixed in the docs step after break (2026-10-18), by the doc-style agent, each
+          example compiled: UXC-HELP "What UXCBASIC is", "Using this help" (no X16 viewer
+          here), "Compiling" (was "Compiling from UXCEDIT", now pyuxc's command line and
+          result line), "Including files", "Files" and its four sections (UXDOS16 paths and
+          handles, 8 SFT entries, two `handle_io` traps); `UXCBASIC.PLAN.md` section 3 (the
+          pyuxc layout, `tests.py`, `RUNUXCTESTS.BAT`).
+        - Still stale: `UXCBASIC.PLAN.md` lines 3 to 6 and 13 (UXC.PRG, UXCEDIT, "Unix-style
+          X16", PETSCII), sections 4 and 5 (`run.py`, UXCEDIT), section 3's `#DEFINE UXC.*`
+          and `.LST` lines (pyuxc has neither). `MKHELP.PY`'s docstring names
+          `src/UXC.HELP.BASL`, which is only in `attic/gpc`.
      - Names follow ECMA-48 (CUU, CUD, CUF, CUB, CUP, ED, EL, SGR).
      - The user, 2026-10-17: the ANSI string CONSTs go in `NAMESPACE CONS`, as the key codes are
        in `NAMESPACE KEYS` (`lib/KEYS.UXI`). VIEW then writes `CONS.SGR_REVERSE$`.
@@ -1815,7 +1819,7 @@
      Goldens rewritten and diffed: `SHELL` (`PRINT "A";`, then the prompt on the next
      line), `SHSCREEN` (after `LOCATE 29,79` and `LOCATE 5,6` the prompt moves to a new
      line). Tests: `SHELL` ok 0.4 s, `SHVARS` 0.6, `SHRUN` 0.7, `SHSCREEN` 0.6, `SHBOOT`
-     0.4. Docs owed: PLAN section 8, the prompt starts in column 0.
+     0.4. PLAN section 8 has it.
    - Bug, to do (the user, 2026-10-18): `VIEW.COM` must eat the keyboard queue between Up and
      Down arrow moves.
    - To do: 7i4, renamed `WHERE` (the user, 2026-10-17). It is still put off.
@@ -1930,7 +1934,216 @@
        - Tests: UXCBASIC `ENUMBARE` ok 0.6 s (new), `ENUMAS` 0.5, `ERRENUMMEMBER` 0.0,
          `ENUM` 0.5, `SUB1` 0.5, `FUNC1` 0.5, `NAMES` 0.5, `TYPEDEF` 0.5, `STRSUB` 0.5,
          `STRNS` 0.6, `RECSTR` 0.5, `RECORD4` 0.5; repo `SHBREAK` 0.5, `BREAK` 0.4.
-       - Next: the docs batch owed for break (above), then the VIEW.COM key bug.
+     - Docs step after break (2026-10-18); the break docs owed above are written. PLAN
+       section 2: the IRQ row drops "the break check". Section 4: the `con_break` row. Section
+       7: `PSP_BREAK` in the PSP table, the STOP key modes table and its rules, vector 1 not
+       used. Section 8: the prompt in column 0, the shell in `BREAK_CATCH`, `PAUSE` and `WAIT`
+       end at Ctrl+C, the `Terminate CMD job (Y/N)?` rules and the type-ahead trap.
+       UXC-HELP: topic "The STOP key" (its example compiles, 419 bytes); GETKEY gives the
+       character code and the extended-key 0, no PETSCII. `MKHELP.PY` ok, 37 topics. No build,
+       no test.
+       - Byte saving seen, not applied: none. `CMDSHELL.UXB` line 1660 could read
+         `DOS.STOP_KEY(CATCH)`; 0 bytes.
+       - Next: the VIEW.COM key bug.
+     - TED, the Tiny Editor, a full-screen editor (2026-10-18), `src/dos/TED.UXB`, built to `C:\DOS\TED.COM`.
+       The user's choices: Shift+arrows select (no mark key), Ctrl+X cuts, insert mode only.
+       Its steps:
+       - E1 load, show, the cursor keys, PgUp/PgDn, Home/End, the status row, Ctrl+Q. Done.
+       - E2 typing, Enter, Tab, Backspace, Delete (joins lines), the `*` modified mark. Done.
+       - E3 Ctrl+S save through `TED.$$$`, delete, rename; `Save changes (Y/N)?` at Ctrl+Q.
+         Done.
+       - E4 Shift+arrow select, Ctrl+C copy, Ctrl+X cut, Ctrl+V paste; Ctrl+C or Ctrl+X with
+         no selection takes the line. A 2 KB clipboard. Done.
+       - E5 docs: PLAN section 8, a `HELP.TXT` topic.
+       - Design: a gap buffer in the pool from the page after `PSP_TOP` to `$9EFF`. The gap stays at
+         the end in E1; E2 moves it. Load turns CR LF and CR into LF; `CR_ENDS` keeps the first
+         line end's style for save. `STOP_KEY(OFF)`, so Ctrl+C reads as 3. Keys come from
+         `API_CON_IN`, which blinks the cursor. The page is drawn only when no key waits, the
+         first page always. A move one line below the page scrolls in hardware (a CR on the status
+         row, as VIEW), else the page is drawn again; the console has no insert or delete line.
+       - Shift: `kbd_get` reads the SMC keycodes in order when asked, so `kbd_mods` is right for
+         each key. After the 0 of an extended key, `API_CON_STATUS` returns at once with
+         `kbd_mods` in X. Shift+arrows need no asm.
+       - Test trap: `-bas` cannot type an extended key; a queued 0 reads as no key. The arrows,
+         Home, End, PgUp and PgDn are untested by `tests/TED`. A hook in `con_status` (a queued
+         0 takes the next queued byte as the scan code, about 10 bytes) would let a test type them;
+         it is asm, so the user decides.
+       - E1: `TED.COM` 5399 bytes; its variables end at `$227A`, so the pool is `$2300–$9EFF`,
+         31744 bytes. Build 770 ms, the new baseline.
+       - Test `TED` (new): no name, a new file, path not found, the `LONG.TXT` page, Ctrl+Q. ok
+         0.6 s. Full suite: 37 tests, 3 failed, 20.4 s: `CMDLETS`, `DIRS`, `DISK`, disk layout
+         only from the new file. Their goldens regenerated; re-run ok: `CMDLETS` 1.5 s, `DIRS`
+         0.8, `DISK` 0.5.
+       - Test card layout (2026-10-18): `tools/tests.py` gives the programs (`build/bas`,
+         `build/tests`, `build/DOS`) a block of 256 clusters after the files of `tests/sd`, and
+         the root directory 2 clusters. `mksd.make(reserve=, root_clusters=)` does it; the FAT
+         marks the unused clusters of the block bad ($0FFFFFF7), and `api_diskfree` and
+         `cluster_free` count only zero entries. A new or resized program no longer changes
+         `CMDLETS`, `DIRS` or `DISK`. mksd exits with an error when the programs outgrow the
+         block. Their goldens regenerated once. Proof: a 20 KB dummy in `build/DOS`, then
+         `DISK` ok 0.5 s, `CMDLETS` 1.7, `DIRS` 0.9.
+       - E2 (2026-10-18): `MOVE_GAP` moves the gap a byte at a time (the language has no block
+         copy). `INSERT` puts a byte at the cursor, `REMOVE` takes one out. A character from 32
+         up goes in; Enter puts in LF, Tab a tab. Backspace and Delete take out LF too, so they
+         join lines. A full pool shows `Insufficient memory` on the status row. A change on one
+         line draws only that row (`NEED_ROW`, `ROW_LINE`, `ROW_START`); a second line changed
+         before a draw, or LF in or out, draws the page. `MODIFIED` puts `*` in column 0 of the
+         status row.
+       - E2 cost: `TED.COM` 6583 bytes, 1184 more; the pool starts later by as much. Build
+         816 ms, the new baseline.
+       - Test trap: the keys of a test all wait in the queue, so TED draws nothing after the
+         first page and the golden does not show an edit. `tests/TED.IN` types
+         `ab`, Tab, `c`, Backspace, Enter, `xy`, Backspace three times, `Z`; the golden is
+         unchanged. A build that drew after each key showed each step right, the tab to column
+         9 and both joins included. E3's save, then `TYPE`, will test the text.
+       - Test `TED` ok 0.7 s.
+       - E3 (2026-10-18): `SAVE` writes `TED.$$$` in the file's directory (the part up to the
+         last `\`, `/` or `:`), deletes the file (not found is no error), then renames
+         `TED.$$$` to it. A failed create, write or delete deletes `TED.$$$`; a failed
+         rename keeps it, since the file is gone. `WRITE_PART` writes the gap buffer's two parts,
+         each LF as CR LF from `CR_LF` when `CR_ENDS` is 1, so a new file gets CR LF. A short
+         write gives `DOS.DISK_FULL`, shown as `Insufficient disk space`; another error shows
+         `DOS.ERRMSG`. Success clears `MODIFIED` and shows `Saved`. `ASK_QUIT` at Ctrl+Q:
+         no changes quits; else `Save changes (Y/N)?`, N quits, Y quits when the save worked,
+         another key (an extended key's scan code read too) goes back.
+       - Wildcards: `name_check` in `fat.s` rejects a `?`, so open, create and delete refuse a
+         wildcard name; a save of one fails with its error.
+       - E3 cost: `TED.COM` 8011 bytes, 1428 more; the pool starts later by as much. Build
+         766 ms, the new baseline.
+       - Test `TED`: saves the E2 edits and `TYPE`s them (`ab`, tab, `Z`); `DOCS\NEW.TXT`
+         typed, Ctrl+Q, `x` goes back, Ctrl+Q, `y` saves; `TYPE` shows two lines; edited
+         again, Ctrl+Q, `n`: `TYPE` shows it unchanged; `FILES DOCS\*.$$$` finds none. Golden
+         regenerated, read, ok 0.8 s.
+       - E4 (2026-10-18): after the 0 of an extended key, `API_CON_STATUS` gives `MODIFIERS`.
+         Shift with Home, Up, PgUp, Left, Right, End, Down or PgDn sets `ANCHOR` at the cursor
+         when no selection runs and sets `SELECTING`; another key but Ctrl+C clears it.
+         `SELECTION_BEGIN` and `SELECTION_END` (both 0 for none) are set after each key, after
+         the key's action, so Ctrl+X still sees an ended selection. `SHOW_ROW` writes the row in
+         three runs, the marked one in reverse video (`CSI 7m`, `sgr` in `console.s`); a marked
+         LF shows as one space. A changed selection draws the cursor's row when the cursor
+         stayed on its line, else the page.
+       - Clipboard: a fixed 2048 bytes at `CLIPBOARD` $9700–$9EFF; `POOL_END` is now $9700.
+         `TAKE` (Ctrl+C 0, Ctrl+X 1) takes the selection, or the cursor's line with its LF;
+         over 2048 bytes shows `Selection too large`. It moves the gap to the part's end, so a
+         cut is a gap grow. `PASTE` (Ctrl+V) inserts at the cursor; no room shows
+         `Insufficient memory`. `COPY_CLIP` is the copy loop of both and counts LFs. Typing
+         does not replace a selection.
+       - E4 cost: `TED.COM` 9846 bytes, 1835 more, and the clipboard takes 2048 bytes of the
+         pool. Sharing `COPY_CLIP` saved 97 bytes. Build 903 ms, the new baseline.
+       - Test `TED`: `DOCS\NEW.TXT` edited: Ctrl+X, Ctrl+V twice, Ctrl+C on the last line
+         (no LF), Ctrl+V, Ctrl+S, Ctrl+Q; `TYPE` shows `one`, `one`, `twotwo`. Golden gained
+         only those lines, read, ok 0.9 s. Shift selection and its reverse video are untested
+         (the extended-key trap above); try them by hand.
+       - Keys row (2026-10-18): 28 text rows, the status row on row 28, `KEYS_ROW` 29 with
+         `KEYS_TEXT$` (^S Save, ^Q Quit, Shift+Arrows Select, ^C Copy, ^X Cut, ^V Paste) in
+         the status colors. The status row lost `^Q Quit`. `SHOW_KEYS` draws it at the start
+         and after a scroll; the scroll's CR now goes on `KEYS_ROW`. PgUp and PgDn move 28
+         lines. `TED.COM` 9923 bytes, 77 more. Build 996 ms, the new baseline. Golden
+         regenerated, read, ok 1.0 s.
+       - Rename (2026-10-18): EDLIN is TED, the Tiny Editor: `src/dos/TED.UXB`, `C:\DOS\TED.COM`,
+         test `TED`, the save file `TED.$$$`. Ctrl+Q prints `TED - The Tiny Editor... Bye!`
+         after it clears the screen. `TED.COM` 9962 bytes, 39 more. Build 784 ms, the new
+         baseline. Golden regenerated, read, ok 1.3 s.
+       - Help (2026-10-18): Ctrl+G or F1 runs `SHOW_HELP`: it clears the screen, prints
+         `C:\DOS\TED.HLP` raw through `API_CON_OUT` 80 bytes at a time, waits for a key, then
+         draws the keys row and the page again. No TED.HLP puts its error on the status row.
+         `src/dos/TED.HLP` stays under 30 rows, so the screen does not scroll. `tools/build.py`
+         copies each `src/dos/*.HLP` to build/DOS, as it does `*.TXT`. `^G Help` leads the keys
+         row, 76 characters. `TED.COM` 10341 bytes, 379 more; TED.HLP 802 bytes on disk. Build
+         815 ms, the new baseline. Golden: the new keys row, and a new run `^G`, a space, `^Q`.
+         Ok 0.9 s. F1 is untested: the tests cannot type extended keys.
+         Trap: a test stops reading at the first line that departs from the golden, so a
+         changed early line looks like a crash. Run `--update` and diff instead.
+       - Footer (2026-10-18): the keys row is gone. 29 text rows, the status row on row 29 with
+         `F1 Help` after the column; a scroll's CR goes on the status row. PgUp and PgDn move 29
+         lines. `SHOW_HELP` puts out a CR before each LF of TED.HLP, since the console's LF
+         keeps the column. TED.HLP lists F1 first. `TED.COM` 10279 bytes, 62 less. Build 868 ms,
+         the new baseline. Golden regenerated, diffed, ok 1.0 s. The help page's layout on
+         screen is not in the golden (it holds the byte stream); check it by hand.
+         Trap: Python's text-mode write on Windows makes CR LF; the sources are LF. Write bytes.
+       - `SHOW_STATUS`, from the user's hand edit: the status text cut to `COLUMNS - 9`, then
+         `CONS.LOCATE` to column `COLUMNS - 9` and `F1 Help`. Fixed in the edit: a missing `;`
+         after `CLEAR_EOL$` (a newline on the last row scrolls), no `"  "` before `MESSAGE`, the
+         column 71 written as a number, a second `STATUS_COLORS$` before `F1 Help`.
+       - The console names, in three steps, then E5. The user chose all three:
+         1. A, done 2026-10-18: plain names in `lib/CONS.UXI`. `CURSOR_UP$` `CURSOR_DOWN$`
+            `CURSOR_RIGHT$` `CURSOR_LEFT$` `CURSOR_HOME$`, `CLEAR_SCREEN$` `CLEAR_EOL$`,
+            `NORMAL$` `BOLD$` `REVERSE$`, `BLACK$` to `WHITE$` (SGR 30 to 37), `ON_BLACK$` to
+            `ON_WHITE$` (40 to 47); `CSI$` stays. TED's `STATUS_COLORS$` and VIEW's
+            `FOOTER_COLORS$` were `CSI$ + "30;47m"`, 3 bytes under `BLACK$ + ON_WHITE$`.
+            TED's `SELECTION_SGR$` is gone; it uses `CONS.REVERSE$`. The CONS row of PLAN's
+            `DOS.UXI` table updated. `TED.COM` 10302 bytes, 23 more (the second `LOCATE`). `VIEW.COM` 6419.
+            Build 1044 ms. VIEW ok 1.1 s. TED golden regenerated, diffed (only `F1 Help` moved
+            after `CLEAR_EOL$`), ok 0.9 s. Goldens not committed.
+         2. B, done 2026-10-18: tags in every UXCBASIC string literal, `"..."` and `!"..."`.
+            `{NAME}` is Esc [ and the sequence, expanded by `lx_tag` in `pyuxc/uxc_lex.py` from
+            the table `LX_TAGS`: `{CURSOR HOME}` `{CLS}` `{CLEAR EOL}` `{NORMAL}`
+            `{REVERSE}`, `{BLACK}` to `{WHITE}`, `{ON BLACK}` to `{ON WHITE}`. No tags for the
+            moves or bold, which the trim drops. Case is free; one space between words.
+            Adjacent m tags join, up to 4 parameters: `{BLACK}{ON WHITE}` is `Esc[30;47m`.
+            An escape does not join a tag. `{{` is `{`; a lone `}` stays; any other `{`, an
+            unknown name or no `}` is `BAD TAG`. No source had a `{` in a string before.
+            TED's `STATUS_COLORS$` and VIEW's `FOOTER_COLORS$` are now `"{BLACK}{ON WHITE}"`;
+            `TED.COM` and `VIEW.COM` byte-identical. UXC-HELP: section Tags, and a bullet in
+            String CONSTs. New tests `TAGS` (ok 0.6 s), `ERRTAG`, `ERRTAGOPEN` (ok 0.0 s).
+            ESCAPES ok 0.5, ENUM 0.5, TED 0.9, VIEW 1.0, SHELL 0.5. Build 1570 ms, the new
+            baseline. Before it, the user's rule: color, not colour. Renamed outside asm:
+            `STATUS_COLORS$`, `FOOTER_COLORS$`, `DOS.SET_COLOR`, `DOS.GET_COLOR`, the comments,
+            PLAN, API.md, api.py's prose, HELP.TXT, the ENUM test. Left for the trim step (asm):
+            `con_colour`, `api_con_colour`, `API_CON_COLOUR` (api.inc and DOS.UXI),
+            `CON_COLOUR`, `ansi_colours`, console.s comments, tests/ANSI.S. The user: no
+            rename in the asm. Then `{CLEAR SCREEN}` became `{CLS}`; `CONS.CLEAR_SCREEN$`
+            keeps its name. TAGS ok 0.6 s.
+         3. Trim, done 2026-10-18: `ansi` in `src/asm/console.s` drops the moves `Esc[nA` to
+            `D`, the `f` alias of `H`, and bold (`1m`, `ansi_bold`, `ansi_bright`); they do
+            nothing now. `sgr` is inlined in the `m` loop; the locate loop holds the clamp,
+            from the table `ansi_last` (`ROWS - 1`, `COLUMNS - 1`). Saved: CODE 86 bytes,
+            RODATA 16, RAM 1, so 102 bytes of ROM. The erase handlers sit before `@digit`, or
+            the branches from the dispatch run out of range. `CONS.UXI` drops `CURSOR_UP$`
+            `CURSOR_DOWN$` `CURSOR_RIGHT$` `CURSOR_LEFT$` `BOLD$`; its checklist names
+            `LX_TAGS`. console.s's header has a checklist. API.md (`con_out`, from api.py) and
+            PLAN section 6 updated. `tests/ANSI.S`: A, C, `f` and `1m` checked as ignored;
+            golden regenerated, each of the 14 results checked by hand, ok 0.4 s. TED ok 1.0,
+            VIEW 0.9, SHELL 0.4. Build 1802 ms, the new baseline.
+       - Del with a selection (2026-10-18): Delete takes out the selection and leaves the
+         clipboard as it was. `REMOVE_PART(BEGIN, FINISH)` holds the take-out that Ctrl+X used;
+         it counts the LFs itself when the cursor is at `FINISH`. TED.HLP's Del row says so.
+         `TED.COM` 10519 bytes, 217 more. Build 931 ms, the new baseline. `tests/TED` cannot
+         type Shift or Del; golden regenerated for the TED.HLP row only, ok 1.1 s.
+       - Backspace with a selection (2026-10-18): Backspace takes out the selection through
+         `REMOVE_PART`, the same as Delete. TED.HLP's Backspace row says so. `TED.COM` 10567
+         bytes, 48 more. Build 885 ms, the new baseline. Golden regenerated for the TED.HLP
+         row, ok 1.0 s.
+       - One-call key read, the user's plan (2026-10-18), in steps:
+         1. Done 2026-10-18: API 48 `con_getkey` (`api_con_getkey`, console.s, 19 bytes of
+            CODE). Carry clear waits through `CHRIN`, so x16emu -bas still types; carry set
+            returns at once. A = the character, 0 for an extended key or none; X = the scan
+            code, 0 for a plain key or none; Y = `kbd_mods`. After `con_in`, X holds the old
+            `con_scan` and `con_key` the scan code; `stz con_key` drops it. TED's 3 reads (the
+            help screen, `ASK_QUIT`, the main loop) use it, with `DOS.REG_P = 0` first.
+            `TED.COM` 10519 bytes, 48 less. Build 1771 ms, the new baseline (DOS.UXI changed,
+            so every program recompiled). TED ok 1.1 s.
+         2. Done 2026-10-18: built-ins `GETEXTKEY()` (at once) and `WAITKEY()` (waits, the
+            cursor blinking), UWORD in A/Y: a plain key its character, an extended key
+            scan * 256, no key 0; `KEYMODS()`, UBYTE, the Y of the last of the two. pyuxc
+            `ex_key(template, type)` in `uxc_expr.py` serves all four key functions; the names
+            are in `nm_q` (`uxc_name.py`) and `sg_scan_known` (`uxc_str.py`). Templates:
+            `R_KEY` (14 B with its `mods` byte, once; `tpl/T-ARRAY.ASM`) took `T_GETKEY`'s id
+            192, since a `#rec` target needs an id below 256 and 0-255 were full; `T_GETKEY`
+            moved to 259, and `T_GETEXTKEY` 260 (4 B a call), `T_WAITKEY` 261 (4 B),
+            `T_KEYMODS` 262 (3 B, `lda R_KEY.mods`) follow it in `UXC.TPL.ASM`. The stock
+            table's `R_KEY` gives 0. `API_GETKEY = $03d0` in `tpl/UXDOS/API.ASM`. KEYS.UXI:
+            new header, BINDs for the three, `KEY_name = SCAN_name * 256` for every SCAN_.
+            UXC-HELP topic `GETEXTKEY, WAITKEY and KEYMODS`; the STOP key topic lists them.
+            New tests `KEYEXT1` (no keys: 0, 0, 1) ok 0.8 s, `KEYEXT2` (types `aB`: 97, 0, 66,
+            0, 13; the paste gives no Shift) ok 0.5 s; `GETKEY1` ok 0.5 s. Build 2319 ms, the
+            new baseline.
+         3. Next: TED to `WAITKEY()`/`GETEXTKEY()` and `KEYS.KEY_` names, then VIEW, then
+            KEYTEST, each its own step.
+         ANSI stays: the goldens hold the byte stream, so the escapes are what the tests see of
+         color, position and clear to end of line; no other API clears to end of line. The
+         ANSI code costs about 335 bytes of ROM (ansi 211, sgr 90, tables 26, the hook in
+         write) and 9 of RAM before the trim, 102 less after it.
    - `ERRORLEVEL`: a read-only number variable, the code from `exitcode` (API 27) after each
      child ends.
    - `EXIST(file)` in `IF`: 1 when the file opens.

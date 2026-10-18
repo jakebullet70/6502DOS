@@ -51,7 +51,7 @@ The layers follow MS-DOS's split into `IO.SYS`, `MSDOS.SYS` and `COMMAND.COM`.
 | Reset, the vectors, IRQ and NMI entry, the gate, `jsrfar`, bank switching | asm | |
 | The SPI and I2C bits, the 512-byte sector copy, the VERA glyph write | asm | |
 | The copy loop of `xms_move` | asm | |
-| Code that runs inside an IRQ: the keyboard scan, the tick, the break check | asm | |
+| Code that runs inside an IRQ: the keyboard scan, the tick | asm | |
 
 - Code that runs inside an IRQ stays asm. A UXCBASIC `SUB` is not re-entrant.
 - Compiled UXCBASIC is larger than asm. Layer 1 in UXCBASIC spans more than one 16 KB ROM bank,
@@ -67,7 +67,7 @@ The UXCBASIC library is the folder `lib/`. Each file holds one namespace of the 
 | `lib/DOS.UXI` | `DOS` | one `SUB` or `FUNCTION` for each API call in section 4; the whole-file routines `EXISTS`, `SIZE` and `COPY` |
 | `lib/HEAP.UXI` | `HEAP` | the string heap calls and the system descriptors; include it after `DOS.UXI` |
 | `lib/KEYS.UXI` | `KEYS` | the characters and scan codes the console gives for keys, the modifier bits of `con_status`, and a `BIND` of `GETKEY`: `KEYS.SCAN_UP`, `KEYS.MOD_CTRL` |
-| `lib/CONS.UXI` | `CONS` | the escape sequences the console obeys, as string constants with ECMA-48's names (`CONS.CSI$`, `CONS.SGR_REVERSE$`); `BIND`s of `PRINT`, `INPUT`, `LINPUT`, `POS`, and `NEWLINE` for `PRINT`; `LOCATE`, `PRINT_AT`, `PRINT_BOOL`, `SCREEN_ROWS`, `SCREEN_COLS` |
+| `lib/CONS.UXI` | `CONS` | the escape sequences the console obeys, as string constants with plain names (`CONS.CSI$`, `CONS.REVERSE$`, `CONS.RED$`, `CONS.ON_WHITE$`, `CONS.CLEAR_EOL$`); `BIND`s of `PRINT`, `INPUT`, `LINPUT`, `POS`, and `NEWLINE` for `PRINT`; `LOCATE`, `PRINT_AT`, `PRINT_BOOL`, `SCREEN_ROWS`, `SCREEN_COLS` |
 | `lib/STR.UXI` | `STR` | a `BIND` of each string built-in; `INSTR_REV` |
 
 - Every UXCBASIC program in UXDOS16 calls the API through `DOS.UXI`. Each call goes to the
@@ -116,7 +116,7 @@ VRAM:
 
 | Range | Use |
 |---|---|
-| `$10000–$13FFF` | the text map of layer 1: 64 rows of 128 cells, each a character and a colour byte |
+| `$10000–$13FFF` | the text map of layer 1: 64 rows of 128 cells, each a character and a color byte |
 | `$1F000–$1F7FF` | the CP437 font |
 | `$1FA00–$1FBFF` | the palette |
 
@@ -262,7 +262,8 @@ Calls, with the MS-DOS 2.0 function each matches:
 | `con_status` | 0Bh | whether a key is waiting |
 | `con_out`, `con_in` | 02h, 08h | write a character; wait for a key, with no echo |
 | `con_cursor` | none; BIOS 10h, 02h and 03h | get or set the cursor's row and column; a get also gives the screen's rows and columns |
-| `con_colour` | none | get or set the console colour (section 6) |
+| `con_colour` | none | get or set the console color (section 6) |
+| `con_break` | 33h | get or set the mode of the STOP key, and read the break flag (section 7) |
 | `exec` | 4Bh | runs a program |
 | `exit`, `exitcode` | 4Ch, 4Dh | ends a program with a code; gives the last child's code |
 | `keep` | 31h | ends a program and keeps its banks: a TSR |
@@ -378,22 +379,21 @@ Drivers follow MS-DOS 2.0's device drivers.
 - The SD card driver is ported from x16-rom. It reads one unit over VERA's SPI port, at the slow
   speed of 1 byte a loop. Without a card its input gives error 21.
 - The console font is CP437, ported from x16-rom.
-- The console colour is one byte: the background times 16 plus the foreground, each a colour of
+- The console color is one byte: the background times 16 plus the foreground, each a color of
   VERA's default palette, 0 to 15. It starts at `$05`, green on black. Call 46 `con_colour`
   gives it in A with carry set, and sets it from A with carry clear.
-- A character written, a form feed and a scroll take the current colour.
-- The cursor swaps the two halves of its cell's colour byte. A cell whose halves match shows no
+- A character written, a form feed and a scroll take the current color.
+- The cursor swaps the two halves of its cell's color byte. A cell whose halves match shows no
   cursor.
 - The console is 80 columns by 30 rows on VERA layer 1. It obeys CR, LF, BS, TAB, BEL and FF,
   skips `$0F`, and shows every other byte as its CP437 glyph.
 - CR moves to the start of the next line, and an LF right after a CR does nothing. So CR, LF and
   CR LF each end one line.
-- The console obeys a part of MS-DOS's `ANSI.SYS`, always: the cursor moves, `Esc[2J`, `Esc[K`
-  and `Esc[...m`. `docs/API.md` lists them under `con_out`.
-- `Esc[0m` gives the colour `con_colour` last set, so a program's reset keeps the user's `COLOR`.
-- The ANSI colours black, red, green, yellow, blue, magenta, cyan and white are palette entries
-  0, 2, 5, 9, 6, 4, 3 and 15. Bold makes black 11, red 10, green 13, yellow 7, blue 14 and white
-  1. Magenta and cyan stay 4 and 3.
+- The console obeys a part of MS-DOS's `ANSI.SYS`, always: `Esc[r;cH`, `Esc[2J`, `Esc[K` and
+  `Esc[...m`. `docs/API.md` lists them under `con_out`.
+- `Esc[0m` gives the color `con_colour` last set, so a program's reset keeps the user's `COLOR`.
+- The ANSI colors black, red, green, yellow, blue, magenta, cyan and white are palette entries
+  0, 2, 5, 9, 6, 4, 3 and 15.
 - The screen scrolls in hardware: the map has 64 rows, the vertical scroll register picks the
   top one, and a scroll blanks one row.
 - The keyboard reads keycodes from SMC register `$07` over I2C and maps them in a US layout,
@@ -431,14 +431,15 @@ Drivers follow MS-DOS 2.0's device drivers.
   | `$00` | 1 | the stack pointer `exec` called the program with; `exit` returns to it |
   | `$01` | 1 | `PSP_HEAP`: the RAM bank of the program's string heap (section 3) |
   | `$02` | 1 | `PSP_TOP`: the last page of the program's RAM that `exec` saves |
+  | `$03` | 1 | `PSP_BREAK`: the mode of the STOP key |
   | `$18` | 20 | the handles: each a system file table entry number, or `$FF` when closed |
   | `$80` | 128 | the command tail: a length byte, the text after the program's name, then CR |
 
   - At boot handles 0, 1 and 2 share the `CON` entry.
   - The tail keeps the space before the first argument, as MS-DOS's does. `exec` cuts it to 126
     characters.
-  - Still to add: the break handler and the disk error handler in force when the program
-    started, and the bank of the environment.
+  - Still to add: the disk error handler in force when the program started, and the bank of
+    the environment.
 - `exec` copies the parent's pages from the PSP up to `PSP_TOP`, then `r0` to `$7F`, to 5 RAM
   banks. Boot and `exec` set `PSP_TOP` to the page of `$9EFF`; a UXCBASIC program sets
   its own at start-up (section 12). `exec` copies no page past `$9EFF`, whatever `PSP_TOP` holds.
@@ -458,7 +459,23 @@ Drivers follow MS-DOS 2.0's device drivers.
 - `keep` ends a program but leaves its banks allocated, with its IRQ hook in place: a TSR.
 - Every RAM bank records the PSP that owns it. `exit` frees the banks of the program that ends.
 - The environment is a bank of `NAME=value` strings. A child gets a copy of its parent's.
-- The STOP key calls the break handler. The default handler ends the program.
+- The STOP key is Ctrl+C. Call 47 `con_break` sets its mode, which `PSP_BREAK` holds:
+
+  | Mode | Name | Ctrl+C |
+  |---|---|---|
+  | 0 | `BREAK_OFF` | is the character `$03` |
+  | 1 | `BREAK_END` | prints `^C`, CR and LF, and ends the program with code 0; `exitcode` then gives X = 1 |
+  | 2 | `BREAK_CATCH` | is dropped and sets the break flag |
+
+  - `exec` starts each child in `BREAK_END`. The parent's mode comes back with its PSP. Boot
+    sets `BREAK_OFF` for the monitor.
+  - A get, with carry set, gives the mode in A and the flag in X, and clears the flag. A set,
+    with carry clear, takes the mode in A; a mode above 2 gives error 13.
+  - `con_status` checks for Ctrl+C, in the key queue and from the SMC. Ctrl+C is seen only
+    while a program asks for a key: `con_status`, `con_in`, `con_line`, UXCBASIC's `GETKEY`.
+  - `BREAK_END` ends the program from inside any call: the stack goes back to the pointer at
+    PSP offset `$00`.
+  - Vector 1 of `getvect` and `setvect`, the break handler, is not used.
 - A disk error calls the disk error handler. The default one asks "Abort, Retry, Ignore?".
 
 KERNAL entries:
@@ -478,6 +495,10 @@ KERNAL entries:
 - Its language is a small BASIC, not MS-DOS's command language.
 - The prompt and a script take the same language. A line typed at the prompt runs as a script of
   one line.
+- The prompt starts in column 0: when the cursor is past column 0, the shell prints a new line
+  first. An error message does the same.
+- The shell runs in `BREAK_CATCH` (section 7). At the prompt a Ctrl+C typed in the line does
+  nothing.
 - Statement names, variable names and labels are taken in capitals, whatever the case typed.
 
 ### Statements
@@ -515,14 +536,14 @@ Short names:
 - `LIST file` prints a text file.
 - `LOCATE row,column` moves the cursor. Rows run 0 to 29 and columns 0 to 79. A value out of
   range gives `Syntax error`.
-- `COLOR foreground,background` sets the colour of the characters written after it:
+- `COLOR foreground,background` sets the color of the characters written after it:
   `COLOR WHITE, BLUE`. Each value runs 0 to 15 (Variables, below). Both are needed. A value out
   of range gives `Syntax error`.
 - `BEEP` prints the BEL, `CHR$(7)`. The console makes no sound for it yet.
 - `PAUSE` waits for a key and drops it. It prints nothing. The key comes from the keyboard, even
-  under `FROM`.
-- `WAIT seconds` waits that many seconds, 60 VSYNCs each. No key ends it. A value below 0 gives
-  `Syntax error`.
+  under `FROM`. Ctrl+C ends it too.
+- `WAIT seconds` waits that many seconds, 60 VSYNCs each. Only Ctrl+C ends it, checked once a
+  second. A value below 0 gives `Syntax error`.
 - `BIND LS=FILES` makes `LS` run `FILES` (Aliases, below).
 - `DATE` and `TIME` need a clock call, which the API does not have yet.
 
@@ -532,11 +553,11 @@ Short names:
 - `A$` to `Z$` are strings of up to 255 characters. Their text lies in VARBANK (section 3), and
   their 26 descriptors in the shell's RAM.
 - A number prints with no spaces around it: `PRINT 42` gives `42`.
-- The colour names are numbers that cannot be set: `BLACK` 0, `WHITE` 1, `RED` 2, `CYAN` 3,
+- The color names are numbers that cannot be set: `BLACK` 0, `WHITE` 1, `RED` 2, `CYAN` 3,
   `PURPLE` 4, `GREEN` 5, `BLUE` 6, `YELLOW` 7, `ORANGE` 8, `BROWN` 9, `LIGHTRED` 10, `DARKGRAY`
   11, `GRAY` 12, `LIGHTGREEN` 13, `LIGHTBLUE` 14, `LIGHTGRAY` 15. `DOS.UXI` gives the same
   names as CONSTs: `DOS.BLUE`.
-- Trap: the shell's colour table in `COLOR_NUMBER` lists the names in the order of their values
+- Trap: the shell's color table in `COLOR_NUMBER` lists the names in the order of their values
   in `DOS.UXI`. Change both together.
 - A number expression takes `+`, `-`, `*`, `/`, brackets and a unary minus. `*` and `/` come
   before `+` and `-`. `/` gives a whole number, cut toward 0: `-7 / 2` is `-3`.
@@ -700,6 +721,18 @@ Short names:
 - A script's arguments go into the string slots: `BACKUP A B` sets `P1$` to `A` and `P2$` to `B`.
 - Trap: the next program the script runs clears the slots. A script copies its arguments into its
   own variables first.
+- Ctrl+C during a script line, or a program the line runs that Ctrl+C ends, asks after the line:
+
+  ```
+  Terminate CMD job (Y/N)?
+  ```
+
+  The shell waits for y, Y, n or N and echoes it in capitals. Ctrl+C counts as Y. Y ends the
+  script; N goes on to the next line. `PAUSE` and `WAIT` end at Ctrl+C, then the question
+  comes.
+- Trap: the shell checks only the key at the head of the queue. A Ctrl+C typed ahead is seen
+  after the line, before the program that would read it. A Ctrl+C behind another key is seen
+  only when a program reads up to it.
 
 ### Slots
 
@@ -798,7 +831,7 @@ Short names:
   - W turns wrap on and off. A wrapped line takes 1 to 4 rows, and Left and Right do nothing.
   - F, f or `/` asks for a text on the footer row and finds it from the top line down, in any
     case. N finds it on the next line after the match. The first match on a line shows in
-    reversed colours. When no line has it, the footer says `Not found`, and the next N starts
+    reversed colors. When no line has it, the footer says `Not found`, and the next N starts
     at line 1. An empty text finds nothing.
   - Q, q or Esc clears the screen and ends it.
   - A line ends at CR, LF or CR LF. A tab goes to the next column that is a multiple of 8. BS,
@@ -911,7 +944,7 @@ Folders:
 
 Each step boots and shows something, and each has a test.
 
-0. Skeleton: `build.py`, the ld65 config, a ROM that boots to a coloured screen, and `tests.py`
+0. Skeleton: `build.py`, the ld65 config, a ROM that boots to a colored screen, and `tests.py`
    with one boot test.
 1. The memory map and `tools/api.py` with its generator.
 2. Console: reset, stack, IRQ, the `CON` driver with scrolling, CR and LF and a cursor, and the

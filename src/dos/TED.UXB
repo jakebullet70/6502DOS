@@ -1,0 +1,856 @@
+'=============================================================================================
+' -- TED file, the Tiny Editor
+' -- edits a text file on the full screen: 29 rows of text and a status row with the file name,
+' -- the line and the column of the cursor, and F1 Help. For the command line, not for scripts.
+' -- Left and Right move the cursor one character, Up and Down one line. Up and Down keep the
+' -- column the cursor came from. Home and End go to the start and the end of the line. PgUp
+' -- and PgDn move 29 lines. The view moves sideways 8 columns at a time to keep the cursor
+' -- on screen. Ctrl+S saves the file. Ctrl+Q ends it, clears the screen and prints
+' -- TED - The Tiny Editor... Bye!; text with changes first asks Save changes (Y/N)?, and a
+' -- key other than Y or N goes back to the text.
+' -- F1 or Ctrl+G shows the keys from C:\DOS\TED.HLP until a key is pressed; no TED.HLP
+' -- shows File not found on the status row.
+' -- Ctrl+C is a key, not the STOP key. A save writes TED.$$$ in the file's directory, then
+' -- gives it the file's name, so a failed save keeps the file as it was. Lines end in CR LF,
+' -- or in LF when the file's first line did.
+' -- A typed character goes in at the cursor; there is no overwrite mode. Enter splits the
+' -- line, Tab puts in a tab, Backspace takes out the character before the cursor and Delete
+' -- the one under it; at a line's end they join two lines.
+' -- Shift with a cursor key selects, from where the cursor was; the selection shows in
+' -- reverse video. Another key but Ctrl+C ends it. Delete and Backspace take out the selection
+' -- when there is one, and do not put it on the clipboard. Ctrl+C copies the selection to the
+' -- clipboard, and Ctrl+X cuts it; with no selection they take the cursor's line and its line
+' -- end. Ctrl+V puts the clipboard in at the cursor. The clipboard holds 2048 bytes; a larger
+' -- selection shows Selection too large. The status row starts with * once
+' -- the text has changed. Insufficient memory shows there when the text fills the RAM.
+' -- A line ends at CR, LF or CR LF; the text keeps LF. A tab goes to the next column that is
+' -- a multiple of 8. Another character below 32 shows as ".".
+' -- The text takes the RAM from the program's end to $96FF, the clipboard $9700 to $9EFF. A
+' -- larger file prints File too
+' -- large and gives exit code 2. A file that does not exist gives an empty text, and the
+' -- status row says New file. No file name prints Required parameter missing and gives exit
+' -- code 1. A file that does not open for another reason prints its error message and gives
+' -- exit code 2. Exit code 0 otherwise.
+' --
+' -- From a prompt:
+' --     TED DOCS\README.TXT
+'=============================================================================================
+#INCLUDE "DOS.UXI"
+#INCLUDE "HEAP.UXI"
+#INCLUDE "KEYS.UXI"
+#INCLUDE "CONS.UXI"
+CONST SLOT_P1 AS UBYTE = 0 '--- the passed in filename slot
+
+' The status row's colors, black on light grey.
+CONST STATUS_COLORS$ = "{BLACK}{ON WHITE}"
+CONST TEXT_ROWS AS UBYTE = 29, STATUS_ROW AS UBYTE = 29
+CONST COLUMNS AS UBYTE = 80
+CONST SHIFT_STEP AS UBYTE = 8, NO_MARK AS UBYTE = 255
+CONST CTRL_C AS UBYTE = 3, LF AS UBYTE = 10, CTRL_Q AS UBYTE = 17, CTRL_S AS UBYTE = 19
+CONST CTRL_G AS UBYTE = 7, CTRL_V AS UBYTE = 22, CTRL_X AS UBYTE = 24
+CONST PSP_TOP AS UWORD = $0702, POOL_END AS UWORD = $9700
+CONST CLIPBOARD AS UWORD = $9700, CLIP_SIZE AS UWORD = 2048
+CONST HELP_NAME$ = "C:\DOS\TED.HLP"
+
+
+DIM FILE_NAME AS STRING * 80, STATUS AS STRING * 120, MESSAGE AS STRING * 40
+DIM EDITED_FILE AS UWORD
+' The text is a gap buffer in the pool, POOL_START to POOL_END. Positions 0 to TEXT_LENGTH
+' count the text's bytes. The bytes from GAP_POSITION on lie GAP_SIZE bytes further on.
+DIM POOL_START AS UWORD, TEXT_LENGTH AS UWORD, GAP_POSITION AS UWORD, GAP_SIZE AS UWORD
+' CR_ENDS is 1 when the file's first line ends in CR, or the file has no line end. A save
+' then writes each LF as CR LF, from CR_LF.
+DIM CR_ENDS AS UBYTE, CR_LF(2) AS UBYTE
+' LINE_BEGIN is where the cursor's line starts. GOAL is the column Up and Down aim for.
+DIM CURSOR AS UWORD, CURSOR_LINE AS UWORD, LINE_BEGIN AS UWORD
+DIM CURSOR_COLUMN AS UWORD, GOAL AS UWORD, VERTICAL AS UBYTE
+DIM TOP AS UWORD, TOP_LINE AS UWORD, LEFT_COLUMN AS UWORD
+' NEED_PAGE asks for the page to be drawn again; NEED_SCROLL for the page to move up one row;
+' NEED_ROW for line ROW_LINE, which starts at ROW_START, to be drawn again.
+DIM NEED_PAGE AS UBYTE, NEED_SCROLL AS UBYTE, NEED_ROW AS UBYTE
+DIM ROW_LINE AS UWORD, ROW_START AS UWORD
+DIM MODIFIED AS UBYTE
+' The selection runs from ANCHOR to the cursor while SELECTING is 1. SHOW_ROW marks the
+' positions SELECTION_BEGIN up to SELECTION_END; both are 0 with no selection.
+DIM ANCHOR AS UWORD, SELECTING AS UBYTE, SELECTION_BEGIN AS UWORD, SELECTION_END AS UWORD
+DIM NEW_BEGIN AS UWORD, NEW_END AS UWORD, OLD_LINE AS UWORD
+DIM CLIP_LENGTH AS UWORD
+DIM ROW_TEXT(COLUMNS) AS UBYTE
+DIM CHARACTER AS UBYTE, SCAN AS UBYTE, MODIFIERS AS UBYTE, STEPS AS UBYTE, QUIT AS UBYTE
+
+
+
+
+' The byte at position PLACE of the text.
+FUNCT BYTE_AT(PLACE AS UWORD) AS UBYTE
+  IF PLACE >= GAP_POSITION THEN PLACE = PLACE + GAP_SIZE
+  RETURN ContentsAt(POOL_START + PLACE)
+END FUNCT
+
+
+
+' Moves the gap to position PLACE.
+SUB MOVE_GAP(PLACE AS UWORD)
+  DIM SOURCE AS UWORD, TARGET AS UWORD
+  IF PLACE < GAP_POSITION THEN
+    SOURCE = POOL_START + GAP_POSITION
+    TARGET = SOURCE + GAP_SIZE
+    DO WHILE GAP_POSITION > PLACE
+      SOURCE = SOURCE - 1
+      TARGET = TARGET - 1
+      ContentsAt(TARGET) = ContentsAt(SOURCE)
+      GAP_POSITION = GAP_POSITION - 1
+    LOOP
+  ELSE
+    TARGET = POOL_START + GAP_POSITION
+    SOURCE = TARGET + GAP_SIZE
+    DO WHILE GAP_POSITION < PLACE
+      ContentsAt(TARGET) = ContentsAt(SOURCE)
+      SOURCE = SOURCE + 1
+      TARGET = TARGET + 1
+      GAP_POSITION = GAP_POSITION + 1
+    LOOP
+  END IF
+END SUB
+
+
+
+' Asks for the cursor's row to be drawn again. A row already asked for on another line gives
+' the whole page, since the edit may have moved where that line starts.
+SUB CHANGED_ROW()
+  IF NEED_ROW = 1 AND ROW_LINE <> CURSOR_LINE THEN NEED_PAGE = 1
+  NEED_ROW = 1
+  ROW_LINE = CURSOR_LINE
+  ROW_START = LINE_BEGIN
+END SUB
+
+
+
+' Puts CHARACTER into the text at the cursor and moves the cursor past it. LF starts a new
+' line. A full pool sets MESSAGE instead.
+SUB INSERT(CHARACTER AS UBYTE)
+  IF GAP_SIZE = 0 THEN
+    MESSAGE = "Insufficient memory"
+  ELSE
+    MOVE_GAP(CURSOR)
+    ContentsAt(POOL_START + GAP_POSITION) = CHARACTER
+    GAP_POSITION = GAP_POSITION + 1
+    GAP_SIZE = GAP_SIZE - 1
+    TEXT_LENGTH = TEXT_LENGTH + 1
+    CURSOR = CURSOR + 1
+    MODIFIED = 1
+    IF CHARACTER = LF THEN
+      LINE_BEGIN = CURSOR
+      CURSOR_LINE = CURSOR_LINE + 1
+      NEED_PAGE = 1
+    ELSE
+      CHANGED_ROW()
+    END IF
+  END IF
+END SUB
+
+
+
+' Takes the byte at position PLACE out of the text.
+SUB REMOVE(PLACE AS UWORD)
+  MOVE_GAP(PLACE)
+  GAP_SIZE = GAP_SIZE + 1
+  TEXT_LENGTH = TEXT_LENGTH - 1
+  MODIFIED = 1
+END SUB
+
+
+
+' Where the line that holds position PLACE starts.
+FUNCT LINE_START(PLACE AS UWORD) AS UWORD
+  DO WHILE PLACE > 0
+    IF BYTE_AT(PLACE - 1) = LF THEN EXIT DO
+    PLACE = PLACE - 1
+  LOOP
+  RETURN PLACE
+END FUNCT
+
+
+
+' Where the line that holds position PLACE ends: its LF, or TEXT_LENGTH.
+FUNCT LINE_END(PLACE AS UWORD) AS UWORD
+  DO WHILE PLACE < TEXT_LENGTH
+    IF BYTE_AT(PLACE) = LF THEN EXIT DO
+    PLACE = PLACE + 1
+  LOOP
+  RETURN PLACE
+END FUNCT
+
+
+
+' The screen column after CHARACTER, shown at column COLUMN.
+FUNCT NEXT_COLUMN(CHARACTER AS UBYTE, COLUMN AS UWORD) AS UWORD
+  IF CHARACTER = KEYS.TAB THEN RETURN (COLUMN OR 7) + 1
+  RETURN COLUMN + 1
+END FUNCT
+
+
+
+
+' The screen column of position PLACE on the line that starts at START.
+FUNCT COLUMN_OF(START AS UWORD, PLACE AS UWORD) AS UWORD
+  DIM COLUMN AS UWORD
+  COLUMN = 0
+  DO WHILE START < PLACE
+    COLUMN = NEXT_COLUMN(BYTE_AT(START), COLUMN)
+    START = START + 1
+  LOOP
+  RETURN COLUMN
+END FUNCT
+
+
+
+
+' The position on the line that starts at START nearest to screen column GOAL, not past it.
+FUNCT POSITION_AT(START AS UWORD, GOAL AS UWORD) AS UWORD
+  DIM COLUMN AS UWORD, CHARACTER AS UBYTE
+  COLUMN = 0
+  DO WHILE START < TEXT_LENGTH
+    CHARACTER = BYTE_AT(START)
+    IF CHARACTER = LF THEN EXIT DO
+    COLUMN = NEXT_COLUMN(CHARACTER, COLUMN)
+    IF COLUMN > GOAL THEN EXIT DO
+    START = START + 1
+  LOOP
+  RETURN START
+END FUNCT
+
+
+
+' Moves LINE_BEGIN and CURSOR_LINE to the line below. Returns 1, or 0 on the last line.
+FUNCT LINE_DOWN() AS UBYTE
+  DIM FINISH AS UWORD
+  FINISH = LINE_END(LINE_BEGIN)
+  IF FINISH >= TEXT_LENGTH THEN RETURN 0
+  LINE_BEGIN = FINISH + 1
+  CURSOR_LINE = CURSOR_LINE + 1
+  RETURN 1
+END FUNCT
+
+
+
+' Moves LINE_BEGIN and CURSOR_LINE to the line above. Returns 1, or 0 on the first line.
+FUNCT LINE_UP() AS UBYTE
+  IF LINE_BEGIN = 0 THEN RETURN 0
+  LINE_BEGIN = LINE_START(LINE_BEGIN - 1)
+  CURSOR_LINE = CURSOR_LINE - 1
+  RETURN 1
+END FUNCT
+
+
+
+' Copies CLIP_LENGTH bytes from SOURCE to TARGET, first to last. Returns the number of LFs.
+FUNCT COPY_CLIP(SOURCE AS UWORD, TARGET AS UWORD) AS UWORD
+  DIM PLACE AS UWORD, LINES AS UWORD, CHARACTER AS UBYTE
+  LINES = 0
+  PLACE = 0
+  DO WHILE PLACE < CLIP_LENGTH
+    CHARACTER = ContentsAt(SOURCE + PLACE)
+    ContentsAt(TARGET + PLACE) = CHARACTER
+    IF CHARACTER = LF THEN LINES = LINES + 1
+    PLACE = PLACE + 1
+  LOOP
+  RETURN LINES
+END FUNCT
+
+
+
+' Takes positions BEGIN up to FINISH out of the text and puts the cursor at BEGIN. The cursor
+' must be at BEGIN or FINISH, or between them on one line.
+SUB REMOVE_PART(BEGIN AS UWORD, FINISH AS UWORD)
+  DIM PLACE AS UWORD
+  MOVE_GAP(FINISH)
+  IF CURSOR = FINISH THEN
+    PLACE = BEGIN
+    DO WHILE PLACE < FINISH
+      IF ContentsAt(POOL_START + PLACE) = LF THEN CURSOR_LINE = CURSOR_LINE - 1
+      PLACE = PLACE + 1
+    LOOP
+  END IF
+  ' The part lies just before the gap, so the gap takes it in.
+  GAP_POSITION = BEGIN
+  GAP_SIZE = GAP_SIZE + FINISH - BEGIN
+  TEXT_LENGTH = TEXT_LENGTH - (FINISH - BEGIN)
+  CURSOR = BEGIN
+  LINE_BEGIN = LINE_START(BEGIN)
+  MODIFIED = 1
+  NEED_PAGE = 1
+END SUB
+
+
+
+' Puts the selection on the clipboard, or the cursor's line and its line end when there is
+' none. CUT = 1 also takes it out of the text. A part over CLIP_SIZE bytes sets MESSAGE
+' instead.
+SUB TAKE(CUT AS UBYTE)
+  DIM BEGIN AS UWORD, FINISH AS UWORD
+  BEGIN = SELECTION_BEGIN
+  FINISH = SELECTION_END
+  IF FINISH = BEGIN THEN
+    BEGIN = LINE_BEGIN
+    FINISH = LINE_END(BEGIN)
+    IF FINISH < TEXT_LENGTH THEN FINISH = FINISH + 1
+  END IF
+  IF FINISH - BEGIN > CLIP_SIZE THEN
+    MESSAGE = "Selection too large"
+    RETURN
+  END IF
+  MOVE_GAP(FINISH)
+  CLIP_LENGTH = FINISH - BEGIN
+  COPY_CLIP(POOL_START + BEGIN, CLIPBOARD)
+  IF CUT = 1 AND CLIP_LENGTH > 0 THEN REMOVE_PART(BEGIN, FINISH)
+END SUB
+
+
+
+' Puts the clipboard into the text at the cursor and moves the cursor past it. A full pool
+' sets MESSAGE instead.
+SUB PASTE()
+  DIM LINES AS UWORD
+  IF CLIP_LENGTH > GAP_SIZE THEN
+    MESSAGE = "Insufficient memory"
+    RETURN
+  END IF
+  IF CLIP_LENGTH = 0 THEN RETURN
+  MOVE_GAP(CURSOR)
+  LINES = COPY_CLIP(CLIPBOARD, POOL_START + GAP_POSITION)
+  GAP_POSITION = GAP_POSITION + CLIP_LENGTH
+  GAP_SIZE = GAP_SIZE - CLIP_LENGTH
+  TEXT_LENGTH = TEXT_LENGTH + CLIP_LENGTH
+  CURSOR = CURSOR + CLIP_LENGTH
+  MODIFIED = 1
+  IF LINES = 0 THEN
+    CHANGED_ROW()
+  ELSE
+    CURSOR_LINE = CURSOR_LINE + LINES
+    LINE_BEGIN = LINE_START(CURSOR)
+    NEED_PAGE = 1
+  END IF
+END SUB
+
+
+
+
+' Writes ROW_TEXT from index FIRST up to LAST.
+SUB PUT_RUN(FIRST AS UBYTE, LAST AS UBYTE)
+  IF LAST > FIRST THEN WRITE 1, @ROW_TEXT + FIRST, LAST - FIRST
+END SUB
+
+
+
+' Shows the line that starts at START on screen row ROW, from column LEFT_COLUMN, and blanks
+' the rest of the row. The selected part shows in reverse video, a selected line end as one
+' space. START past TEXT_LENGTH gives a blank row. A full row leaves the cursor on the next
+' row. Returns where the next line starts, past TEXT_LENGTH when none does.
+FUNCT SHOW_ROW(ROW AS UBYTE, START AS UWORD) AS UWORD
+  DIM COLUMN AS UWORD, LAST AS UWORD, COUNT AS UBYTE, CHARACTER AS UBYTE
+  DIM MARKED AS UBYTE, MARK_FROM AS UBYTE, MARK_TO AS UBYTE
+  POS(1) = ROW
+  POS(0) = 0
+  COUNT = 0
+  ' ROW_TEXT is marked from MARK_FROM up to MARK_TO.
+  MARK_FROM = NO_MARK
+  MARK_TO = 0
+  IF START <= TEXT_LENGTH THEN
+    COLUMN = 0
+    LAST = LEFT_COLUMN + COLUMNS
+    CHARACTER = 0
+    DO WHILE START < TEXT_LENGTH
+      CHARACTER = BYTE_AT(START)
+      MARKED = 0
+      IF START >= SELECTION_BEGIN AND START < SELECTION_END THEN
+        MARKED = 1
+        IF MARK_FROM = NO_MARK THEN MARK_FROM = COUNT
+      END IF
+      START = START + 1
+      IF CHARACTER = LF THEN
+        IF MARKED = 1 AND COLUMN >= LEFT_COLUMN AND COLUMN < LAST THEN
+          ROW_TEXT(COUNT) = KEYS.SPACE
+          COUNT = COUNT + 1
+          MARK_TO = COUNT
+        END IF
+        EXIT DO
+      END IF
+      IF CHARACTER = KEYS.TAB THEN
+        DO
+          IF COLUMN >= LEFT_COLUMN AND COLUMN < LAST THEN
+            ROW_TEXT(COUNT) = KEYS.SPACE
+            COUNT = COUNT + 1
+          END IF
+          COLUMN = COLUMN + 1
+        LOOP UNTIL (COLUMN AND 7) = 0
+      ELSE
+        IF COLUMN >= LEFT_COLUMN AND COLUMN < LAST THEN
+          IF CHARACTER < KEYS.SPACE THEN CHARACTER = ASC(".")
+          ROW_TEXT(COUNT) = CHARACTER
+          COUNT = COUNT + 1
+        END IF
+        COLUMN = COLUMN + 1
+      END IF
+      IF MARKED = 1 THEN MARK_TO = COUNT
+    LOOP
+    IF CHARACTER <> LF THEN START = TEXT_LENGTH + 1
+  END IF
+  IF MARK_FROM = NO_MARK THEN
+    MARK_FROM = COUNT
+    MARK_TO = COUNT
+  END IF
+  PUT_RUN(0, MARK_FROM)
+  IF MARK_TO > MARK_FROM THEN
+    PRINT CONS.REVERSE$;
+    PUT_RUN(MARK_FROM, MARK_TO)
+    PRINT CONS.NORMAL$;
+  END IF
+  PUT_RUN(MARK_TO, COUNT)
+  IF COUNT < COLUMNS THEN PRINT CONS.CLEAR_EOL$;
+  RETURN START
+END FUNCT
+
+
+
+' Shows the page from line TOP.
+SUB SHOW_PAGE()
+  DIM ROW AS UBYTE, START AS UWORD
+  START = TOP
+  FOR ROW = 0 TO TEXT_ROWS - 1
+    START = SHOW_ROW(ROW, START)
+  NEXT
+END SUB
+
+
+
+' Shows the status row: the file name, the line and the column, F1 Help, and MESSAGE. It stays
+' under 80 characters, so the screen does not scroll.
+SUB SHOW_STATUS()
+  IF MODIFIED = 1 THEN
+    STATUS = "*"
+  ELSE
+    STATUS = " "
+  END IF
+  STATUS = STATUS + LEFT$(FILE_NAME, 24) + "  Ln" + STR$(CURSOR_LINE + 1)
+  STATUS = STATUS + "  Col" + STR$(CURSOR_COLUMN + 1) + "  " + MESSAGE
+  CONS.LOCATE(STATUS_ROW, 0)
+  PRINT STATUS_COLORS$; LEFT$(STATUS, COLUMNS - 9); CONS.CLEAR_EOL$;
+  CONS.LOCATE(STATUS_ROW, COLUMNS - 9)
+  PRINT "F1 Help"; CONS.NORMAL$;
+END SUB
+
+
+
+' Shows HELP_NAME$ on a clear screen until a key is pressed, then asks for the page. The file
+' stays under 30 rows, so the screen does not scroll. Each LF goes out after a CR, since the
+' console's LF keeps the column. A file that does not open sets MESSAGE to its error.
+SUB SHOW_HELP()
+  DIM HELP_FILE AS UWORD, COUNT AS UWORD, PLACE AS UWORD
+  HELP_FILE = DOS.OPEN_FILE(HELP_NAME$, DOS.ACCESS_READ)
+  IF HELP_FILE = NOFILE THEN
+    MESSAGE = DOS.ERRMSG(DOS.ERROR)
+    RETURN
+  END IF
+  PRINT CONS.NORMAL$; CONS.CLEAR_SCREEN$;
+  CONS.LOCATE(2, 0)
+  DO
+    COUNT = DOS.READ_FILE(HELP_FILE, @ROW_TEXT, COLUMNS)
+    PLACE = 0
+    DO WHILE PLACE < COUNT
+      IF ROW_TEXT(PLACE) = LF THEN
+        DOS.REG_A = KEYS.ENTER
+        SYS DOS.API_CON_OUT
+      END IF
+      DOS.REG_A = ROW_TEXT(PLACE)
+      SYS DOS.API_CON_OUT
+      PLACE = PLACE + 1
+    LOOP
+  LOOP UNTIL COUNT < COLUMNS
+  DOS.CLOSE_FILE(HELP_FILE)
+  DOS.REG_P = 0
+  SYS DOS.API_CON_GETKEY
+  NEED_PAGE = 1
+END SUB
+
+
+
+
+' Sets CURSOR_COLUMN, and moves the page and the view sideways so the cursor shows. Asks for
+' the page to be drawn again, or to move up one row when the cursor went one line below it.
+SUB FOLLOW_CURSOR()
+  CURSOR_COLUMN = COLUMN_OF(LINE_BEGIN, CURSOR)
+  IF VERTICAL = 0 THEN GOAL = CURSOR_COLUMN
+  IF CURSOR_LINE < TOP_LINE THEN
+    TOP = LINE_BEGIN
+    TOP_LINE = CURSOR_LINE
+    NEED_PAGE = 1
+  END IF
+  IF CURSOR_LINE >= TOP_LINE + TEXT_ROWS THEN
+    IF CURSOR_LINE = TOP_LINE + TEXT_ROWS AND NEED_SCROLL = 0 THEN
+      NEED_SCROLL = 1
+    ELSE
+      NEED_PAGE = 1
+    END IF
+    DO WHILE CURSOR_LINE >= TOP_LINE + TEXT_ROWS
+      TOP = LINE_END(TOP) + 1
+      TOP_LINE = TOP_LINE + 1
+    LOOP
+  END IF
+  IF CURSOR_COLUMN < LEFT_COLUMN THEN
+    LEFT_COLUMN = CURSOR_COLUMN - (CURSOR_COLUMN AND (SHIFT_STEP - 1))
+    NEED_PAGE = 1
+  END IF
+  IF CURSOR_COLUMN >= LEFT_COLUMN + COLUMNS THEN
+    LEFT_COLUMN = CURSOR_COLUMN - COLUMNS + SHIFT_STEP
+    LEFT_COLUMN = LEFT_COLUMN - (LEFT_COLUMN AND (SHIFT_STEP - 1))
+    NEED_PAGE = 1
+  END IF
+END SUB
+
+
+
+
+' Draws what FOLLOW_CURSOR and the edits asked for and the status row, and puts the cursor
+' in place. A CR on the status row scrolls the screen up in hardware; the cursor's line then
+' goes on the last text row.
+SUB DRAW()
+  IF NEED_PAGE = 1 THEN
+    SHOW_PAGE()
+  ELSEIF NEED_SCROLL = 1 THEN
+    POS(1) = STATUS_ROW
+    POS(0) = 0
+    PRINT
+    SHOW_ROW(TEXT_ROWS - 1, LINE_BEGIN)
+  END IF
+  IF NEED_PAGE = 0 AND NEED_ROW = 1 THEN
+    IF ROW_LINE >= TOP_LINE AND ROW_LINE < TOP_LINE + TEXT_ROWS THEN
+      SHOW_ROW(ROW_LINE - TOP_LINE, ROW_START)
+    END IF
+  END IF
+  NEED_PAGE = 0
+  NEED_SCROLL = 0
+  NEED_ROW = 0
+  SHOW_STATUS()
+  CONS.LOCATE(CURSOR_LINE - TOP_LINE, CURSOR_COLUMN - LEFT_COLUMN)
+END SUB
+
+
+
+
+' Loads the file into the pool and turns its CR LF and CR into LF. Returns 0, or the exit
+' code after it printed why the file did not load.
+FUNCT LOAD() AS UBYTE
+  DIM LOADED AS UWORD, READ_PLACE AS UWORD, CHARACTER AS UBYTE, SEEN AS UBYTE
+  CR_ENDS = 1
+  EDITED_FILE = DOS.OPEN_FILE(FILE_NAME, DOS.ACCESS_READ)
+  IF EDITED_FILE = NOFILE THEN
+    IF DOS.ERROR = DOS.ERR_NOT_FOUND THEN
+      MESSAGE = "New file"
+      RETURN 0
+    END IF
+    PRINT DOS.ERRMSG(DOS.ERROR)
+    RETURN 2
+  END IF
+  LOADED = DOS.READ_FILE(EDITED_FILE, POOL_START, POOL_END - POOL_START)
+  IF DOS.ERROR = 0 THEN
+    IF DOS.READ_FILE(EDITED_FILE, @CHARACTER, 1) > 0 THEN
+      DOS.CLOSE_FILE(EDITED_FILE)
+      PRINT "File too large"
+      RETURN 2
+    END IF
+  END IF
+  IF DOS.ERROR <> 0 THEN
+    PRINT DOS.ERRMSG(DOS.ERROR)
+    DOS.CLOSE_FILE(EDITED_FILE)
+    RETURN 2
+  END IF
+  DOS.CLOSE_FILE(EDITED_FILE)
+  READ_PLACE = 0
+  SEEN = 0
+  DO WHILE READ_PLACE < LOADED
+    CHARACTER = ContentsAt(POOL_START + READ_PLACE)
+    READ_PLACE = READ_PLACE + 1
+    IF CHARACTER = KEYS.ENTER THEN
+      SEEN = 1
+      CHARACTER = LF
+      IF READ_PLACE < LOADED THEN
+        IF ContentsAt(POOL_START + READ_PLACE) = LF THEN READ_PLACE = READ_PLACE + 1
+      END IF
+    ELSEIF CHARACTER = LF THEN
+      IF SEEN = 0 THEN CR_ENDS = 0
+      SEEN = 1
+    END IF
+    ContentsAt(POOL_START + TEXT_LENGTH) = CHARACTER
+    TEXT_LENGTH = TEXT_LENGTH + 1
+  LOOP
+  RETURN 0
+END FUNCT
+
+
+
+' Writes COUNT bytes from ADDRESS to EDITED_FILE, each LF as CR LF when CR_ENDS is 1.
+' Returns 0, an error number, or DOS.DISK_FULL when the file took fewer bytes.
+FUNCT WRITE_PART(ADDRESS AS UWORD, COUNT AS UWORD) AS UBYTE
+  DIM RUN AS UWORD
+  DO WHILE COUNT > 0
+    RUN = COUNT
+    IF CR_ENDS = 1 THEN
+      RUN = 0
+      DO WHILE RUN < COUNT
+        IF ContentsAt(ADDRESS + RUN) = LF THEN EXIT DO
+        RUN = RUN + 1
+      LOOP
+    END IF
+    IF RUN > 0 THEN
+      IF DOS.WRITE_FILE(EDITED_FILE, ADDRESS, RUN) < RUN THEN EXIT DO
+      ADDRESS = ADDRESS + RUN
+      COUNT = COUNT - RUN
+    ELSE
+      IF DOS.WRITE_FILE(EDITED_FILE, @CR_LF, 2) < 2 THEN EXIT DO
+      ADDRESS = ADDRESS + 1
+      COUNT = COUNT - 1
+    END IF
+  LOOP
+  IF COUNT = 0 THEN RETURN 0
+  IF DOS.ERROR <> 0 THEN RETURN DOS.ERROR
+  RETURN DOS.DISK_FULL
+END FUNCT
+
+
+
+' Saves the text to FILE_NAME. It is written to TED.$$$ in the file's directory, then the
+' file is deleted and TED.$$$ takes its name. A failed write keeps the file as it was.
+' Sets MESSAGE to Saved and clears MODIFIED, or sets MESSAGE to the error. Returns 0 or the
+' error number.
+FUNCT SAVE() AS UBYTE
+  DIM TEMPORARY AS STRING * 90, LENGTH AS UBYTE, PLACE AS UBYTE, CODE AS UBYTE
+  ' LENGTH ends as the length of the directory part: up to the last \, / or :.
+  LENGTH = 0
+  FOR PLACE = 1 TO LEN(FILE_NAME)
+    SELECT CASE ContentsAt(@FILE_NAME + 1 + PLACE)
+      CASE ASC("\"), ASC("/"), ASC(":")
+        LENGTH = PLACE
+    END SELECT
+  NEXT
+  TEMPORARY = LEFT$(FILE_NAME, LENGTH) + "TED.$$$"
+  CR_LF(0) = KEYS.ENTER
+  CR_LF(1) = LF
+  EDITED_FILE = DOS.CREATE_FILE(TEMPORARY, 0)
+  CODE = DOS.ERROR
+  IF CODE = 0 THEN
+    CODE = WRITE_PART(POOL_START, GAP_POSITION)
+    IF CODE = 0 THEN
+      CODE = WRITE_PART(POOL_START + GAP_POSITION + GAP_SIZE, TEXT_LENGTH - GAP_POSITION)
+    END IF
+    DOS.CLOSE_FILE(EDITED_FILE)
+    IF CODE = 0 THEN CODE = DOS.ERROR
+    IF CODE = 0 THEN
+      DOS.DELETE(FILE_NAME)
+      CODE = DOS.ERROR
+      IF CODE = DOS.ERR_NOT_FOUND THEN CODE = 0
+    END IF
+    IF CODE = 0 THEN
+      ' The file is gone, so a failed rename keeps TED.$$$.
+      DOS.RENAME(TEMPORARY, FILE_NAME)
+      CODE = DOS.ERROR
+    ELSE
+      DOS.DELETE(TEMPORARY)
+    END IF
+  END IF
+  IF CODE = 0 THEN
+    MODIFIED = 0
+    MESSAGE = "Saved"
+  ELSEIF CODE = DOS.DISK_FULL THEN
+    MESSAGE = "Insufficient disk space"
+  ELSE
+    MESSAGE = DOS.ERRMSG(CODE)
+  END IF
+  RETURN CODE
+END FUNCT
+
+
+
+' Asks Save changes (Y/N)? on the status row when the text has changed. Y saves, N does not,
+' and another key goes back to the text. Returns 1 to quit: always for text with no changes,
+' after N, or after Y when the save worked.
+FUNCT ASK_QUIT() AS UBYTE
+  DIM KEY AS UBYTE
+  IF MODIFIED = 0 THEN RETURN 1
+  MESSAGE = "Save changes (Y/N)?"
+  SHOW_STATUS()
+  MESSAGE = ""
+  DOS.REG_P = 0
+  SYS DOS.API_CON_GETKEY
+  KEY = DOS.REG_A
+  SELECT CASE KEY
+    CASE ASC("N"), ASC("n")
+      RETURN 1
+    CASE ASC("Y"), ASC("y")
+      RETURN SAVE() = 0
+  END SELECT
+  RETURN 0
+END FUNCT
+
+
+
+
+'--- program starts here -------------------------------------------
+FILE_NAME = HEAP.SYS_STRINGS_GET(SLOT_P1)
+IF FILE_NAME = "" THEN
+  PRINT "Required parameter missing"
+  END 1
+END IF
+' PSP_TOP holds the page of the program's end.
+POOL_START = ContentsAt(PSP_TOP)
+POOL_START = (POOL_START + 1) << 8
+QUIT = LOAD()
+IF QUIT <> 0 THEN END QUIT
+GAP_POSITION = TEXT_LENGTH
+GAP_SIZE = POOL_END - POOL_START - TEXT_LENGTH
+DOS.STOP_KEY(DOS.STOP.OFF)
+NEED_PAGE = 1
+FOLLOW_CURSOR()
+DRAW()
+DO
+  ' API_CON_GETKEY with carry clear waits for a key with the cursor blinking. A plain key
+  ' gives SCAN = 0, an extended key CHARACTER = 0.
+  DOS.REG_P = 0
+  SYS DOS.API_CON_GETKEY
+  CHARACTER = DOS.REG_A
+  SCAN = DOS.REG_X
+  MODIFIERS = DOS.REG_Y
+  MESSAGE = ""
+  VERTICAL = 0
+  OLD_LINE = CURSOR_LINE
+  ' SELECTION_BEGIN and SELECTION_END keep an ended selection for Ctrl+X.
+  SELECT CASE SCAN
+    CASE KEYS.SCAN_HOME, KEYS.SCAN_UP, KEYS.SCAN_PGUP, KEYS.SCAN_LEFT, KEYS.SCAN_RIGHT, _
+         KEYS.SCAN_END, KEYS.SCAN_DOWN, KEYS.SCAN_PGDN
+      IF MODIFIERS AND KEYS.MOD_SHIFT THEN
+        IF SELECTING = 0 THEN ANCHOR = CURSOR
+        SELECTING = 1
+      ELSE
+        SELECTING = 0
+      END IF
+    CASE ELSE
+      IF CHARACTER <> CTRL_C THEN SELECTING = 0
+  END SELECT
+  IF CHARACTER = CTRL_Q THEN QUIT = ASK_QUIT()
+  SELECT CASE SCAN
+    CASE KEYS.SCAN_LEFT
+      IF CURSOR > 0 THEN
+        CURSOR = CURSOR - 1
+        IF CURSOR < LINE_BEGIN THEN LINE_UP()
+      END IF
+    CASE KEYS.SCAN_RIGHT
+      IF CURSOR < TEXT_LENGTH THEN
+        IF BYTE_AT(CURSOR) = LF THEN LINE_DOWN()
+        CURSOR = CURSOR + 1
+      END IF
+    CASE KEYS.SCAN_HOME
+      CURSOR = LINE_BEGIN
+    CASE KEYS.SCAN_END
+      CURSOR = LINE_END(CURSOR)
+    CASE KEYS.SCAN_UP
+      VERTICAL = 1
+      IF LINE_UP() = 1 THEN CURSOR = POSITION_AT(LINE_BEGIN, GOAL)
+    CASE KEYS.SCAN_DOWN
+      VERTICAL = 1
+      IF LINE_DOWN() = 1 THEN CURSOR = POSITION_AT(LINE_BEGIN, GOAL)
+    CASE KEYS.SCAN_PGUP
+      ' The page moves as far as the cursor, and no further than the first line.
+      VERTICAL = 1
+      FOR STEPS = 1 TO TEXT_ROWS
+        IF LINE_UP() = 0 THEN EXIT FOR
+        IF TOP_LINE > 0 THEN
+          TOP = LINE_START(TOP - 1)
+          TOP_LINE = TOP_LINE - 1
+          NEED_PAGE = 1
+        END IF
+      NEXT
+      CURSOR = POSITION_AT(LINE_BEGIN, GOAL)
+    CASE KEYS.SCAN_PGDN
+      VERTICAL = 1
+      FOR STEPS = 1 TO TEXT_ROWS
+        IF LINE_DOWN() = 0 THEN EXIT FOR
+        TOP = LINE_END(TOP) + 1
+        TOP_LINE = TOP_LINE + 1
+        NEED_PAGE = 1
+      NEXT
+      CURSOR = POSITION_AT(LINE_BEGIN, GOAL)
+    CASE KEYS.SCAN_F1
+      SHOW_HELP()
+    CASE KEYS.SCAN_DELETE
+      IF SELECTION_END > SELECTION_BEGIN THEN
+        REMOVE_PART(SELECTION_BEGIN, SELECTION_END)
+      ELSEIF CURSOR < TEXT_LENGTH THEN
+        IF BYTE_AT(CURSOR) = LF THEN
+          NEED_PAGE = 1
+        ELSE
+          CHANGED_ROW()
+        END IF
+        REMOVE(CURSOR)
+      END IF
+    CASE 0
+      SELECT CASE CHARACTER
+        CASE KEYS.ENTER
+          INSERT(LF)
+        CASE KEYS.TAB
+          INSERT(KEYS.TAB)
+        CASE CTRL_G
+          SHOW_HELP()
+        CASE CTRL_S
+          SAVE()
+        CASE CTRL_C
+          TAKE(0)
+        CASE CTRL_X
+          TAKE(1)
+        CASE CTRL_V
+          PASTE()
+        CASE KEYS.BACKSPACE
+          IF SELECTION_END > SELECTION_BEGIN THEN
+            REMOVE_PART(SELECTION_BEGIN, SELECTION_END)
+          ELSEIF CURSOR > 0 THEN
+            CURSOR = CURSOR - 1
+            IF CURSOR < LINE_BEGIN THEN
+              LINE_UP()
+              NEED_PAGE = 1
+            ELSE
+              CHANGED_ROW()
+            END IF
+            REMOVE(CURSOR)
+          END IF
+        CASE IS >= KEYS.SPACE
+          INSERT(CHARACTER)
+      END SELECT
+  END SELECT
+  ' A changed selection draws the cursor's row again when the cursor stayed on its line, else
+  ' the page.
+  NEW_BEGIN = 0
+  NEW_END = 0
+  IF SELECTING = 1 THEN
+    IF ANCHOR < CURSOR THEN
+      NEW_BEGIN = ANCHOR
+      NEW_END = CURSOR
+    ELSE
+      NEW_BEGIN = CURSOR
+      NEW_END = ANCHOR
+    END IF
+  END IF
+  IF NEW_BEGIN <> SELECTION_BEGIN OR NEW_END <> SELECTION_END THEN
+    IF SELECTING = 1 AND CURSOR_LINE = OLD_LINE THEN
+      CHANGED_ROW()
+    ELSE
+      NEED_PAGE = 1
+    END IF
+    SELECTION_BEGIN = NEW_BEGIN
+    SELECTION_END = NEW_END
+  END IF
+  FOLLOW_CURSOR()
+  ' The page is drawn only when no key waits, so held keys do not outrun it.
+  SYS DOS.API_CON_STATUS
+  IF DOS.REG_A = 0 AND QUIT = 0 THEN DRAW()
+LOOP UNTIL QUIT = 1
+PRINT CONS.NORMAL$; CONS.CLEAR_SCREEN$; "TED - The Tiny Editor... Bye!"
+END 0

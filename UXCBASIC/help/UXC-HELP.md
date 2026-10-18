@@ -2,25 +2,27 @@
 
 ## What UXCBASIC is
 
-UXCBASIC is a small compiled BASIC for the system programs and utilities of the
-Unix-style X16. The compiler, UXC, turns one source file into a native 65C02 PRG.
-UXCEDIT is the editor.
+UXCBASIC is a small compiled BASIC for the system programs and utilities of
+UXDOS16. UXDOS16 is a replacement ROM operating system for the Commander X16,
+modelled on MS-DOS 2.0. pyuxc, the compiler, runs on the PC. It turns one source
+file into a 65C02 program that calls the UXDOS16 API.
 
-This help is a skeleton. Each topic is written when its command is built.
-
-See [[Using this help]], [[Types]] and [[Compiling from UXCEDIT]].
+See [[Using this help]], [[Types]] and [[Compiling]].
 
 ## Using this help
 
-Up and down move through the index. RETURN opens a topic. ESC goes back one link,
-then to the index, then quits.
+help/MKHELP.PY builds this help from help/UXC-HELP.md. Each ## topic becomes one
+.HLP file in help/HELP-TXT, and the index is help/HELP-TXT/UXC.HELP.IDX. Each
+program in samples/ gets a row under EXAMPLE PROGRAMS at the end of the index.
 
-- / or F finds a word in the index, and N finds the next match.
-- L lists a topic's cross references.
-- X writes a topic's code lines out as a .UXB file.
-- T changes the theme, and ? shows the about box.
+Edit the markdown, then run, from the UXCBASIC folder:
 
-The content is built on the PC by help/MKHELP.PY from help/UXC-HELP.md.
+```
+python help/MKHELP.PY
+```
+
+MKHELP.PY stops on a cross reference to a missing topic, on a code line over 76
+columns, and on any character outside printable ASCII.
 
 # The language
 
@@ -226,6 +228,7 @@ PRINT SGR_REVERSE$; "NOTE"; SGR_NORMAL$; LEN(SGR_REVERSE$)
   character is the low byte of n.
 - A literal may be an escaped string: CONST REVERSE$ = !"\27[7m". See
   [[Escaped strings]].
+- A literal may hold tags: CONST REVERSE$ = "{REVERSE}". See [[Tags]].
 - A string CONST of a namespace is named in full: CONS.CSI$.
 - A use is a string literal of the text. LEN and ASC of a string CONST are
   worked out by the compiler, as for a literal.
@@ -471,7 +474,43 @@ The second line prints A\B"C C:\DOS.
   OF RANGE.
 - A \ at the end of the line stops the compile with MISSING QUOTE.
 
-See [[Strings]], [[CONST]].
+See [[Strings]], [[CONST]], [[Tags]].
+
+## Tags
+
+A tag in a string literal is a name in braces, and stands for an ANSI escape
+sequence of the console. Tags work in every string literal, with or without
+the !.
+
+```
+CONST STATUS$ = "{BLACK}{ON WHITE}"
+PRINT STATUS$; " Saved{CLEAR EOL}{NORMAL}"
+```
+
+The first line makes STATUS$ Esc[30;47m, 7 bytes.
+
+| Tag | Sequence |
+|---|---|
+| {CURSOR HOME} | Esc[H |
+| {CLS} | Esc[2J |
+| {CLEAR EOL} | Esc[K |
+| {NORMAL} | Esc[0m |
+| {REVERSE} | Esc[7m |
+| {BLACK} {RED} {GREEN} {YELLOW} {BLUE} {MAGENTA} {CYAN} {WHITE} | Esc[30m to Esc[37m |
+| {ON BLACK} {ON RED} {ON GREEN} {ON YELLOW} {ON BLUE} {ON MAGENTA} {ON CYAN} {ON WHITE} | Esc[40m to Esc[47m |
+
+- Upper and lower case are the same: {on white} is {ON WHITE}. The words take
+  one space between them.
+- An m tag right after another m tag joins its sequence, up to 4 parameters:
+  {NORMAL}{RED}{ON BLUE}{REVERSE}{GREEN} is Esc[0;31;44;7m Esc[32m.
+- An escape does not join a tag: !"\27[0m{RED}" is Esc[0m Esc[31m.
+- {{ is one {. A } alone stays as it is: "{{A}" prints {A}.
+- Any other {, an unknown name, or a { with no } before the quote stops the
+  compile with BAD TAG.
+- The tags give the same bytes as the CONSTs of lib/CONS.UXI: {CLEAR EOL} is
+  CONS.CLEAR_EOL$.
+
+See [[Strings]], [[Escaped strings]].
 
 ## Pointers
 
@@ -702,7 +741,74 @@ LOOP UNTIL K <> 0
 PRINT K
 ```
 
-The value is the key's PETSCII code: 13 is RETURN.
+The value is the key's character code: 13 is ENTER. An extended key, such as
+an arrow or F1, gives 0, then its scan code at the next GETKEY(). KEYS.UXI names
+the codes.
+
+- Trap: 0 is both no key and the start of an extended key.
+- GETEXTKEY() gives an extended key in one call.
+
+See [[GETEXTKEY, WAITKEY and KEYMODS]], [[The STOP key]].
+
+## GETEXTKEY, WAITKEY and KEYMODS
+
+GETEXTKEY() gives the next key as a UWORD, or 0 when no key is waiting. It
+does not wait. WAITKEY() waits for a key, the cursor blinking, and gives it as
+GETEXTKEY() does. The brackets are required.
+
+- A plain key gives its character code, 1 to 255: 13 is ENTER.
+- An extended key, such as an arrow or F1, gives its scan code * 256: Up
+  gives $4800.
+- A key over 255 is an extended key.
+
+KEYMODS() gives the modifier bits of the last GETEXTKEY() or WAITKEY() as a
+UBYTE: 1 Shift, 4 Caps Lock on, 64 Alt, 128 Ctrl. KEYS.UXI names the keys
+KEY_UP, KEY_F1 and so on, and the bits MOD_SHIFT to MOD_CTRL.
+
+```
+#INCLUDE "KEYS.UXI"
+DIM K AS UWORD
+K = WAITKEY()
+IF K = KEYS.KEY_UP THEN PRINT "UP"
+IF K > 255 THEN PRINT "SCAN CODE"; K / 256
+IF (KEYMODS() AND KEYS.MOD_CTRL) <> 0 THEN PRINT "CTRL"
+```
+
+- KEYMODS() gives 0 before the first GETEXTKEY() or WAITKEY().
+- Ctrl+2 gives KEY_CTRL_2, $0300.
+
+See [[GETKEY]], [[The STOP key]].
+
+## The STOP key
+
+Ctrl+C is the STOP key. A program starts with Ctrl+C ending it: the DOS prints
+^C and the program ends with exit code 0. DOS.STOP_KEY(mode), in DOS.UXI, sets
+what Ctrl+C does. The modes are the members of DOS.STOP:
+
+- OFF: Ctrl+C is a key like any other, code 3.
+- ENDS: Ctrl+C ends the program. Each program starts in ENDS.
+- CATCH: Ctrl+C is dropped and sets a flag. DOS.STOP_PRESSED() gives 1 when the
+  flag is set, and clears it.
+
+```
+#INCLUDE "DOS.UXI"
+DIM K AS UBYTE
+DOS.STOP_KEY(CATCH)
+DO
+  K = GETKEY()
+  IF K <> 0 THEN PRINT K
+LOOP UNTIL DOS.STOP_PRESSED() = 1
+PRINT "STOPPED"
+```
+
+- Ctrl+C is seen only while the program asks for a key: GETKEY, GETEXTKEY,
+  WAITKEY, INPUT and LINPUT. A long loop that asks for no key cannot be
+  stopped.
+- The mode belongs to the program. A program it runs starts in ENDS, and the
+  mode comes back when that program ends.
+- STOP_KEY sets DOS.ERROR to 13 for a mode above 2.
+
+See [[ENUM]], [[GETKEY]].
 
 ## POS
 
@@ -927,13 +1033,13 @@ See [[Namespaces]].
 
 ## Files
 
-OPEN opens a file on drive 8 and returns its handle. PRINT # writes to the
-handle, INPUT # and LINPUT # read from it, and CLOSE closes it. READ and WRITE
-move bytes between the file and memory.
+OPEN opens a file or a device by its UXDOS16 path and returns a handle. PRINT #
+writes to the handle, INPUT # and LINPUT # read from it, and CLOSE closes it.
+READ and WRITE move bytes between the handle and memory.
 
 ```
 DIM F AS UWORD
-F = OPEN("LOG.TXT", O.WRITE)
+F = OPEN("C:\LOG.TXT", O.WRITE)
 IF F = NOFILE
   PRINT "CANNOT OPEN"
   END
@@ -942,39 +1048,49 @@ PRINT #F, "SCORE"; 120
 CLOSE F
 ```
 
-Close every file before the program ends.
+When the program ends, UXDOS16 closes every handle it left open.
 
 ### OPEN
 
 F = OPEN(name$, mode) returns a handle, a UWORD. The name is a literal or any
-string expression. The mode is one of three names, written as the argument
-itself:
+string expression. It is a UXDOS16 path, such as C:\DATA\LOG.TXT, or a device
+name, such as CON. A path with no drive is on the current drive. The mode is one
+of three names, written as the argument itself:
 
-- O.READ reads the file.
-- O.WRITE makes the file, and replaces one that is there.
-- O.APPEND writes at the end of the file, and makes the file when it is
+- O.READ opens the file to read.
+- O.WRITE makes the file, and empties one that is there. The handle reads and
+  writes.
+- O.APPEND opens the file to write at its end, and makes the file when it is
   missing.
 
 Any other mode stops the compile with MODE MUST BE O.READ, O.WRITE OR O.APPEND.
 
-OPEN returns NOFILE when the file cannot be opened: the file is missing for
-O.READ, the drive reports an error, or no handle is free. NOFILE is a built-in
-constant, 65535. Up to 12 files can be open at once, as handles 3 to 14.
+OPEN returns NOFILE when UXDOS16 cannot open or make the file: the file is
+missing for O.READ, a directory of the path is missing, the file is read-only
+for O.WRITE or O.APPEND, or no open-file entry is free. NOFILE is a built-in
+constant, 65535.
+
+- UXDOS16 has 8 open-file entries in all, and the console takes one. Files
+  that a parent program holds open take entries too.
+- PRINT # and WRITE to a handle opened with O.READ write nothing.
+- O.APPEND on a file that is there gives a handle that only writes. READ from
+  it returns 0, and INPUT # and LINPUT # read nothing.
 
 ### PRINT # and CLOSE
 
-PRINT #F, items works as PRINT does, and writes to the file.
+PRINT #F, items works as PRINT does, and writes to the handle.
 
-- Each line ends with a CR, 13. A trailing ; leaves out the CR.
+- Each line ends with CR LF, 13 and 10. A trailing ; leaves them out.
 - A comma between items writes a "," character, not spaces to a print zone.
 - A number has a space before and after it, as on the screen.
-  PRINT #F, "AB"; 5, "CD" writes AB 5 ,CD and a CR.
-- Handles 0, 1 and 2 are the screen: PRINT #1, "HI" is PRINT "HI".
+  PRINT #F, "AB"; 5, "CD" writes AB 5 ,CD and CR LF.
+- A constant handle 0, 1 or 2 is standard output: PRINT #2, "HI" is
+  PRINT "HI". A handle in a variable writes to that handle.
 - A handle that is not open stops the program with ?FILE NOT OPEN ERROR AT
   $xxxx.
 
-CLOSE F closes the file. CLOSE of a handle that is not open, NOFILE included,
-does nothing.
+CLOSE F closes the handle. CLOSE of handle 0, 1 or 2 does nothing. CLOSE of a
+handle that is not open, NOFILE included, does nothing.
 
 ### INPUT #, LINPUT # and EOF
 
@@ -1000,14 +1116,13 @@ CLOSE F
   field's value as VAL reads it. A LONG or ULONG variable is read in 32 bits.
 - The rest of the line stays for the next read. Keyboard INPUT drops it.
 - No prompt string is allowed after #F,.
-- A line ends at CR, at LF, or at CR LF, so files from the X16, Unix and DOS
-  read the same. The line ending is not stored.
+- A line ends at CR, LF or CR LF. The line ending is not stored.
 - A field or line longer than the string is cut, and the rest of it is skipped.
 - At the end of the file a string gets "" and a number gets 0.
 - EOF is 1 right after an empty file is opened. EOF(NOFILE) is 1.
-- Handles 0, 1 and 2 are the screen and cannot be read.
-- A read from a handle that is not open, 0 to 2 included, stops the program
-  with ?FILE NOT OPEN ERROR AT $xxxx.
+- Handle 0 is standard input: LINPUT #0, L$ reads it.
+- A read from a handle that is not open stops the program with ?FILE NOT OPEN
+  ERROR AT $xxxx.
 
 See [[INPUT and LINPUT]].
 
@@ -1032,16 +1147,17 @@ CLOSE F
   A number such as $A000 is a fixed address.
 - Bytes move as they are, CR, LF and 0 included. No line ending is added or
   dropped.
-- READ returns 0 at the end of the file. A max of 0 reads nothing and returns
-  0. A count of 0 writes nothing.
+- READ returns 0 at the end of the file, and on any error but a handle that
+  is not open.
 - READ, INPUT #, LINPUT # and EOF can be mixed on the same handle. EOF stays
   right after a READ.
-- WRITE to handles 0, 1 and 2 goes to the screen. WRITE 1, @S$ + 2, 2 prints
-  the first two characters of S$.
-- READ from handles 0 to 2, or from a handle that is not open, NOFILE
-  included, stops the program with ?FILE NOT OPEN ERROR AT $xxxx. WRITE to a
-  handle 3 to 14 that is not open, or to NOFILE, does the same.
-- Each byte costs a KERNAL CHRIN and READST to read, or a CHROUT to write.
+- READ(0, ...) reads standard input. WRITE 1 writes to standard output, and
+  WRITE 2 to standard error. WRITE 1, @S$ + 2, 2 prints the first two
+  characters of S$.
+- READ or WRITE on a handle that is not open, NOFILE included, stops the
+  program with ?FILE NOT OPEN ERROR AT $xxxx.
+- PRINT #, INPUT # and LINPUT # make a UXDOS16 call for each character. READ
+  and WRITE make one call for the whole block.
 
 See [[Arrays]] and [[Strings]] for @name.
 
@@ -1177,30 +1293,48 @@ See [[ASM]], [[Declarations]].
 
 # The compiler
 
-## Compiling from UXCEDIT
+## Compiling
 
-F5, or Build, Compile on the menu, compiles the document on screen with UXC.
+pyuxc, the compiler, runs on the PC. Run it from the UXCBASIC folder with one
+source file:
 
-- Every changed document is saved first. The document on screen is saved also
-  when it has no name: a save prompt asks for one. If a save does not happen,
-  the compile stops on the document it was for.
-- The editor closes and loads UXC.PRG. UXC compiles the source and loads
-  UXCEDIT.PRG again.
-- The PRG is named after the source and goes on the same drive. HELLO.UXB
-  writes HELLO.PRG.
-- UXCEDIT comes back with the same documents open, up to three, each with its
-  cursor and scroll place. The compiled document is on screen.
-- A message box shows the result. On success it is titled "Compiled" and
-  shows the PRG name and its size in bytes.
-- On an error the box is titled "Compile error" and shows "Line N" and the
-  error message. The cursor is on that line.
-- If UXC writes no result, the box says "Compile gave no result". A crash in
-  UXC writes no result and does not load the editor. The X16 is left at READY.
-- The editor does not run the program. Load and run it from BASIC.
-- The files UXC.INPUT, UXC.RESULT and UXCEDIT.RUN on the drive carry the
-  request and the result between the two programs.
+```
+python pyuxc/pyuxc.py HELLO.UXB -I ../lib
+```
 
-See [[Errors]].
+- -I FOLDER adds an include folder. It may be given more than once. lib/ at the
+  repo root holds CONS.UXI, DOS.UXI, HEAP.UXI, KEYS.UXI and STR.UXI.
+- -o FOLDER is the folder of the PRG. The folder must exist. The default is
+  the source's folder.
+- --result FILE writes the result line to FILE as well.
+- --keep-subs keeps every SUB and FUNCTION, as #KEEP ALL does.
+- --keep-vars keeps every global variable, array and string literal.
+- A relative folder is from the current folder.
+- Any other option, or a count of sources other than one, prints the usage and
+  exits with status 1.
+
+The PRG is named after the source, in capitals: hello.uxb writes HELLO.PRG.
+
+### Output
+
+pyuxc prints the compiler's screen lines, then one result line. The screen
+lines start with UXCBASIC 0.1 and COMPILING NAME.UXB.
+
+- On success it prints NAME.PRG and its size, then OK,NAME.PRG,size. The size
+  is the bytes of the file. The exit status is 0.
+- The SUBs and FUNCTIONs that the main program never reaches are left out of
+  the PRG. The result line then gets REMOVED n SUBS m BYTES, n the count and m
+  the bytes saved.
+- The global variables and arrays that no code names get no room. The result
+  line then gets REMOVED n VARS m BYTES. m counts the variables and the array
+  space.
+- The string literals that no code names are left out. The result line then
+  gets REMOVED n STRINGS m BYTES.
+- On an error it prints ?MESSAGE IN N and the source line, then
+  ERROR,N,MESSAGE. N is the line number. The exit status is 1. The first error
+  stops the compile.
+
+See [[Including files]], [[Errors]].
 
 ## Including files
 
@@ -1213,8 +1347,12 @@ NAME, then the lines after the #INCLUDE.
 PRINT TWICE(21)
 ```
 
-- The file is read from the same drive as the source.
-- An included file cannot include another file.
+- The compiler looks for NAME in the source's folder, then in each -I folder
+  in the order given. See [[Compiling]].
+- A file that is not found stops the compile with FILE NOT FOUND: NAME. An
+  empty file counts as not found.
+- An included file cannot include another file. A #INCLUDE in one stops the
+  compile with #INCLUDE IN AN INCLUDED FILE.
 - An error in an included file reports the line of the #INCLUDE, with the file
   name and its own line: SYNTAX ERROR (LIB.UXI 2).
 

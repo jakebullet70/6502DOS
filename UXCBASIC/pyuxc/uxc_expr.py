@@ -106,7 +106,13 @@ def ex_operand():
     if g.tk_s == "ADDROF":
         return ex_addrof()
     if g.tk_s == "GETKEY":
-        return ex_getkey()
+        return ex_key(T.T_GETKEY, K_TY_BYTE)
+    if g.tk_s == "GETEXTKEY":
+        return ex_key(T.T_GETEXTKEY, K_TY_WORD)
+    if g.tk_s == "WAITKEY":
+        return ex_key(T.T_WAITKEY, K_TY_WORD)
+    if g.tk_s == "KEYMODS":
+        return ex_key(T.T_KEYMODS, K_TY_BYTE)
     if g.tk_s == "POS":
         return ex_pos()
     if g.tk_s == "NOFILE":
@@ -235,22 +241,23 @@ def ex_element():
     return _OPERAND
 
 
-def ex_getkey():
-    """EX.GETKEY. GETKEY(): the key in A, or 0. Like a SUB call, it loses A/Y and the
-    flags."""
+def ex_key(template, result_type):
+    """EX.KEY. GETKEY(), GETEXTKEY(), WAITKEY() and KEYMODS(): template leaves the result in
+    A, or A/Y when result_type is K_TY_WORD. Like a SUB call, it loses A/Y and the flags."""
+    g.ex_key_name = g.tk_s
     uxc_lex.lx_next()
     if g.tk_t != K_TT_OP or g.tk_k != 40:
-        er_stop("MISSING ( AFTER GETKEY")
+        er_stop("MISSING ( AFTER " + g.ex_key_name)
     uxc_lex.lx_next()
     if g.tk_t != K_TT_OP or g.tk_k != 41:
         er_stop("MISSING )")
     g.ex_fb = g.ex_vn
     ex_flush()
-    emit(T.T_GETKEY)
+    emit(template)
     g.ex_k = K_EK_REG
     g.ex_s = K_SEC_CONST
     g.ex_v = 0
-    g.ex_ty = K_TY_BYTE
+    g.ex_ty = result_type
     ex_pushv()
     uxc_lex.lx_next()
     return _OPERATOR

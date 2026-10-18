@@ -77,5 +77,37 @@ T_POSCOLS .block
         #endtpl
         .endblock
 
+; A = the next key, or 0 when no key is waiting.
+T_GETKEY .block
+        #tpl
+        phx
+        #rec jsr, S_GETIN
+        plx
+        #endtpl
+        .endblock
+
+; GETEXTKEY(): A/Y = the waiting key, or 0 when no key waits.
+T_GETEXTKEY .block
+        #tpl
+        sec
+        #rec jsr, R_KEY
+        #endtpl
+        .endblock
+
+; WAITKEY(): A/Y = the next key. It waits for one, the cursor blinking.
+T_WAITKEY .block
+        #tpl
+        clc
+        #rec jsr, R_KEY
+        #endtpl
+        .endblock
+
+; KEYMODS(): A = the modifiers of the last GETEXTKEY() or WAITKEY().
+T_KEYMODS .block
+        #tpl
+        #rec lda, R_KEY, R_KEY.mods - R_KEY.rec_code
+        #endtpl
+        .endblock
+
 tpl_count = len(tpl_all)
 index   .word tpl_all

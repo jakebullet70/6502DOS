@@ -7,7 +7,7 @@
 ' -- wrap on and off: a line then takes 1 to 4 rows, and Left and Right do nothing. F, f or /
 ' -- asks for a text on the footer row and finds it from the top line down, in any case; an
 ' -- empty text finds nothing. N finds it on the next line after the match. The first match on
-' -- the line shows in reversed colours. When no line has it, the footer says Not found, and
+' -- the line shows in reversed colors. When no line has it, the footer says Not found, and
 ' -- the next N starts at line 1. Q or Esc ends it and clears the screen.
 ' -- A line ends at CR, LF or CR LF. A tab goes to the next column that is a multiple of 8.
 ' -- BS, BEL, FF, $0F and Esc show as ".". A line is 255 characters at most; the rest is cut.
@@ -22,8 +22,8 @@
 #INCLUDE "KEYS.UXI"
 #INCLUDE "CONS.UXI"
 CONST SLOT_P1 AS UBYTE = 0
-' The footer's colours, black on light grey.
-CONST FOOTER_SGR$ = CONS.CSI$ + "30;47m"
+' The footer's colors, black on light grey.
+CONST FOOTER_COLORS$ = "{BLACK}{ON WHITE}"
 CONST TEXT_ROWS AS UBYTE = 29, FOOTER_ROW AS UBYTE = 29, COLUMNS AS UBYTE = 80
 CONST LINE_MAX AS UBYTE = 255
 ' SHIFT_MAX is the last multiple of SHIFT_STEP that shows a character of a full line.
@@ -159,7 +159,7 @@ END FUNCT
 
 ' Shows LINE_TEXT from column FIRST on screen row ROW, and blanks the rest of the row. A full
 ' row leaves the cursor on the next row. Line READER_LINE - 1 is the one in LINE_TEXT: when it
-' is MATCH_LINE, the part of the match on the row is written again in reversed colours.
+' is MATCH_LINE, the part of the match on the row is written again in reversed colors.
 SUB SHOW_LINE(ROW AS UBYTE, FIRST AS UBYTE)
   DIM COUNT AS UBYTE, START AS UBYTE, FINISH AS UBYTE
   POS(1) = ROW
@@ -168,7 +168,7 @@ SUB SHOW_LINE(ROW AS UBYTE, FIRST AS UBYTE)
   IF LINE_LENGTH > FIRST THEN COUNT = LINE_LENGTH - FIRST
   IF COUNT > COLUMNS THEN COUNT = COLUMNS
   IF COUNT > 0 THEN WRITE 1, @LINE_TEXT + 2 + FIRST, COUNT
-  IF COUNT < COLUMNS THEN PRINT CONS.EL$;
+  IF COUNT < COLUMNS THEN PRINT CONS.CLEAR_EOL$;
   IF READER_LINE - 1 <> MATCH_LINE THEN RETURN
   START = MATCH_COLUMN
   IF START < FIRST THEN START = FIRST
@@ -177,9 +177,9 @@ SUB SHOW_LINE(ROW AS UBYTE, FIRST AS UBYTE)
   IF START >= FINISH THEN RETURN
   POS(1) = ROW
   POS(0) = START - FIRST
-  PRINT CONS.SGR_REVERSE$;
+  PRINT CONS.REVERSE$;
   WRITE 1, @LINE_TEXT + 2 + START, FINISH - START
-  PRINT CONS.SGR_RESET$;
+  PRINT CONS.NORMAL$;
 END SUB
 
 ' Puts FOOTER on the last row, in black on light grey. It stays under 80 characters, so the
@@ -187,7 +187,7 @@ END SUB
 SUB PUT_FOOTER()
   POS(1) = FOOTER_ROW
   POS(0) = 0
-  PRINT FOOTER_SGR$; LEFT$(FOOTER, COLUMNS - 1); CONS.EL$; CONS.SGR_RESET$;
+  PRINT FOOTER_COLORS$; LEFT$(FOOTER, COLUMNS - 1); CONS.CLEAR_EOL$; CONS.NORMAL$;
 END SUB
 
 ' Shows the footer: the file name, the top line, the column or Wrap, and the keys.
@@ -358,9 +358,9 @@ DO
       ' LINPUT echoes the CR, which scrolls the screen; the page is drawn again after it.
       POS(1) = FOOTER_ROW
       POS(0) = 0
-      PRINT FOOTER_SGR$; "Find: "; CONS.EL$;
+      PRINT FOOTER_COLORS$; "Find: "; CONS.CLEAR_EOL$;
       LINPUT FIND_TEXT
-      PRINT CONS.SGR_RESET$;
+      PRINT CONS.NORMAL$;
       TO_UPPER(@FIND_TEXT + 2, LEN(FIND_TEXT))
       MATCH_LINE = 65535
       IF FIND_TEXT = "" THEN
@@ -413,5 +413,5 @@ DO
   END SELECT
 LOOP UNTIL QUIT = 1
 DOS.CLOSE_FILE(VIEWED_FILE)
-PRINT CONS.SGR_RESET$; CONS.ED$;
+PRINT CONS.NORMAL$; CONS.CLEAR_SCREEN$;
 END 0

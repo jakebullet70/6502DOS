@@ -8,18 +8,19 @@
 ; row.
 ;
 ; An escape sequence is Esc [, up to ANSI_PARAMS decimal parameters split by ;, then a final
-; byte. A missing parameter is 0. Rows and columns count from 1, and a move stops at the edge.
-;   Esc[r;cH, Esc[r;cf  the cursor to row r, column c; 0 means 1
-;   Esc[nA, B, C, D     the cursor n up, down, right, left; 0 means 1
+; byte. A missing parameter is 0. Rows and columns count from 1.
+;   Esc[r;cH            the cursor to row r, column c; 0 means 1, and past the edge means the
+;                       last
 ;   Esc[2J              clear the screen and put the cursor home
 ;   Esc[K               blank from the cursor to the end of the line
-;   Esc[...m            0 the colour api_con_colour last set, and bold off; 1 bold; 7 swaps
-;                       the foreground and the background, so a second 7 swaps them back; 30
-;                       to 37 the foreground; 40 to 47 the background
+;   Esc[...m            0 the colour api_con_colour last set; 7 swaps the foreground and the
+;                       background, so a second 7 swaps them back; 30 to 37 the foreground; 40
+;                       to 47 the background
 ; The colours are black, red, green, yellow, blue, magenta, cyan and white, in the X16 palette
-; entries of ansi_colours. Bold maps the foreground to its ansi_bright entry, and so each 3x
-; after it. Other final bytes, other parameters, and the bytes $30 to $3F other than digits and ;
-; do nothing. Esc then a byte other than [ shows that byte.
+; entries of ansi_colours. Other final bytes, other parameters, and the bytes $30 to $3F other
+; than digits and ; do nothing. Esc then a byte other than [ shows that byte.
+; Checklist: a sequence added or removed here changes lib/CONS.UXI, LX_TAGS in
+; UXCBASIC/pyuxc/uxc_lex.py, con_out in tools/api.py, and tests/ANSI.S.
 ; Keys come from the keyboard queue in RAM bank 0, then from the SMC keycode register in a US
 ; layout. An extended key, an arrow, Home, End, PgUp, PgDn, Insert, Delete or F1 to F10, gives
 ; two characters, as in MS-DOS: 0, then its IBM PC scan code.
@@ -30,6 +31,7 @@
 .include "api.inc"
 
 .export con_init, api_con_line, api_con_status, api_con_out, api_con_in, api_con_cursor
+.export api_con_getkey
 .export api_con_colour, api_con_break
 .export CHRIN, CHROUT
 .import font, i2c_read_byte, sft_find, bank_restore, api_read, exec_break
@@ -80,7 +82,6 @@ ansi_state:   .res 1            ; 0, ANSI_ESC after Esc, ANSI_CSI after Esc [
 
 con_default:  .res 1            ; the colour Esc[0m sets: the one api_con_colour last set
 con_broke:    .res 1            ; 1 when Ctrl+C came in BREAK_CATCH since api_con_break's last get
-ansi_bold:    .res 1            ; bit 7 set after Esc[1m
 ansi_count:   .res 1            ; the index of the parameter being read
 ansi_params:  .res ANSI_PARAMS  ; the parameters, each modulo 256
 
@@ -328,15 +329,37 @@ ansi:
         cmp #'J'
         beq @erase_screen
         cmp #'H'
-        beq @locate
-        cmp #'f'
-        beq @locate
-        sec
-        sbc #'A'
-        cmp #4
-        bcc @move
+        bne @done
+        ldx #1                  ; the locate: the column, then the row
+@axis:
+        lda ansi_params,x
+        beq @first              ; 0 means 1
+        dec
+@first:
+        cmp ansi_last,x
+        bcc @store
+        lda ansi_last,x
+@store:
+        .assert con_col = con_row + 1, error, "ansi needs con_col right after con_row"
+        sta con_row,x
+        dex
+        bpl @axis
 @done:
         rts
+@erase_line:
+        ldx con_row
+        ldy con_col
+        jsr point
+        lda #COLUMNS
+        sec
+        sbc con_col
+        tax
+        jmp blank
+@erase_screen:
+        lda ansi_params
+        cmp #2
+        bne @done
+        jmp clear
 @digit:                         ; the parameter times 10, plus A
         pha
         ldx ansi_count
@@ -356,81 +379,12 @@ ansi:
         bcs @done
         inc ansi_count
         rts
-@sgr:
+@sgr:                           ; each parameter in turn
         ldx #$FF
 @each:
         inx
         lda ansi_params,x
-        jsr sgr                 ; keeps X
-        cpx ansi_count
-        bcc @each
-        rts
-@erase_line:
-        ldx con_row
-        ldy con_col
-        jsr point
-        lda #COLUMNS
-        sec
-        sbc con_col
-        tax
-        jmp blank
-@erase_screen:
-        lda ansi_params
-        cmp #2
-        bne @done
-        jmp clear
-@locate:
-        ldx #1                  ; the column, then the row
-@axis:
-        lda ansi_params,x
-        beq @first              ; 0 means 1
-        dec
-@first:
-        jsr @place
-        dex
-        bpl @axis
-        rts
-@move:                          ; A = 0 to 3 for A to D
-        tay
-        lda ansi_params
-        bne @count
-        inc                     ; 0 means 1
-@count:
-        ldx #0                  ; the row
-        cpy #1
-        beq @plus               ; B
-        bcc @minus              ; A
-        inx                     ; C and D: the column
-        cpy #2
-        beq @plus               ; C
-@minus:
-        eor #$FF
-        sec
-        adc con_row,x           ; the position - n, carry clear below 0
-        bcs @store
-        lda #0
-        bra @store
-@plus:
-        clc
-        adc con_row,x
-        bcc @place
-        lda #$FF
-@place:                         ; A = the position on axis X, the last when past it
-        cmp ansi_limits,x
-        bcc @store
-        lda ansi_limits,x
-        dec
-@store:
-        .assert con_col = con_row + 1, error, "ansi needs con_col right after con_row"
-        sta con_row,x
-        rts
-
-; sgr: obeys the Esc[...m parameter A. Keeps X.
-sgr:
-        tay
         beq @reset
-        dey
-        beq @bold
         cmp #7
         beq @reverse
         sec
@@ -439,7 +393,7 @@ sgr:
         bcc @foreground
         sbc #10                 ; carry set
         cmp #8
-        bcs @done
+        bcs @after
         tay
         lda ansi_colours,y
         asl
@@ -450,16 +404,8 @@ sgr:
         and #$F0
         bra @merge
 @reset:
-        stz ansi_bold
         lda con_default
-        sta con_colour
-        rts
-@bold:
-        sec
-        ror ansi_bold
-        lda con_colour
-        and #$0F
-        bra @bright
+        bra @color
 @reverse:
         lda con_colour
         asl                     ; swap the nibbles
@@ -468,23 +414,19 @@ sgr:
         asl
         adc #$80
         rol
-        bra @store
+        bra @color
 @foreground:
         tay
         lda ansi_colours,y
-        bit ansi_bold
-        bpl @set
-@bright:
-        tay
-        lda ansi_bright,y
-@set:
         eor con_colour
         and #$0F
 @merge:
         eor con_colour
-@store:
+@color:
         sta con_colour
-@done:
+@after:
+        cpx ansi_count
+        bcc @each
         rts
 
 ; cursor_flip: shows or hides the cursor by swapping the nibbles of its cell's colour. A cell
@@ -656,6 +598,23 @@ api_con_status:
         lda #$FF
 @none:
         ldx kbd_mods
+        clc
+        rts
+
+; api_con_getkey: with carry clear waits for a key, the cursor blinking; with carry set returns
+; at once. Returns the character in A, 0 for an extended key or for none; the scan code in X,
+; 0 for any other key or for none; kbd_mods in Y. Returns carry clear.
+api_con_getkey:
+        bcc @wait
+        jsr con_status
+        bne @wait               ; a key waits: con_in takes it at once
+        tax                     ; no key: A = 0
+        bra @mods
+@wait:
+        jsr CHRIN               ; X = con_scan, which con_in moved to con_key
+        stz con_key
+@mods:
+        ldy kbd_mods
         clc
         rts
 
@@ -937,15 +896,13 @@ kbd_ctrl_scans:
         .byte $73, $74, $75, $76, $77, $84
 kbd_ctrl_scans_end:
 
-; The rows and the columns, for ansi.
-ansi_limits:
-        .byte ROWS, COLUMNS
+; The last row and the last column, for ansi.
+ansi_last:
+        .byte ROWS - 1, COLUMNS - 1
 
-; The X16 palette entries of ANSI colours 0 to 7, and the entry bold maps each entry to.
+; The X16 palette entries of ANSI colours 0 to 7.
 ansi_colours:
         .byte 0, 2, 5, 9, 6, 4, 3, 15                   ; brown for yellow, light grey for white
-ansi_bright:
-        .byte 11, 1, 10, 3, 4, 13, 14, 7, 8, 7, 10, 11, 12, 13, 14, 1
 
 ; The character of keycodes 1 to KEY_SPACE, without and with Shift. 0: no character.
 kbd_lower:

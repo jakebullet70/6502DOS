@@ -64,8 +64,9 @@ Conventions:
 | `str_free` | 43 | `$03C1` | none | `r0` descriptor address | none | 9 | yes |
 | `str_gc` | 44 | `$03C4` | none | none | `r0` free bytes | none | yes |
 | `str_heap` | 45 | `$03C7` | none | `A` bank, 21 or higher<br>`r0` the first block, $A00C or higher; not for bank 21 | none | 9 | yes |
-| `con_colour` | 46 | `$03CA` | none | `carry` set: get, clear: set<br>`A` colour, to set | `A` colour | none | yes |
+| `con_colour` | 46 | `$03CA` | none | `carry` set: get, clear: set<br>`A` color, to set | `A` color | none | yes |
 | `con_break` | 47 | `$03CD` | 33h | `carry` set: get, clear: set<br>`A` mode, to set: 0 to 2 | `A` mode<br>`X` flag: 1 when Ctrl+C came in mode 2 since the last get, else 0 | 13 | yes |
+| `con_getkey` | 48 | `$03D0` | none | `carry` clear: wait, set: return at once | `A` character, 0 for an extended key or none<br>`X` scan code, 0 for a plain key or none<br>`Y` modifiers: $01 Shift, $04 Caps Lock on, $40 Alt, $80 Ctrl | none | yes |
 
 ## What each call does
 
@@ -109,14 +110,15 @@ Conventions:
 - `version`: Gives the system version.
 - `ticks`: Gives the number of VSYNCs since boot.
 - `errmsg`: Gives the message of an error number.
-- `con_out`: Writes a character to the screen. A handle redirected does not take it. It obeys CR, LF, BS, TAB, BEL and FF, skips $0F, and obeys these escape sequences of MS-DOS's ANSI.SYS: `Esc[r;cH` and `Esc[r;cf` move the cursor to row r, column c; `Esc[nA`, `B`, `C` and `D` move it n up, down, right and left; `Esc[2J` clears the screen and puts the cursor home; `Esc[K` blanks from the cursor to the end of the line; `Esc[...m` takes 0 for the colour `con_colour` last set and bold off, 1 for bold, 7 to swap the foreground and the background, 30 to 37 for the foreground and 40 to 47 for the background. Rows and columns count from 1. A missing parameter is 0, and 0 means 1 in a move. A move stops at the edge of the screen. A sequence takes up to 4 parameters, each modulo 256. Other sequences do nothing. Esc then a byte other than `[` shows that byte. `lib/CONS.UXI` names the sequences.
+- `con_out`: Writes a character to the screen. A handle redirected does not take it. It obeys CR, LF, BS, TAB, BEL and FF, skips $0F, and obeys these escape sequences of MS-DOS's ANSI.SYS: `Esc[r;cH` moves the cursor to row r, column c; `Esc[2J` clears the screen and puts the cursor home; `Esc[K` blanks from the cursor to the end of the line; `Esc[...m` takes 0 for the color `con_colour` last set, 7 to swap the foreground and the background, 30 to 37 for the foreground and 40 to 47 for the background. Rows and columns count from 1. A missing parameter is 0, and 0 means 1 in `Esc[r;cH`. A row or column past the edge means the last. A sequence takes up to 4 parameters, each modulo 256. Other sequences do nothing. Esc then a byte other than `[` shows that byte. `lib/CONS.UXI` names the sequences.
 - `con_in`: Waits for a key, without echo. An extended key gives two characters: 0, then its IBM PC BIOS scan code. The scan codes: Up $48, Down $50, Left $4B, Right $4D, Home $47, End $4F, PgUp $49, PgDn $51, Insert $52, Delete $53, F1 to F10 $3B to $44, with Shift $54 to $5D, with Ctrl $5E to $67, with Alt $68 to $71. Alt wins over Ctrl, and Ctrl over Shift. Ctrl+Left $73, Ctrl+Right $74, Ctrl+End $75, Ctrl+PgDn $76, Ctrl+Home $77, Ctrl+PgUp $84. Alt+1 to Alt+0, Alt+- and Alt+= $78 to $83. Alt with a letter gives the letter's scan code. Ctrl+2 gives 0, then 3. Ctrl with a letter, `[`, `\` or `]` gives $01 to $1D, Ctrl+6 $1E, Ctrl+- $1F. Ctrl with Space or with a key that gives a control character gives that character. Ctrl with any other key gives nothing, and so does Alt with a key other than a letter, a digit, - or =. `lib/KEYS.UXI` names every code.
 - `con_cursor`: Gets the cursor's row and column with carry set, moves the cursor with carry clear. The screen has 30 rows and 80 columns.
 - `str_free`: Frees the string of the descriptor at r0 and sets the descriptor to 0. A descriptor of 0 does nothing.
 - `str_gc`: Compacts the program's string heap.
 - `str_heap`: Chooses the program's string heap. Bank 21 is the shared heap, every program's at its start. A higher bank becomes a new, empty heap whose blocks start at r0; the bytes from $A00C to r0 are the program's.
-- `con_colour`: Gets the console colour with carry set, sets it with carry clear. The high nibble is the background and the low nibble the foreground, from VERA's palette. A new colour takes effect for the characters written after the call.
+- `con_colour`: Gets the console color with carry set, sets it with carry clear. The high nibble is the background and the low nibble the foreground, from VERA's palette. A new color takes effect for the characters written after the call.
 - `con_break`: Gets the break mode and the break flag with carry set, sets the mode with carry clear. The mode says what Ctrl+C from the console does: 0 nothing, it is the character $03; 1 prints ^C and ends the program with exit code 0, and `exitcode` then gives X = 1; 2 drops the key and sets the flag. A get clears the flag. `exec` starts each program in mode 1. The console sees Ctrl+C only while a program asks it for a key.
+- `con_getkey`: Reads a key in one call, extended or not, with carry clear waiting for it with the cursor blinking, with carry set returning at once. A plain key gives its character in A and 0 in X. An extended key gives 0 in A and its scan code in X, the codes of `con_in`. No key gives 0 in both. Y gives the modifiers, as `con_status` gives them in X.
 
 ## Errors
 

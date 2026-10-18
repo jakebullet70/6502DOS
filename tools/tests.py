@@ -169,8 +169,10 @@ def main():
         programs.append(program)
     if os.path.isdir(CBIN_OUT):
         programs.append(CBIN_OUT)
+    # The programs go in a block of their own, so the free space and the clusters of the files
+    # of tests/sd stay the same when a program changes.
     mksd.make(SD_FOLDER, SD_IMAGE, sectors_per_cluster=2, clusters=1024,
-              date=datetime.date(2026, 10, 13), extra=programs)
+              date=datetime.date(2026, 10, 13), extra=programs, reserve=256, root_clusters=2)
     failed = []
     started = time.time()
     for out_path in outs:

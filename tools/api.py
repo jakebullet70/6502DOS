@@ -239,14 +239,13 @@ CALLS = [
          written=True),
     call(40, "con_out", 0x02, "Writes a character to the screen. A handle redirected does not "
          "take it. It obeys CR, LF, BS, TAB, BEL and FF, skips $0F, and obeys these escape "
-         "sequences of MS-DOS's ANSI.SYS: `Esc[r;cH` and `Esc[r;cf` move the cursor to row r, "
-         "column c; `Esc[nA`, `B`, `C` and `D` move it n up, down, right and left; `Esc[2J` "
-         "clears the screen and puts the cursor home; `Esc[K` blanks from the cursor to the "
-         "end of the line; `Esc[...m` takes 0 for the colour `con_colour` last set and bold "
-         "off, 1 for bold, 7 to swap the foreground and the background, 30 to 37 for the "
-         "foreground and 40 to 47 for the background. Rows and columns count from 1. A missing "
-         "parameter is 0, and 0 means 1 in a move. A move stops at the edge of the screen. A "
-         "sequence takes up to 4 parameters, each modulo 256. Other sequences do nothing. Esc "
+         "sequences of MS-DOS's ANSI.SYS: `Esc[r;cH` moves the cursor to row r, column c; "
+         "`Esc[2J` clears the screen and puts the cursor home; `Esc[K` blanks from the cursor "
+         "to the end of the line; `Esc[...m` takes 0 for the color `con_colour` last set, 7 "
+         "to swap the foreground and the background, 30 to 37 for the foreground and 40 to 47 "
+         "for the background. Rows and columns count from 1. A missing parameter is 0, and 0 "
+         "means 1 in `Esc[r;cH`. A row or column past the edge means the last. A sequence "
+         "takes up to 4 parameters, each modulo 256. Other sequences do nothing. Esc "
          "then a byte other than `[` shows that byte. `lib/CONS.UXI` names the sequences.",
          in_=[("A", "character")],
          written=True),
@@ -283,11 +282,11 @@ CALLS = [
          in_=[("A", "bank, 21 or higher"), ("r0", "the first block, $A00C or higher; not for bank 21")],
          errors=[9],
          written=True),
-    call(46, "con_colour", None, ("Gets the console colour with carry set, sets it with carry clear. "
+    call(46, "con_colour", None, ("Gets the console color with carry set, sets it with carry clear. "
           "The high nibble is the background and the low nibble the foreground, from VERA's "
-          "palette. A new colour takes effect for the characters written after the call."),
-         in_=[("carry", "set: get, clear: set"), ("A", "colour, to set")],
-         out=[("A", "colour")],
+          "palette. A new color takes effect for the characters written after the call."),
+         in_=[("carry", "set: get, clear: set"), ("A", "color, to set")],
+         out=[("A", "color")],
          written=True),
     call(47, "con_break", 0x33, ("Gets the break mode and the break flag with carry set, sets the "
           "mode with carry clear. The mode says what Ctrl+C from the console does: 0 nothing, "
@@ -299,6 +298,16 @@ CALLS = [
          out=[("A", "mode"), ("X", "flag: 1 when Ctrl+C came in mode 2 since the last get, "
                "else 0")],
          errors=[13],
+         written=True),
+    call(48, "con_getkey", None, ("Reads a key in one call, extended or not, with carry clear "
+          "waiting for it with the cursor blinking, with carry set returning at once. A plain "
+          "key gives its character in A and 0 in X. An extended key gives 0 in A and its scan "
+          "code in X, the codes of `con_in`. No key gives 0 in both. Y gives the modifiers, as "
+          "`con_status` gives them in X."),
+         in_=[("carry", "clear: wait, set: return at once")],
+         out=[("A", "character, 0 for an extended key or none"),
+              ("X", "scan code, 0 for a plain key or none"),
+              ("Y", "modifiers: $01 Shift, $04 Caps Lock on, $40 Alt, $80 Ctrl")],
          written=True),
 ]
 

@@ -1,4 +1,4 @@
-; T-ARRAY.ASM -- array elements, the startup clear of the array space, and GETKEY().
+; T-ARRAY.ASM -- array elements, the startup clear of the array space, and R_KEY.
 ;
 ; An array is S0, the address of its element 0. B(I) with a BYTE index is T_LDB_AY. Any
 ; other index is a WORD: T_IDXB or T_IDXW makes it the element's address, then T_PEEK or
@@ -144,12 +144,27 @@ done    plx
         #endtpl
         .endblock
 
-; A = the next key, or 0 when no key is waiting.
-T_GETKEY .block
+; GETEXTKEY() and WAITKEY(): C clear waits for a key, the cursor blinking; C set returns at
+; once. A/Y = the key: a plain key its character, an extended key its scan code * 256, no key
+; 0. mods = the modifiers, for KEYMODS(). Keeps X. The stock table has no con_getkey; its
+; record returns no key.
+R_KEY   .block
         #tpl
+        .if UXDOS != 0
         phx
-        #rec jsr, S_GETIN
+        jsr API_GETKEY
+        #self sty, mods
+        pha
+        txa
+        tay
+        pla
         plx
+        .else
+        lda #0
+        tay
+        .endif
+        rts
+mods    .byte 0
         #endtpl
         .endblock
 

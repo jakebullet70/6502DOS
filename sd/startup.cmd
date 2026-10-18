@@ -11,10 +11,11 @@ print "Disk   ---> Fat32 SD card image"
 print
 print "Loading: BASICShell v0.1.0, setting path and binds"
 print
+PATH$ = "C:\DOS;C:\"
 print "Checking disk..."
 diskinfo c:
 
-PATH$ = "C:\DOS;C:\"
+
 REM BIND LS FILES
 BIND SET=SETSYS
 SETSYS PROMPT$="$p$g"

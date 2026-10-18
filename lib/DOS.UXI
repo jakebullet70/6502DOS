@@ -30,7 +30,7 @@ NAMESPACE DOS
   CONST API_ERRMSG AS UWORD = $03B5, API_CON_OUT AS UWORD = $03B8, API_CON_IN AS UWORD = $03BB
   CONST API_CON_CURSOR AS UWORD = $03BE, API_STR_FREE AS UWORD = $03C1, API_STR_GC AS UWORD = $03C4
   CONST API_STR_HEAP AS UWORD = $03C7, API_CON_COLOUR AS UWORD = $03CA
-  CONST API_CON_BREAK AS UWORD = $03CD
+  CONST API_CON_BREAK AS UWORD = $03CD, API_CON_GETKEY AS UWORD = $03D0
   CONST ERR_BAD_FUNCTION AS UBYTE = 1, ERR_NOT_FOUND AS UBYTE = 2, ERR_NO_PATH AS UBYTE = 3
   CONST ERR_TOO_MANY AS UBYTE = 4, ERR_ACCESS AS UBYTE = 5, ERR_BAD_HANDLE AS UBYTE = 6
   CONST ERR_NO_MEMORY AS UBYTE = 8, ERR_BAD_BLOCK AS UBYTE = 9, ERR_BAD_FORMAT AS UBYTE = 11
@@ -50,7 +50,7 @@ NAMESPACE DOS
   ' error number, so ERRMSG gives "" for it.
   CONST DISK_FULL AS UBYTE = 255
 
-  ' The 16 colours of VERA's palette. A console colour is the background times 16 plus the
+  ' The 16 colors of VERA's palette. A console color is the background times 16 plus the
   ' foreground. The shell's COLOR_NUMBER gives these values for the same names.
   CONST BLACK AS UBYTE = 0, WHITE AS UBYTE = 1, RED AS UBYTE = 2, CYAN AS UBYTE = 3
   CONST PURPLE AS UBYTE = 4, GREEN AS UBYTE = 5, BLUE AS UBYTE = 6, YELLOW AS UBYTE = 7
@@ -317,16 +317,16 @@ NAMESPACE DOS
     RETURN R0
   END FUNCT
 
-  ' Sets the console colour, background times 16 plus foreground, for the characters written
+  ' Sets the console color, background times 16 plus foreground, for the characters written
   ' from now on. It leaves ERROR as it is: the call cannot fail.
-  SUB SET_COLOUR(COLOUR AS UBYTE)
-    REG_A = COLOUR
+  SUB SET_COLOR(COLOR AS UBYTE)
+    REG_A = COLOR
     REG_P = 0
     SYS API_CON_COLOUR
   END SUB
 
-  ' The console colour, background times 16 plus foreground. It leaves ERROR as it is.
-  FUNCT GET_COLOUR() AS UBYTE
+  ' The console color, background times 16 plus foreground. It leaves ERROR as it is.
+  FUNCT GET_COLOR() AS UBYTE
     REG_P = 1
     SYS API_CON_COLOUR
     RETURN REG_A

@@ -25,6 +25,7 @@ FATS = 2
 NAME_CHARACTERS = set("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!#$%&'()-@^_`{}~")
 ATTR_DIR = 0x10
 ATTR_ARCHIVE = 0x20
+BAD_CLUSTER = 0x0FFFFFF7
 END_OF_CHAIN = 0x0FFFFFFF
 
 
@@ -48,6 +49,7 @@ class Node:
         self.size = 0 if is_dir else os.path.getsize(path)
         self.first = 0
         self.clusters = 0
+        self.extra = False
 
 
 def scan(path, name, extra=()):
@@ -64,9 +66,11 @@ def scan(path, name, extra=()):
             sys.exit("mksd: %s repeats a name" % full)
         names.append(short)
         if os.path.isdir(full):
-            node.children.append(scan(full, short))
+            child = scan(full, short)
         else:
-            node.children.append(Node(full, short, False))
+            child = Node(full, short, False)
+        child.extra = full in extra
+        node.children.append(child)
     return node
 
 
@@ -76,8 +80,14 @@ def dos_time(when):
     return time, date
 
 
-def make(folder, image, sectors_per_cluster=1, clusters=6016, date=None, extra=()):
-    """Write image from folder, with the files in extra in the root directory too."""
+def make(folder, image, sectors_per_cluster=1, clusters=6016, date=None, extra=(), reserve=0,
+         root_clusters=1):
+    """Write image from folder, with the files in extra in the root directory too.
+
+    The root directory takes at least root_clusters clusters. With reserve above 0, the files
+    in extra go in a block of reserve clusters after the files of folder, and the FAT marks the
+    clusters of the block they leave unused as bad. Exit status 1 when they need more.
+    """
     cluster_bytes = sectors_per_cluster * SECTOR
     root = scan(folder, None, extra)
     fat = [0x0FFFFFF8, END_OF_CHAIN] + [0] * clusters
@@ -95,16 +105,32 @@ def make(folder, image, sectors_per_cluster=1, clusters=6016, date=None, extra=(
         if next_free[0] > clusters + 2:
             sys.exit("mksd: the files need more than %d clusters" % clusters)
 
-    def place(node, is_root):
-        entries = len(node.children) + (0 if is_root else 2)
-        allocate(node, max(1, -(-entries * 32 // cluster_bytes)))
-        for child in node.children:
+    def place_children(node, children):
+        for child in children:
             if child.is_dir:
                 place(child, False)
             else:
                 allocate(child, -(-child.size // cluster_bytes))
 
-    place(root, True)
+    def place(node, is_root, least=1):
+        entries = len(node.children) + (0 if is_root else 2)
+        allocate(node, max(least, -(-entries * 32 // cluster_bytes)))
+        place_children(node, [child for child in node.children if not child.extra])
+
+    place(root, True, root_clusters)
+    extras = [child for child in root.children if child.extra]
+    if reserve:
+        block_end = next_free[0] + reserve
+        if block_end > clusters + 2:
+            sys.exit("mksd: the files need more than %d clusters" % clusters)
+        place_children(root, extras)
+        if next_free[0] > block_end:
+            sys.exit("mksd: the extra files need more than %d clusters" % reserve)
+        for n in range(next_free[0], block_end):
+            fat[n] = BAD_CLUSTER
+        next_free[0] = block_end
+    else:
+        place_children(root, extras)
     fat_sectors = -(-(clusters + 2) * 4 // SECTOR)
     data_start = RESERVED + FATS * fat_sectors
     total = data_start + clusters * sectors_per_cluster

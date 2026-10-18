@@ -293,7 +293,7 @@ FUNCT PRIORITY(OPERATOR AS UBYTE) AS UBYTE
   RETURN 0
 END FUNCT
 
-' The value of the colour named in NAME_TEXT, from DOS.UXI. Another name is a syntax error.
+' The value of the color named in NAME_TEXT, from DOS.UXI. Another name is a syntax error.
 ' Each name takes 11 characters of the table, in the order of the values, so a name's position
 ' less 1, divided by 11, is its value.
 FUNCT COLOR_NUMBER() AS WORD
@@ -507,8 +507,8 @@ SUB DO_LOCATE()
   POS(0) = SECOND_NUMBER
 END SUB
 
-' COLOR foreground,background: sets the colour of the characters written from now on. Each
-' value is 0 to 15, from DOS.UXI's colour names. A value out of range is a syntax error.
+' COLOR foreground,background: sets the color of the characters written from now on. Each
+' value is 0 to 15, from DOS.UXI's color names. A value out of range is a syntax error.
 SUB DO_COLOR()
   EVAL_PAIR()
   IF FAILED THEN RETURN
@@ -516,7 +516,7 @@ SUB DO_COLOR()
   IF FIRST_NUMBER > 15 OR SECOND_NUMBER > 15 THEN CURSOR = 1
   EXPECT_END()
   IF FAILED THEN RETURN
-  DOS.SET_COLOUR(SECOND_NUMBER * 16 + FIRST_NUMBER)
+  DOS.SET_COLOR(SECOND_NUMBER * 16 + FIRST_NUMBER)
 END SUB
 
 ' INPUT name: prints "? ", reads a line and sets the variable to it. A number takes the

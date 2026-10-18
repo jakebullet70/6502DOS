@@ -252,7 +252,7 @@ def sg_scan_known():
     g.sg_scan_unknown = 1
     if g.tk_s in ("LEN", "ASC", "VAL", "CHR$", "STR$", "MID$", "LEFT$", "RIGHT$", "PEEK", "NOT", "INSTR", "POS",
                   "LVAL", "AND", "OR", "XOR", "MOD", "GETKEY", "OPEN", "EOF", "READ", "ADDROF",
-                  "CONTENTSAT", "CONTENTSATW"):
+                  "CONTENTSAT", "CONTENTSATW", "GETEXTKEY", "WAITKEY", "KEYMODS"):
         g.sg_scan_unknown = 0
 
 

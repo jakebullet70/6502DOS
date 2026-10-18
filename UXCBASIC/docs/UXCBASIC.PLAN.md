@@ -330,27 +330,41 @@ checked at run time.
 
 ## 3. The compiler
 
-**Input.** UXCEDIT, or `uxc.py` on the host, writes `UXC.INPUT`, which has two or three
-lines:
-- line 1: the source file name.
-- line 2: the result file name, read by UXCEDIT's compile relay. The compiler writes one
-  line to it: `OK,<prg>,<bytes>` or `ERROR,<line>,<message>`. The message may hold commas.
-- line 3, optional: the program to load next. The compiler loads it after it writes the
-  result line. With no line 3 the compiler ENDs.
+**Input.** `pyuxc/pyuxc.py` is the command line:
 
-The PRG is named after the source: `HELLO.UXB` writes `HELLO.PRG`. Either line ending is read in
-`UXC.INPUT`, and the source may use CR, LF or CR LF.
+```
+python pyuxc/pyuxc.py FILE.UXB [-I FOLDER]... [-o FOLDER] [--result FILE] [--keep-subs] [--keep-vars]
+```
+
+- `FILE.UXB` compiles to `FILE.PRG`, the source's name in capitals, in the `-o` folder. The
+  default is the source's folder. `HELLO.UXB` writes `HELLO.PRG`.
+- `#INCLUDE` looks in the source's folder, then in each `-I` folder in order. The libraries are
+  in `lib/` at the repo root.
+- `--keep-subs` keeps every `SUB` and `FUNCTION`, as `#KEEP ALL` does. `--keep-vars` keeps every
+  global variable, array and string literal.
+- pyuxc prints the compiler's screen lines, then one result line:
+  `OK,<prg>,<bytes>`, with a `,REMOVED <n> SUBS <m> BYTES`, `,REMOVED <n> VARS <m> BYTES` or
+  `,REMOVED <n> STRINGS <m> BYTES` field for each kind of thing left out, or
+  `ERROR,<line>,<message>`. The message may hold commas. `--result FILE` writes the line to
+  FILE as well.
+- The exit status is 0 on success, and 1 on a compile error or a bad command line.
+- The source may use CR, LF or CR LF.
 
 Every other option comes from `#DEFINE UXC.*` lines in the source.
 
 **Templates.**
-- Code templates and runtime routines are 65C02 source in `tpl/`. `tpl/MKTPL.PY` assembles them
-  with 64tass into `UXC.TPL.BIN`. That file is data the compiler loads, so the self-hosted
-  compiler uses it too. `tpl/MACROS.ASM` holds the format and the macros that write it.
+- Code templates and runtime routines are 65C02 source in `tpl/`. `tpl/UXDOS/` holds the UXDOS16
+  versions of `API.ASM`, `R-FILE.ASM` and `SYS.ASM`. `tpl/MKTPL.PY` assembles them with 64tass
+  into two tables: `tpl/UXDOS/UXC.TPL.BIN`, which pyuxc loads, and `tpl/UXC.TPL.BIN`, for the
+  stock ROM, which only `attic/gpc/pyuxc/compare.py` uses. The records of both tables must have
+  the same ids; MKTPL stops when they do not. A table is data the compiler loads, so the
+  self-hosted compiler uses it too. `tpl/MACROS.ASM` holds the format and the macros that write
+  it.
 - There are three kinds of record, all in one table:
   - `T_` templates, copied inline for each use.
   - `R_` runtime routines, placed once at the end of the program.
-  - `S_` system table entries, one `JMP` to the KERNAL each.
+  - `S_` system table entries. The UXDOS16 table's, in `tpl/UXDOS/SYS.ASM`, call the UXDOS16
+    API.
 - A record's id is its place in the table. `tpl/UXC.TPL.IDS` lists them.
 - The file is a header (`"UXT"`, version, count, index offset), the records, then an index of
   one word per record.
@@ -370,8 +384,6 @@ Every other option comes from `#DEFINE UXC.*` lines in the source.
   routines it uses.
 - An expression's value is in A (a BYTE), or in A and Y (a WORD or an address). Assignment is
   a load template then a store template.
-- `MKTPL.PY --test` links a test program on the host the way the compiler will, runs it in
-  the emulator, and checks the output.
 - This is asm, so each new template is agreed with the user before it is written.
 
 **One pass, then link.**
@@ -384,65 +396,60 @@ Every other option comes from `#DEFINE UXC.*` lines in the source.
    that were used. It then resolves every fixup, writes the PRG, and optionally writes the
    `.LST`.
 
-**Compiler memory map.**
-- `UXC.PRG` and the GPC SHARED runtime use low RAM and bank 1.
-- The compiler claims its banks through GPC's `BANKMGR`, which hands out bank 2 and up:
-
-| Banks | Contents |
-|---|---|
-| 1 bank | the template table, `UXC.TPL.BIN` |
-| 1–2 banks | the symbol table: name, type, kind, address or slot, and the owning `SUB` |
-| 5 banks | the code buffer, up to 40 KB of output |
-| 1–2 banks | fixups, plus the `IF`/`DO`/`FOR`/`REPEAT` nesting stack |
+**Compiler memory.** pyuxc keeps the GPC UXC's banks, each a `bytearray` of 8,192 bytes.
+- The code buffer is `K_CODE_BANKS`, 5 banks: a program's code is at most 40,960 bytes. Past
+  that the compile stops with `PROGRAM TOO BIG`.
+- The symbol table is `K_SYM_BANKS`, 4 banks, and the fixups `K_FIX_BANKS`, 4 banks.
+- The program and its arrays must end below `K_TOP`, `$9F00`, or the link stops with
+  `PROGRAM TOO BIG`.
 
 **Errors.**
 - The first error stops the compiler. It prints `?<ERROR> IN <line>` and the line of source.
-- The error also goes into the result file, so UXCEDIT can jump to that line.
+- The result line is then `ERROR,<line>,<message>`.
 
-**Source files.** `src/UXC.BASL` is the main file. It includes one file per part:
+**Source files.** The compiler is in `pyuxc/`, one module a part. `pyuxc/README.md` maps each
+module to its GPC source.
 
 | File | Part |
 |---|---|
-| `UXC-DEFS.BL` | the constants, all named `K.*` |
-| `UXC-LEX.BL` | the source file and the tokens of a line |
-| `UXC-SYM.BL` | the symbol table: 256 hash buckets, then 32-byte records |
-| `UXC-CODE.BL` | the template table, the code buffer, the string literals, the fixups, and `EMIT` |
-| `UXC-LINK.BL` | the link step and the PRG writer |
-| `UXC-STMT.BL` | the statements |
-| `UXC.TPL.BL` | the template ids as `#DEFINE`s, written by `tpl/MKTPL.PY` |
+| `pyuxc.py` | the command line and the compile |
+| `uxc_defs.py` | the constants, all named `K_*` |
+| `uxc_lex.py` | the source file and the tokens of a line |
+| `uxc_sym.py` | the symbol table: 256 hash buckets, then 32-byte records |
+| `uxc_code.py` | the template table, the code buffer, the string literals, the fixups, and `emit` |
+| `uxc_link.py` | the link step and the PRG writer |
+| `uxc_stmt.py` | the statements |
+| `uxc_tpl.py` | the template ids, read from `tpl/UXC.TPL.IDS` |
 
-- `EMIT` copies a record into the code buffer. A slot that holds a constant goes into the code
+- `emit` copies a record into the code buffer. A slot that holds a constant goes into the code
   at once. Any other slot becomes a fixup: a code offset, a kind, a section and a value.
 - The sections are code, record, string, variable and label.
 - A `REC` fixup adds the record to the list of routines.
 - At the end of the source, the link step emits each listed routine in turn. Each one can add
   more routines to the list. The strings and the variables follow the routines. Every fixup
   is resolved last, so a forward reference needs nothing special.
-- `UXC.TPL.BL` gives the compiler its record ids. The compiler stops when `UXC.TPL.BIN` holds a
+- `uxc_tpl.py` gives the compiler its record ids. The compiler stops when `UXC.TPL.BIN` holds a
   different number of records.
 
-**On the host.** `python uxc.py FILE.UXB [--run]` copies the source onto `build/`, writes
-`UXC.INPUT`, runs `UXC.PRG` in the emulator until the result file appears, and prints the
-result. With `--run` it then runs the PRG, and prints what the PRG printed.
-
-**Tests.** `python tests.py [NAME ...] [--update]`, or `RUNTESTS.BAT`, runs the tests in
-`tests/`. Each test is a source `NAME.UXB` and its expected output `NAME.OUT`.
-- A source that compiles is run, and what it printed is compared with `NAME.OUT`. The boot
-  banner, the load, and the `READY.` lines around the run are cut.
+**Tests.** `tests.py [NAME ...] [--update]`, in `UXCBASIC/`, or
+`RUNUXCTESTS.BAT` at the repo root, runs the tests in `tests/`. Each test is a source
+`NAME.UXB` and its expected output `NAME.OUT`, with `NAME.IN` for typed input.
+- pyuxc compiles the source into `build/uxctests` of the repo root, with `#INCLUDE` looking in
+  `tests/`.
+- A source that compiles runs headless on `build/UXDOS16.ROM` in x16emu: the program is
+  `TEST.COM` on a new SD card image, and `RUN TEST.COM` is typed at the prompt. The lines of
+  `NAME.IN` are typed after it. What the program printed, up to the prompt, is compared with
+  `NAME.OUT`.
 - A source that does not compile is compared by its result line. An error test's `NAME.OUT`
   is the one line `ERROR,<line>,<message>`.
+- A run fails when the prompt is not back within 5 s.
 - `--update` writes `NAME.OUT` from what the test gave. Read it before you keep it.
-- A run stops when BASIC prints `READY.` after the program, so a test takes about 2 s, and an
-  error test about 1 s.
-- A trailing `;` at the end of a program's output cannot be seen: BASIC starts a new line
-  before `READY.` either way.
 
 **Listing (`.LST`).** One row per emitted template, in the form `addr  bytes  ; source line`.
 
-**Help.** `UXC.HELP.PRG` is the on-machine reference. It is GPC.HELP from the GPC repo with
-the GP.BASIC content taken out: `src/UXC.HELP.BASL` is the viewer. `help/MKHELP.PY` builds
-`HELP-TXT/` from `help/UXC-HELP.md`, and each program in `samples/` gets an index row. A
-topic is written when its command is built.
+**Help.** `help/MKHELP.PY` builds `help/HELP-TXT/` from `help/UXC-HELP.md`, and each program
+in `samples/` gets an index row. No program in this repo reads `HELP-TXT/`; the GPC viewer,
+`UXC.HELP.BASL`, is in `attic/gpc/src/`.
 
 ## 4. Order of work
 
