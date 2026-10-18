@@ -54,6 +54,8 @@ DIM FILE_SIZE AS ULONG
 ' RUN_PROGRAM: the name typed, the file found for it, a directory of PATH$, the command tail.
 DIM PROGRAM_NAME AS STRING * 128, PROGRAM_PATH AS STRING * 128
 DIM SEARCH_DIRECTORY AS STRING * 128, TAIL_TEXT AS STRING * 128
+' NEXT_DIRECTORY: the position in STRING_RESULT of the next directory of PATH$.
+DIM SEARCH_START AS UWORD
 ' FIND_ALIAS: the position of the CR after the alias found.
 DIM ALIAS_END AS UBYTE
 ' While TO, APPEND or FROM sends handle REDIRECTED to a file, the handle that keeps the console;
@@ -94,6 +96,30 @@ DIM FLOW_COUNT AS UBYTE
 ' a block of either kind.
 DIM LEFT_TEXT AS STRING * 255
 DIM SKIP_DEPTH AS UBYTE
+
+' Tab at the prompt. PROMPT_COLUMN is the column the line starts in. COMPLETE_TEXT is the line
+' as the last Tab left it. COMPLETE_STEM is the word Tab completes, from position
+' COMPLETE_START of the line; COMPLETE_START is 0 before the first Tab of a line.
+' COMPLETE_COMMAND is 1 when the word is a first word with no directory part and no dot.
+' COMPLETE_INDEX is the match on show, from 0, or 255 for none.
+DIM PROMPT_COLUMN AS UBYTE
+DIM COMPLETE_TEXT AS STRING * 128, COMPLETE_STEM AS STRING * 128
+DIM COMPLETE_START AS UBYTE, COMPLETE_COMMAND AS UBYTE, COMPLETE_INDEX AS UBYTE
+' The last HISTORY_SIZE lines typed at the prompt are VARBANK's system strings HISTORY_FIRST
+' up, a ring. HISTORY_NEXT is the slot in the ring, from 0, the next line goes to.
+' HISTORY_BACK is the count of lines Up went back, 0 for the line typed.
+CONST HISTORY_FIRST AS UBYTE = 13, HISTORY_SIZE AS UBYTE = 8
+' Up and Down as CON_EDIT gives them, KEYS.KEY_UP and KEYS.KEY_DOWN. Trap: KEYS.UXI takes the
+' shell past the compiler's 1008 names.
+CONST KEY_UP AS UWORD = $4800, KEY_DOWN AS UWORD = $5000
+DIM HISTORY_NEXT AS UBYTE, HISTORY_BACK AS UBYTE
+' The key CON_EDIT ended the line with.
+DIM KEY_TYPED AS UWORD
+' FIND_MATCH: the match asked for, the matches passed, and the name of the match.
+DIM MATCH_WANTED AS UBYTE, MATCH_SEEN AS UBYTE
+DIM MATCH_NAME AS STRING * 32
+' The statements of RUN_LINE, for Tab, each followed by a space. A new statement goes here too.
+CONST BUILTIN_NAMES$ = "BEEP BIND CD CHDIR CLS COLOR COPY DEL DELETE DIR END ENDIF ENDREP FILES GOSUB GOTO IF INPUT LIST LOCATE MD MKDIR ONERROR PAUSE PRINT RD REM REN RENAME REPEAT RETURN RMDIR RUN SETSYS TYPE VER VERSION WAIT "
 
 ' The code of the character at CURSOR, or 0 past the end of the line.
 FUNCT CURRENT_CHAR() AS UBYTE
@@ -935,27 +961,42 @@ FUNCT FIND_IN(DIRECTORY$) AS UBYTE
   RETURN IS_FILE()
 END FUNCT
 
-' Whether PROGRAM_NAME names a program, and puts its path in PROGRAM_PATH. A name with a
-' directory is looked for there only, any other in the current directory, then in each
-' directory of PATH$. A name with * or ? names none.
-FUNCT FIND_PROGRAM() AS UBYTE
-  DIM START AS UWORD, FINISH AS UWORD
-  IF HAS_WILDCARD(PROGRAM_NAME) THEN RETURN 0
-  IF FIND_IN("") THEN RETURN 1
-  IF DIRECTORY_LENGTH(PROGRAM_NAME) > 0 THEN RETURN 0
+' Puts PATH$ in STRING_RESULT for NEXT_DIRECTORY, which then starts at its first
+' directory.
+SUB START_PATH()
   STRING_RESULT = HEAP.STR_GET(HEAP.PATH_STRING)
-  START = 1
-  DO WHILE START <= LEN(STRING_RESULT)
-    FINISH = INSTR(STRING_RESULT, ";", START)
+  SEARCH_START = 1
+END SUB
+
+' Puts the next directory of PATH$ in SEARCH_DIRECTORY, with a separator on its end. Returns 0
+' past the last one.
+FUNCT NEXT_DIRECTORY() AS UBYTE
+  DIM FINISH AS UWORD
+  DO WHILE SEARCH_START <= LEN(STRING_RESULT)
+    FINISH = INSTR(STRING_RESULT, ";", SEARCH_START)
     IF FINISH = 0 THEN FINISH = LEN(STRING_RESULT) + 1
-    SEARCH_DIRECTORY = MID$(STRING_RESULT, START, FINISH - START)
-    START = FINISH + 1
+    SEARCH_DIRECTORY = MID$(STRING_RESULT, SEARCH_START, FINISH - SEARCH_START)
+    SEARCH_START = FINISH + 1
     IF SEARCH_DIRECTORY <> ""
       IF IS_SEPARATOR(ContentsAt(@SEARCH_DIRECTORY + 1 + LEN(SEARCH_DIRECTORY))) = 0
         SEARCH_DIRECTORY = SEARCH_DIRECTORY + "\"
       ENDIF
-      IF FIND_IN(SEARCH_DIRECTORY) THEN RETURN 1
+      RETURN 1
     ENDIF
+  LOOP
+  RETURN 0
+END FUNCT
+
+' Whether PROGRAM_NAME names a program, and puts its path in PROGRAM_PATH. A name with a
+' directory is looked for there only, any other in the current directory, then in each
+' directory of PATH$. A name with * or ? names none.
+FUNCT FIND_PROGRAM() AS UBYTE
+  IF HAS_WILDCARD(PROGRAM_NAME) THEN RETURN 0
+  IF FIND_IN("") THEN RETURN 1
+  IF DIRECTORY_LENGTH(PROGRAM_NAME) > 0 THEN RETURN 0
+  START_PATH()
+  DO WHILE NEXT_DIRECTORY()
+    IF FIND_IN(SEARCH_DIRECTORY) THEN RETURN 1
   LOOP
   RETURN 0
 END FUNCT
@@ -1657,6 +1698,156 @@ SUB ASK_TERMINATE()
   IF ANSWER = 89 THEN SCRIPT_ACTIVE = 0
 END SUB
 
+' Counts the match in MATCH_NAME. Returns 1 when it is match MATCH_WANTED.
+FUNCT TAKE_MATCH() AS UBYTE
+  IF MATCH_SEEN = MATCH_WANTED THEN RETURN 1
+  MATCH_SEEN = MATCH_SEEN + 1
+  RETURN 0
+END FUNCT
+
+' Takes each name that matches PROGRAM_PATH to TAKE_MATCH, and returns 1 when one is the match
+' wanted. ATTRIBUTES is DOS.ATTR_DIRECTORY for files and directories, each directory with a \ on
+' its end, or 0 for programs, each without its extension. A name that starts with . is left out.
+FUNCT TAKE_FILES(ATTRIBUTES AS UBYTE) AS UBYTE
+  DOS.FINDFIRST(PROGRAM_PATH, ATTRIBUTES)
+  DO WHILE DOS.ERROR = 0
+    MATCH_NAME = DOS.FOUND_NAME
+    IF ATTRIBUTES = 0 THEN MATCH_NAME = LEFT$(MATCH_NAME, INSTR(MATCH_NAME, ".") - 1)
+    IF DOS.FOUND_ATTRIBUTES AND DOS.ATTR_DIRECTORY THEN MATCH_NAME = MATCH_NAME + "\"
+    IF ASC(MATCH_NAME) <> 46
+      IF TAKE_MATCH() THEN RETURN 1
+    ENDIF
+    DOS.FINDNEXT()
+  LOOP
+  RETURN 0
+END FUNCT
+
+' Puts match MATCH_WANTED of COMPLETE_STEM in MATCH_NAME, and returns 1. The matches are the
+' built-in statements when COMPLETE_COMMAND is 1, then the files and directories, then the .COM
+' and .CMD programs on PATH$ when COMPLETE_COMMAND is 1. Returns 0 when there are not that
+' many, with their count in MATCH_SEEN.
+FUNCT FIND_MATCH() AS UBYTE
+  DIM POSITION AS UBYTE, FINISH AS UBYTE
+  MATCH_SEEN = 0
+  IF COMPLETE_COMMAND
+    NAME_TEXT = UCASE$(COMPLETE_STEM)
+    POSITION = 1
+    DO WHILE POSITION < LEN(BUILTIN_NAMES$)
+      FINISH = INSTR(BUILTIN_NAMES$, " ", POSITION)
+      MATCH_NAME = MID$(BUILTIN_NAMES$, POSITION, FINISH - POSITION)
+      IF LEFT$(MATCH_NAME, LEN(NAME_TEXT)) = NAME_TEXT
+        IF TAKE_MATCH() THEN RETURN 1
+      ENDIF
+      POSITION = FINISH + 1
+    LOOP
+  ENDIF
+  PROGRAM_PATH = COMPLETE_STEM + "*"
+  IF INSTR(COMPLETE_STEM, ".", DIRECTORY_LENGTH(COMPLETE_STEM) + 1) = 0
+    PROGRAM_PATH = PROGRAM_PATH + ".*"
+  ENDIF
+  IF TAKE_FILES(DOS.ATTR_DIRECTORY) THEN RETURN 1
+  IF COMPLETE_COMMAND
+    START_PATH()
+    DO WHILE NEXT_DIRECTORY()
+      PROGRAM_PATH = SEARCH_DIRECTORY + COMPLETE_STEM + "*.COM"
+      IF TAKE_FILES(0) THEN RETURN 1
+      PROGRAM_PATH = SEARCH_DIRECTORY + COMPLETE_STEM + "*.CMD"
+      IF TAKE_FILES(0) THEN RETURN 1
+    LOOP
+  ENDIF
+  RETURN 0
+END FUNCT
+
+' Tab at the prompt: puts the next match of the last word of LINE_TEXT in its place, or the one
+' before with Shift. After the last match comes the first, and before the first the last. A line
+' that Tab did not leave starts again: Tab gives its first match, Shift+Tab its last. A word
+' with no match stays as it is.
+SUB COMPLETE_WORD()
+  IF COMPLETE_START = 0 OR LINE_TEXT <> COMPLETE_TEXT
+    COMPLETE_START = LEN(LINE_TEXT) + 1
+    DO WHILE COMPLETE_START > 1 AND ContentsAt(@LINE_TEXT + COMPLETE_START) <> 32
+      COMPLETE_START = COMPLETE_START - 1
+    LOOP
+    COMPLETE_STEM = MID$(LINE_TEXT, COMPLETE_START)
+    COMPLETE_COMMAND = 0
+    IF COMPLETE_STEM <> "" AND INSTR(COMPLETE_STEM, ".") = 0
+      IF DIRECTORY_LENGTH(COMPLETE_STEM) = 0
+        CURSOR = 1
+        SKIP_SPACES()
+        IF CURSOR = COMPLETE_START THEN COMPLETE_COMMAND = 1
+      ENDIF
+    ENDIF
+    COMPLETE_INDEX = 255
+  ENDIF
+  COMPLETE_TEXT = LINE_TEXT
+  ' Bit 0 of the modifiers is Shift.
+  IF DOS.CON_EDIT_MODS AND 1
+    IF COMPLETE_INDEX = 0 OR COMPLETE_INDEX = 255
+      ' Past the last match: MATCH_SEEN is the count.
+      MATCH_WANTED = 255
+      IF FIND_MATCH() = 0 THEN COMPLETE_INDEX = MATCH_SEEN
+    ENDIF
+    MATCH_WANTED = COMPLETE_INDEX - 1
+  ELSE
+    ' 255 + 1 is 0.
+    MATCH_WANTED = COMPLETE_INDEX + 1
+  ENDIF
+  IF FIND_MATCH() = 0
+    MATCH_WANTED = 0
+    IF FIND_MATCH() = 0 THEN RETURN
+  ENDIF
+  COMPLETE_INDEX = MATCH_WANTED
+  LINE_TEXT = LEFT$(LEFT$(LINE_TEXT, COMPLETE_START - 1) + LEFT$(COMPLETE_STEM, DIRECTORY_LENGTH(COMPLETE_STEM)) + MATCH_NAME, 127)
+  COMPLETE_TEXT = LINE_TEXT
+END SUB
+
+' Clears LINE_TEXT from the screen, the cursor at its end, and puts the cursor where it
+' started, for CON_EDIT to show the line again.
+SUB CLEAR_LINE()
+  DIM ROW AS UBYTE
+  ROW = POS(1) - (PROMPT_COLUMN + LEN(LINE_TEXT)) / POS(3)
+  POS(1) = ROW
+  POS(0) = PROMPT_COLUMN
+  PRINT_SPACES(LEN(LINE_TEXT))
+  POS(1) = ROW
+  POS(0) = PROMPT_COLUMN
+END SUB
+
+' The descriptor of the line BACK lines before the next one kept: 1 is the newest, 0 the slot
+' the next line goes to.
+FUNCT HISTORY_SLOT(BACK AS UBYTE) AS UWORD
+  RETURN HEAP.SYS_STRINGS_BASE + (HISTORY_FIRST + ((HISTORY_NEXT - BACK) AND 7)) * 2
+END FUNCT
+
+' KEY_TYPED Up at the prompt: LINE_TEXT becomes the line before the one shown. Down: the line
+' after it, or an empty line after the newest. Any other key leaves it.
+SUB RECALL_LINE()
+  IF KEY_TYPED = KEY_UP
+    IF HISTORY_BACK = HISTORY_SIZE THEN RETURN
+    HEAP.STR_READ(HISTORY_SLOT(HISTORY_BACK + 1))
+    IF DOS.CALL_TEXT = "" THEN RETURN
+    HISTORY_BACK = HISTORY_BACK + 1
+  ELSEIF KEY_TYPED = KEY_DOWN
+    IF HISTORY_BACK = 0 THEN RETURN
+    HISTORY_BACK = HISTORY_BACK - 1
+    DOS.CALL_TEXT = ""
+    IF HISTORY_BACK THEN HEAP.STR_READ(HISTORY_SLOT(HISTORY_BACK))
+  ELSE
+    RETURN
+  ENDIF
+  LINE_TEXT = DOS.CALL_TEXT
+END SUB
+
+' Keeps LINE_TEXT in the history, in place of the oldest line. An empty line or a repeat of the
+' newest is not kept.
+SUB KEEP_LINE()
+  IF LINE_TEXT = "" THEN RETURN
+  HEAP.STR_READ(HISTORY_SLOT(1))
+  IF LINE_TEXT = DOS.CALL_TEXT THEN RETURN
+  HEAP.STR_SET(HISTORY_SLOT(0), LINE_TEXT)
+  IF DOS.ERROR = 0 THEN HISTORY_NEXT = (HISTORY_NEXT + 1) AND 7
+END SUB
+
 DOS.STOP_KEY(DOS.STOP.CATCH)
 RUNNING = 1
 PIPE_PATH = "C:\PIPE1.$$$"
@@ -1669,7 +1860,21 @@ DO WHILE RUNNING
   ELSE
     SKIP_DEPTH = 0
     PRINT_PROMPT()
-    DOS.CON_LINE(LINE_TEXT)
+    PROMPT_COLUMN = POS(0)
+    LINE_TEXT = ""
+    COMPLETE_START = 0
+    HISTORY_BACK = 0
+    DO
+      KEY_TYPED = DOS.CON_EDIT(LINE_TEXT)
+      IF KEY_TYPED = 13 THEN EXIT DO
+      CLEAR_LINE()
+      IF KEY_TYPED = 9
+        COMPLETE_WORD()
+      ELSE
+        RECALL_LINE()
+      ENDIF
+    LOOP
+    KEEP_LINE()
     ' A Ctrl+C in the line does nothing: STOP_PRESSED clears the flag, so a script the line starts
     ' does not see it.
     IF DOS.STOP_PRESSED() THEN STOPPED = 0

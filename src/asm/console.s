@@ -30,7 +30,7 @@
 .include "mem.inc"
 .include "api.inc"
 
-.export con_init, api_con_line, api_con_status, api_con_out, api_con_in, api_con_cursor
+.export con_init, api_con_line, api_con_edit, api_con_status, api_con_out, api_con_in, api_con_cursor
 .export api_con_getkey
 .export api_con_colour, api_con_break
 .export CHRIN, CHROUT
@@ -73,7 +73,8 @@ con_cursor:   .res 1            ; bit 0 set while the cursor shows
 con_blink:    .res 1            ; the low byte of ticks at the last blink
 kbd_mods:     .res 1            ; MOD_ bits
 pointer:      .res 2            ; con_init: the font; api_con_line: the buffer
-con_limit:    .res 1            ; api_con_line: the buffer offset of the last character
+con_limit:    .res 1            ; api_con_line: the buffer offset of the last character, then the end key
+con_end_key:  .res 1            ; api_con_line: $09 when Tab ends the line, else $0D
 con_after_cr: .res 1            ; 1 when the last byte written was CR
 con_colour:   .res 1            ; the colour of new cells: background high nibble, foreground low
 ansi_state:   .res 1            ; 0, ANSI_ESC after Esc, ANSI_CSI after Esc [
@@ -618,11 +619,26 @@ api_con_getkey:
         clc
         rts
 
-; When handle 0 is a file, api_con_line reads the line from it without echo. It skips LF and
-; drops the characters past the most; the end of the file ends the line.
+; api_con_edit: r0 = the buffer: the most characters, CR included, then the length of the text
+; kept from offset 2, which is shown and edited; 0 for an empty line. Enter, Tab or an extended
+; key ends the line. Sets the length, and a CR after the text. Returns as api_con_getkey does:
+; the key that ended the line in A, $0D, $09 or 0 for an extended key; its scan code in X, 0 for
+; Enter and Tab; kbd_mods in Y. Returns carry clear.
+; api_con_line: api_con_edit of an empty line; Tab and the extended keys are dropped.
+; When handle 0 is a file, both read the line from it without echo, from offset 2. They skip
+; LF and drop the characters past the most; the end of the file ends the line.
 ; Trap: keys come through CHRIN, $FFCF, and the echo through CHROUT, so x16emu -bas pastes
 ; and -echo shows them.
+api_con_edit:
+        lda #$09                ; Tab ends the line too
+        bra con_read
 api_con_line:
+        ldy #1
+        lda #0
+        sta (r0),y              ; no kept text
+        lda #$0D                ; Enter alone: the compare with Enter comes first
+con_read:
+        sta con_end_key
         lda (r0)                ; the most characters, CR included
         sta con_limit
         inc con_limit           ; the offset of the last CR
@@ -634,23 +650,41 @@ api_con_line:
         txa
         bpl @file
 @keys:
-        ldy #2
+        ldy #1
+        lda (r0),y
+        tax                     ; X = the kept characters left to show
+        iny
+@show:
+        txa
+        beq @key
+        lda (r0),y
+        jsr CHROUT              ; keeps A, X and Y
+        iny
+        dex
+        bra @show
 @key:
         phy
         jsr CHRIN               ; changes X and Y
         ply
         cmp #$0D
         beq @end
+        cmp con_end_key
+        beq @tab
         cmp #$08
         beq @back
         cmp #' '
         bcs @text
         tax
         bne @key                ; another control character
-        phy                     ; 0: drop the scan code of the extended key
+        phy                     ; 0: the scan code of the extended key comes next
         jsr CHRIN
         ply
-        bra @key
+        ldx con_end_key
+        cpx #$0D
+        beq @key                ; api_con_line drops it
+        tax
+        lda #0
+        bra @done
 @text:
         cpy con_limit
         bcs @key                ; full
@@ -673,13 +707,19 @@ api_con_line:
         lda #$0A
         jsr CHROUT
         lda #$0D
-@store:                         ; A = CR, Y = the offset after the text
+@tab:
+        ldx #0                  ; no scan code
+@done:                          ; A = the key that ended the line, X = its scan code, Y = the offset after the text
+        sta con_limit
+        lda #$0D
         sta (r0),y
         dey
         dey
         tya
         ldy #1
         sta (r0),y
+        lda con_limit
+        ldy kbd_mods
         clc
         rts
 
@@ -722,7 +762,7 @@ api_con_line:
         lda pointer+1
         sta r0+1
         lda #$0D
-        bra @store
+        bra @tab
 
 ; kbd_get: reads one keycode from the SMC. Returns its character in A, or 0 when there is
 ; none or the key gives no character. For an extended key returns 0 and sets con_scan to its

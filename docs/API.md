@@ -67,6 +67,7 @@ Conventions:
 | `con_colour` | 46 | `$03CA` | none | `carry` set: get, clear: set<br>`A` color, to set | `A` color | none | yes |
 | `con_break` | 47 | `$03CD` | 33h | `carry` set: get, clear: set<br>`A` mode, to set: 0 to 2 | `A` mode<br>`X` flag: 1 when Ctrl+C came in mode 2 since the last get, else 0 | 13 | yes |
 | `con_getkey` | 48 | `$03D0` | none | `carry` clear: wait, set: return at once | `A` character, 0 for an extended key or none<br>`X` scan code, 0 for a plain key or none<br>`Y` modifiers: $01 Shift, $04 Caps Lock on, $40 Alt, $80 Ctrl | none | yes |
+| `con_edit` | 49 | `$03D3` | none | `r0` buffer | `A` the key that ended the line: $0D Enter, $09 Tab, 0 an extended key<br>`X` scan code, 0 for Enter and Tab<br>`Y` modifiers: $01 Shift, $04 Caps Lock on, $40 Alt, $80 Ctrl | none | yes |
 
 ## What each call does
 
@@ -93,7 +94,7 @@ Conventions:
 - `getdrive`: Gives the current drive.
 - `setdrive`: Sets the current drive.
 - `diskfree`: Gives the size and free space of a drive. It reads the whole FAT.
-- `con_line`: Reads a line from the console with editing. Byte 0 of the buffer holds the most characters it takes, CR included, from 1 to 254. The call puts the length read, CR not included, in byte 1 and the text after it, ended by CR.
+- `con_line`: Reads a line from the console with editing. Byte 0 of the buffer holds the most characters it takes, CR included, from 1 to 254. The call puts the length read, CR not included, in byte 1 and the text after it, ended by CR. Tab does nothing.
 - `con_status`: Tells whether a key is waiting, and which modifier keys are held. `lib/KEYS.UXI` names the modifier bits.
 - `exec`: Runs a program and returns when it ends. `exitcode` gives its code. The file starts with its load address, which must be $0801, and the rest loads at $0801. A program that starts with a BASIC line `SYS n` starts at n, any other at $0801. The program gets the command tail in its PSP at $0780: cut to 126 characters, and followed by a CR that the length does not count. Its handles are copies of the caller's. Up to 4 programs run one inside another; a fifth gives error 8.
 - `exit`: Ends the program and returns to its parent. `RTS` from the program's start is `exit` with code 0. Does not return, except with error 1 when no program is running.
@@ -119,6 +120,7 @@ Conventions:
 - `con_colour`: Gets the console color with carry set, sets it with carry clear. The high nibble is the background and the low nibble the foreground, from VERA's palette. A new color takes effect for the characters written after the call.
 - `con_break`: Gets the break mode and the break flag with carry set, sets the mode with carry clear. The mode says what Ctrl+C from the console does: 0 nothing, it is the character $03; 1 prints ^C and ends the program with exit code 0, and `exitcode` then gives X = 1; 2 drops the key and sets the flag. A get clears the flag. `exec` starts each program in mode 1. The console sees Ctrl+C only while a program asks it for a key.
 - `con_getkey`: Reads a key in one call, extended or not, with carry clear waiting for it with the cursor blinking, with carry set returning at once. A plain key gives its character in A and 0 in X. An extended key gives 0 in A and its scan code in X, the codes of `con_in`. No key gives 0 in both. Y gives the modifiers, as `con_status` gives them in X.
+- `con_edit`: Edits a line from the console, as `con_line` reads one, from the text in the buffer: byte 1 holds its length, 0 for none, and the text follows it. The call shows the text first. Enter, Tab or an extended key ends the line. Tab and the extended key are not echoed, and leave the cursor after the text. The registers come back as `con_getkey` gives them.
 
 ## Errors
 

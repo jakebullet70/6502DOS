@@ -172,7 +172,7 @@ CALLS = [
     call(23, "con_line", 0x0A, "Reads a line from the console with editing. Byte 0 of the "
          "buffer holds the most characters it takes, CR included, from 1 to 254. The call "
          "puts the length read, CR not included, in byte 1 and the text after it, ended by "
-         "CR.",
+         "CR. Tab does nothing.",
          in_=[("r0", "buffer")],
          written=True),
     call(24, "con_status", 0x0B, "Tells whether a key is waiting, and which modifier keys "
@@ -313,6 +313,16 @@ CALLS = [
          in_=[("carry", "clear: wait, set: return at once")],
          out=[("A", "character, 0 for an extended key or none"),
               ("X", "scan code, 0 for a plain key or none"),
+              ("Y", "modifiers: $01 Shift, $04 Caps Lock on, $40 Alt, $80 Ctrl")],
+         written=True),
+    call(49, "con_edit", None, ("Edits a line from the console, as `con_line` reads one, from "
+          "the text in the buffer: byte 1 holds its length, 0 for none, and the text follows "
+          "it. The call shows the text first. Enter, Tab or an extended key ends the line. Tab "
+          "and the extended key are not echoed, and leave the cursor after the text. The "
+          "registers come back as `con_getkey` gives them."),
+         in_=[("r0", "buffer")],
+         out=[("A", "the key that ended the line: $0D Enter, $09 Tab, 0 an extended key"),
+              ("X", "scan code, 0 for Enter and Tab"),
               ("Y", "modifiers: $01 Shift, $04 Caps Lock on, $40 Alt, $80 Ctrl")],
          written=True),
 ]

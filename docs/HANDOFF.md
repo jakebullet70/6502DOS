@@ -924,7 +924,7 @@
 - Build after 7c: 0.75 s with the shell compile, the new baseline.
 - Tests after 7c, one at a time: `SHFILES` ok 0.7 s, `SHELL` 0.5, `FILES` 0.4, `DIRS` 0.8,
   `DISK` 0.4.
-- Steps since the last full suite: 4. It ran after the doc batch for `TREE` to `TAIL`,
+- Steps since the last full suite: 6. It ran after the doc batch for `TREE` to `TAIL`,
   2026-10-18: 43 tests, 1 failed (`TREE`, below), 27.4 s, the longest `CMDLETS` 1.7 s.
 - UXCBASIC: 174 tests, 0 failed, 43 s. `compare.py`: 566 MATCH, 5 RESULT, 31 NO GOLDEN of 602,
   1.7 s. The RESULTs are `STRLR`, `STRNS`, `EXERRCONSTSTR`, and the two below, all expected:
@@ -1851,11 +1851,128 @@
      longer put off, and `GREP` follows `TAIL`. No docs are owed. Build 642 ms, the new
      baseline. `CMDLETS` failed on the `HELP` list (gains `WHERE` and `GREP`), as expected;
      updated, `CMDLETS` ok 1.7 s. Steps since the full suite: 4.
+   - `XCOPY` done 2026-10-18: `src/dos/XCOPY.UXB`, `XCOPY source [target] [-s] [-e] [-p] [-l]
+     [-y]`, for the command line. The user's choices: all five switches; a target file that
+     exists asks `Overwrite path (Y/N/A)?`, `-y` does not ask; a missing target is made with
+     the directories above it; the source is a directory or a directory and a pattern, the
+     pattern used at every level; a target in the source refuses; the MS-DOS exit codes 0 1 2
+     4 5. `-p`'s N skips the file, as in MS-DOS; Esc at a question stops with exit code 2.
+     Ctrl+C ends it with exit code 0, as any program. `-e` takes `-s` with it. Hidden and
+     system names are skipped. The walk is `TREE`'s, with the find state saved a level. The
+     roots are made full by `CHDIR` and `GETCWD`; the guard compares them, and on a refusal
+     the directories made for the target are removed. The target file is checked by an open,
+     not `DOS.EXISTS`, which would end the search. `XCOPY.COM` 7137 bytes. Build 949 ms, the
+     new baseline. Trap: `\X` in a test line is x16emu's hex escape, so `Q:\X` is typed as
+     `Q:` and a byte. A `--update` run lasts 2 s, so the test is split: `tests/XCOPY.IN` (the
+     errors, plain copies, the questions) ok 1.3 s, `tests/XCOPYS.IN` (`-s`, `-e`, `-l`) ok
+     1.1 s. `TREE` failed on `XCOPY.COM` in `\DOS`, as expected; updated, ok 1.3 s. Owed to the
+     doc batch: the `HELP.TXT` topic `XCOPY` (`(Command line only)`), the `CMDLETS` golden's
+     `HELP` list after it, PLAN sections 8 and 11. Steps since the full suite: 5.
+   - Tab completion in the shell (the user, 2026-10-18): the ROM hook and the shell, files and
+     commands, Tab cycles as in cmd.exe and Shift+Tab goes back. Two steps.
+     1. ROM hook, done 2026-10-18. `api_con_line`: buffer byte 1 is the length of the text kept
+        from offset 2, which is shown and edited, as the MS-DOS 0Ah template. Tab ends the line
+        with no echo. Returns the end key in A ($0D or $09) and `kbd_mods` in X. A file on
+        handle 0 still reads from offset 2. The monitor clears byte 1 and calls again on Tab.
+        `DOS.UXI`: `CON_LINE` clears the line and calls again on Tab; new `FUNCT CON_EDIT(LINE)`
+        keeps the text and returns the end key, and sets `CON_EDIT_MODS`. ROM +35 bytes, counted
+        by hand: `RODATA` ends at `$EDCE`, 4608 bytes free below `$FFCF`. `CMDSHELL.COM` and
+        `DOSAPI.COM` +25 (the `CON_LINE` loop). Build 3214 ms: `DOS.UXI` changed, so every
+        program recompiled; the baseline stays 949 ms. Tests: `SHVARS` ok 0.8 s, `ANSI` ok
+        0.4 s, `FILES` failed on the two sizes, as expected; updated, ok 0.4 s; `DIRS` ok 0.8 s.
+        No test types a Tab yet: step 2 adds them (`\X09` in a `.IN` line). Shift+Tab cannot be
+        typed by x16emu -bas. Steps since the full suite: 6.
+     2. The shell: on Tab, `CON_EDIT` at the prompt, complete the last word. A file or
+        directory name, `\` after a directory; the first word also built-ins and `.COM`/`.CMD`
+        on PATH$. Done 2026-10-18, see 2b. Design: save `POS(0)` after the prompt; `DO WHILE
+        DOS.CON_EDIT(LINE_TEXT) = 9`; redraw by locating the row and column of the prompt end,
+        spaces over the old text, locate again; the match list is the built-ins (first word, no
+        directory part, prefix compared with `UCASE$`), then `FINDFIRST` of the stem + `*`
+        (+ `.*` when the name part has no dot), then `.COM`/`.CMD` on PATH$ (first word).
+        Shift+Tab is `CON_EDIT_MODS AND 1`.
+     1b. UXCBASIC `UCASE$` and `LCASE$`, done 2026-10-18, asm approved. `R_CASE` 54 bytes,
+        `T_UCASE`/`T_LCASE` 12 bytes a call; about 28 cycles a letter. A literal is folded by
+        the compiler. The 3 new records pushed `R_RELEM` and `R_RMAX` past id 255, which a
+        fixup byte cannot hold: new fixup kind `F_REC_HI` (6), record <arg> + 256, in
+        `MACROS.ASM`, `MKTPL.PY`, `uxc_defs.py`, `uxc_code.py`. Help topic and PLAN done.
+        Build 3087 ms (templates changed, all recompiled). Tests: `CASE` (new) ok 0.9 s,
+        `RECORD3` ok 0.8 s, `RECSTR` failed 0.8 s on a step 1 bug, fixed in 1c.
+     1c. Step 1 bugs, fixed 2026-10-18, asm approved. `S_CHRIN` (`tpl/UXDOS/SYS.ASM`) called
+        `con_line` with byte 1 left from the last line, so the second `INPUT` line started
+        with the first one's text. On Tab, `CON_LINE`'s loop and the monitor called again, and
+        the kept text showed twice: `INPUT A$` with `ab` Tab `c` showed `? ababc`. Fix: new
+        API call 49 `con_edit` (`$03D3`, `api_con_edit` in `console.s`) has the step 1
+        contract; `con_line` clears byte 1 and drops Tab, as before step 1. The two share the
+        body; `con_end_key` (1 byte of RAM) is `$09` for `con_edit` and `$0D` for `con_line`,
+        and the compare with Enter comes first. The monitor and `DOS.CON_LINE` are back to their
+        pre-step-1 code; `DOS.CON_EDIT` calls `API_CON_EDIT`. ROM +10 bytes over step 1:
+        `RODATA` ends at `$EDD8`, 4598 bytes free below `$FFCF`. `CMDSHELL.COM` 19179 and
+        `DOSAPI.COM` 8562, 25 less each. Build 2903 ms. Tests: `RECSTR` ok 0.8 s, `MONITOR`
+        ok 0.7 s, `ASK` ok 0.7 s, `SHVARS` ok 0.9 s, `FILES` failed on the two sizes, as
+        expected; updated, ok 0.4 s, and the golden equals HEAD again; `DOSAPI` ok 0.9 s,
+        `INPUT2` ok 0.8 s. A throwaway shell test of `INPUT` with Tab showed `? abc`.
+        Owed to the doc batch: PLAN's `con_line` row (line 261) and a `con_edit` row.
+        Full suite, the 7th step: shell 47 tests, 0 failed, 33.2 s; UXCBASIC 185 tests, 0
+        failed, 48 s; none past 5 s.
+     2b. Shell Tab completion, done 2026-10-18 (UXCBASIC only). `CMDSHELL.UXB`: the prompt
+        reads with `DOS.CON_EDIT` until Enter; each Tab runs `COMPLETE_WORD`. It clears the
+        line from the screen (locate the prompt end, spaces, locate again; `PROMPT_COLUMN` is
+        `POS(0)` after the prompt), then puts match `COMPLETE_INDEX` of the last word in its
+        place. `FIND_MATCH` counts the matches in order: the names of `BUILTIN_NAMES$` (a
+        first word with no directory part and no dot, `UCASE$` prefix), then `FINDFIRST` of
+        the stem + `*` (+ `.*` with no dot in the name part), with directories and a `\` on
+        each, names starting with `.` left out, then `*.COM` and `*.CMD` in each directory of
+        PATH$ for a first word, shown without the extension. Shift+Tab goes back; both wrap.
+        A line Tab did not leave (`COMPLETE_TEXT`) starts again. `START_PATH` and
+        `NEXT_DIRECTORY` walk PATH$, for `FIND_PROGRAM` too. Trap: a UXCBASIC name is at most
+        16 characters (`NAME TOO LONG`). CMDSHELL passed 4096 fixups (`TOO MANY FIXUPS`):
+        pyuxc `K_FIX_BANKS` 4 to 8, `K_FX_MAX` 8192, UXCBASIC PLAN line 405 done.
+        `CMDSHELL.COM` 21024, +1845: built-ins 506 (the list 208), PATH programs 202. The
+        CONST used in place, not copied to `LEFT_TEXT`, saved 17 bytes and a 208-byte copy a
+        match; the `MID$` prefix form and a `FOR` redraw were bigger. Builds 3007 ms (the
+        compiler changed, all recompiled), 1049 ms. Tests: `SHTAB` (new: files, a directory
+        argument, lower case, built-ins cycling and wrapping, typing after Tab, two
+        directories, no match, PATH$) ok 0.7 s; `SHRUN` ok 0.9 s, `SHELL` ok 0.5 s, `FILES`
+        failed on the size, as expected; updated, ok 0.4 s; `DIRS` ok 0.8 s, `DISK` ok
+        0.5 s, `CMDLETS` ok 1.7 s, `TREE` ok 1.1 s. x16emu -bas cannot type Shift+Tab, so no
+        test covers it. Owed to the doc batch: the shell's Tab in `HELP.TXT` and PLAN
+        section 8. Steps since the full suite: 1.
+   - Command history in the shell (the user, 2026-10-18): the last 8 lines, Up and Down. The
+     lines live in VARBANK system strings 13 to 20 (`HEAP.SYS_STRINGS_SET` and `_GET`), 13 the
+     newest; on Enter 19 to 20 down to 13 to 14 move, then the line goes to 13. An empty line
+     or a repeat of the newest is not kept. Two steps.
+     1. `con_edit` ends on an extended key, done 2026-10-18, asm approved. `api_con_edit`
+        returns as `con_getkey` does: A = $0D, $09 or 0 for an extended key; X = the scan
+        code, 0 for Enter and Tab; Y = `kbd_mods`. `con_line` still drops the extended keys
+        (`con_end_key` = $0D). The scan code rides in X through the tail. ROM +12 bytes,
+        counted by hand. `DOS.UXI`: new `REG_AX AS UWORD AT $030C` (REG_X * 256 + REG_A);
+        `CON_EDIT` returns `REG_AX`, a UWORD as `WAITKEY()` gives it (`KEYS.KEY_UP` and so
+        on), and `CON_EDIT_MODS = REG_Y`. `REG_AX` in place of `REG_X * 256 + REG_A` saved
+        32 bytes. `tools/api.py` contract updated; `docs/API.md` regenerated. `CMDSHELL.COM`
+        21031, +7 (the UWORD compare with 9). Builds 3171 ms, 2811 ms (`DOS.UXI` changed,
+        all recompiled). Tests: `SHTAB` ok 0.6 s, `SHELL` ok 0.5 s, `FILES` failed on the
+        size, as expected; updated, ok 0.4 s. No test types an extended key. Steps since the
+        full suite: 2.
+     2. The shell, done 2026-10-18. The slots are a ring, not a shift: `HISTORY_NEXT` (0 to
+        7) is the slot the next line goes to, and `HISTORY_SLOT(BACK)` gives the descriptor
+        BACK lines before it (1 the newest). `HISTORY_BACK` counts the lines Up went back;
+        Down past the newest gives an empty line. The prompt loop: `KEY_TYPED =
+        DOS.CON_EDIT(LINE_TEXT)`; 13 ends it; any other key runs `CLEAR_LINE` (the redraw
+        taken out of `COMPLETE_WORD`), then 9 runs `COMPLETE_WORD` and the rest `RECALL_LINE`,
+        which acts on Up and Down only. `KEEP_LINE` after the loop. Trap: `#INCLUDE
+        "KEYS.UXI"` stops the compile with TOO MANY NAMES (`K_SY_MAX` 1008), so the shell has
+        its own `KEY_UP` $4800 and `KEY_DOWN` $5000. The shell is near that limit.
+        `CMDSHELL.COM` 21459, +428. Builds 721 ms (NAME TOO LONG), 860 ms (TOO MANY NAMES),
+        1082 ms. Tests: `SHTAB` ok 0.7 s, `SHELL` ok 0.5 s, `FILES` failed on the size, as
+        expected; updated, ok 0.4 s. No test types an arrow. Steps since the full suite: 3.
+        Option, its own step: a pasted 0 takes the next queued byte as its scan code (about
+        10 bytes of asm), so a test could type the arrows. Owed to the doc batch: Up and Down
+        in `HELP.TXT` and PLAN section 8.
    - To do, commands the user listed (2026-10-17). None is in PLAN section 11 yet; each needs a
      step and a talk with the user first.
      - Search and text: `FIND` (text in files), `SORT`, `GREP` (done), `HEAD` (first n lines), `TAIL` (last n lines), `WC` (line, word
        and byte counts). `FC` (text compare) and `COMP` (binary compare) are for version 2.0.
-     - Files: `XCOPY` (directory trees), `MOVE`, `MORE` (paged display), `ATTRIB`, `TREE`. The
+     - Files: `XCOPY` (done), `MOVE`, `MORE` (paged display), `ATTRIB`, `TREE`. The
        shell already has `COPY`, `RENAME` or `REN`, and `DELETE` or `DEL`.
      - System: `TIME`, `DATE`, `UPTIME`.
      - Paths: `PUSH` saves the current path, and `POP` loads it back (the user, 2026-10-17).
