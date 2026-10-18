@@ -89,6 +89,7 @@ ROOT
  |      DISKFREE.CBI
  |      DISKINFO.CBI
  |      EXIST.CBI
+ |      GREP.COM
  |      HEAD.COM
  |      HELP.COM
  |      HELP.TXT
