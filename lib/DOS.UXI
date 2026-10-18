@@ -75,6 +75,10 @@ NAMESPACE DOS
   ' words.
   DIM CLUSTER_SECTORS AS UWORD, SECTOR_BYTES AS UWORD
   DIM FREE_LOW AS UWORD, FREE_HIGH AS UWORD, TOTAL_LOW AS UWORD, TOTAL_HIGH AS UWORD
+  ' GETDATE and GETTIME put the date and time of the RTC here. WEEKDAY is 0 for Sunday to 6.
+  DIM YEAR AS UWORD, MONTH AS UBYTE, DAY AS UBYTE, WEEKDAY AS UBYTE
+  DIM HOURS AS UBYTE, MINUTES AS UBYTE, SECONDS AS UBYTE
+  DIM TICK_COUNT AS ULONG                    ' TICKS_LONG's copy of the count
 
   DIM FIND_BUFFER(63) AS UBYTE
   DIM CALL_TEXT AS STRING * 255              ' GETCWD's buffer: its length byte and 255 bytes
@@ -316,6 +320,50 @@ NAMESPACE DOS
     SYS API_TICKS
     RETURN R0
   END FUNCT
+
+  ' The VSYNC count since boot, all 32 bits. It leaves ERROR as it is.
+  FUNCT TICKS_LONG() AS ULONG
+    SYS API_TICKS
+    ContentsAtW(@TICK_COUNT) = R0
+    ContentsAtW(@TICK_COUNT + 2) = R1
+    RETURN TICK_COUNT
+  END FUNCT
+
+  ' Puts the date of the RTC in YEAR, MONTH, DAY and WEEKDAY. It leaves ERROR as it is.
+  SUB GETDATE()
+    SYS API_GETDATE
+    YEAR = R0
+    MONTH = REG_X
+    DAY = REG_Y
+    WEEKDAY = REG_A
+  END SUB
+
+  ' Sets the date of the RTC. A year outside 2000 to 2099, or a date that does not exist,
+  ' gives error 13.
+  SUB SETDATE(NEW_YEAR AS UWORD, NEW_MONTH AS UBYTE, NEW_DAY AS UBYTE)
+    R0 = NEW_YEAR
+    REG_X = NEW_MONTH
+    REG_Y = NEW_DAY
+    SYS API_SETDATE
+    READ_ERR_STATUS()
+  END SUB
+
+  ' Puts the time of the RTC in HOURS, MINUTES and SECONDS. It leaves ERROR as it is.
+  SUB GETTIME()
+    SYS API_GETTIME
+    HOURS = REG_X
+    MINUTES = REG_Y
+    SECONDS = REG_A
+  END SUB
+
+  ' Sets the time of the RTC, hours 0 to 23. A value out of range gives error 13.
+  SUB SETTIME(NEW_HOURS AS UBYTE, NEW_MINUTES AS UBYTE, NEW_SECONDS AS UBYTE)
+    REG_X = NEW_HOURS
+    REG_Y = NEW_MINUTES
+    REG_A = NEW_SECONDS
+    SYS API_SETTIME
+    READ_ERR_STATUS()
+  END SUB
 
   ' Sets the console color, background times 16 plus foreground, for the characters written
   ' from now on. It leaves ERROR as it is: the call cannot fail.

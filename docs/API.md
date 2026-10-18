@@ -51,10 +51,10 @@ Conventions:
 | `bank_free` | 30 | `$039A` | 49h | `A` bank | none | 9 | no |
 | `getvect` | 31 | `$039D` | 35h | `A` vector: 0 the IRQ hook, 1 the break handler, 2 the disk error handler | `r0` address | 1 | no |
 | `setvect` | 32 | `$03A0` | 25h | `A` vector: 0 the IRQ hook, 1 the break handler, 2 the disk error handler<br>`r0` address | none | 1 | no |
-| `getdate` | 33 | `$03A3` | 2Ah | none | `r0` year<br>`X` month, 1 to 12<br>`Y` day, 1 to 31<br>`A` day of the week, 0 Sunday | none | no |
-| `setdate` | 34 | `$03A6` | 2Bh | `r0` year<br>`X` month, 1 to 12<br>`Y` day, 1 to 31 | none | 13 | no |
-| `gettime` | 35 | `$03A9` | 2Ch | none | `X` hours, 0 to 23<br>`Y` minutes<br>`A` seconds | none | no |
-| `settime` | 36 | `$03AC` | 2Dh | `X` hours, 0 to 23<br>`Y` minutes<br>`A` seconds | none | 13 | no |
+| `getdate` | 33 | `$03A3` | 2Ah | none | `r0` year, 2000 to 2099<br>`X` month, 1 to 12<br>`Y` day, 1 to 31<br>`A` day of the week, 0 Sunday | none | yes |
+| `setdate` | 34 | `$03A6` | 2Bh | `r0` year, 2000 to 2099<br>`X` month, 1 to 12<br>`Y` day, 1 to 31 | none | 13 | yes |
+| `gettime` | 35 | `$03A9` | 2Ch | none | `X` hours, 0 to 23<br>`Y` minutes<br>`A` seconds | none | yes |
+| `settime` | 36 | `$03AC` | 2Dh | `X` hours, 0 to 23<br>`Y` minutes<br>`A` seconds | none | 13 | yes |
 | `version` | 37 | `$03AF` | 30h | none | `A` major<br>`X` minor<br>`Y` patch | none | yes |
 | `ticks` | 38 | `$03B2` | none | none | `r0 r1` ticks | none | yes |
 | `errmsg` | 39 | `$03B5` | none | `A` error number | `r0` message, length-prefixed | 1 | yes |
@@ -103,10 +103,10 @@ Conventions:
 - `bank_free`: Gives back a RAM bank.
 - `getvect`: Gives a handler address.
 - `setvect`: Sets a handler address.
-- `getdate`: Gives the date from the RTC.
-- `setdate`: Sets the date of the RTC.
+- `getdate`: Gives the date from the RTC. The day of the week is worked out from the date.
+- `setdate`: Sets the date of the RTC. A date that does not exist gives error 13. It also sets the RTC's weekday and its battery backup bit, VBATEN.
 - `gettime`: Gives the time from the RTC.
-- `settime`: Sets the time of the RTC.
+- `settime`: Sets the time of the RTC, and starts its oscillator.
 - `version`: Gives the system version.
 - `ticks`: Gives the number of VSYNCs since boot.
 - `errmsg`: Gives the message of an error number.

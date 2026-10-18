@@ -1,0 +1,45 @@
+'=============================================================================================
+' -- Callable Commandlet -----> UPTIME [SILENT]
+' -- Prints the time since boot in days, hours, minutes and seconds, such as 0 days 01:12:33.
+' -- It counts VSYNCs, 1250 in 21 seconds: VERA's 25 MHz pixel clock over 800 by 525 pixels.
+' -- Sets P1$ to the seconds since boot, 4353, P2$ to the days, 0, and P3$ to the rest of the
+' -- time, 01:12:33.
+' -- SILENT, in capitals, prints nothing.
+' -- Exit code 0.
+' --
+' -- From a script:
+' --     UPTIME SILENT
+' --     PRINT "Up " + P1$ + " seconds"
+'=============================================================================================
+#INCLUDE "DOS.UXI"
+#INCLUDE "HEAP.UXI"
+#INCLUDE "CBIN.UXI"
+CONST TICKS_STEP AS ULONG = 1250, SECONDS_STEP AS ULONG = 21
+
+DIM TICKS AS ULONG, TOTAL_SECONDS AS ULONG, DAYS AS ULONG, DAY_SECONDS AS ULONG
+DIM HOURS AS UBYTE, MINUTES AS UBYTE, SECONDS AS UBYTE
+
+' The number with no space in front.
+FUNCT PLAIN(NUMBER AS ULONG) AS STRING
+  RETURN MID$(STR$(NUMBER), 2)
+END FUNCT
+
+' The number as 2 digits, with a 0 in front below 10.
+FUNCT TWO_DIGITS(NUMBER AS UBYTE) AS STRING
+  RETURN RIGHT$("0" + PLAIN(NUMBER), 2)
+END FUNCT
+
+IF HEAP.SYS_STRINGS_GET(SLOT_P1) = "SILENT" THEN SILENT = 1
+' The ticks go to seconds in two parts, so the product stays below 2^32.
+TICKS = DOS.TICKS_LONG()
+TOTAL_SECONDS = (TICKS / TICKS_STEP) * SECONDS_STEP + ((TICKS MOD TICKS_STEP) * SECONDS_STEP) / TICKS_STEP
+DAYS = TOTAL_SECONDS / 86400
+DAY_SECONDS = TOTAL_SECONDS MOD 86400
+HOURS = DAY_SECONDS / 3600
+MINUTES = (DAY_SECONDS MOD 3600) / 60
+SECONDS = DAY_SECONDS MOD 60
+HEAP.SYS_STRINGS_SET(SLOT_P1, PLAIN(TOTAL_SECONDS))
+HEAP.SYS_STRINGS_SET(SLOT_P2, PLAIN(DAYS))
+HEAP.SYS_STRINGS_SET(SLOT_P3, TWO_DIGITS(HOURS) + ":" + TWO_DIGITS(MINUTES) + ":" + TWO_DIGITS(SECONDS))
+IF SILENT = 0 THEN PRINT HEAP.SYS_STRINGS_GET(SLOT_P2); " days "; HEAP.SYS_STRINGS_GET(SLOT_P3)
+END 0

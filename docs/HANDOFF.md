@@ -924,8 +924,8 @@
 - Build after 7c: 0.75 s with the shell compile, the new baseline.
 - Tests after 7c, one at a time: `SHFILES` ok 0.7 s, `SHELL` 0.5, `FILES` 0.4, `DIRS` 0.8,
   `DISK` 0.4.
-- Steps since the last full suite: 4. It ran after the `con_getkey` step, 2026-10-18: 37 tests,
-  0 failed, 21.9 s, the longest `CMDLETS` 1.6 s.
+- Steps since the last full suite: 0. It ran after clock step 2, 2026-10-18: 39 tests,
+  0 failed, 23.7 s, the longest `CMDLETS` 1.6 s.
 - UXCBASIC: 174 tests, 0 failed, 43 s. `compare.py`: 566 MATCH, 5 RESULT, 31 NO GOLDEN of 602,
   1.7 s. The RESULTs are `STRLR`, `STRNS`, `EXERRCONSTSTR`, and the two below, all expected:
   `EXERRPOS` (`POS(2)`) now compiles, and `EXERRPOSVAR` says `POS NEEDS 0 TO 3`.
@@ -1591,7 +1591,7 @@
    12; section 8: the system variables, `SETSYS`, the prompt, Aliases, the read-ahead; section
    13: descriptors 13 to 31 still open). 7g1 (`TO`), 7g2 (`APPEND`), 7g3 (`FROM`) and 7g4 (the pipe) are done.
    The docs step after 7g, 7h1 (`LOCATE`, `BEEP`, `PAUSE`), 7h2 (`WAIT`) and the docs step
-   after 7h are done. `DATE` and `TIME` wait for a clock call. 7i1 (`EXIST`), 7i2 (`DISKFREE`) and
+   after 7h are done. `DATE` and `TIME` have their clock calls now (the clock step, Next). 7i1 (`EXIST`), 7i2 (`DISKFREE`) and
    7i3 (`DISKINFO`) are done, and the docs step after them (PLAN section 8: `CBIN.UXI`,
    `DISKFREE`, `DISKINFO`). 7i4 (`WHICH`) is put off by the user (2026-10-16). 7i5
    (`HELP`), `PROMPT$` codes, short names, the boot shell, console color and `COLOR` are done,
@@ -1832,8 +1832,43 @@
        shell already has `COPY`, `RENAME` or `REN`, and `DELETE` or `DEL`.
      - System: `TIME`, `DATE`, `UPTIME`.
      - Paths: `PUSH` saves the current path, and `POP` loads it back (the user, 2026-10-17).
-     - The API calls `attrib` (8), `filetime` (9) and `getdate` to `settime` (33 to 36) go to
-       `api_bad`: `ATTRIB`, `TIME` and `DATE` need asm first.
+     - The API calls `attrib` (8) and `filetime` (9) go to `api_bad`: `ATTRIB` needs asm
+       first.
+     - Clock, the user's order (2026-10-18), asm approved. Steps:
+       1. Done 2026-10-18, the clock calls. `src/asm/clock.s`: `getdate`, `setdate`,
+          `gettime` and `settime` (33 to 36) on the MCP7940N, I2C device `$6F`, years 2000 to
+          2099. A read takes three registers, then the first again, and starts over when it
+          changed. `getdate` works out the weekday from the date (Sakamoto, checked against
+          Python for every day of 2000 to 2099). `setdate` checks the days of each month and
+          February 29, and writes the weekday with VBATEN. `settime` writes the seconds as 0
+          first, then the minutes, the hours and the seconds with ST. `i2c_write_byte` is new
+          in `src/asm/i2c.s`. `tools/api.py` marks the four calls written. `lib/DOS.UXI`:
+          `GETDATE`, `SETDATE`, `GETTIME`, `SETTIME`, `TICKS_LONG` (all 32 bits) and the
+          variables `YEAR`, `MONTH`, `DAY`, `WEEKDAY`, `HOURS`, `MINUTES`, `SECONDS` and
+          `TICK_COUNT`, 12 bytes of RAM in each program. ROM +353 bytes: `clock.s` 289 of
+          code and 31 of tables, `i2c_write_byte` 33; KERNELRAM +3, to `$06BC`. CODE and
+          RODATA end at `$EDAB`. No other program changed size. Build 2566 ms, all programs
+          compiled, the new baseline. New test `CLOCK`; golden `FILES` gains `CLOCK.COM`.
+          Tests: `CLOCK` ok 0.4 s, `DOSAPI` 0.6, `FILES` 0.4, `SHFILES` 0.6, `DIRS` 0.8,
+          `SHELL` 0.5. The tests boot x16emu without `-rtc`.
+       2. Done 2026-10-18, the commandlets `C:\DOS\DATE.CBIN`, `TIME.CBIN` and
+          `UPTIME.CBIN`, from `src/cbin/DATE.UXB`, `TIME.UXB` and `UPTIME.UXB`, on
+          `CBIN.UXI` as `DISKFREE` is. Not shell built-ins (the user, 2026-10-18). ISO, 24
+          hours. `DATE [yyyy-m-d] [SILENT]` prints `Sun 2026-10-18`; P1$ `2026-10-18`, P2$
+          `Sun`, P3$ to P5$ the year, month and day. `TIME [h:mm[:ss]] [SILENT]` prints
+          `13:45:07`; P1$ `13:45:07`, P2$ to P4$ the hours, minutes and seconds. Each number
+          of a time is 1 or 2 digits, the seconds 0 when left out. With an argument they set
+          the clock, print nothing and read it back into the P$. A bad argument prints
+          `Invalid date` or `Invalid time` unless SILENT, sets P1$ to "" and gives exit code
+          1. `UPTIME [SILENT]` prints `0 days 00:00:03`; P1$ the seconds since boot, P2$ the
+          days, P3$ `00:00:03`. VSYNCs times 21 over 1250, in two parts so the product stays
+          in 32 bits. Sizes: `DATE` 2897 bytes, `TIME` 2698, `UPTIME` 2968. CMDSHELL
+          unchanged. Build 935 ms, the 3 compiled, the new baseline. Test `CLOCKCMD` ok 2.0
+          s, then 1.2 s. Trap: the emulator's RTC runs on host time, so the test reads the
+          time back only straight after a set.
+       3. To do, in the doc batch: PLAN section 8 lists `DATE` and `TIME` as shell
+          built-ins and says they need a clock call; they are commandlets now.
+          `HELP.TXT` topics for `DATE`, `TIME` and `UPTIME`.
    - `HELP.TXT`: the user marks each topic as for scripts, the command line, or both
      (2026-10-17).
    - Done: `PROMPT$` `$` codes (see State). No `$T`, `$D`, `$V`, `$H` or `$E`. `HELP.TXT` has
@@ -2182,6 +2217,12 @@
   IRQ and NMI vectors with a trampoline to bank 0 in every tool bank. A ROM tool uses
   `$0801–$9EFF` as a COM does. A tool in UXCBASIC waits for ROM-able output (PLAN section 12
   item 6). X16Edit calls the stock KERNAL and CBDOS, and is GPL v3.
+- To do (the user, 2026-10-18): `HOTDIR`, a DOS utility in `src/dos`, a directory listing in
+  color. Not started; the design is the user's to agree. Models, all Unlicense:
+  - `github.com/jakebullet70/HotDir`: Windows 64-bit, FreeBASIC (`hd.bas` and `.bi` files).
+  - `github.com/jakebullet70/HDir-FreeDOS`: FreeDOS, FreeBASIC.
+  - `github.com/jakebullet70/HDir-XC16`: the X16, nxtBasic. The first run writes `H.DAT` to
+    the root; it holds the colors and the file extensions, and the user edits it.
 - Shell memory, measured 2026-10-15 from pyuxc's link: code `$0801–$2BC2` (9154 bytes), the
   runtime `$2BC3–$3931` (3439), the strings `$3932–$3AA2` (369), the variables (47), then
   6953 bytes of arrays, strings and SUB locals outside the file. The shell ends at `$55FB`:

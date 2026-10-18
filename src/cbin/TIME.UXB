@@ -1,0 +1,89 @@
+'=============================================================================================
+' -- Callable Commandlet -----> TIME [hh:mm[:ss]] [SILENT]
+' -- With no time, prints the time of the RTC in 24 hours, such as 13:45:07.
+' -- With a time, sets the RTC to it and prints nothing. Each number is 1 or 2 digits. The
+' -- seconds are 0 when they are left out.
+' -- Sets P1$ to the time, 13:45:07, and P2$ to P4$ to the hours, the minutes and the seconds,
+' -- 13, 45 and 7. Sets P1$ to an empty string on an invalid time.
+' -- SILENT, in capitals, prints nothing. It is P1$ with no time, else P2$.
+' -- A time that is not like that, or out of range, prints Invalid time and gives exit code 1.
+' -- Exit code 0 otherwise.
+' --
+' -- From a script:
+' --     TIME SILENT
+' --     PRINT "The time is " + P1$
+'=============================================================================================
+#INCLUDE "DOS.UXI"
+#INCLUDE "HEAP.UXI"
+#INCLUDE "CBIN.UXI"
+
+DIM ARGUMENT AS STRING * 255
+DIM FIELDS(3) AS UWORD, FIELD_COUNT AS UBYTE
+
+' Clears P1$, prints Invalid time unless SILENT, and ends with exit code 1.
+SUB INVALID_TIME()
+  HEAP.SYS_STRINGS_SET(SLOT_P1, "")
+  IF SILENT = 0 THEN PRINT "Invalid time"
+  END 1
+END SUB
+
+' The number with no space in front.
+FUNCT PLAIN(NUMBER AS UBYTE) AS STRING
+  RETURN MID$(STR$(NUMBER), 2)
+END FUNCT
+
+' The number as 2 digits, with a 0 in front below 10.
+FUNCT TWO_DIGITS(NUMBER AS UBYTE) AS STRING
+  RETURN RIGHT$("0" + PLAIN(NUMBER), 2)
+END FUNCT
+
+' Reads ARGUMENT as numbers of 1 or 2 digits, with SEPARATOR between them, into FIELDS.
+' Returns the count of numbers, or 0 when ARGUMENT has another character, an empty number or
+' more than 3 numbers.
+FUNCT SPLIT_NUMBERS(SEPARATOR AS UBYTE) AS UBYTE
+  DIM POSITION AS UBYTE, CHARACTER AS UBYTE, DIGITS AS UBYTE, COUNT AS UBYTE
+  COUNT = 0
+  DIGITS = 0
+  FIELDS(0) = 0
+  POSITION = 0
+  DO WHILE POSITION < LEN(ARGUMENT)
+    CHARACTER = ContentsAt(@ARGUMENT + 2 + POSITION)
+    POSITION = POSITION + 1
+    IF CHARACTER = SEPARATOR THEN
+      IF DIGITS = 0 THEN RETURN 0
+      COUNT = COUNT + 1
+      IF COUNT = 3 THEN RETURN 0
+      FIELDS(COUNT) = 0
+      DIGITS = 0
+    ELSE
+      IF CHARACTER < ASC("0") THEN RETURN 0
+      IF CHARACTER > ASC("9") THEN RETURN 0
+      DIGITS = DIGITS + 1
+      IF DIGITS > 2 THEN RETURN 0
+      FIELDS(COUNT) = FIELDS(COUNT) * 10 + CHARACTER - ASC("0")
+    END IF
+  LOOP
+  IF DIGITS = 0 THEN RETURN 0
+  RETURN COUNT + 1
+END FUNCT
+
+ARGUMENT = HEAP.SYS_STRINGS_GET(SLOT_P1)
+IF HEAP.SYS_STRINGS_GET(SLOT_P2) = "SILENT" THEN SILENT = 1
+IF ARGUMENT = "SILENT" THEN
+  SILENT = 1
+  ARGUMENT = ""
+END IF
+IF ARGUMENT <> "" THEN
+  FIELD_COUNT = SPLIT_NUMBERS(ASC(":"))
+  IF FIELD_COUNT < 2 THEN INVALID_TIME()
+  IF FIELD_COUNT = 2 THEN FIELDS(2) = 0
+  DOS.SETTIME(FIELDS(0), FIELDS(1), FIELDS(2))
+  IF DOS.ERROR <> 0 THEN INVALID_TIME()
+END IF
+DOS.GETTIME()
+HEAP.SYS_STRINGS_SET(SLOT_P1, TWO_DIGITS(DOS.HOURS) + ":" + TWO_DIGITS(DOS.MINUTES) + ":" + TWO_DIGITS(DOS.SECONDS))
+HEAP.SYS_STRINGS_SET(SLOT_P2, PLAIN(DOS.HOURS))
+HEAP.SYS_STRINGS_SET(SLOT_P3, PLAIN(DOS.MINUTES))
+HEAP.SYS_STRINGS_SET(SLOT_P4, PLAIN(DOS.SECONDS))
+IF SILENT = 0 AND ARGUMENT = "" THEN PRINT HEAP.SYS_STRINGS_GET(SLOT_P1)
+END 0

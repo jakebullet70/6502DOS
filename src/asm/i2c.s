@@ -1,8 +1,9 @@
 ; I2C bus over VIA 1 port A: SDA on bit 0, SCL on bit 1.
 ;
 ; Ported from x16-rom, kernal/drivers/x16/i2c.s, github.com/X16Community/x16-rom. Kept: the
-; subroutine form of the pin functions, i2c_write, i2c_read, i2c_start, i2c_stop, i2c_init
-; and the read sequence of i2c_read_byte. Left out: the mutex, the writes and the batch calls.
+; subroutine form of the pin functions, i2c_write, i2c_read, i2c_start, i2c_stop, i2c_init,
+; and the sequences of i2c_read_byte and i2c_write_byte. Left out: the mutex and the batch
+; calls.
 ;
 ; Original header:
 ; (C)2015-2022 Dieter Hauer, Michael Steil, Joe Burks
@@ -35,7 +36,7 @@
 
 .include "mem.inc"
 
-.export i2c_read_byte
+.export i2c_read_byte, i2c_write_byte
 
 pr  = VIA1_PRA
 ddr = VIA1_DDRA
@@ -76,6 +77,28 @@ i2c_read_byte:
         jsr i2c_stop
         sec
         rts
+
+; i2c_write_byte: writes A to register Y of the I2C device X. Returns carry clear, or carry set
+; when the device does not answer. Changes A, X and Y.
+i2c_write_byte:
+        pha                     ; the value
+        phy
+        jsr i2c_init
+        jsr i2c_start
+        txa                     ; device
+        asl                     ; device * 2: write
+        jsr i2c_write
+        ply
+        bcs @error
+        tya                     ; register
+        jsr i2c_write
+        bcs @error
+        pla
+        jsr i2c_write
+        jmp i2c_stop            ; keeps carry
+@error:
+        pla
+        jmp i2c_stop
 
 ; i2c_write: sends the byte in A. Returns carry clear on ACK, set on NAK. Changes A, X and Y.
 i2c_write:
