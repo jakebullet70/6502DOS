@@ -16,4 +16,3 @@ UXCBASIC/help/HELP-TXT/
 
 # Claude Code per-machine settings.
 .claude/settings.local.json
-/tests
