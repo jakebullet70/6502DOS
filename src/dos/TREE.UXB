@@ -1,0 +1,187 @@
+'=============================================================================================
+' -- TREE [d:][path] [/F]
+' -- draws every directory below path, or below the root of drive d, as a tree. For the command
+' -- line, not for scripts.
+' -- The first line is ROOT, or the start path. Each directory prints one line, " +- " and its
+' -- name, under its parent and 4 columns in. A " |  " bar runs down past the lines of a
+' -- directory that has a later directory beside it. /F adds the names of each directory's
+' -- files under its line, then a line of bars. A start with no directories prints
+' -- No sub-directories exist.
+' -- . and .. are skipped. Hidden and system names are listed.
+' -- A directory MAX_DEPTH levels down, or one whose path would pass PATH_MAX characters, is
+' -- listed but not entered.
+' -- A drive that is not a letter, or that the kernel does not know, prints Invalid drive. A path
+' -- that is not a directory prints Invalid path. A switch other than /F prints Invalid switch,
+' -- and a second path prints Too many parameters. Each gives exit code 1. A read error prints
+' -- its error message and gives exit code 2. Exit code 0 otherwise.
+' --
+' -- From a prompt:
+' --     TREE C:\DOCS /F
+'=============================================================================================
+#INCLUDE "DOS.UXI"
+#INCLUDE "HEAP.UXI"
+CONST SLOT_P1 AS UBYTE = 0, SLOT_P9 AS UBYTE = 8
+CONST BRANCH$ = " +- ", BAR$ = " |  ", NO_BAR$ = "    "
+CONST MAX_DEPTH AS UBYTE = 32, PATH_MAX AS UBYTE = 250
+' A find buffer's search state is its bytes before FIND_ATTR. STATES keeps one a level.
+CONST STATE_SIZE AS UBYTE = 21
+CONST STATES_SIZE AS UWORD = 672                   ' MAX_DEPTH * STATE_SIZE
+
+DIM ARGUMENT AS STRING * 255, START AS STRING * 255
+DIM SLOT AS UBYTE, SHOW_FILES AS UBYTE, DRIVE AS UBYTE, PREFIX AS STRING * 2
+DIM OLD_DIRECTORY AS STRING * 255
+' PATH is the directory being walked, from the root without the drive: "" at the root,
+' \MANY\SUB.DIR below it.
+DIM PATH AS STRING * 255
+' BARS is the left part of the lines below the directory being walked, 4 columns a level.
+DIM BARS AS STRING * 255, DIRECTORY_NAME AS STRING * 32
+DIM DEPTH AS UBYTE, ANY_DIRECTORY AS UBYTE, INDEX AS UBYTE, STATE_START AS UWORD
+DIM STATES(STATES_SIZE) AS UBYTE, PATH_LENGTHS(MAX_DEPTH) AS UBYTE
+
+SUB FAIL(MESSAGE AS STRING)
+  PRINT MESSAGE
+  END 1
+END SUB
+
+' Ends the program on a find error that is not the end of the directory.
+SUB CHECK_FIND_ERROR()
+  IF DOS.ERROR = 0 OR DOS.ERROR = DOS.ERR_NOT_FOUND OR DOS.ERROR = DOS.ERR_NO_MORE THEN RETURN
+  PRINT DOS.ERRMSG(DOS.ERROR)
+  END 2
+END SUB
+
+' Gives 1 when the found name is a directory other than . and ..
+FUNCT FOUND_DIRECTORY() AS UBYTE
+  IF (DOS.FOUND_ATTRIBUTES AND DOS.ATTR_DIRECTORY) = 0 THEN RETURN 0
+  IF ASC(DOS.FOUND_NAME) = ASC(".") THEN RETURN 0
+  RETURN 1
+END FUNCT
+
+' Moves the search on from the found name to the first directory other than . and .., or to
+' the end of the directory.
+SUB NEXT_DIRECTORY()
+  DO WHILE DOS.ERROR = 0
+    IF FOUND_DIRECTORY() THEN RETURN
+    DOS.FINDNEXT()
+  LOOP
+END SUB
+
+' Starts a search of every name in the directory PATH.
+SUB FIND_IN_PATH()
+  DOS.FINDFIRST(PREFIX + PATH + "\", DOS.ATTR_DIRECTORY OR DOS.ATTR_HIDDEN OR DOS.ATTR_SYSTEM)
+END SUB
+
+' Prints the files of PATH, one a line after INDENT and a bar when PATH has a directory, then
+' INDENT and the bar alone. Prints nothing when PATH has no files.
+SUB LIST_FILES(INDENT AS STRING)
+  DIM ANY_FILE AS UBYTE, FILE_BAR AS STRING * 4
+  ANY_FILE = 0                                     ' a number DIMed in a SUB keeps its value
+  FIND_IN_PATH()
+  NEXT_DIRECTORY()
+  CHECK_FIND_ERROR()
+  FILE_BAR = NO_BAR$
+  IF DOS.ERROR = 0 THEN FILE_BAR = BAR$
+  FIND_IN_PATH()
+  DO WHILE DOS.ERROR = 0
+    IF (DOS.FOUND_ATTRIBUTES AND DOS.ATTR_DIRECTORY) = 0 THEN
+      PRINT INDENT; FILE_BAR; DOS.FOUND_NAME
+      ANY_FILE = 1
+    END IF
+    DOS.FINDNEXT()
+  LOOP
+  CHECK_FIND_ERROR()
+  IF ANY_FILE THEN PRINT INDENT; FILE_BAR
+END SUB
+
+' Goes back to the directory of level DEPTH and finds the directory after the one its search
+' stopped at.
+SUB RESUME_SEARCH()
+  PATH = LEFT$(PATH, PATH_LENGTHS(DEPTH))
+  STATE_START = DEPTH * STATE_SIZE
+  FOR INDEX = 0 TO STATE_SIZE - 1
+    DOS.FIND_BUFFER(INDEX) = STATES(STATE_START + INDEX)
+  NEXT
+  DOS.FINDNEXT()
+  NEXT_DIRECTORY()
+END SUB
+
+' ---- the arguments ----
+FOR SLOT = SLOT_P1 TO SLOT_P9
+  ARGUMENT = HEAP.SYS_STRINGS_GET(SLOT)
+  IF ARGUMENT = "" THEN CONTINUE
+  IF ASC(ARGUMENT) = ASC("/") THEN
+    IF LEN(ARGUMENT) <> 2 OR (ASC(MID$(ARGUMENT, 2)) OR $20) <> ASC("f") THEN FAIL("Invalid switch")
+    SHOW_FILES = 1
+  ELSE
+    IF START <> "" THEN FAIL("Too many parameters")
+    START = ARGUMENT
+  END IF
+NEXT
+
+' ---- the start directory ----
+IF MID$(START, 2, 1) = ":" THEN
+  ' a to z give 1 to 26. Any other first character gives 0 or wraps past 26.
+  DRIVE = (ASC(START) OR $20) - ASC("a") + 1
+  IF DRIVE = 0 OR DRIVE > 26 THEN FAIL("Invalid drive")
+  PREFIX = CHR$(DRIVE + ASC("A") - 1) + ":"
+  START = MID$(START, 3)
+END IF
+OLD_DIRECTORY = DOS.GETCWD(DRIVE)
+IF DOS.ERROR <> 0 THEN FAIL("Invalid drive")
+IF START <> "" THEN
+  ' CHDIR checks the path, and GETCWD gives it from the root with no . or .. in it.
+  DOS.CHDIR(PREFIX + START)
+  IF DOS.ERROR <> 0 THEN FAIL("Invalid path")
+  PATH = DOS.GETCWD(DRIVE)
+  DOS.CHDIR(PREFIX + "\" + OLD_DIRECTORY)
+  IF PATH <> "" THEN PATH = "\" + PATH
+END IF
+
+' ---- the walk ----
+PRINT
+IF PATH = "" THEN
+  PRINT "ROOT"
+ELSE
+  PRINT PATH
+END IF
+IF SHOW_FILES THEN LIST_FILES("")
+FIND_IN_PATH()
+NEXT_DIRECTORY()
+DO
+  IF DOS.ERROR <> 0 THEN
+    CHECK_FIND_ERROR()
+    IF DEPTH = 0 THEN EXIT DO
+    DEPTH = DEPTH - 1
+    RESUME_SEARCH()
+    CONTINUE
+  END IF
+  ANY_DIRECTORY = 1
+  STATE_START = DEPTH * STATE_SIZE
+  FOR INDEX = 0 TO STATE_SIZE - 1
+    STATES(STATE_START + INDEX) = DOS.FIND_BUFFER(INDEX)
+  NEXT
+  PATH_LENGTHS(DEPTH) = LEN(PATH)
+  DIRECTORY_NAME = DOS.FOUND_NAME
+  ' A later directory at this level puts a bar down the lines below this one.
+  DOS.FINDNEXT()
+  NEXT_DIRECTORY()
+  CHECK_FIND_ERROR()
+  BARS = LEFT$(BARS, DEPTH * 4)
+  PRINT BARS; BRANCH$; DIRECTORY_NAME
+  IF DOS.ERROR = 0 THEN
+    BARS = BARS + BAR$
+  ELSE
+    BARS = BARS + NO_BAR$
+  END IF
+  PATH = PATH + "\" + DIRECTORY_NAME
+  IF SHOW_FILES THEN LIST_FILES(BARS)
+  IF DEPTH < MAX_DEPTH - 1 AND LEN(PATH) <= PATH_MAX - 13 THEN
+    DEPTH = DEPTH + 1
+    FIND_IN_PATH()
+    NEXT_DIRECTORY()
+  ELSE
+    RESUME_SEARCH()                                ' too deep or too long: not entered
+  END IF
+LOOP
+IF ANY_DIRECTORY = 0 THEN PRINT "No sub-directories exist"
+END 0

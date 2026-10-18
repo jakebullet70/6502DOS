@@ -924,7 +924,7 @@
 - Build after 7c: 0.75 s with the shell compile, the new baseline.
 - Tests after 7c, one at a time: `SHFILES` ok 0.7 s, `SHELL` 0.5, `FILES` 0.4, `DIRS` 0.8,
   `DISK` 0.4.
-- Steps since the last full suite: 1. It ran after clock step 2, 2026-10-18: 39 tests,
+- Steps since the last full suite: 3. It ran after clock step 2, 2026-10-18: 39 tests,
   0 failed, 23.7 s, the longest `CMDLETS` 1.6 s.
 - UXCBASIC: 174 tests, 0 failed, 43 s. `compare.py`: 566 MATCH, 5 RESULT, 31 NO GOLDEN of 602,
   1.7 s. The RESULTs are `STRLR`, `STRNS`, `EXERRCONSTSTR`, and the two below, all expected:
@@ -1872,6 +1872,29 @@
           power-of-2 rule of `ex_power`. `HELP.TXT`: topics `DATE`, `TIME` and `UPTIME`,
           each `(Command line or Script)`. Build 523 ms, the new baseline. Test `CMDLETS`
           ok 2.0 s, its golden gains the 3 topics in the `HELP` list.
+   - `TREE` done 2026-10-18: `C:\DOS\TREE.COM` from `src/dos/TREE.UXB`, for the command line,
+     no P$ and no SILENT (the user, 2026-10-18). `TREE [d:][path] [/F]` draws a tree, the
+     layout the user gave (2026-10-18): a blank line, `ROOT` or the start path, then one line a
+     directory, depth first, `" +- "` and the name, 4 columns in a level. A `" |  "` bar runs
+     down past the lines of a directory that has a later directory beside it; the last one is
+     `" +- "` too. `/F` (or `/f`) lists each directory's files under its line, 4 columns in,
+     after a bar when it has a directory, then a line of the bars alone (trailing spaces). A
+     start with no directories prints `No sub-directories exist`. The path may be relative or
+     hold `..`: `CHDIR` checks it, `GETCWD` gives it from the root, and the old directory
+     comes back. UXCBASIC has no recursion, so `STATES` keeps the 21 bytes before `FIND_ATTR`
+     of each level's find buffer, 32 levels, and `FINDNEXT` resumes from them. Each directory
+     costs a look-ahead scan to the next directory beside it, for the bar, and the resume
+     scans that stretch again; `/F` adds a scan for a sub-directory and one for the files. A
+     directory 32 levels down, or whose path passes 237 characters, is listed, not entered.
+     Errors, exit code 1: `Invalid drive`, `Invalid path` (a file too), `Invalid switch`,
+     `Too many parameters`; a read error prints its message, exit code 2. `TREE.COM` 3595
+     bytes; RAM 672 of states, 32 of path lengths, 5 strings of 255. ROM and shell: none.
+     Build 785 ms, the new baseline. `TREE` ok 1.0 s; `DISK` 0.5 and `FILES` 0.4 ok, no golden
+     change. Traps: a number DIMed in a SUB keeps its value from the last call, only a string
+     is cleared, so `LIST_FILES` sets `ANY_FILE = 0`; a name over 16 characters is an error
+     (`NAME TOO LONG`); a one-line `IF` takes no `ELSE`. Owed to the doc batch: the
+     `HELP.TXT` topic `TREE` (it changes the `CMDLETS` golden's `HELP` list), PLAN section 8
+     and 11.
    - `HELP.TXT`: the user marks each topic as for scripts, the command line, or both
      (2026-10-17).
    - Done: `PROMPT$` `$` codes (see State). No `$T`, `$D`, `$V`, `$H` or `$E`. `HELP.TXT` has
