@@ -1,0 +1,114 @@
+'=============================================================================================
+' -- MORE [file]
+' -- shows file, or with no file the input on handle 0, a screen at a time. For the command
+' -- line, not for scripts.
+' -- After each screen of rows less 1 it prints -- More -- on the last row and waits for a key.
+' -- Any key clears the prompt and shows the next screen. The prompt shows only when more text
+' -- follows. Ctrl+C at the prompt ends it.
+' -- Rows are counted as the console writes them: CR, LF and CR LF end a line, a line wider
+' -- than the screen takes more rows, a tab goes to the next column that is a multiple of 8, BS
+' -- moves back a column, and FF clears the screen. Each byte of an escape sequence counts as
+' -- a column. Ctrl+Z ends the text.
+' -- With no file, MORE ends when handle 0 has nothing to read, so MORE alone at the prompt
+' -- prints nothing.
+' -- A second name prints Too many parameters and gives exit code 1. A file that does not open
+' -- prints its error message and gives exit code 2. Exit code 0 otherwise.
+' --
+' -- From a prompt:
+' --     MORE DOCS\README.TXT
+' --     LIST DOCS\README.TXT | MORE
+'=============================================================================================
+#INCLUDE "DOS.UXI"
+#INCLUDE "HEAP.UXI"
+#INCLUDE "CONS.UXI"
+CONST SLOT_P1 AS UBYTE = 0, SLOT_P2 AS UBYTE = 1
+CONST BUFFER_SIZE AS UWORD = 512
+CONST BS AS UBYTE = 8, TAB AS UBYTE = 9, LF AS UBYTE = 10, FF AS UBYTE = 12, CR AS UBYTE = 13
+CONST BEL AS UBYTE = 7, SHIFT_IN AS UBYTE = 15, CTRL_Z AS UBYTE = 26
+CONST PROMPT$ = "-- More --"
+
+DIM FILE_NAME AS STRING * 255
+DIM INPUT_FILE AS UWORD                            ' 0 is handle 0, the input with no file
+DIM BUFFER(BUFFER_SIZE) AS UBYTE, BUFFER_COUNT AS UWORD
+' RUN_START is the first byte of the buffer not yet written.
+DIM INDEX AS UWORD, RUN_START AS UWORD, CHARACTER AS UBYTE
+' ROWS counts the rows written since the last prompt. AFTER_CR is 1 after a CR, when the
+' console skips an LF.
+DIM PAGE_ROWS AS UBYTE, COLUMNS AS UBYTE, ROWS AS UBYTE, COLUMN AS UBYTE, AFTER_CR AS UBYTE
+DIM KEY AS UWORD
+
+' Writes the bytes of the buffer from RUN_START up to INDEX.
+SUB WRITE_RUN()
+  IF INDEX > RUN_START THEN WRITE 1, @BUFFER + RUN_START, INDEX - RUN_START
+  RUN_START = INDEX
+END SUB
+
+' Writes the text so far, prints the prompt, waits for a key and clears the prompt's row.
+SUB NEXT_PAGE()
+  WRITE_RUN()
+  PRINT PROMPT$;
+  KEY = WAITKEY()
+  POS(0) = 0
+  PRINT CONS.CLEAR_EOL$;
+  ROWS = 0
+END SUB
+
+FILE_NAME = HEAP.SYS_STRINGS_GET(SLOT_P1)
+IF HEAP.SYS_STRINGS_GET(SLOT_P2) <> "" THEN
+  PRINT "Too many parameters"
+  END 1
+END IF
+IF FILE_NAME <> "" THEN
+  INPUT_FILE = DOS.OPEN_FILE(FILE_NAME, DOS.ACCESS_READ)
+  IF INPUT_FILE = NOFILE THEN
+    PRINT DOS.ERRMSG(DOS.ERROR)
+    END 2
+  END IF
+END IF
+PAGE_ROWS = CONS.SCREEN_ROWS() - 1
+COLUMNS = CONS.SCREEN_COLS()
+DO
+  ' A read of CON waits for keys, so CON with no key waiting is the end of the input.
+  IF DOS.IOCTL(INPUT_FILE, DOS.IOCTL_IN_STATUS) = 0 THEN EXIT DO
+  BUFFER_COUNT = DOS.READ_FILE(INPUT_FILE, @BUFFER, BUFFER_SIZE)
+  IF BUFFER_COUNT = 0 THEN EXIT DO
+  RUN_START = 0
+  INDEX = 0
+  DO WHILE INDEX < BUFFER_COUNT
+    CHARACTER = BUFFER(INDEX)
+    IF CHARACTER = CTRL_Z THEN EXIT DO
+    IF CHARACTER = LF AND AFTER_CR = 1 THEN
+      AFTER_CR = 0
+    ELSE
+      IF ROWS >= PAGE_ROWS THEN NEXT_PAGE()
+      AFTER_CR = 0
+      SELECT CASE CHARACTER
+        CASE LF
+          ROWS = ROWS + 1
+        CASE CR
+          COLUMN = 0
+          ROWS = ROWS + 1
+          AFTER_CR = 1
+        CASE TAB
+          COLUMN = (COLUMN OR 7) + 1
+        CASE BS
+          IF COLUMN > 0 THEN COLUMN = COLUMN - 1
+        CASE FF
+          COLUMN = 0
+          ROWS = 0
+        CASE BEL, SHIFT_IN
+        CASE ELSE
+          COLUMN = COLUMN + 1
+      END SELECT
+      IF COLUMN >= COLUMNS THEN
+        COLUMN = 0
+        ROWS = ROWS + 1
+      END IF
+    END IF
+    INDEX = INDEX + 1
+  LOOP
+  WRITE_RUN()
+  IF INDEX < BUFFER_COUNT THEN EXIT DO             ' Ctrl+Z
+LOOP
+IF INPUT_FILE <> 0 THEN DOS.CLOSE_FILE(INPUT_FILE)
+END 0

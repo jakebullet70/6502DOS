@@ -924,7 +924,7 @@
 - Build after 7c: 0.75 s with the shell compile, the new baseline.
 - Tests after 7c, one at a time: `SHFILES` ok 0.7 s, `SHELL` 0.5, `FILES` 0.4, `DIRS` 0.8,
   `DISK` 0.4.
-- Steps since the last full suite: 3. It ran after clock step 2, 2026-10-18: 39 tests,
+- Steps since the last full suite: 4. It ran after clock step 2, 2026-10-18: 39 tests,
   0 failed, 23.7 s, the longest `CMDLETS` 1.6 s.
 - UXCBASIC: 174 tests, 0 failed, 43 s. `compare.py`: 566 MATCH, 5 RESULT, 31 NO GOLDEN of 602,
   1.7 s. The RESULTs are `STRLR`, `STRNS`, `EXERRCONSTSTR`, and the two below, all expected:
@@ -1895,6 +1895,24 @@
      (`NAME TOO LONG`); a one-line `IF` takes no `ELSE`. Owed to the doc batch: the
      `HELP.TXT` topic `TREE` (it changes the `CMDLETS` golden's `HELP` list), PLAN section 8
      and 11.
+   - `MORE` done 2026-10-18: `C:\DOS\MORE.COM` from `src/dos/MORE.UXB`, for the command line,
+     not for scripts (the user). `MORE [file]` reads the file, or handle 0 with no file, in
+     512-byte blocks and writes runs of it with `WRITE 1`. After the screen's rows less 1
+     (`CONS.SCREEN_ROWS() - 1`, 29) it prints `-- More --` on the last row, waits on
+     `WAITKEY()` (the keyboard, not handle 0, so it works after a `|`), then `POS(0) = 0` and
+     `Esc[K` clear the prompt. The prompt shows only when another byte follows. Rows are counted
+     as `console.s` writes them: CR ends a line, an LF right after a CR does nothing, an LF
+     alone moves a row, the 80th column wraps, a tab goes to the next multiple of 8, BS back a
+     column, FF clears (count 0), BEL and $0F nothing; each escape sequence byte counts as a
+     column. Ctrl+Z ends the text. Before each read, `IOCTL_IN_STATUS` 0 ends it: a read of
+     `CON` waits for keys, so `MORE` alone at the prompt prints nothing. A second name: `Too
+     many parameters`, exit 1. Open fails: `DOS.ERRMSG`, exit 2. Any key goes on; there is no
+     Q. `MORE.COM` 2131 bytes; RAM 512 buffer, 255 name, 12 of numbers. ROM and shell: none.
+     Build 771 ms, the new baseline. New test `MORE` (`tests/MORE.IN`): a missing file, two
+     names, `README.TXT` (no prompt), `LONG.TXT` and `LIST DOCS\LONG.TXT | MORE` (29 lines,
+     the prompt, key `x`, lines 30 to 50; the `x` line's CR gives the shell an empty line);
+     checked by hand. `MORE` ok 0.7 s; `DISK` 0.4 and `FILES` 0.4 ok, no golden change. Owed
+     to the doc batch: the `HELP.TXT` topic `MORE`, PLAN section 8 and 11.
    - `HELP.TXT`: the user marks each topic as for scripts, the command line, or both
      (2026-10-17).
    - Done: `PROMPT$` `$` codes (see State). No `$T`, `$D`, `$V`, `$H` or `$E`. `HELP.TXT` has
