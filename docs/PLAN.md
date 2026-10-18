@@ -409,6 +409,9 @@ Drivers follow MS-DOS 2.0's device drivers.
 - Built-in drivers: `CON` (VERA screen and SMC keyboard), `NUL`, `CLOCK$` (RTC), and the SD card
   block driver. `NUL`, `CON` and the SD card driver exist; their headers are in ROM. The chain
   runs `NUL`, `CON`, SD card.
+- The RTC is the MCP7940N, I2C device `$6F`. `getdate`, `setdate`, `gettime` and `settime`
+  read and write it in `src/asm/clock.s`, with no `CLOCK$` driver. Its registers hold BCD,
+  and its year register the year less 2000, so the calls take the years 2000 to 2099.
 - Trap: a `DEVICE=` driver joins the chain after `NUL`, so `NUL`'s header must move to RAM first.
 - A driver lives in RAM or in a ROM bank. The kernel calls a banked driver through the gate.
 - IRQ:
@@ -508,7 +511,7 @@ KERNAL entries:
 | Screen | `PRINT`, `INPUT`, `CLS`, `LOCATE row,column`, `COLOR foreground,background`, `BEEP`, `WAIT seconds` |
 | Flow | `IF`, `ENDIF`, `GOTO`, `GOSUB`, `RETURN`, `REPEAT n`, `ENDREP`, `END`, `ONERROR(n)` |
 | Files | `FILES [pattern]`, `LIST file`, `COPY from to`, `DELETE file`, `RENAME old new`, `MKDIR`, `RMDIR`, `CHDIR` |
-| System | `DATE`, `TIME`, `VERSION`, `PAUSE`, `SETSYS`, `BIND`, `RUN` |
+| System | `VERSION`, `PAUSE`, `SETSYS`, `BIND`, `RUN` |
 
 Short names:
 
@@ -545,7 +548,6 @@ Short names:
 - `WAIT seconds` waits that many seconds, 60 VSYNCs each. Only Ctrl+C ends it, checked once a
   second. A value below 0 gives `Syntax error`.
 - `BIND LS=FILES` makes `LS` run `FILES` (Aliases, below).
-- `DATE` and `TIME` need a clock call, which the API does not have yet.
 
 ### Variables
 
@@ -782,7 +784,7 @@ Short names:
 ### Commandlets
 
 - These stay out of the shell, as `.CBIN` UXCBASIC programs: `EXIST`, `DISKFREE`, `DISKINFO`,
-  `WHERE`, `MEM`. There is no `FORMAT` and no `MOUNT`.
+  `DATE`, `TIME`, `UPTIME`, `WHERE`, `MEM`. There is no `FORMAT` and no `MOUNT`.
 - `HELP` is a DOS utility, `HELP.COM`, not a commandlet.
 - Both lie in the card's folder `\DOS`. `PATH$` is empty at boot, so the shell finds them only
   after `PATH$ = "C:\DOS"`.
@@ -790,8 +792,8 @@ Short names:
   `src/dos/NAME.UXB` to `build/DOS/NAME.COM`. It copies each `src/dos/NAME.TXT` to `build/DOS`.
 - `src/cbin/CBIN.UXI` is included by each commandlet, after `DOS.UXI` and `HEAP.UXI`. It gives
   the constants `SLOT_P1` to `SLOT_P9`, the system string numbers 0 to 8 of `P1$` to `P9$`,
-  and the flag `SILENT AS UBYTE`. `DOS.SYS_STRINGS_GET(SLOT_P1)` reads `P1$`, and
-  `DOS.SYS_STRINGS_SET(SLOT_P1, text)` writes it.
+  and the flag `SILENT AS UBYTE`. `HEAP.SYS_STRINGS_GET(SLOT_P1)` reads `P1$`, and
+  `HEAP.SYS_STRINGS_SET(SLOT_P1, text)` writes it.
 - `DISKFREE [d:] [SILENT]` prints the free kilobytes of drive `d`, or of the current drive with
   no `d:`: `880 KB free`.
   - It sets `P1$` to the number.
@@ -813,6 +815,29 @@ Short names:
   - It sets `P1$` to `P5$` to the five numbers, in that order.
   - It takes the drive and `SILENT` as `DISKFREE` does, and fails as it does.
   - The kilobytes are counted from the sectors, so a card past 4 GB does not overflow.
+- `DATE [yyyy-m-d] [SILENT]` prints the date of the RTC with its weekday, in ISO form:
+  `Sun 2026-10-18`.
+  - It sets `P1$` to the date, `2026-10-18`, `P2$` to the weekday, `Sun`, and `P3$` to `P5$`
+    to the year, the month and the day, `2026`, `10` and `18`.
+  - With a date it sets the RTC, prints nothing, and reads the date back into the slots. The
+    year is 1 to 4 digits and runs 2000 to 2099. The month and the day are 1 or 2 digits.
+  - `SILENT`, in capitals, prints nothing. It is `P1$` with no date, else `P2$`.
+  - A date not in that form, or that does not exist, prints `Invalid date`, sets `P1$` to
+    empty, and gives exit code 1. The exit code is 0 otherwise.
+- `TIME [h:mm[:ss]] [SILENT]` prints the time of the RTC in 24 hours: `13:45:07`.
+  - It sets `P1$` to the time, `13:45:07`, and `P2$` to `P4$` to the hours, the minutes and
+    the seconds, `13`, `45` and `7`.
+  - With a time it sets the RTC, prints nothing, and reads the time back into the slots.
+    Each number is 1 or 2 digits. The seconds are 0 when left out.
+  - It takes `SILENT` as `DATE` does. A time not in that form, or out of range, prints
+    `Invalid time`, sets `P1$` to empty, and gives exit code 1.
+- `UPTIME [SILENT]` prints the time since boot: `0 days 01:12:33`.
+  - It sets `P1$` to the seconds since boot, `4353`, `P2$` to the days, `0`, and `P3$` to the
+    rest, `01:12:33`.
+  - It counts VSYNCs, 1250 in 21 seconds: VERA's 25 MHz pixel clock over 800 by 525 pixels.
+    The count times 21 over 1250 is worked in two parts, so the product stays in 32 bits.
+  - Trap: x16emu's RTC runs on the host's clock. A test reads the time back only straight
+    after it sets it.
 - `HELP [topic]` prints the help on a topic from `C:\DOS\HELP.TXT`. `HELP` alone lists the
   topics on one line.
   - The topic is taken in capitals: `HELP dir` is `HELP DIR`.
@@ -1034,9 +1059,10 @@ Each step boots and shows something, and each has a test.
        7e4. The shell's chains on one value become UXCBASIC's `SELECT CASE`.
    7f. `SETSYS`, `BIND`, `PROMPT$`, `EDITOR$`.
    7g. `TO`, `APPEND`, `FROM`, and the pipe.
-   7h. `LOCATE`, `BEEP`, `WAIT`, `PAUSE`, `COLOR`. `DATE` and `TIME` once the API has a clock.
+   7h. `LOCATE`, `BEEP`, `WAIT`, `PAUSE`, `COLOR`.
    7i. The commandlets of section 8, one a part: 7i1 `EXIST`, 7i2 `DISKFREE`, 7i3 `DISKINFO`,
-       7i4 `WHERE`, 7i5 `HELP`. 7i4 is put off. `MEM` comes with step 10.
+       7i4 `WHERE`, 7i5 `HELP`, 7i6 `DATE`, `TIME` and `UPTIME` on the clock calls. 7i4 is
+       put off. `MEM` comes with step 10.
 8. `SYSINIT.COM` with `CONFIG.SYS` and `DEVICE=`. Until then the ROM runs `C:\CMDSHELL.COM`
    itself (section 8).
 9. Layer 1 moves to UXCBASIC, one part at a time, as the compiler features land. The parts that

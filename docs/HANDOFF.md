@@ -924,7 +924,7 @@
 - Build after 7c: 0.75 s with the shell compile, the new baseline.
 - Tests after 7c, one at a time: `SHFILES` ok 0.7 s, `SHELL` 0.5, `FILES` 0.4, `DIRS` 0.8,
   `DISK` 0.4.
-- Steps since the last full suite: 0. It ran after clock step 2, 2026-10-18: 39 tests,
+- Steps since the last full suite: 1. It ran after clock step 2, 2026-10-18: 39 tests,
   0 failed, 23.7 s, the longest `CMDLETS` 1.6 s.
 - UXCBASIC: 174 tests, 0 failed, 43 s. `compare.py`: 566 MATCH, 5 RESULT, 31 NO GOLDEN of 602,
   1.7 s. The RESULTs are `STRLR`, `STRNS`, `EXERRCONSTSTR`, and the two below, all expected:
@@ -1866,9 +1866,12 @@
           unchanged. Build 935 ms, the 3 compiled, the new baseline. Test `CLOCKCMD` ok 2.0
           s, then 1.2 s. Trap: the emulator's RTC runs on host time, so the test reads the
           time back only straight after a set.
-       3. To do, in the doc batch: PLAN section 8 lists `DATE` and `TIME` as shell
-          built-ins and says they need a clock call; they are commandlets now.
-          `HELP.TXT` topics for `DATE`, `TIME` and `UPTIME`.
+       3. Done 2026-10-18, the docs batch, no code. PLAN: `DATE` and `TIME` out of the
+          shell's statements and 7h; the commandlets list and their text in section 8; 7i6;
+          the RTC under the drivers; `HEAP.SYS_STRINGS_GET`, not `DOS.`. UXCBASIC.PLAN: the
+          power-of-2 rule of `ex_power`. `HELP.TXT`: topics `DATE`, `TIME` and `UPTIME`,
+          each `(Command line or Script)`. Build 523 ms, the new baseline. Test `CMDLETS`
+          ok 2.0 s, its golden gains the 3 topics in the `HELP` list.
    - `HELP.TXT`: the user marks each topic as for scripts, the command line, or both
      (2026-10-17).
    - Done: `PROMPT$` `$` codes (see State). No `$T`, `$D`, `$V`, `$H` or `$E`. `HELP.TXT` has

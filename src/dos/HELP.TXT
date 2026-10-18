@@ -2,7 +2,7 @@
 HELP [topic]
   Prints the help on topic. With no topic it lists the topics.
   HELP DISKFREE
-  DISKFREE and DISKINFO work at the prompt and in a script.
+  DISKFREE, DISKINFO, DATE, TIME and UPTIME work at the prompt and in a script.
   EXIST is for scripts and prints nothing.
   Each puts its result in P1$ for a script to test.
   SILENT prints nothing, not even an error. An error empties P1$.
@@ -31,6 +31,29 @@ DISKINFO [d:] [SILENT]          (Command line or Script)
   At the prompt: DISKINFO C:
   In a script:   DISKINFO C: SILENT
                  PRINT P2$ + " KB free of " + P1$
+:DATE
+DATE [yyyy-mm-dd] [SILENT]      (Command line or Script)
+  Tells the date with its weekday, such as Sun 2026-10-18.
+  With a date, sets the clock and prints nothing. The year is 2000 to 2099.
+  Sets P1$ to the date, P2$ to the weekday, P3$ to P5$ to the year, month and day.
+  At the prompt: DATE 2026-10-18
+  In a script:   DATE SILENT
+                 PRINT "Today is " + P1$
+:TIME
+TIME [hh:mm[:ss]] [SILENT]      (Command line or Script)
+  Tells the time in 24 hours, such as 13:45:07.
+  With a time, sets the clock and prints nothing. The seconds are 0 when left out.
+  Sets P1$ to the time, P2$ to P4$ to the hours, minutes and seconds.
+  At the prompt: TIME 13:45
+  In a script:   TIME SILENT
+                 PRINT "It is " + P1$
+:UPTIME
+UPTIME [SILENT]                 (Command line or Script)
+  Tells the time since boot, such as 0 days 01:12:33.
+  Sets P1$ to the seconds since boot, P2$ to the days, P3$ to the rest.
+  At the prompt: UPTIME
+  In a script:   UPTIME SILENT
+                 PRINT "Up " + P1$ + " seconds"
 :CHDIR
 CHDIR name   or   CD name       (Command line or Script)
   Makes directory name the current directory.

@@ -140,6 +140,8 @@ DIM C AS UBYTE = 1, P AS UWORD = $1000
   it fits, so `B + 1` is a UBYTE add. An operation on two constants is folded.
 - `*`, `/` and `MOD` call runtime routines and work at `WORD` width. `/` and `MOD` call `R_DIVS`
   when a side is signed, else `R_DIVW`. Every other operator is inline code.
+- An unsigned `/` by a constant power of 2, from 2 up, compiles to `>>`, and `MOD` by one to
+  `AND` with the constant less 1. A signed side keeps the divide.
 - Division by zero: a constant 0 divisor is a compile error. At run time the program stops with
   `?DIVISION BY ZERO ERROR AT $xxxx` (the address of the `JSR`; the `.LST` maps it to a line).
 - Shifts use only the low byte of the count.
