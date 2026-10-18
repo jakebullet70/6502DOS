@@ -12,7 +12,8 @@ C>PRINT
 C>  print "lower"; " case"
 lower case
 C>PRINT "A";
-AC>PRINT 42; -7; " "; 0
+A
+C>PRINT 42; -7; " "; 0
 42-7 0
 C>PRINT "NO END
 NO END

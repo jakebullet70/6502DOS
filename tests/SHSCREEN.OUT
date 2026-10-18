@@ -2,8 +2,10 @@ UXDOS16 V0.1.0
 For the Commander X16
 >>RUN CMDSHELL.COM
 C>LOCATE 29,79
+
 C>LOCATE 0, 0
 C>locate 2 + 3, (4 - 1) * 2
+
 C>LOCATE 30,0
 Syntax error
 C>LOCATE 0,80
