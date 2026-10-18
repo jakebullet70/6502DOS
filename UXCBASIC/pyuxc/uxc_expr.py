@@ -724,6 +724,8 @@ def ex_binary():
     if g.ex_kl == K_EK_CONST and g.ex_kr == K_EK_CONST:
         uxc_fold.ex_fold()
         return
+    if g.ex_z == 1 and g.ex_kr == K_EK_CONST:
+        ex_power()
     if g.ex_kl == K_EK_ADDR and g.ex_kr == K_EK_CONST:
         if g.ex_o == K_EO_ADD or g.ex_o == K_EO_SUB:
             uxc_fold.ex_fold_address()
@@ -781,6 +783,31 @@ def ex_binary():
     g.ex_vs[g.ex_i] = K_SEC_CONST
     g.ex_vv[g.ex_i] = g.ex_rv
     g.ex_vg[g.ex_i] = g.ex_rg
+
+
+def ex_power():
+    """EX.POWER. An unsigned / or MOD by a constant power of 2 from 2 up becomes >> or AND, so
+    the divide routine is not linked."""
+    if g.ex_vg[g.ex_il] == 1 or g.ex_vg[g.ex_ir] == 1:
+        return
+    g.ex_pv = g.ex_vv[g.ex_ir]
+    if g.ex_pv < 2:
+        return
+    if g.ex_pv & (g.ex_pv - 1) != 0:
+        return
+    if g.ex_o == K_EO_MOD:
+        g.ex_o = K_EO_AND
+        g.ex_z = 0
+        g.ex_vv[g.ex_ir] = g.ex_pv - 1
+        return
+    g.ex_o = K_EO_SHR
+    g.ex_z = 0
+    g.ex_pc = 0
+    while g.ex_pv > 1:
+        g.ex_pv = g.ex_pv >> 1
+        g.ex_pc = g.ex_pc + 1
+    g.ex_vv[g.ex_ir] = g.ex_pc
+    g.ex_vt[g.ex_ir] = K_TY_BYTE
 
 
 def ex_mixed():

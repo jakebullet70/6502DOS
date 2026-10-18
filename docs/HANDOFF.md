@@ -924,7 +924,7 @@
 - Build after 7c: 0.75 s with the shell compile, the new baseline.
 - Tests after 7c, one at a time: `SHFILES` ok 0.7 s, `SHELL` 0.5, `FILES` 0.4, `DIRS` 0.8,
   `DISK` 0.4.
-- Steps since the last full suite: 1. It ran after the `con_getkey` step, 2026-10-18: 37 tests,
+- Steps since the last full suite: 4. It ran after the `con_getkey` step, 2026-10-18: 37 tests,
   0 failed, 21.9 s, the longest `CMDLETS` 1.6 s.
 - UXCBASIC: 174 tests, 0 failed, 43 s. `compare.py`: 566 MATCH, 5 RESULT, 31 NO GOLDEN of 602,
   1.7 s. The RESULTs are `STRLR`, `STRNS`, `EXERRCONSTSTR`, and the two below, all expected:
@@ -2138,8 +2138,30 @@
             New tests `KEYEXT1` (no keys: 0, 0, 1) ok 0.8 s, `KEYEXT2` (types `aB`: 97, 0, 66,
             0, 13; the paste gives no Shift) ok 0.5 s; `GETKEY1` ok 0.5 s. Build 2319 ms, the
             new baseline.
-         3. Next: TED to `WAITKEY()`/`GETEXTKEY()` and `KEYS.KEY_` names, then VIEW, then
-            KEYTEST, each its own step.
+         3. Done 2026-10-18, TED and VIEW in one step (the user's choice). TED: `KEY AS UWORD`
+            from `WAITKEY()`, `MODIFIERS` from `KEYMODS()`; one `SELECT CASE KEY` with
+            `KEYS.KEY_` names and the characters, Ctrl+Q a CASE of it, `CASE KEYS.SPACE TO 255`
+            inserts; `ASK_QUIT` reads `ANSWER`, `SHOW_HELP` `KEY`, both with `WAITKEY()`.
+            `CHARACTER` and `SCAN` are gone. VIEW: `DO KEY = GETEXTKEY() LOOP UNTIL KEY <> 0`
+            (no blinking cursor, as before), Space becomes `KEYS.KEY_PGDN`, one `SELECT CASE
+            KEY`. Cost: a CASE on a UWORD costs 7 B more than on a UBYTE (probe: 28 B against
+            21). `TED.COM` 10748 bytes, 229 more; `VIEW.COM` 6544, 125 more. Build 2735 ms, the
+            new baseline. Tests: `TED` ok 1.1 s, `VIEW` 0.9 s; neither types an extended key.
+         4. Done 2026-10-18, KEYTEST. The loop polls `KEY = GETEXTKEY()` and
+            `MODIFIERS = KEYMODS()`; `con_getkey` gives the modifiers with no key too, so the
+            modifier lines still show as they change. `SCAN = KEY >> 8` for a key over 255;
+            `KEY / 256` links the divide, 180 bytes more. `KEYTEST.COM` 2700 bytes, 3 more.
+            `tests/FILES.OUT` holds the new size. Test: `FILES` ok 0.4 s. Build 718 ms, after
+            the KEYTEST compile only.
+         5. Done 2026-10-18, the compiler. `ex_power` in `uxc_expr.py`, called from
+            `ex_binary`: an unsigned `/` by a constant power of 2 from 2 up becomes `>>`, and
+            `MOD` becomes `AND` by the constant less 1. A signed side keeps the divide. Probe:
+            `A = N / 256` 223 bytes against 403, `A = N MOD 256` 219 against 407. No program
+            in `src/` divides by a power of 2, so the ROM is the same. New test `POW2`: UBYTE,
+            UWORD and ULONG by 2 to 65536, the signed sides, and by 1 and 3. The help example
+            of `GETEXTKEY` uses `K >> 8`; the costs list in UXC-HELP has the rule. Build 1835
+            ms, all programs compiled, the new baseline. Tests: `FILES` ok 0.5 s, `POW2` 0.5,
+            `FUNC1` 0.5, `SIGNSUB` 0.5, `TYPEDEF` 0.5, `SIGNED1` 0.5, `EXPR1` 0.5.
          ANSI stays: the goldens hold the byte stream, so the escapes are what the tests see of
          color, position and clear to end of line; no other API clears to end of line. The
          ANSI code costs about 335 bytes of ROM (ansi 211, sgr 90, tables 26, the hook in

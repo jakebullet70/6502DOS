@@ -121,6 +121,8 @@ This prints 300000 -14285 -5, then 16960.
   IS A BYTE OR A WORD.
 - + -, the compares and the bit operators are inline code. * / MOD, the
   shifts, PRINT, STR$ and INPUT call run-time routines, linked only when used.
+- An unsigned / or MOD by a constant power of 2 compiles as >> or AND: N / 256
+  is N >> 8, and N MOD 256 is N AND 255. It links no divide routine.
   A program that uses a LONG gets 32 more bytes for the expression stack.
 
 ### The $ mark
@@ -770,7 +772,7 @@ KEY_UP, KEY_F1 and so on, and the bits MOD_SHIFT to MOD_CTRL.
 DIM K AS UWORD
 K = WAITKEY()
 IF K = KEYS.KEY_UP THEN PRINT "UP"
-IF K > 255 THEN PRINT "SCAN CODE"; K / 256
+IF K > 255 THEN PRINT "SCAN CODE"; K >> 8
 IF (KEYMODS() AND KEYS.MOD_CTRL) <> 0 THEN PRINT "CTRL"
 ```
 
