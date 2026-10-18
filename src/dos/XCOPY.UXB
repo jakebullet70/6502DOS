@@ -1,0 +1,375 @@
+'=============================================================================================
+' -- XCOPY source [target] [-s] [-e] [-p] [-l] [-y]
+' -- copies the files of a directory, and with -s the directories below it. For the command
+' -- line, not for scripts.
+' -- A source that names a directory copies every file in it. Any other source is a directory
+' -- and a pattern: DOCS\*.TXT copies the files of DOCS that match *.TXT. With no directory
+' -- the pattern is looked for in the current directory. With -s the pattern is used at every
+' -- level.
+' -- The target is a directory, the current directory when none is given. The target and any
+' -- directory above it that is missing are made. Each file keeps its name.
+' -- -s copies each directory below the source that holds a file to copy, as a directory of
+' -- the same name below the target. -e also makes the directories with no file to copy, and
+' -- takes -s with it. -p asks path (Y/N)? before each file. -l prints the files it would copy
+' -- and copies and makes nothing. -y overwrites a target file with no question. Without -y a
+' -- target file that exists asks Overwrite path (Y/N/A)?, and A overwrites the rest with no
+' -- question. Esc at a question stops the copy. Switches may share one -: -sy.
+' -- Hidden and system files and directories are skipped. A copy is not read-only, and is
+' -- dated when it is made.
+' -- Each file prints its path as it is copied. The end prints N File(s) copied, or with -l
+' -- N File(s).
+' -- A directory MAX_DEPTH levels down, or one whose paths would pass PATH_MAX characters,
+' -- prints Path too long and the path, and is not copied.
+' -- Exit codes:
+' --   0  the files are copied.
+' --   1  no file matches: it prints File not found.
+' --   2  Esc at a question.
+' --   4  Required parameter missing, Invalid switch, Too many parameters, the error message of
+' --      a source or target path that is not found, File cannot be copied onto itself when the
+' --      target is the source, Cannot copy a directory into itself when -s copies into the
+' --      source, and Insufficient disk space. A target that cannot be checked is not made.
+' --   5  the error message of a read or write error.
+' --
+' -- From a prompt:
+' --     XCOPY C:\DOCS D:\DOCS -s
+' --     XCOPY DOCS\*.TXT BAK -sp
+'=============================================================================================
+#INCLUDE "DOS.UXI"
+#INCLUDE "HEAP.UXI"
+#INCLUDE "KEYS.UXI"
+CONST SLOT_P1 AS UBYTE = 0, SLOT_P9 AS UBYTE = 8
+CONST MAX_DEPTH AS UBYTE = 32, PATH_MAX AS UBYTE = 255
+CONST NAME_ROOM AS UBYTE = 13                      ' "\" and a name of 12
+' A find buffer's search state is its bytes before FIND_ATTR. STATES keeps one a level.
+CONST STATE_SIZE AS UBYTE = 21
+CONST STATES_SIZE AS UWORD = 672                   ' MAX_DEPTH * STATE_SIZE
+CONST MADE_MAX AS UBYTE = 128
+
+DIM ARGUMENT AS STRING * 255, SOURCE AS STRING * 255, TARGET AS STRING * 255
+DIM PATTERN AS STRING * 255, NAMES AS UBYTE
+DIM SLOT AS UBYTE, INDEX AS UBYTE, CODE AS UBYTE
+DIM SUBDIRECTORIES AS UBYTE, EMPTY_TOO AS UBYTE, ASK_EACH AS UBYTE, LIST_ONLY AS UBYTE
+DIM OVERWRITE_ALL AS UBYTE
+' The roots are full paths with no \ at the end: C: at the root, C:\DOCS below it.
+DIM SOURCE_ROOT AS STRING * 255, TARGET_ROOT AS STRING * 255
+' RELATIVE is the directory being copied, from the roots: "" at the start, \SUB\INNER below.
+DIM RELATIVE AS STRING * 255
+DIM SOURCE_FILE AS STRING * 255, TARGET_FILE AS STRING * 255
+DIM FILES_FOUND AS UWORD, FILES_COPIED AS UWORD
+' RESOLVE's result: RESOLVED, or RESOLVE_ERROR when it is not 0.
+DIM RESOLVED AS STRING * 255, RESOLVE_ERROR AS UBYTE, OLD_DIRECTORY AS STRING * 255
+' ROOT_LENGTH is the length of the longer root.
+DIM DEPTH AS UBYTE, STATE_START AS UWORD, ROOT_LENGTH AS UBYTE
+DIM STATES(STATES_SIZE) AS UBYTE, RELATIVE_LENGTHS(MAX_DEPTH) AS UBYTE
+' MAKE_PATH keeps the lengths of the prefixes it made, MADE_COUNT of them.
+DIM MADE_LENGTHS(MADE_MAX) AS UBYTE, MADE_COUNT AS UBYTE
+DIM KEY AS UWORD
+
+' Prints the count line and ends with exit code CODE.
+SUB FINISH(EXIT_CODE AS UBYTE)
+  PRINT RIGHT$("     " + STR$(FILES_COPIED), 6);
+  IF LIST_ONLY THEN
+    PRINT " File(s)"
+  ELSE
+    PRINT " File(s) copied"
+  END IF
+  END EXIT_CODE
+END SUB
+
+' Prints MESSAGE and ends with exit code 4, before any file is copied.
+SUB FAIL(MESSAGE AS STRING)
+  PRINT MESSAGE
+  END 4
+END SUB
+
+' Ends the program on a find error that is not the end of the directory.
+SUB CHECK_FIND_ERROR()
+  IF DOS.ERROR = 0 OR DOS.ERROR = DOS.ERR_NOT_FOUND OR DOS.ERROR = DOS.ERR_NO_MORE THEN RETURN
+  PRINT DOS.ERRMSG(DOS.ERROR)
+  FINISH(5)
+END SUB
+
+' Whether CODE is \, / or :, which end a directory.
+FUNCT IS_SEPARATOR(CODE AS UBYTE) AS UBYTE
+  IF CODE = 92 OR CODE = 47 OR CODE = 58 THEN RETURN 1
+  RETURN 0
+END FUNCT
+
+' Sets RESOLVED to the full path of the directory PATH, as the roots are kept, and
+' RESOLVE_ERROR to 0. A PATH that is not a directory sets RESOLVE_ERROR to the error.
+' "" is the current directory, and d: the current directory of drive d.
+SUB RESOLVE(PATH AS STRING)
+  DIM DRIVE AS UBYTE, REST AS STRING * 255
+  DRIVE = DOS.GETDRIVE() + 1
+  REST = PATH
+  IF MID$(PATH, 2, 1) = ":" THEN
+    ' a to z give 1 to 26. Any other first character gives 0 or wraps past 26.
+    DRIVE = (ASC(PATH) OR $20) - ASC("a") + 1
+    REST = MID$(PATH, 3)
+  END IF
+  RESOLVE_ERROR = DOS.ERR_BAD_DRIVE
+  IF DRIVE = 0 OR DRIVE > 26 THEN RETURN
+  OLD_DIRECTORY = DOS.GETCWD(DRIVE)
+  RESOLVE_ERROR = DOS.ERROR
+  IF RESOLVE_ERROR <> 0 THEN RETURN
+  RESOLVED = OLD_DIRECTORY
+  IF REST <> "" THEN
+    ' CHDIR checks the path, and GETCWD gives it from the root with no . or .. in it.
+    DOS.CHDIR(PATH)
+    RESOLVE_ERROR = DOS.ERROR
+    IF RESOLVE_ERROR <> 0 THEN RETURN
+    RESOLVED = DOS.GETCWD(DRIVE)
+    DOS.CHDIR(CHR$(DRIVE + ASC("A") - 1) + ":\" + OLD_DIRECTORY)
+  END IF
+  IF RESOLVED <> "" THEN RESOLVED = "\" + RESOLVED
+  RESOLVED = CHR$(DRIVE + ASC("A") - 1) + ":" + RESOLVED
+END SUB
+
+' Makes each directory of PATH whose name ends at or after position START, and PATH itself.
+' A directory that exists, or that fails to be made, is left as it is. MADE_LENGTHS gets the
+' length of each one made.
+SUB MAKE_PATH(PATH AS STRING, START AS UBYTE)
+  DIM POSITION AS UBYTE
+  FOR POSITION = START TO LEN(PATH) + 1
+    IF POSITION <= LEN(PATH) THEN
+      IF IS_SEPARATOR(ASC(MID$(PATH, POSITION))) = 0 THEN CONTINUE
+    END IF
+    IF POSITION < 2 THEN CONTINUE
+    IF MID$(PATH, POSITION - 1, 1) = ":" THEN CONTINUE
+    DOS.MKDIR(LEFT$(PATH, POSITION - 1))
+    IF DOS.ERROR = 0 AND MADE_COUNT < MADE_MAX THEN
+      MADE_LENGTHS(MADE_COUNT) = POSITION - 1
+      MADE_COUNT = MADE_COUNT + 1
+    END IF
+  NEXT
+END SUB
+
+' Removes the directories MAKE_PATH made of TARGET, the deepest first, and fails with MESSAGE.
+SUB UNMAKE_FAIL(MESSAGE AS STRING)
+  DO WHILE MADE_COUNT > 0
+    MADE_COUNT = MADE_COUNT - 1
+    DOS.RMDIR(LEFT$(TARGET, MADE_LENGTHS(MADE_COUNT)))
+  LOOP
+  FAIL(MESSAGE)
+END SUB
+
+' Prints QUESTION and waits for one of the capitals in ANSWERS, or a small letter of one.
+' Gives the capital. Esc stops the copy.
+FUNCT ASK(QUESTION AS STRING, ANSWERS AS STRING) AS UBYTE
+  PRINT QUESTION; " ";
+  DO
+    KEY = WAITKEY()
+    IF KEY = KEYS.ESC THEN
+      PRINT
+      FINISH(2)
+    END IF
+    IF KEY >= ASC("a") AND KEY <= ASC("z") THEN KEY = KEY - 32
+    IF KEY < 256 THEN
+      IF INSTR(ANSWERS, CHR$(KEY)) <> 0 THEN EXIT DO
+    END IF
+  LOOP
+  PRINT CHR$(KEY)
+  RETURN KEY
+END FUNCT
+
+' 1 when TARGET_FILE opens, else 0.
+FUNCT TARGET_EXISTS() AS UBYTE
+  DIM HANDLE AS UWORD
+  HANDLE = DOS.OPEN_FILE(TARGET_FILE, DOS.ACCESS_READ)
+  IF HANDLE = NOFILE THEN RETURN 0
+  DOS.CLOSE_FILE(HANDLE)
+  RETURN 1
+END FUNCT
+
+' Copies SOURCE_FILE to TARGET_FILE, after the questions -p and an existing target ask.
+SUB COPY_ONE()
+  IF ASK_EACH THEN
+    IF ASK(SOURCE_FILE + " (Y/N)?", "YN") = ASC("N") THEN RETURN
+  END IF
+  IF OVERWRITE_ALL = 0 THEN
+    IF TARGET_EXISTS() THEN
+      CODE = ASK("Overwrite " + TARGET_FILE + " (Y/N/A)?", "YNA")
+      IF CODE = ASC("N") THEN RETURN
+      IF CODE = ASC("A") THEN OVERWRITE_ALL = 1
+    END IF
+  END IF
+  IF ASK_EACH = 0 THEN PRINT SOURCE_FILE
+  DOS.COPY(SOURCE_FILE, TARGET_FILE)
+  CODE = DOS.ERROR
+  IF CODE = DOS.DISK_FULL THEN
+    DOS.DELETE(TARGET_FILE)
+    PRINT "Insufficient disk space"
+    FINISH(4)
+  END IF
+  IF CODE <> 0 THEN
+    PRINT DOS.ERRMSG(CODE)
+    FINISH(5)
+  END IF
+  FILES_COPIED = FILES_COPIED + 1
+END SUB
+
+' Copies the files of RELATIVE that match PATTERN, and makes the target directory first when
+' RELATIVE is below the roots.
+SUB COPY_FILES()
+  DIM MADE AS UBYTE
+  MADE = 0                                         ' a number DIMed in a SUB keeps its value
+  DOS.FINDFIRST(SOURCE_ROOT + RELATIVE + "\" + PATTERN, 0)
+  DO WHILE DOS.ERROR = 0
+    IF (DOS.FOUND_ATTRIBUTES AND DOS.ATTR_DIRECTORY) = 0 THEN
+      FILES_FOUND = FILES_FOUND + 1
+      SOURCE_FILE = SOURCE_ROOT + RELATIVE + "\" + DOS.FOUND_NAME
+      TARGET_FILE = TARGET_ROOT + RELATIVE + "\" + DOS.FOUND_NAME
+      IF LIST_ONLY THEN
+        PRINT SOURCE_FILE
+        FILES_COPIED = FILES_COPIED + 1
+      ELSE
+        IF MADE = 0 AND RELATIVE <> "" THEN MAKE_PATH(TARGET_ROOT + RELATIVE, LEN(TARGET_ROOT) + 2)
+        MADE = 1
+        COPY_ONE()
+      END IF
+    END IF
+    DOS.FINDNEXT()
+  LOOP
+  CHECK_FIND_ERROR()
+END SUB
+
+' Gives 1 when the found name is a directory other than . and ..
+FUNCT FOUND_DIRECTORY() AS UBYTE
+  IF (DOS.FOUND_ATTRIBUTES AND DOS.ATTR_DIRECTORY) = 0 THEN RETURN 0
+  IF ASC(DOS.FOUND_NAME) = ASC(".") THEN RETURN 0
+  RETURN 1
+END FUNCT
+
+' Moves the search on from the found name to the first directory other than . and .., or to
+' the end of the directory.
+SUB NEXT_DIRECTORY()
+  DO WHILE DOS.ERROR = 0
+    IF FOUND_DIRECTORY() THEN RETURN
+    DOS.FINDNEXT()
+  LOOP
+END SUB
+
+' Starts a search of the directories in RELATIVE.
+SUB FIND_DIRECTORIES()
+  DOS.FINDFIRST(SOURCE_ROOT + RELATIVE + "\", DOS.ATTR_DIRECTORY)
+  NEXT_DIRECTORY()
+END SUB
+
+' Goes back to the directory of level DEPTH and finds the directory after the one its search
+' stopped at.
+SUB RESUME_SEARCH()
+  RELATIVE = LEFT$(RELATIVE, RELATIVE_LENGTHS(DEPTH))
+  STATE_START = DEPTH * STATE_SIZE
+  FOR INDEX = 0 TO STATE_SIZE - 1
+    DOS.FIND_BUFFER(INDEX) = STATES(STATE_START + INDEX)
+  NEXT
+  DOS.FINDNEXT()
+  NEXT_DIRECTORY()
+END SUB
+
+' ---- the arguments ----
+FOR SLOT = SLOT_P1 TO SLOT_P9
+  ARGUMENT = HEAP.SYS_STRINGS_GET(SLOT)
+  IF ARGUMENT = "" THEN CONTINUE
+  IF ASC(ARGUMENT) = ASC("-") THEN
+    IF LEN(ARGUMENT) = 1 THEN FAIL("Invalid switch")
+    FOR INDEX = 2 TO LEN(ARGUMENT)
+      CODE = ASC(MID$(ARGUMENT, INDEX)) OR $20
+      IF CODE = ASC("s") THEN
+        SUBDIRECTORIES = 1
+      ELSEIF CODE = ASC("e") THEN
+        SUBDIRECTORIES = 1
+        EMPTY_TOO = 1
+      ELSEIF CODE = ASC("p") THEN
+        ASK_EACH = 1
+      ELSEIF CODE = ASC("l") THEN
+        LIST_ONLY = 1
+      ELSEIF CODE = ASC("y") THEN
+        OVERWRITE_ALL = 1
+      ELSE
+        FAIL("Invalid switch")
+      END IF
+    NEXT
+  ELSE
+    NAMES = NAMES + 1
+    IF NAMES = 1 THEN
+      SOURCE = ARGUMENT
+    ELSEIF NAMES = 2 THEN
+      TARGET = ARGUMENT
+    ELSE
+      FAIL("Too many parameters")
+    END IF
+  END IF
+NEXT
+IF NAMES = 0 THEN FAIL("Required parameter missing")
+
+' ---- the source: a directory, or a directory and a pattern ----
+RESOLVE(SOURCE)
+IF RESOLVE_ERROR <> 0 THEN
+  INDEX = LEN(SOURCE)
+  DO WHILE INDEX > 0
+    IF IS_SEPARATOR(ASC(MID$(SOURCE, INDEX))) THEN EXIT DO
+    INDEX = INDEX - 1
+  LOOP
+  PATTERN = MID$(SOURCE, INDEX + 1)
+  ' C:\X and \X keep the \ as the root. C:X keeps the : as the drive's current directory.
+  ARGUMENT = LEFT$(SOURCE, INDEX)
+  IF INDEX > 1 AND MID$(SOURCE, INDEX, 1) <> ":" THEN
+    IF MID$(SOURCE, INDEX - 1, 1) <> ":" THEN ARGUMENT = LEFT$(SOURCE, INDEX - 1)
+  END IF
+  RESOLVE(ARGUMENT)
+  IF RESOLVE_ERROR <> 0 THEN FAIL(DOS.ERRMSG(RESOLVE_ERROR))
+END IF
+SOURCE_ROOT = RESOLVED
+
+' ---- the target, made when it is missing ----
+IF LIST_ONLY = 0 THEN
+  MAKE_PATH(TARGET, 1)
+  RESOLVE(TARGET)
+  IF RESOLVE_ERROR <> 0 THEN UNMAKE_FAIL(DOS.ERRMSG(RESOLVE_ERROR))
+  TARGET_ROOT = RESOLVED
+  IF TARGET_ROOT = SOURCE_ROOT THEN UNMAKE_FAIL("File cannot be copied onto itself")
+  IF SUBDIRECTORIES AND LEFT$(TARGET_ROOT, LEN(SOURCE_ROOT) + 1) = SOURCE_ROOT + "\" THEN
+    UNMAKE_FAIL("Cannot copy a directory into itself")
+  END IF
+END IF
+IF LEN(TARGET_ROOT) > LEN(SOURCE_ROOT) THEN
+  ROOT_LENGTH = LEN(TARGET_ROOT)
+ELSE
+  ROOT_LENGTH = LEN(SOURCE_ROOT)
+END IF
+
+' ---- the walk ----
+COPY_FILES()
+IF SUBDIRECTORIES THEN
+  FIND_DIRECTORIES()
+  DO
+    IF DOS.ERROR <> 0 THEN
+      CHECK_FIND_ERROR()
+      IF DEPTH = 0 THEN EXIT DO
+      DEPTH = DEPTH - 1
+      RESUME_SEARCH()
+      CONTINUE
+    END IF
+    STATE_START = DEPTH * STATE_SIZE
+    FOR INDEX = 0 TO STATE_SIZE - 1
+      STATES(STATE_START + INDEX) = DOS.FIND_BUFFER(INDEX)
+    NEXT
+    RELATIVE_LENGTHS(DEPTH) = LEN(RELATIVE)
+    RELATIVE = RELATIVE + "\" + DOS.FOUND_NAME
+    IF DEPTH < MAX_DEPTH - 1 AND LEN(RELATIVE) <= PATH_MAX - NAME_ROOM - ROOT_LENGTH THEN
+      IF EMPTY_TOO AND LIST_ONLY = 0 THEN DOS.MKDIR(TARGET_ROOT + RELATIVE)
+      COPY_FILES()
+      DEPTH = DEPTH + 1
+      FIND_DIRECTORIES()
+    ELSE
+      PRINT "Path too long: "; SOURCE_ROOT; RELATIVE
+      RESUME_SEARCH()
+    END IF
+  LOOP
+END IF
+IF FILES_FOUND = 0 THEN
+  PRINT "File not found"
+  FINISH(1)
+END IF
+FINISH(0)
