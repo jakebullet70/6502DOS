@@ -1,2 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# GitHub folds the test goldens in commit and PR views.
+tests/*.OUT linguist-generated=true

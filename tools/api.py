@@ -315,6 +315,15 @@ ERRORS = [
     (30, "READ_FAULT", "Read fault"),
 ]
 
+# The UXCBASIC names of the errors whose ERR_NAME runs past pyuxc's 16 characters a name part.
+# lib/DOS.UXI gets ERR_ and this name; the other errors keep their asm name there.
+UXI_ERROR_NAMES = {
+    "TOO_MANY_FILES": "TOO_MANY",
+    "BAD_ACCESS_CODE": "BAD_ACCESS",
+    "NOT_SAME_DEVICE": "NOT_SAME",
+    "NO_MORE_FILES": "NO_MORE",
+}
+
 # The find buffer of findfirst and findnext, laid out as MS-DOS 2.0's DTA up to the name:
 # (offset, size, name, field). The name becomes FIND_NAME in asm.
 FIND_BUFFER = [
