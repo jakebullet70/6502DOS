@@ -1,0 +1,29 @@
+UXDOS16 V0.1.0
+For the Commander X16
+>>RUN CMDSHELL.COM
+C>LIST HEL        LIST HELLO.TXT
+Hello from the SD card.
+C>list docs\re            list docs\README.TXT
+DOCS holds LONG.TXT, 50 lines of 64 bytes.
+C>VER   VER   VERSION
+UXDOS16 V0.1.0
+C>VER   VER   VERSION       VER
+UXDOS16 V0.1.0
+C>PRI   PRINT "TAB"
+TAB
+C>CD DO     CD DOCS\
+C>PRINT CURDIR$
+C:\DOCS
+C>CD \
+C>CD DO     CD DOCS\        CD DOS\
+C>PRINT CURDIR$
+C:\DOS
+C>CD \
+C>XYZ   XYZ
+Bad command or file name
+C>PATH$ = "C:\DOS"
+C>TRE   TREE -?
+Invalid switch
+C>END
+
+>>

@@ -102,6 +102,7 @@ ROOT
  |      UPTIME.CBI
  |      VIEW.COM
  |      WHERE.CBI
+ |      XCOPY.COM
  |      
  +- MANY
  |   |  F01.TXT

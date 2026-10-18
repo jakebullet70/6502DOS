@@ -1,0 +1,48 @@
+UXDOS16 V0.1.0
+For the Commander X16
+>>RUN CMDSHELL.COM
+C>PATH$ = "C:\DOS"
+C>XCOPY MANY MANY\SUB.DIR\BAK -s
+Cannot copy a directory into itself
+C>FILES MANY\SUB.DIR
+.                 <DIR>
+..                <DIR>
+INNER             <DIR>
+     3 File(s)
+C>XCOPY MANY\SUB.DIR NEW\TREE -s
+C:\MANY\SUB.DIR\INNER\DEEP.TXT
+     1 File(s) copied
+C>TREE NEW -F
+
+\NEW
+ +- TREE
+     +- INNER
+            DEEP.TXT
+            
+C>XCOPY MANY\*.ZZZ BAK -s
+File not found
+     0 File(s) copied
+C>XCOPY MANY\SUB.DIR -sl
+C:\MANY\SUB.DIR\INNER\DEEP.TXT
+     1 File(s)
+C>MKDIR E1
+C>MKDIR E1\E2
+C>MKDIR E1\E2\E3
+C>XCOPY E1 E4 -e
+File not found
+     0 File(s) copied
+C>TREE E4
+
+\E4
+ +- E2
+     +- E3
+C>XCOPY E1 E5 -s
+File not found
+     0 File(s) copied
+C>FILES E5
+.                 <DIR>
+..                <DIR>
+     2 File(s)
+C>END
+
+>>
