@@ -925,7 +925,7 @@
 - Build after 7c: 0.75 s with the shell compile, the new baseline.
 - Tests after 7c, one at a time: `SHFILES` ok 0.7 s, `SHELL` 0.5, `FILES` 0.4, `DIRS` 0.8,
   `DISK` 0.4.
-- Steps since the last full suite: 5. It ran after library refactor step 5 (`STR.UXI`),
+- Steps since the last full suite: 6. It ran after library refactor step 5 (`STR.UXI`),
   2026-10-17: 34 tests, 0 failed, 18.3 s, the longest `CMDLETS` 1.4 s.
 - UXCBASIC: 174 tests, 0 failed, 43 s. `compare.py`: 566 MATCH, 5 RESULT, 31 NO GOLDEN of 602,
   1.7 s. The RESULTs are `STRLR`, `STRNS`, `EXERRCONSTSTR`, and the two below, all expected:
@@ -1797,8 +1797,14 @@
        in `NAMESPACE KEYS` (`lib/KEYS.UXI`). VIEW then writes `CONS.SGR_REVERSE$`.
      - Not chosen: escapes in plain strings (clash with paths such as `"C:\DOS\HELP.TXT"`),
        `$` codes (clash with `PROMPT$`), and named escapes like `/x(CUD 4)`.
-   - Bug (the user, 2026-10-17): the shell prompt must start in column 1. When a program ends
-     with the cursor inside a row, the prompt prints after it on that row.
+   - Done (2026-10-18): the shell prompt starts in column 0. `PRINT_PROMPT` calls
+     `START_LINE` (`CMDSHELL.UXB`), which prints a new line when `POS(0) > 0`;
+     `REPORT_ERROR` calls it too. No asm. `CMDSHELL.COM` 18854 to 18864 bytes (+10;
+     the check inline in both places was 18871). Build 972 ms, the new baseline.
+     Goldens rewritten and diffed: `SHELL` (`PRINT "A";`, then the prompt on the next
+     line), `SHSCREEN` (after `LOCATE 29,79` and `LOCATE 5,6` the prompt moves to a new
+     line). Tests: `SHELL` ok 0.4 s, `SHVARS` 0.6, `SHRUN` 0.7, `SHSCREEN` 0.6, `SHBOOT`
+     0.4. Docs owed: PLAN section 8, the prompt starts in column 0.
    - To do: 7i4, renamed `WHERE` (the user, 2026-10-17). It is still put off.
    - To do, commands the user listed (2026-10-17). None is in PLAN section 11 yet; each needs a
      step and a talk with the user first.

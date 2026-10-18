@@ -104,6 +104,11 @@ SUB SKIP_SPACES()
   LOOP
 END SUB
 
+' Starts a new line when the cursor is not in column 0.
+SUB START_LINE()
+  IF POS(0) > 0 THEN PRINT
+END SUB
+
 ' Prints the message on a line of its own, on the screen, and sets FAILED. A line being skipped
 ' prints nothing.
 SUB REPORT_ERROR(MESSAGE$)
@@ -112,7 +117,7 @@ SUB REPORT_ERROR(MESSAGE$)
   END_REDIRECT()
   RESTORE_HANDLE(PIPE_OUTPUT, 1)
   PIPE_OUTPUT = 0
-  IF POS(0) > 0 THEN PRINT
+  START_LINE()
   PRINT MESSAGE$
 END SUB
 
@@ -1566,11 +1571,13 @@ SUB RUN_LINE()
   LOOP
 END SUB
 
-' Prints the prompt from PROMPT$, or the drive and > when PROMPT$ is empty. In PROMPT$, $P prints
-' the current drive and directory, $N the drive, $G >, $L <, $B |, $Q =, $_ a new line and $$ $.
-' The letter after $ is either case. A $ before any other character prints nothing.
+' Prints the prompt from PROMPT$, or the drive and > when PROMPT$ is empty. The prompt starts in
+' column 0: a cursor inside a row gets a new line first. In PROMPT$, $P prints the current drive
+' and directory, $N the drive, $G >, $L <, $B |, $Q =, $_ a new line and $$ $. The letter after $
+' is either case. A $ before any other character prints nothing.
 SUB PRINT_PROMPT()
   DIM PROMPT_INDEX AS UBYTE, PROMPT_CHAR AS UBYTE, AFTER_DOLLAR AS UBYTE
+  START_LINE()
   HEAP.STR_READ(HEAP.PROMPT_STRING)
   IF DOS.CALL_TEXT = ""
     PRINT CHR$(65 + DOS.GETDRIVE()); ">";
