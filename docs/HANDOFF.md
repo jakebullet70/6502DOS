@@ -924,8 +924,8 @@
 - Build after 7c: 0.75 s with the shell compile, the new baseline.
 - Tests after 7c, one at a time: `SHFILES` ok 0.7 s, `SHELL` 0.5, `FILES` 0.4, `DIRS` 0.8,
   `DISK` 0.4.
-- Steps since the last full suite: 4. It ran after clock step 2, 2026-10-18: 39 tests,
-  0 failed, 23.7 s, the longest `CMDLETS` 1.6 s.
+- Steps since the last full suite: 1. It ran after the doc batch for `TREE` to `TAIL`,
+  2026-10-18: 43 tests, 1 failed (`TREE`, below), 27.4 s, the longest `CMDLETS` 1.7 s.
 - UXCBASIC: 174 tests, 0 failed, 43 s. `compare.py`: 566 MATCH, 5 RESULT, 31 NO GOLDEN of 602,
   1.7 s. The RESULTs are `STRLR`, `STRNS`, `EXERRCONSTSTR`, and the two below, all expected:
   `EXERRPOS` (`POS(2)`) now compiles, and `EXERRPOSVAR` says `POS NEEDS 0 TO 3`.
@@ -1873,18 +1873,18 @@
           each `(Command line or Script)`. Build 523 ms, the new baseline. Test `CMDLETS`
           ok 2.0 s, its golden gains the 3 topics in the `HELP` list.
    - `TREE` done 2026-10-18: `C:\DOS\TREE.COM` from `src/dos/TREE.UXB`, for the command line,
-     no P$ and no SILENT (the user, 2026-10-18). `TREE [d:][path] [/F]` draws a tree, the
+     no P$ and no SILENT (the user, 2026-10-18). `TREE [d:][path] [-F]` draws a tree, the
      layout the user gave (2026-10-18): a blank line, `ROOT` or the start path, then one line a
      directory, depth first, `" +- "` and the name, 4 columns in a level. A `" |  "` bar runs
      down past the lines of a directory that has a later directory beside it; the last one is
-     `" +- "` too. `/F` (or `/f`) lists each directory's files under its line, 4 columns in,
+     `" +- "` too. `-F` (or `-f`) lists each directory's files under its line, 4 columns in,
      after a bar when it has a directory, then a line of the bars alone (trailing spaces). A
      start with no directories prints `No sub-directories exist`. The path may be relative or
      hold `..`: `CHDIR` checks it, `GETCWD` gives it from the root, and the old directory
      comes back. UXCBASIC has no recursion, so `STATES` keeps the 21 bytes before `FIND_ATTR`
      of each level's find buffer, 32 levels, and `FINDNEXT` resumes from them. Each directory
      costs a look-ahead scan to the next directory beside it, for the bar, and the resume
-     scans that stretch again; `/F` adds a scan for a sub-directory and one for the files. A
+     scans that stretch again; `-F` adds a scan for a sub-directory and one for the files. A
      directory 32 levels down, or whose path passes 237 characters, is listed, not entered.
      Errors, exit code 1: `Invalid drive`, `Invalid path` (a file too), `Invalid switch`,
      `Too many parameters`; a read error prints its message, exit code 2. `TREE.COM` 3595
@@ -1913,6 +1913,49 @@
      the prompt, key `x`, lines 30 to 50; the `x` line's CR gives the shell an empty line);
      checked by hand. `MORE` ok 0.7 s; `DISK` 0.4 and `FILES` 0.4 ok, no golden change. Owed
      to the doc batch: the `HELP.TXT` topic `MORE`, PLAN section 8 and 11.
+   - `HEAD` done 2026-10-18: `C:\DOS\HEAD.COM` from `src/dos/HEAD.UXB`, for the command line,
+     no P$ and no SILENT (the user, 2026-10-18). `HEAD [-n count] [file]`, Unix form, count 0
+     to 65535, 10 when left out (the user). No file reads handle 0, with the `IOCTL_IN_STATUS`
+     check of `MORE`. A CR, an LF, or CR LF ends a line; the first byte after the last line end
+     stops it, so the LF of a CR LF is written. Ctrl+Z ends the text. `-n` or `-N`. Errors, exit
+     code 1: `Invalid switch`, `Required parameter missing` (`-n` alone), `Invalid parameter`
+     (not digits, or past 65535), `Too many parameters`; open fails: `DOS.ERRMSG`, exit 2. The
+     count is built digit by digit with an overflow check, 248 bytes less than `LVAL`.
+     `HEAD.COM` 2583 bytes; RAM 512 buffer, 2 strings of 255, 13 of numbers. ROM and shell:
+     none. Build 724 ms, the new baseline. New test `HEAD` (`tests/HEAD.IN`): the errors,
+     `README.TXT`, `LONG.TXT` (10 lines), `-n 3`, `-n 0`, `LIST ... | HEAD -N 2`; checked by
+     hand. `HEAD` ok 0.9 s, `MORE` 0.7 ok. Next: `TAIL`, the same form. Owed to the doc batch:
+     the `HELP.TXT` topic `HEAD`, PLAN section 8 and 11.
+   - `TAIL` done 2026-10-18: `C:\DOS\TAIL.COM` from `src/dos/TAIL.UXB`, the form, switches,
+     errors and exit codes of `HEAD`. A pipe and `FROM` give handle 0 a file, so `TAIL` seeks:
+     it takes the start (seek from the position) and the end (seek from the end), reads back
+     from the end in blocks of 512 until count line ends, then seeks to the byte after and
+     copies forward up to a Ctrl+Z or the end. A device stays at 0, so start = end gives no
+     text, and `TAIL` alone at the prompt prints nothing. A line end in the last byte of the
+     text ends no line before it; the CR of a CR LF is no line end of its own; a Ctrl+Z met
+     on the way back resets the count. The scan reads only the tail, so a Ctrl+Z before it is
+     not seen. Positions are word pairs with a hand borrow: a `ULONG` form was 4274 bytes,
+     830 more. `TAIL.COM` 3444 bytes; RAM 512 buffer, 2 strings of 255, 22 of numbers. ROM and
+     shell: none. Build 792 ms, the new baseline. New test `TAIL` (`tests/TAIL.IN`): the
+     errors, `README.TXT`, `LONG.TXT` (10), `-n 3`, `-n 0`, `-n 60`, `LIST ... | TAIL -N 2`,
+     a CR LF file by `PRINT TO`/`APPEND` with `FROM`, `TAIL` alone; checked by hand. No Ctrl+Z
+     test: the shell has no `CHR$`. `TAIL` ok 1.2 s. Owed to the doc batch: the `HELP.TXT`
+     topic `TAIL`, PLAN section 8 and 11.
+   - Doc batch done 2026-10-18: `HELP.TXT` topics `TREE`, `MORE`, `HEAD`, `TAIL`, each
+     `(Command line only)`. PLAN section 8 entries for the four after `VIEW`; section 11 step
+     7i names `VIEW`, `TREE`, `MORE`, `HEAD`, `TAIL` as the DOS utilities after it. Four
+     `HELP.TXT` lines past 80 characters, cut by `HELP`, are split in two: the `P1$` line of
+     `DATE`, the seconds line of `TIME`, and the count lines of `HEAD` and `TAIL`. Every line
+     is now 80 at most. Build 743 ms, the new baseline. Goldens changed: `CMDLETS` (the `HELP`
+     list gains `TREE MORE HEAD TAIL`) and `TREE` (`-F` lists `HEAD.COM`, `MORE.COM`,
+     `TAIL.COM` in `\DOS`; `MORE.COM` was missing since the `MORE` step). Full suite: `TREE`
+     failed on that; updated, `TREE` ok 1.3 s.
+     Trap: `tests.py` stops reading at the first byte that departs from the golden, so a
+     stale golden shows output cut mid-line, as if the program hung.
+   - `TREE` switch `-F` done 2026-10-18: the user's rule, switches start with `-`, never `/`.
+     `TREE.UXB` tests the first character for `-`; `TREE.COM` 3595 bytes, no change. `-F`
+     in `TREE.UXB`, `HELP.TXT`, PLAN section 8 and `tests/TREE.IN` (`-F`, `-f`, `-X`). Build
+     744 ms. `TREE` ok 1.1 s, `CMDLETS` ok 1.6 s. Steps since the full suite: 1.
    - `HELP.TXT`: the user marks each topic as for scripts, the command line, or both
      (2026-10-17).
    - Done: `PROMPT$` `$` codes (see State). No `$T`, `$D`, `$V`, `$H` or `$E`. `HELP.TXT` has

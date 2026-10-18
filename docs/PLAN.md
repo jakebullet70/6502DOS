@@ -865,6 +865,53 @@ Short names:
     of the first 16384 lines. A line past them reads on from the last entry.
   - No name prints `Required parameter missing` and gives exit code 1. A file that does not open
     prints its error message and gives exit code 2. The exit code is 0 otherwise.
+- `TREE [d:][path] [-F]` is a DOS utility, `TREE.COM`, for the command line. It draws every
+  directory below `path`, or below the root of drive `d`, as a tree.
+  - The first line is `ROOT`, or the start path. Each directory prints one line, ` +- ` and its
+    name, under its parent and 4 columns in. A ` |  ` bar runs down past the lines of a
+    directory that has a later directory beside it.
+  - `-F` adds the names of each directory's files under its line, then a line of bars.
+  - `.` and `..` are skipped. Hidden and system names are listed.
+  - A start with no directories prints `No sub-directories exist`.
+  - A directory 32 levels down, or one whose path would pass 250 characters, is listed but
+    not entered. The `F` may be small.
+  - A drive that is not a letter, or that the kernel does not know, prints `Invalid drive`. A
+    path that is not a directory prints `Invalid path`. A switch other than `-F` prints
+    `Invalid switch`, and a second path prints `Too many parameters`. Each gives exit code 1.
+    A read error prints its error message and gives exit code 2. The exit code is 0 otherwise.
+- `MORE [file]` is a DOS utility, `MORE.COM`, for the command line. It shows `file`, or with no
+  file the input on handle 0, a screen at a time.
+  - After each screen of rows less 1 it prints `-- More --` on the last row and waits for a
+    key. Any key clears the prompt and shows the next screen. The prompt shows only when more
+    text follows. Ctrl+C at the prompt ends it.
+  - Rows are counted as the console writes them: CR, LF and CR LF end a line, a line wider
+    than the screen takes more rows, a tab goes to the next column that is a multiple of 8, BS
+    moves back a column, and FF clears the screen. Each byte of an escape sequence counts as a
+    column. Ctrl+Z ends the text.
+  - With no file, `MORE` ends when handle 0 has nothing to read, so `MORE` alone at the prompt
+    prints nothing.
+  - A second name prints `Too many parameters` and gives exit code 1. A file that does not open
+    prints its error message and gives exit code 2. The exit code is 0 otherwise.
+- `HEAD [-n count] [file]` is a DOS utility, `HEAD.COM`, for the command line. It writes the
+  first `count` lines of `file`, or with no file of the input on handle 0.
+  - `count` is 0 to 65535, 10 when left out. A file with fewer lines is written whole. The
+    `n` may be a capital.
+  - CR, LF and CR LF end a line. Ctrl+Z ends the text.
+  - With no file, `HEAD` ends when handle 0 has nothing to read, so `HEAD` alone at the prompt
+    prints nothing.
+  - `-n` with no count prints `Required parameter missing`, a count that is not a number up to
+    65535 prints `Invalid parameter`, another switch prints `Invalid switch`, and a second name
+    prints `Too many parameters`. Each gives exit code 1. A file that does not open prints its
+    error message and gives exit code 2. The exit code is 0 otherwise.
+- `TAIL [-n count] [file]` is a DOS utility, `TAIL.COM`, for the command line. It writes the
+  last `count` lines of `file`, or with no file of the input on handle 0. It takes the count,
+  the line ends and the errors as `HEAD` does.
+  - It reads back from the end in blocks of 512 bytes until it has found the lines, then
+    writes them forward up to a Ctrl+Z or the end.
+  - A line end in the last byte ends no line before it.
+  - It reads back only as far as the lines it writes, so it does not see a Ctrl+Z before them.
+  - A pipe and `FROM` give handle 0 a file, so `TAIL` seeks on it. A device stays at 0, so
+    `TAIL` alone at the prompt prints nothing.
 - `MEM` shows the free banks. It waits for `bank_alloc` (section 11, step 10).
 - `EXIST name` is for scripts. It tells whether a file or a directory `name` exists, and prints
   nothing.
@@ -1062,7 +1109,8 @@ Each step boots and shows something, and each has a test.
    7h. `LOCATE`, `BEEP`, `WAIT`, `PAUSE`, `COLOR`.
    7i. The commandlets of section 8, one a part: 7i1 `EXIST`, 7i2 `DISKFREE`, 7i3 `DISKINFO`,
        7i4 `WHERE`, 7i5 `HELP`, 7i6 `DATE`, `TIME` and `UPTIME` on the clock calls. 7i4 is
-       put off. `MEM` comes with step 10.
+       put off. `MEM` comes with step 10. The DOS utilities `VIEW`, `TREE`, `MORE`, `HEAD`
+       and `TAIL` follow, one a part.
 8. `SYSINIT.COM` with `CONFIG.SYS` and `DEVICE=`. Until then the ROM runs `C:\CMDSHELL.COM`
    itself (section 8).
 9. Layer 1 moves to UXCBASIC, one part at a time, as the compiler features land. The parts that

@@ -1,0 +1,103 @@
+'=============================================================================================
+' -- HEAD [-n count] [file]
+' -- writes the first count lines of file, or with no file of the input on handle 0. For the
+' -- command line, not for scripts.
+' -- count is 0 to 65535, 10 when left out. A file with fewer lines is written whole.
+' -- A CR, an LF, or a CR and an LF end a line. Ctrl+Z ends the text.
+' -- With no file, HEAD ends when handle 0 has nothing to read, so HEAD alone at the prompt
+' -- prints nothing.
+' -- -n with no count prints Required parameter missing, a count that is not a number up to
+' -- 65535 prints Invalid parameter, another switch prints Invalid switch, and a second name
+' -- prints Too many parameters. Each gives exit code 1. A file that does not open prints its
+' -- error message and gives exit code 2. Exit code 0 otherwise.
+' --
+' -- From a prompt:
+' --     HEAD -n 20 DOCS\LONG.TXT
+' --     LIST DOCS\LONG.TXT | HEAD
+'=============================================================================================
+#INCLUDE "DOS.UXI"
+#INCLUDE "HEAP.UXI"
+CONST SLOT_P1 AS UBYTE = 0, SLOT_P9 AS UBYTE = 8
+CONST BUFFER_SIZE AS UWORD = 512
+CONST LF AS UBYTE = 10, CR AS UBYTE = 13, CTRL_Z AS UBYTE = 26
+
+DIM ARGUMENT AS STRING * 255, FILE_NAME AS STRING * 255
+DIM SLOT AS UBYTE, INDEX AS UBYTE
+DIM COUNT AS UWORD
+DIM INPUT_FILE AS UWORD                            ' 0 is handle 0, the input with no file
+DIM BUFFER(BUFFER_SIZE) AS UBYTE, BUFFER_COUNT AS UWORD, BUFFER_INDEX AS UWORD
+' LINES counts the line ends written. AFTER_CR is 1 after a CR, when an LF ends no line.
+DIM LINES AS UWORD, CHARACTER AS UBYTE, AFTER_CR AS UBYTE, DONE AS UBYTE
+
+SUB FAIL(MESSAGE AS STRING)
+  PRINT MESSAGE
+  END 1
+END SUB
+
+' ---- the arguments ----
+COUNT = 10
+SLOT = SLOT_P1
+DO WHILE SLOT <= SLOT_P9
+  ARGUMENT = HEAP.SYS_STRINGS_GET(SLOT)
+  SLOT = SLOT + 1
+  IF ARGUMENT = "" THEN CONTINUE
+  IF ASC(ARGUMENT) = ASC("-") THEN
+    IF LEN(ARGUMENT) <> 2 OR (ASC(MID$(ARGUMENT, 2)) OR $20) <> ASC("n") THEN FAIL("Invalid switch")
+    IF SLOT > SLOT_P9 THEN FAIL("Required parameter missing")
+    ARGUMENT = HEAP.SYS_STRINGS_GET(SLOT)
+    SLOT = SLOT + 1
+    IF ARGUMENT = "" THEN FAIL("Required parameter missing")
+    COUNT = 0
+    FOR INDEX = 1 TO LEN(ARGUMENT)
+      CHARACTER = ASC(MID$(ARGUMENT, INDEX)) - ASC("0")  ' a byte below "0" wraps past 9
+      IF CHARACTER > 9 THEN FAIL("Invalid parameter")
+      IF COUNT > 6553 OR (COUNT = 6553 AND CHARACTER > 5) THEN FAIL("Invalid parameter")
+      COUNT = COUNT * 10 + CHARACTER
+    NEXT
+  ELSE
+    IF FILE_NAME <> "" THEN FAIL("Too many parameters")
+    FILE_NAME = ARGUMENT
+  END IF
+LOOP
+
+' ---- the input ----
+IF FILE_NAME <> "" THEN
+  INPUT_FILE = DOS.OPEN_FILE(FILE_NAME, DOS.ACCESS_READ)
+  IF INPUT_FILE = NOFILE THEN
+    PRINT DOS.ERRMSG(DOS.ERROR)
+    END 2
+  END IF
+END IF
+
+' ---- the lines ----
+IF COUNT = 0 THEN DONE = 1
+DO WHILE DONE = 0
+  ' A read of CON waits for keys, so CON with no key waiting is the end of the input.
+  IF DOS.IOCTL(INPUT_FILE, DOS.IOCTL_IN_STATUS) = 0 THEN EXIT DO
+  BUFFER_COUNT = DOS.READ_FILE(INPUT_FILE, @BUFFER, BUFFER_SIZE)
+  IF BUFFER_COUNT = 0 THEN EXIT DO
+  BUFFER_INDEX = 0
+  DO WHILE BUFFER_INDEX < BUFFER_COUNT
+    CHARACTER = BUFFER(BUFFER_INDEX)
+    IF CHARACTER = CTRL_Z THEN
+      DONE = 1
+      EXIT DO
+    END IF
+    IF CHARACTER = LF AND AFTER_CR = 1 THEN
+      AFTER_CR = 0
+    ELSE
+      ' The first byte after the last line end stops it, so the LF of a CR LF is written.
+      IF LINES >= COUNT THEN
+        DONE = 1
+        EXIT DO
+      END IF
+      AFTER_CR = 0
+      IF CHARACTER = CR THEN AFTER_CR = 1
+      IF CHARACTER = CR OR CHARACTER = LF THEN LINES = LINES + 1
+    END IF
+    BUFFER_INDEX = BUFFER_INDEX + 1
+  LOOP
+  IF BUFFER_INDEX > 0 THEN WRITE 1, @BUFFER, BUFFER_INDEX
+LOOP
+IF INPUT_FILE <> 0 THEN DOS.CLOSE_FILE(INPUT_FILE)
+END 0

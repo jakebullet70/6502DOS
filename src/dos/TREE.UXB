@@ -1,22 +1,22 @@
 '=============================================================================================
-' -- TREE [d:][path] [/F]
+' -- TREE [d:][path] [-F]
 ' -- draws every directory below path, or below the root of drive d, as a tree. For the command
 ' -- line, not for scripts.
 ' -- The first line is ROOT, or the start path. Each directory prints one line, " +- " and its
 ' -- name, under its parent and 4 columns in. A " |  " bar runs down past the lines of a
-' -- directory that has a later directory beside it. /F adds the names of each directory's
+' -- directory that has a later directory beside it. -F adds the names of each directory's
 ' -- files under its line, then a line of bars. A start with no directories prints
 ' -- No sub-directories exist.
 ' -- . and .. are skipped. Hidden and system names are listed.
 ' -- A directory MAX_DEPTH levels down, or one whose path would pass PATH_MAX characters, is
 ' -- listed but not entered.
 ' -- A drive that is not a letter, or that the kernel does not know, prints Invalid drive. A path
-' -- that is not a directory prints Invalid path. A switch other than /F prints Invalid switch,
+' -- that is not a directory prints Invalid path. A switch other than -F prints Invalid switch,
 ' -- and a second path prints Too many parameters. Each gives exit code 1. A read error prints
 ' -- its error message and gives exit code 2. Exit code 0 otherwise.
 ' --
 ' -- From a prompt:
-' --     TREE C:\DOCS /F
+' --     TREE C:\DOCS -F
 '=============================================================================================
 #INCLUDE "DOS.UXI"
 #INCLUDE "HEAP.UXI"
@@ -109,7 +109,7 @@ END SUB
 FOR SLOT = SLOT_P1 TO SLOT_P9
   ARGUMENT = HEAP.SYS_STRINGS_GET(SLOT)
   IF ARGUMENT = "" THEN CONTINUE
-  IF ASC(ARGUMENT) = ASC("/") THEN
+  IF ASC(ARGUMENT) = ASC("-") THEN
     IF LEN(ARGUMENT) <> 2 OR (ASC(MID$(ARGUMENT, 2)) OR $20) <> ASC("f") THEN FAIL("Invalid switch")
     SHOW_FILES = 1
   ELSE

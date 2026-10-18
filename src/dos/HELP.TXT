@@ -35,14 +35,16 @@ DISKINFO [d:] [SILENT]          (Command line or Script)
 DATE [yyyy-mm-dd] [SILENT]      (Command line or Script)
   Tells the date with its weekday, such as Sun 2026-10-18.
   With a date, sets the clock and prints nothing. The year is 2000 to 2099.
-  Sets P1$ to the date, P2$ to the weekday, P3$ to P5$ to the year, month and day.
+  Sets P1$ to the date, P2$ to the weekday,
+  P3$ to P5$ to the year, month and day.
   At the prompt: DATE 2026-10-18
   In a script:   DATE SILENT
                  PRINT "Today is " + P1$
 :TIME
 TIME [hh:mm[:ss]] [SILENT]      (Command line or Script)
   Tells the time in 24 hours, such as 13:45:07.
-  With a time, sets the clock and prints nothing. The seconds are 0 when left out.
+  With a time, sets the clock and prints nothing.
+  The seconds are 0 when left out.
   Sets P1$ to the time, P2$ to P4$ to the hours, minutes and seconds.
   At the prompt: TIME 13:45
   In a script:   TIME SILENT
@@ -115,3 +117,26 @@ VIEW name                       (Command line only)
   F or / asks for a text and finds it, in any case. N finds the next one.
   Q or Esc ends it.
   VIEW DOCS\README.TXT
+:TREE
+TREE [d:][path] [-F]            (Command line only)
+  Draws every directory below path, or below the root, as a tree.
+  -F lists the files of each directory too.
+  TREE C:\DOCS -F
+:MORE
+MORE [file]                     (Command line only)
+  Shows file, or the input, a screen at a time.
+  -- More -- waits for a key. Ctrl+C ends it.
+  MORE DOCS\README.TXT
+  LIST DOCS\README.TXT | MORE
+:HEAD
+HEAD [-n count] [file]          (Command line only)
+  Writes the first count lines of file, or of the input.
+  count is 10 when left out.
+  HEAD -n 20 DOCS\LONG.TXT
+  LIST DOCS\LONG.TXT | HEAD
+:TAIL
+TAIL [-n count] [file]          (Command line only)
+  Writes the last count lines of file, or of the input.
+  count is 10 when left out.
+  TAIL -n 20 DOCS\LONG.TXT
+  LIST DOCS\LONG.TXT | TAIL

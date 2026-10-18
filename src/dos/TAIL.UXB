@@ -1,0 +1,147 @@
+'=============================================================================================
+' -- TAIL [-n count] [file]
+' -- writes the last count lines of file, or with no file of the input on handle 0. For the
+' -- command line, not for scripts.
+' -- count is 0 to 65535, 10 when left out. A file with fewer lines is written whole.
+' -- A CR, an LF, or a CR and an LF end a line. A Ctrl+Z ends the text.
+' -- TAIL reads back from the end of the file only as far as the lines it writes, so it does
+' -- not see a Ctrl+Z before them.
+' -- A device on handle 0 gives no text, so TAIL alone at the prompt prints nothing.
+' -- -n with no count prints Required parameter missing, a count that is not a number up to
+' -- 65535 prints Invalid parameter, another switch prints Invalid switch, and a second name
+' -- prints Too many parameters. Each gives exit code 1. A file that does not open prints its
+' -- error message and gives exit code 2. Exit code 0 otherwise.
+' --
+' -- From a prompt:
+' --     TAIL -n 20 DOCS\LONG.TXT
+' --     LIST DOCS\LONG.TXT | TAIL
+'=============================================================================================
+#INCLUDE "DOS.UXI"
+#INCLUDE "HEAP.UXI"
+CONST SLOT_P1 AS UBYTE = 0, SLOT_P9 AS UBYTE = 8
+CONST BUFFER_SIZE AS UWORD = 512
+CONST LF AS UBYTE = 10, CR AS UBYTE = 13, CTRL_Z AS UBYTE = 26
+CONST FROM_START AS UBYTE = 0, FROM_POSITION AS UBYTE = 1, FROM_END AS UBYTE = 2
+
+DIM ARGUMENT AS STRING * 255, FILE_NAME AS STRING * 255
+DIM SLOT AS UBYTE, INDEX AS UBYTE
+DIM COUNT AS UWORD
+DIM INPUT_FILE AS UWORD                            ' 0 is handle 0, the input with no file
+DIM BUFFER(BUFFER_SIZE) AS UBYTE, BUFFER_COUNT AS UWORD, BUFFER_INDEX AS UWORD
+' The positions are 32-bit, in two words. START is where the input starts, BLOCK where the
+' block in BUFFER starts, and GAP is BLOCK minus START.
+DIM START_LOW AS UWORD, START_HIGH AS UWORD, BLOCK_LOW AS UWORD, BLOCK_HIGH AS UWORD
+DIM GAP_LOW AS UWORD, GAP_HIGH AS UWORD
+' LINES counts the line ends found. LAST_BYTE is 1 while the next byte back is the last of
+' the text, whose line end ends no line before it. NEXT_CHARACTER is the byte after it.
+DIM LINES AS UWORD, CHARACTER AS UBYTE, NEXT_CHARACTER AS UBYTE, LAST_BYTE AS UBYTE
+DIM DONE AS UBYTE
+
+SUB FAIL(MESSAGE AS STRING)
+  PRINT MESSAGE
+  END 1
+END SUB
+
+' ---- the arguments ----
+COUNT = 10
+SLOT = SLOT_P1
+DO WHILE SLOT <= SLOT_P9
+  ARGUMENT = HEAP.SYS_STRINGS_GET(SLOT)
+  SLOT = SLOT + 1
+  IF ARGUMENT = "" THEN CONTINUE
+  IF ASC(ARGUMENT) = ASC("-") THEN
+    IF LEN(ARGUMENT) <> 2 OR (ASC(MID$(ARGUMENT, 2)) OR $20) <> ASC("n") THEN FAIL("Invalid switch")
+    IF SLOT > SLOT_P9 THEN FAIL("Required parameter missing")
+    ARGUMENT = HEAP.SYS_STRINGS_GET(SLOT)
+    SLOT = SLOT + 1
+    IF ARGUMENT = "" THEN FAIL("Required parameter missing")
+    COUNT = 0
+    FOR INDEX = 1 TO LEN(ARGUMENT)
+      CHARACTER = ASC(MID$(ARGUMENT, INDEX)) - ASC("0")  ' a byte below "0" wraps past 9
+      IF CHARACTER > 9 THEN FAIL("Invalid parameter")
+      IF COUNT > 6553 OR (COUNT = 6553 AND CHARACTER > 5) THEN FAIL("Invalid parameter")
+      COUNT = COUNT * 10 + CHARACTER
+    NEXT
+  ELSE
+    IF FILE_NAME <> "" THEN FAIL("Too many parameters")
+    FILE_NAME = ARGUMENT
+  END IF
+LOOP
+
+' ---- the input ----
+IF FILE_NAME <> "" THEN
+  INPUT_FILE = DOS.OPEN_FILE(FILE_NAME, DOS.ACCESS_READ)
+  IF INPUT_FILE = NOFILE THEN
+    PRINT DOS.ERRMSG(DOS.ERROR)
+    END 2
+  END IF
+END IF
+DOS.SEEK(INPUT_FILE, FROM_POSITION, 0, 0)
+START_LOW = DOS.POSITION_LOW
+START_HIGH = DOS.POSITION_HIGH
+DOS.SEEK(INPUT_FILE, FROM_END, 0, 0)
+BLOCK_LOW = DOS.POSITION_LOW
+BLOCK_HIGH = DOS.POSITION_HIGH
+' A device stays at 0, so its end is its start. A read of CON would wait for keys.
+IF BLOCK_LOW = START_LOW AND BLOCK_HIGH = START_HIGH THEN COUNT = 0
+
+' ---- the line ends, back from the end ----
+' BLOCK ends at the byte after the line end before the lines, or at START.
+LAST_BYTE = 1
+DO WHILE COUNT > 0
+  GAP_HIGH = BLOCK_HIGH - START_HIGH
+  IF BLOCK_LOW < START_LOW THEN GAP_HIGH = GAP_HIGH - 1
+  GAP_LOW = BLOCK_LOW - START_LOW
+  IF GAP_HIGH = 0 AND GAP_LOW < BUFFER_SIZE THEN
+    BUFFER_COUNT = GAP_LOW
+  ELSE
+    BUFFER_COUNT = BUFFER_SIZE
+  END IF
+  IF BUFFER_COUNT = 0 THEN EXIT DO
+  IF BLOCK_LOW < BUFFER_COUNT THEN BLOCK_HIGH = BLOCK_HIGH - 1
+  BLOCK_LOW = BLOCK_LOW - BUFFER_COUNT
+  DOS.SEEK(INPUT_FILE, FROM_START, BLOCK_LOW, BLOCK_HIGH)
+  IF DOS.READ_FILE(INPUT_FILE, @BUFFER, BUFFER_COUNT) <> BUFFER_COUNT THEN EXIT DO
+  BUFFER_INDEX = BUFFER_COUNT
+  DO WHILE BUFFER_INDEX > 0
+    BUFFER_INDEX = BUFFER_INDEX - 1
+    CHARACTER = BUFFER(BUFFER_INDEX)
+    IF CHARACTER = CTRL_Z THEN
+      LINES = 0
+      LAST_BYTE = 1
+    ELSE
+      ' The CR of a CR and an LF is no line end of its own.
+      IF LAST_BYTE = 0 AND (CHARACTER = LF OR (CHARACTER = CR AND NEXT_CHARACTER <> LF)) THEN
+        LINES = LINES + 1
+        IF LINES = COUNT THEN
+          BUFFER_INDEX = BUFFER_INDEX + 1
+          BLOCK_LOW = BLOCK_LOW + BUFFER_INDEX
+          IF BLOCK_LOW < BUFFER_INDEX THEN BLOCK_HIGH = BLOCK_HIGH + 1
+          EXIT DO
+        END IF
+      END IF
+      LAST_BYTE = 0
+    END IF
+    NEXT_CHARACTER = CHARACTER
+  LOOP
+  IF LINES = COUNT THEN EXIT DO
+LOOP
+
+' ---- the lines, up to a Ctrl+Z ----
+IF COUNT = 0 THEN DONE = 1
+DOS.SEEK(INPUT_FILE, FROM_START, BLOCK_LOW, BLOCK_HIGH)
+DO WHILE DONE = 0
+  BUFFER_COUNT = DOS.READ_FILE(INPUT_FILE, @BUFFER, BUFFER_SIZE)
+  IF BUFFER_COUNT = 0 THEN EXIT DO
+  BUFFER_INDEX = 0
+  DO WHILE BUFFER_INDEX < BUFFER_COUNT
+    IF BUFFER(BUFFER_INDEX) = CTRL_Z THEN
+      DONE = 1
+      EXIT DO
+    END IF
+    BUFFER_INDEX = BUFFER_INDEX + 1
+  LOOP
+  IF BUFFER_INDEX > 0 THEN WRITE 1, @BUFFER, BUFFER_INDEX
+LOOP
+IF INPUT_FILE <> 0 THEN DOS.CLOSE_FILE(INPUT_FILE)
+END 0
