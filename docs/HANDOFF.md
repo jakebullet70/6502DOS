@@ -924,7 +924,7 @@
 - Build after 7c: 0.75 s with the shell compile, the new baseline.
 - Tests after 7c, one at a time: `SHFILES` ok 0.7 s, `SHELL` 0.5, `FILES` 0.4, `DIRS` 0.8,
   `DISK` 0.4.
-- Steps since the last full suite: 1. It ran after the doc batch for `TREE` to `TAIL`,
+- Steps since the last full suite: 2. It ran after the doc batch for `TREE` to `TAIL`,
   2026-10-18: 43 tests, 1 failed (`TREE`, below), 27.4 s, the longest `CMDLETS` 1.7 s.
 - UXCBASIC: 174 tests, 0 failed, 43 s. `compare.py`: 566 MATCH, 5 RESULT, 31 NO GOLDEN of 602,
   1.7 s. The RESULTs are `STRLR`, `STRNS`, `EXERRCONSTSTR`, and the two below, all expected:
@@ -1822,7 +1822,17 @@
      0.4. PLAN section 8 has it.
    - Bug, to do (the user, 2026-10-18): `VIEW.COM` must eat the keyboard queue between Up and
      Down arrow moves.
-   - To do: 7i4, renamed `WHERE` (the user, 2026-10-17). It is still put off.
+   - 7i4 `WHERE` done 2026-10-18: `src/cbin/WHERE.UXB`, `WHERE name [SILENT]`, for the
+     command line and scripts. The user's choices: the first match only, the one the shell
+     runs; a name with no extension tries `.CBIN`, `.COM`, `.CMD`; `*` or `?` names nothing.
+     The look-up copies the shell's `FIND_PROGRAM`, but a match in the current directory is
+     printed after the drive and the current directory: `C:\ARGS.COM`. Aliases and the
+     statements are not looked up. `P1$` is the path, empty when not found. `File not found`
+     exit 1, `Required parameter missing` exit 2. `WHERE.CBI` 3160 bytes. Build 884 ms, the new
+     baseline. `tests/WHERE.IN` new; `WHERE` ok 1.1 s. `TREE` golden gains `WHERE.CBI` in
+     `\DOS`; `TREE` ok 1.1 s, `CMDLETS` ok 1.7 s. Owed to the doc batch: the `HELP.TXT` topic
+     `WHERE` (`(Command line or Script)`), PLAN section 8 entry, section 11 7i4 no longer put
+     off. Steps since the full suite: 2.
    - To do, commands the user listed (2026-10-17). None is in PLAN section 11 yet; each needs a
      step and a talk with the user first.
      - Search and text: `FIND` (text in files), `SORT`, `GREP` (the feature set is to be talked
