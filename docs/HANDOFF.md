@@ -22,9 +22,8 @@
     ROM, `TEST.ROM` and every COM and CBI are byte-identical to the build before the move.
     UXCBASIC suite, run on the user's word: 175 tests, 0 failed, 45.7 s, the longest
     `ONCASE` 0.8 s.
-  - Open before `git init`: `dump.bin` (565 KB) in the root is not in `.gitignore`; the user
-    has not said whether to ignore or delete it. `tools/64tass` ships a GPL-2 exe, so a public
-    repo must name where its source is.
+  - `dump.bin` is gone from the root. `tools/64tass/SOURCE.md` names where the source of the
+    GPL-2 exe (V1.60.3243) is.
   - Every script finds its paths from its own location, so renaming the base folder breaks no
     build or test. The `.LST` files hold absolute paths; they are ignored and rebuilt.
 - pyuxc leaves out unused global variables (UXCBASIC HANDOFF, S3).
