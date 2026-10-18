@@ -6,6 +6,7 @@ ASK.COM             708
 BREAK.COM           967
 BRKKID.COM          311
 CHILD.COM           174
+CLOCK.COM          1460
 CMDSHELL.COM      19179
 CONSLIB.COM         586
 CWD.COM            2406
@@ -27,7 +28,7 @@ SLOTKID.COM        1150
 STRLIB.COM         1981
 TARGET.COM         1671
 WRITE.COM          4798
-    26 File(s)
+    27 File(s)
 >>DIR C:\DOCS\
 .                 <DIR>
 ..                <DIR>

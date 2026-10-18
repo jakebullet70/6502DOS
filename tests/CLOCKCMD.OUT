@@ -1,0 +1,63 @@
+UXDOS16 V0.1.0
+For the Commander X16
+>>RUN CMDSHELL.COM
+C>PATH$ = "C:\DOS"
+C>DATE 2026-10-18
+C>DATE
+Sun 2026-10-18
+C>DATE 2024-2-29
+C>DATE
+Thu 2024-02-29
+C>DATE 2023-02-29
+Invalid date
+C>DATE 2026-10
+Invalid date
+C>DATE 2026-10-18-1
+Invalid date
+C>DATE 2026/10/18
+Invalid date
+C>DATE 2026--18
+Invalid date
+C>DATE 99999-1-1
+Invalid date
+C>PRINT "[" + P1$ + "]"
+[]
+C>DATE 2023-02-29 SILENT
+C>DATE
+Thu 2024-02-29
+C>DATE SILENT
+C>PRINT P1$ + " " + P2$ + " " + P3$ + " " + P4$ + " " + P5$
+2024-02-29 Thu 2024 2 29
+C>DATE 2026-10-18 SILENT
+C>PRINT P1$ + " " + P2$
+2026-10-18 Sun
+C>TIME 13:45
+C>TIME
+13:45:00
+C>TIME 9:05:30
+C>TIME 24:00
+Invalid time
+C>TIME 12
+Invalid time
+C>TIME 12:60
+Invalid time
+C>TIME 1:2:3:4
+Invalid time
+C>TIME 123:00
+Invalid time
+C>TIME 12:a0
+Invalid time
+C>PRINT "[" + P1$ + "]"
+[]
+C>TIME 25:00 SILENT
+C>TIME 9:05:30 SILENT
+C>PRINT P1$ + " " + P2$ + " " + P3$ + " " + P4$
+09:05:30 9 5 30
+C>UPTIME
+0 days 00:00:04
+C>UPTIME SILENT
+C>PRINT P1$ + " " + P2$ + " " + P3$
+5 0 00:00:05
+C>END
+
+>>
