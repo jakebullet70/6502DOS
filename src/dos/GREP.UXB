@@ -1,0 +1,309 @@
+'=============================================================================================
+' -- GREP [-i] [-n] [-v] [-c] pattern [file]
+' -- writes each line of file that matches pattern, or with no file each line of the input
+' -- on handle 0. For the command line, not for scripts.
+' -- The pattern matches anywhere in the line. ^ first in the pattern matches the start of the
+' -- line, and $ last matches its end. . matches any character. [abc] matches one of a, b and
+' -- c, [a-z] one of a to z, and [^abc] any other character. A ] first in the set is one of
+' -- its characters. * after any of these matches it 0 or more times. \ before a character
+' -- that is not a letter or a digit takes that character as it is: \. \* \[ \\. Any other
+' -- character matches itself, so C:\DOS matches C:\DOS.
+' -- -i takes the pattern and each line in capitals. -n writes the line number and a colon
+' -- before each line. -v writes the lines that do not match. -c writes only the number of
+' -- lines it would write. Switches may share one -: -in.
+' -- A CR, an LF, or a CR and an LF end a line. Ctrl+Z ends the text. A line over 512
+' -- characters is taken as two or more lines.
+' -- With no file, GREP ends when handle 0 has nothing to read.
+' -- Exit code 0 when a line is written or counted, 1 when none is. No pattern prints Required
+' -- parameter missing, a [ with no ] prints Invalid parameter, another switch prints Invalid
+' -- switch, and a third name prints Too many parameters. A file that does not open prints
+' -- its error message. Each gives exit code 2.
+' --
+' -- From a prompt:
+' --     GREP -n "^Line 0[1-3]" DOCS\LONG.TXT
+' --     LIST DOCS\LONG.TXT | GREP -c "x.*z"
+'=============================================================================================
+#INCLUDE "DOS.UXI"
+#INCLUDE "HEAP.UXI"
+CONST SLOT_P1 AS UBYTE = 0, SLOT_P9 AS UBYTE = 8
+CONST BUFFER_SIZE AS UWORD = 512, LINE_SIZE AS UWORD = 512
+CONST LF AS UBYTE = 10, CR AS UBYTE = 13, CTRL_Z AS UBYTE = 26
+
+DIM ARGUMENT AS STRING * 255, PATTERN AS STRING * 255, FILE_NAME AS STRING * 255
+DIM SLOT AS UBYTE, INDEX AS UBYTE, CODE AS UBYTE, HAVE_PATTERN AS UBYTE
+DIM IGNORE_CASE AS UBYTE, NUMBER_LINES AS UBYTE, INVERT AS UBYTE, COUNT_ONLY AS UBYTE
+DIM INPUT_FILE AS UWORD                            ' 0 is handle 0, the input with no file
+DIM BUFFER(BUFFER_SIZE) AS UBYTE, BUFFER_COUNT AS UWORD, BUFFER_INDEX AS UWORD
+DIM LINE_TEXT(LINE_SIZE) AS UBYTE, LINE_LENGTH AS UWORD
+DIM LINE_NUMBER AS ULONG, MATCH_COUNT AS ULONG
+' AFTER_CR is 1 after a CR, when an LF ends no line.
+DIM CHARACTER AS UBYTE, AFTER_CR AS UBYTE, DONE AS UBYTE
+
+' The compiled pattern. Atom n matches one character when the character is in one of the
+' ranges ATOM_FIRST(n) to ATOM_FIRST(n + 1) - 1, or in none of them when ATOM_NEGATE(n) is 1.
+' . is a negated atom with no range. ATOM_STAR(n) is 1 for an atom with *.
+DIM ATOM_FIRST(256) AS UBYTE, ATOM_NEGATE(256) AS UBYTE, ATOM_STAR(256) AS UBYTE
+DIM RANGE_LOW(256) AS UBYTE, RANGE_HIGH(256) AS UBYTE
+DIM ATOM_COUNT AS UBYTE, RANGE_COUNT AS UBYTE, ANCHOR_START AS UBYTE, ANCHOR_END AS UBYTE
+
+' The matcher. State n waits for atom n, and state ATOM_COUNT is a match. STATES holds two
+' lists of states, the current one and the next one, at CURRENT_START and NEXT_START.
+' MARK(n) is 1 while state n is in the next list. ACCEPTED is 1 when the current list holds
+' state ATOM_COUNT. TEXT_CHARACTER is the character the atoms test.
+DIM STATES(512) AS UBYTE, MARK(256) AS UBYTE
+DIM CURRENT_START AS UWORD, CURRENT_COUNT AS UWORD, NEXT_START AS UWORD, NEXT_COUNT AS UWORD
+DIM ACCEPTED AS UBYTE, TEXT_CHARACTER AS UBYTE
+
+SUB FAIL(MESSAGE AS STRING)
+  PRINT MESSAGE
+  END 2
+END SUB
+
+' The character at POSITION, from 1, of PATTERN.
+FUNCT PATTERN_AT(POSITION AS UWORD) AS UBYTE
+  RETURN ContentsAt(@PATTERN + 1 + POSITION)
+END FUNCT
+
+FUNCT IS_ALPHANUMERIC(CODE AS UBYTE) AS UBYTE
+  IF CODE >= 48 AND CODE <= 57 THEN RETURN 1
+  IF CODE >= 65 AND CODE <= 90 THEN RETURN 1
+  IF CODE >= 97 AND CODE <= 122 THEN RETURN 1
+  RETURN 0
+END FUNCT
+
+SUB ADD_RANGE(LOW AS UBYTE, HIGH AS UBYTE)
+  RANGE_LOW(RANGE_COUNT) = LOW
+  RANGE_HIGH(RANGE_COUNT) = HIGH
+  RANGE_COUNT = RANGE_COUNT + 1
+END SUB
+
+' Compiles PATTERN into the atoms.
+SUB COMPILE_PATTERN()
+  DIM POSITION AS UWORD, PATTERN_LENGTH AS UWORD, FIRST_IN_SET AS UBYTE
+  PATTERN_LENGTH = LEN(PATTERN)
+  POSITION = 1
+  IF PATTERN_AT(1) = ASC("^") THEN
+    ANCHOR_START = 1
+    POSITION = 2
+  END IF
+  DO WHILE POSITION <= PATTERN_LENGTH
+    CODE = PATTERN_AT(POSITION)
+    POSITION = POSITION + 1
+    IF CODE = ASC("$") AND POSITION > PATTERN_LENGTH THEN
+      ANCHOR_END = 1
+      EXIT DO
+    END IF
+    IF CODE = ASC("*") AND ATOM_COUNT > 0 THEN
+      ATOM_STAR(ATOM_COUNT - 1) = 1
+      CONTINUE
+    END IF
+    ATOM_FIRST(ATOM_COUNT) = RANGE_COUNT
+    IF CODE = ASC(".") THEN
+      ATOM_NEGATE(ATOM_COUNT) = 1
+    ELSEIF CODE = ASC("[") THEN
+      IF POSITION <= PATTERN_LENGTH AND PATTERN_AT(POSITION) = ASC("^") THEN
+        ATOM_NEGATE(ATOM_COUNT) = 1
+        POSITION = POSITION + 1
+      END IF
+      FIRST_IN_SET = 1
+      DO
+        IF POSITION > PATTERN_LENGTH THEN FAIL("Invalid parameter")
+        CODE = PATTERN_AT(POSITION)
+        POSITION = POSITION + 1
+        IF CODE = ASC("]") AND FIRST_IN_SET = 0 THEN EXIT DO
+        FIRST_IN_SET = 0
+        ' A - before the ] is one of the characters.
+        IF POSITION < PATTERN_LENGTH AND PATTERN_AT(POSITION) = ASC("-") AND PATTERN_AT(POSITION + 1) <> ASC("]") THEN
+          ADD_RANGE(CODE, PATTERN_AT(POSITION + 1))
+          POSITION = POSITION + 2
+        ELSE
+          ADD_RANGE(CODE, CODE)
+        END IF
+      LOOP
+    ELSE
+      IF CODE = 92 AND POSITION <= PATTERN_LENGTH THEN
+        IF IS_ALPHANUMERIC(PATTERN_AT(POSITION)) = 0 THEN
+          CODE = PATTERN_AT(POSITION)
+          POSITION = POSITION + 1
+        END IF
+      END IF
+      ADD_RANGE(CODE, CODE)
+    END IF
+    ATOM_COUNT = ATOM_COUNT + 1
+  LOOP
+  ATOM_FIRST(ATOM_COUNT) = RANGE_COUNT
+END SUB
+
+' Whether atom ATOM matches TEXT_CHARACTER.
+FUNCT ATOM_MATCHES(ATOM AS UBYTE) AS UBYTE
+  DIM RANGE AS UBYTE
+  RANGE = ATOM_FIRST(ATOM)
+  DO WHILE RANGE < ATOM_FIRST(ATOM + 1)
+    IF TEXT_CHARACTER >= RANGE_LOW(RANGE) AND TEXT_CHARACTER <= RANGE_HIGH(RANGE) THEN RETURN ATOM_NEGATE(ATOM) XOR 1
+    RANGE = RANGE + 1
+  LOOP
+  RETURN ATOM_NEGATE(ATOM)
+END FUNCT
+
+' Puts STATE in the next list, with each state after it that a run of atoms with * can skip
+' to.
+SUB ADD_STATE(STATE AS UBYTE)
+  DO
+    IF MARK(STATE) THEN RETURN
+    MARK(STATE) = 1
+    STATES(NEXT_START + NEXT_COUNT) = STATE
+    NEXT_COUNT = NEXT_COUNT + 1
+    IF STATE = ATOM_COUNT THEN RETURN
+    IF ATOM_STAR(STATE) = 0 THEN RETURN
+    STATE = STATE + 1
+  LOOP
+END SUB
+
+' Makes the next list the current one, and empties the next one.
+SUB END_STEP()
+  DIM ENTRY AS UWORD, STATE AS UBYTE, OLD_START AS UWORD
+  ACCEPTED = 0
+  ENTRY = NEXT_START
+  DO WHILE ENTRY < NEXT_START + NEXT_COUNT
+    STATE = STATES(ENTRY)
+    MARK(STATE) = 0
+    IF STATE = ATOM_COUNT THEN ACCEPTED = 1
+    ENTRY = ENTRY + 1
+  LOOP
+  OLD_START = CURRENT_START
+  CURRENT_START = NEXT_START
+  NEXT_START = OLD_START
+  CURRENT_COUNT = NEXT_COUNT
+  NEXT_COUNT = 0
+END SUB
+
+' Whether the line in LINE_TEXT matches the pattern.
+FUNCT MATCH_LINE() AS UBYTE
+  DIM POSITION AS UWORD, ENTRY AS UWORD, STATE AS UBYTE
+  ADD_STATE(0)
+  END_STEP()
+  POSITION = 0
+  DO WHILE POSITION < LINE_LENGTH
+    IF ACCEPTED = 1 AND ANCHOR_END = 0 THEN RETURN 1
+    IF CURRENT_COUNT = 0 THEN RETURN 0
+    TEXT_CHARACTER = LINE_TEXT(POSITION)
+    IF IGNORE_CASE = 1 AND TEXT_CHARACTER >= 97 AND TEXT_CHARACTER <= 122 THEN TEXT_CHARACTER = TEXT_CHARACTER - 32
+    ENTRY = CURRENT_START
+    DO WHILE ENTRY < CURRENT_START + CURRENT_COUNT
+      STATE = STATES(ENTRY)
+      IF STATE < ATOM_COUNT THEN
+        IF ATOM_MATCHES(STATE) THEN
+          IF ATOM_STAR(STATE) THEN
+            ADD_STATE(STATE)
+          ELSE
+            ADD_STATE(STATE + 1)
+          END IF
+        END IF
+      END IF
+      ENTRY = ENTRY + 1
+    LOOP
+    IF ANCHOR_START = 0 THEN ADD_STATE(0)
+    END_STEP()
+    POSITION = POSITION + 1
+  LOOP
+  RETURN ACCEPTED
+END FUNCT
+
+' Writes or counts the line in LINE_TEXT when it is chosen, and empties LINE_TEXT.
+SUB END_LINE()
+  LINE_NUMBER = LINE_NUMBER + 1
+  IF (MATCH_LINE() XOR INVERT) = 1 THEN
+    MATCH_COUNT = MATCH_COUNT + 1
+    IF COUNT_ONLY = 0 THEN
+      IF NUMBER_LINES = 1 THEN PRINT MID$(STR$(LINE_NUMBER), 2); ":";
+      IF LINE_LENGTH > 0 THEN WRITE 1, @LINE_TEXT, LINE_LENGTH
+      PRINT
+    END IF
+  END IF
+  LINE_LENGTH = 0
+END SUB
+
+' ---- the arguments ----
+SLOT = SLOT_P1
+DO WHILE SLOT <= SLOT_P9
+  ARGUMENT = HEAP.SYS_STRINGS_GET(SLOT)
+  SLOT = SLOT + 1
+  IF ARGUMENT = "" THEN CONTINUE
+  IF ASC(ARGUMENT) = ASC("-") THEN
+    IF LEN(ARGUMENT) = 1 THEN FAIL("Invalid switch")
+    FOR INDEX = 2 TO LEN(ARGUMENT)
+      CODE = ASC(MID$(ARGUMENT, INDEX)) OR $20
+      IF CODE = ASC("i") THEN
+        IGNORE_CASE = 1
+      ELSEIF CODE = ASC("n") THEN
+        NUMBER_LINES = 1
+      ELSEIF CODE = ASC("v") THEN
+        INVERT = 1
+      ELSEIF CODE = ASC("c") THEN
+        COUNT_ONLY = 1
+      ELSE
+        FAIL("Invalid switch")
+      END IF
+    NEXT
+  ELSEIF HAVE_PATTERN = 0 THEN
+    PATTERN = ARGUMENT
+    HAVE_PATTERN = 1
+  ELSEIF FILE_NAME = "" THEN
+    FILE_NAME = ARGUMENT
+  ELSE
+    FAIL("Too many parameters")
+  END IF
+LOOP
+IF HAVE_PATTERN = 0 THEN FAIL("Required parameter missing")
+
+' ---- the pattern ----
+IF IGNORE_CASE = 1 THEN
+  FOR INDEX = 1 TO LEN(PATTERN)
+    CODE = PATTERN_AT(INDEX)
+    IF CODE >= 97 AND CODE <= 122 THEN ContentsAt(@PATTERN + 1 + INDEX) = CODE - 32
+  NEXT
+END IF
+COMPILE_PATTERN()
+CURRENT_START = 0
+NEXT_START = 256
+
+' ---- the input ----
+IF FILE_NAME <> "" THEN
+  INPUT_FILE = DOS.OPEN_FILE(FILE_NAME, DOS.ACCESS_READ)
+  IF INPUT_FILE = NOFILE THEN FAIL(DOS.ERRMSG(DOS.ERROR))
+END IF
+
+' ---- the lines ----
+DO WHILE DONE = 0
+  ' A read of CON waits for keys, so CON with no key waiting is the end of the input.
+  IF DOS.IOCTL(INPUT_FILE, DOS.IOCTL_IN_STATUS) = 0 THEN EXIT DO
+  BUFFER_COUNT = DOS.READ_FILE(INPUT_FILE, @BUFFER, BUFFER_SIZE)
+  IF BUFFER_COUNT = 0 THEN EXIT DO
+  BUFFER_INDEX = 0
+  DO WHILE BUFFER_INDEX < BUFFER_COUNT
+    CHARACTER = BUFFER(BUFFER_INDEX)
+    BUFFER_INDEX = BUFFER_INDEX + 1
+    IF CHARACTER = CTRL_Z THEN
+      DONE = 1
+      EXIT DO
+    END IF
+    IF CHARACTER = LF AND AFTER_CR = 1 THEN
+      AFTER_CR = 0
+      CONTINUE
+    END IF
+    AFTER_CR = 0
+    IF CHARACTER = CR THEN AFTER_CR = 1
+    IF CHARACTER = CR OR CHARACTER = LF THEN
+      END_LINE()
+      CONTINUE
+    END IF
+    IF LINE_LENGTH = LINE_SIZE THEN END_LINE()
+    LINE_TEXT(LINE_LENGTH) = CHARACTER
+    LINE_LENGTH = LINE_LENGTH + 1
+  LOOP
+LOOP
+IF LINE_LENGTH > 0 THEN END_LINE()
+IF INPUT_FILE <> 0 THEN DOS.CLOSE_FILE(INPUT_FILE)
+IF COUNT_ONLY = 1 THEN PRINT MID$(STR$(MATCH_COUNT), 2)
+IF MATCH_COUNT = 0 THEN END 1
+END 0

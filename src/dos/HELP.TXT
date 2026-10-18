@@ -2,7 +2,8 @@
 HELP [topic]
   Prints the help on topic. With no topic it lists the topics.
   HELP DISKFREE
-  DISKFREE, DISKINFO, DATE, TIME and UPTIME work at the prompt and in a script.
+  DISKFREE, DISKINFO, DATE, TIME, UPTIME and WHERE work at the prompt and in a
+  script.
   EXIST is for scripts and prints nothing.
   Each puts its result in P1$ for a script to test.
   SILENT prints nothing, not even an error. An error empties P1$.
@@ -56,6 +57,15 @@ UPTIME [SILENT]                 (Command line or Script)
   At the prompt: UPTIME
   In a script:   UPTIME SILENT
                  PRINT "Up " + P1$ + " seconds"
+:WHERE
+WHERE name [SILENT]             (Command line or Script)
+  Tells the path of the program the shell runs for name.
+  Prints a path such as C:\DOS\HEAD.COM.
+  A name with no extension is looked for as .CBIN, then .COM, then .CMD.
+  Sets P1$ to the path, or to an empty string when nothing is found.
+  At the prompt: WHERE HEAD
+  In a script:   WHERE HEAD SILENT
+                 IF P1$ = "" PRINT "No HEAD"
 :CHDIR
 CHDIR name   or   CD name       (Command line or Script)
   Makes directory name the current directory.
@@ -140,3 +150,13 @@ TAIL [-n count] [file]          (Command line only)
   count is 10 when left out.
   TAIL -n 20 DOCS\LONG.TXT
   LIST DOCS\LONG.TXT | TAIL
+:GREP
+GREP [-i] [-n] [-v] [-c] pattern [file] (Command line only)
+  Writes each line of file, or of the input, that matches pattern.
+  ^ is the start of the line, $ its end, and . any character.
+  [abc] is one of a, b and c, [a-z] one of a to z, and [^abc] any other.
+  * after one of these matches it 0 or more times. \. matches a dot.
+  -i ignores case. -n writes the line numbers.
+  -v writes the lines that do not match. -c writes only the count.
+  GREP -n "^Line 0[1-3]" DOCS\LONG.TXT
+  LIST DOCS\LONG.TXT | GREP -c "x.*z"

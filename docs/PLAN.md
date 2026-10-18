@@ -912,6 +912,41 @@ Short names:
   - It reads back only as far as the lines it writes, so it does not see a Ctrl+Z before them.
   - A pipe and `FROM` give handle 0 a file, so `TAIL` seeks on it. A device stays at 0, so
     `TAIL` alone at the prompt prints nothing.
+- `GREP [-i] [-n] [-v] [-c] pattern [file]` is a DOS utility, `GREP.COM`, for the command
+  line. It writes each line of `file`, or with no file of the input on handle 0, that
+  matches `pattern`.
+  - The pattern matches anywhere in the line. `^` first matches the start of the line, and
+    `$` last matches its end. `.` matches any character.
+  - `[abc]` matches one of `a`, `b` and `c`, `[a-z]` one of `a` to `z`, and `[^abc]` any
+    other character. A `]` first in the set is one of its characters.
+  - `*` after any of these matches it 0 or more times. A `*` first in the pattern is a `*`.
+  - `\` before a character that is not a letter or a digit takes that character as it is:
+    `\.`, `\*`, `\[`, `\\`. Any other character matches itself, so `C:\DOS` matches
+    `C:\DOS`.
+  - `-i` takes the pattern and each line in capitals. `-n` writes the line number and a
+    colon before each line. `-v` writes the lines that do not match. `-c` writes only the
+    number of lines it would write. Switches may share one `-`: `-in`.
+  - CR, LF and CR LF end a line. Ctrl+Z ends the text. A line over 512 characters is taken
+    as two or more lines.
+  - Each line is matched in one pass, with no backtracking.
+  - With no file, `GREP` ends when handle 0 has nothing to read.
+  - The exit code is 0 when a line is written or counted, and 1 when none is. No pattern
+    prints `Required parameter missing`, a `[` with no `]` prints `Invalid parameter`,
+    another switch prints `Invalid switch`, and a third name prints `Too many parameters`.
+    A file that does not open prints its error message. Each gives exit code 2.
+- `WHERE name [SILENT]` prints the path of the program the shell runs for `name`:
+  `C:\DOS\HEAD.COM`. It is for the command line and scripts.
+  - The look-up is the shell's. A name with an extension is looked for as typed, any other
+    as `NAME.CBIN`, then `NAME.COM`, then `NAME.CMD`. A name with a directory is looked for
+    there only, any other in the current directory, then in each directory of `PATH$`.
+  - Only the first match prints. A match in the current directory prints after the drive
+    and the current directory.
+  - Aliases and the shell's statements are not looked up. A name with `*` or `?` names
+    nothing.
+  - It sets `P1$` to the path, and to an empty string when nothing is found. `SILENT`, in
+    capitals, prints nothing.
+  - A name not found prints `File not found` and gives exit code 1. No name prints
+    `Required parameter missing` and gives exit code 2. The exit code is 0 otherwise.
 - `MEM` shows the free banks. It waits for `bank_alloc` (section 11, step 10).
 - `EXIST name` is for scripts. It tells whether a file or a directory `name` exists, and prints
   nothing.
@@ -1108,9 +1143,9 @@ Each step boots and shows something, and each has a test.
    7g. `TO`, `APPEND`, `FROM`, and the pipe.
    7h. `LOCATE`, `BEEP`, `WAIT`, `PAUSE`, `COLOR`.
    7i. The commandlets of section 8, one a part: 7i1 `EXIST`, 7i2 `DISKFREE`, 7i3 `DISKINFO`,
-       7i4 `WHERE`, 7i5 `HELP`, 7i6 `DATE`, `TIME` and `UPTIME` on the clock calls. 7i4 is
-       put off. `MEM` comes with step 10. The DOS utilities `VIEW`, `TREE`, `MORE`, `HEAD`
-       and `TAIL` follow, one a part.
+       7i4 `WHERE`, 7i5 `HELP`, 7i6 `DATE`, `TIME` and `UPTIME` on the clock calls. `MEM`
+       comes with step 10. The DOS utilities `VIEW`, `TREE`, `MORE`, `HEAD`, `TAIL` and
+       `GREP` follow, one a part.
 8. `SYSINIT.COM` with `CONFIG.SYS` and `DEVICE=`. Until then the ROM runs `C:\CMDSHELL.COM`
    itself (section 8).
 9. Layer 1 moves to UXCBASIC, one part at a time, as the compiler features land. The parts that

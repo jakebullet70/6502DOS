@@ -924,7 +924,7 @@
 - Build after 7c: 0.75 s with the shell compile, the new baseline.
 - Tests after 7c, one at a time: `SHFILES` ok 0.7 s, `SHELL` 0.5, `FILES` 0.4, `DIRS` 0.8,
   `DISK` 0.4.
-- Steps since the last full suite: 2. It ran after the doc batch for `TREE` to `TAIL`,
+- Steps since the last full suite: 4. It ran after the doc batch for `TREE` to `TAIL`,
   2026-10-18: 43 tests, 1 failed (`TREE`, below), 27.4 s, the longest `CMDLETS` 1.7 s.
 - UXCBASIC: 174 tests, 0 failed, 43 s. `compare.py`: 566 MATCH, 5 RESULT, 31 NO GOLDEN of 602,
   1.7 s. The RESULTs are `STRLR`, `STRNS`, `EXERRCONSTSTR`, and the two below, all expected:
@@ -1833,10 +1833,27 @@
      `\DOS`; `TREE` ok 1.1 s, `CMDLETS` ok 1.7 s. Owed to the doc batch: the `HELP.TXT` topic
      `WHERE` (`(Command line or Script)`), PLAN section 8 entry, section 11 7i4 no longer put
      off. Steps since the full suite: 2.
+   - `GREP` done 2026-10-18: `src/dos/GREP.UXB`, `GREP [-i] [-n] [-v] [-c] pattern [file]`,
+     for the command line. The user's choices: a small regex (`^` `$` `.` `*` `[a-z]` `[^...]`),
+     the four switches, one file or handle 0. `\` before a letter or a digit is a plain `\`,
+     so `C:\DOS` matches itself. The pattern compiles to atoms, each a list of ranges; the
+     matcher steps a list of states over the line, with no backtracking. A line over 512
+     characters is taken as two or more lines. Exit code 0 when a line is written or counted,
+     1 when none is, 2 on an error. Trap: a name part is 16 characters at most (`NAME TOO
+     LONG`). `GREP.COM` 5046 bytes. Build 1206 ms, the new baseline. `tests/GREP.IN` new;
+     `GREP` ok 1.6 s. `TREE` golden gains `GREP.COM`; `TREE` ok 1.1 s. Owed to the doc
+     batch: the `HELP.TXT` topic `GREP` (`(Command line)`), PLAN sections 8 and 11. Steps
+     since the full suite: 3.
+   - Doc batch done 2026-10-18: `HELP.TXT` topics `WHERE` `(Command line or Script)`, after
+     `UPTIME`, and `GREP` `(Command line only)`, after `TAIL`; the `HELP` topic names `WHERE`
+     with the commandlets that work at the prompt and in a script. Every line is 80 at most.
+     PLAN section 8 entries for `GREP` and `WHERE` after `TAIL`; section 11 step 7i: 7i4 is no
+     longer put off, and `GREP` follows `TAIL`. No docs are owed. Build 642 ms, the new
+     baseline. `CMDLETS` failed on the `HELP` list (gains `WHERE` and `GREP`), as expected;
+     updated, `CMDLETS` ok 1.7 s. Steps since the full suite: 4.
    - To do, commands the user listed (2026-10-17). None is in PLAN section 11 yet; each needs a
      step and a talk with the user first.
-     - Search and text: `FIND` (text in files), `SORT`, `GREP` (the feature set is to be talked
-       over with the user), `HEAD` (first n lines), `TAIL` (last n lines), `WC` (line, word
+     - Search and text: `FIND` (text in files), `SORT`, `GREP` (done), `HEAD` (first n lines), `TAIL` (last n lines), `WC` (line, word
        and byte counts). `FC` (text compare) and `COMP` (binary compare) are for version 2.0.
      - Files: `XCOPY` (directory trees), `MOVE`, `MORE` (paged display), `ATTRIB`, `TREE`. The
        shell already has `COPY`, `RENAME` or `REN`, and `DELETE` or `DEL`.
