@@ -1,0 +1,26 @@
+UX6502BASIC V0.1 - 48127 BYTES FREE
+
+OK
+a$="Hello, World"
+
+OK
+print a$, len(a$)
+Hello, World   12
+
+OK
+print left$(a$,5); "|"; right$(a$,5); "|"; mid$(a$,8,3)
+Hello|World|Wor
+
+OK
+print asc("A"), chr$(66), str$(42), val("3.5")+1
+ 65           B              42            4.5
+
+OK
+b$=a$+"!": print b$
+Hello, World!
+
+OK
+print "abc"<"abd", "b">"a"
+-1            -1
+
+OK

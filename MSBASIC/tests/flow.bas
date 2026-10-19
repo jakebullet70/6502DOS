@@ -1,0 +1,12 @@
+10 for i=1 to 3: print i;: next
+20 print
+30 for i=10 to 1 step -4: print i;: next i
+40 print
+50 gosub 100
+60 if 2>1 then print "then"
+70 if 1>2 then print "never"
+80 on 2 goto 200,300
+100 print "sub": return
+200 print "200": end
+300 print "300": end
+run

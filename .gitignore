@@ -14,5 +14,11 @@ UXCBASIC/tpl/UXC.TPL.BL
 # Written by UXCBASIC/help/MKHELP.PY.
 UXCBASIC/help/HELP-TXT/
 
+# MSBASIC: the mist64/msbasic clone with the ROM dumps, and the X16 manual copies, which stay
+# local and are never committed.
+MSBASIC/ref/
+MSBASIC/docs/x16/
+MSBASIC/docs/x16-basic-compare.md
+
 # Claude Code per-machine settings.
 .claude/settings.local.json

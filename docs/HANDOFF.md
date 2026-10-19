@@ -2,6 +2,14 @@
 
 ## State
 
+- MSBASIC moved in (2026-10-19). `C:\dev\BASIC-M6502` was copied at its commit 52ae025, not
+  changed; the user retires it.
+  - `MSBASIC/` holds the tracked files and its own `CLAUDE.md`. The old repo's memory notes
+    are folded into that `CLAUDE.md`. Its `.gitignore` is gone; the root one ignores
+    `MSBASIC/ref/`, `MSBASIC/docs/x16/` and `MSBASIC/docs/x16-basic-compare.md`. Those are
+    copied in and stay local.
+  - `make all` in `MSBASIC/`: 1099 ms, the baseline. `make verify` matches. `make test` not run.
+  - Not committed.
 - UXCBASIC moved in (2026-10-17). `C:\dev\UXCBASIC` was copied, not changed; the user
   retires it, then puts this folder in git.
   - `UXCBASIC/` holds pyuxc (`pyuxc/`), the templates (`tpl/`), the help (`help/`), the

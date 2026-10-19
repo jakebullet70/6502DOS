@@ -12,6 +12,10 @@ its tests. The language reference is `UXCBASIC/help/UXC-HELP.md`; grep it for a 
 long. `UXCBASIC/docs/UXCBASIC.PLAN.md` is the compiler's to-do list, where the features in PLAN
 §12 must land. `attic/gpc` holds the frozen GPC compiler; nothing uses it.
 
+MSBASIC, Microsoft BASIC for 6502 in ca65 (a fork of mist64/msbasic), lives in `MSBASIC/`. Its
+`CLAUDE.md` covers its build, tests and rules. It builds with its own `Makefile`, apart from the
+ROM.
+
 The memory notes of the old `C:\dev\UXCBASIC` folder do not load in this folder. The rules from
 them that apply here are below.
 

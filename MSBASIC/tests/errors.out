@@ -1,0 +1,40 @@
+UX6502BASIC V0.1 - 48127 BYTES FREE
+
+OK
+print 1/0
+
+?DIVISION BY ZERO ERROR
+OK
+print zz
+ 0
+
+OK
+10 goto 99
+run
+
+?UNDEF'D STATEMENT ERROR IN  10
+OK
+next
+
+?NEXT WITHOUT FOR ERROR
+OK
+return
+
+?RETURN WITHOUT GOSUB ERROR
+OK
+print a(11)
+
+?BAD SUBSCRIPT ERROR
+OK
+print "x"+1
+
+?TYPE MISMATCH ERROR
+OK
+dim q(5): dim q(5)
+
+?REDIM'D ARRAY ERROR
+OK
+print "still ok"
+still ok
+
+OK

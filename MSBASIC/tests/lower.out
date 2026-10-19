@@ -1,0 +1,16 @@
+UX6502BASIC V0.1 - 48127 BYTES FREE
+
+OK
+10 count=5: print count; COUNT
+20 For J=1 To 2: Print "Mixed";J: Next
+run
+ 5  5
+Mixed 1
+Mixed 2
+
+OK
+list
+
+ 10 COUNT=5: PRINT COUNT; COUNT
+ 20 FOR J=1 TO 2: PRINT "Mixed";J: NEXT
+OK
