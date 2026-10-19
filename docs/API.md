@@ -31,7 +31,7 @@ Conventions:
 | `ioctl` | 10 | `$035E` | 44h | `X` handle<br>`A` subfunction | `r0` data | 1, 6 | yes |
 | `dup` | 11 | `$0361` | 45h | `X` handle | `X` new handle | 4, 6 | yes |
 | `dup2` | 12 | `$0364` | 46h | `X` handle<br>`Y` second handle | none | 6 | yes |
-| `findfirst` | 13 | `$0367` | 4Eh | `r0` pattern<br>`A` attributes to include: $02 hidden, $04 system, $08 label, $10 directory<br>`r1` find buffer, 63 bytes | `r1` find buffer, filled | 2, 3, 15, 21, 30 | yes |
+| `findfirst` | 13 | `$0367` | 4Eh | `r0` pattern<br>`A` attributes to include: $02 hidden, $04 system, $10 directory<br>`r1` find buffer, 83 bytes | `r1` find buffer, filled | 2, 3, 15, 21, 30 | yes |
 | `findnext` | 14 | `$036A` | 4Fh | `r1` find buffer from findfirst | `r1` find buffer, filled | 18, 21, 30 | yes |
 | `mkdir` | 15 | `$036D` | 39h | `r0` path | none | 3, 5, 15, 21, 29, 30 | yes |
 | `str_alloc` | 16 | `$0370` | none | `A` length<br>`r0` descriptor address | `A` the heap's RAM bank<br>`r1` the length byte's address in that bank | 8, 9 | yes |
@@ -84,7 +84,7 @@ Conventions:
 - `ioctl`: The subfunctions are those of MS-DOS 2.0 function 44h. Only subfunction 6, input status, is written: r0 = $FF when a read would give a byte, else 0. A file gives 0 at or past its end. A device asks its driver: `CON` gives $FF when a key waits, `NUL` gives 0. Any other subfunction gives error 1.
 - `dup`: Gives the first closed handle to the file of a handle. Both handles share the position.
 - `dup2`: Makes a second handle refer to the file of the first, and closes the second first if it is open. Both handles share the position. A second handle equal to the first does nothing.
-- `findfirst`: Finds the first name that matches a pattern with `*` and `?`. A pattern that ends in a separator matches every name in that directory. Normal files always match; directories, hidden files, system files and the volume label match only when their attribute bit is set in A.
+- `findfirst`: Finds the first name that matches a pattern with `*` and `?`. `*` matches any run of characters, dots too, and `?` matches one character. A pattern that ends in `.` or `.*` also matches a name with no dot. A pattern that ends in a separator matches every name in that directory. The pattern is up to 32 characters. Normal files always match; directories, hidden files and system files match only when their attribute bit is set in A. The volume label never matches.
 - `findnext`: Finds the next name that matches the pattern of a find buffer.
 - `mkdir`: Makes a directory. A name that exists, or a full drive, gives error 5.
 - `str_alloc`: Takes a block of A bytes in the program's string heap and points the descriptor at r0 to its length byte. The text follows the length byte. A descriptor is 2 bytes in program RAM, or at $A000-$BFFF in the heap's bank. A full heap is compacted first. Compaction moves strings and rewrites their descriptors: read a descriptor again after any str_alloc or str_gc. The block of the descriptor's old string becomes free.
@@ -149,12 +149,12 @@ Conventions:
 
 | Offset | Size | Field |
 |---|---|---|
-| 0 | 21 | the search, for findnext |
-| 21 | 1 | attributes |
-| 22 | 2 | time |
-| 24 | 2 | date |
-| 26 | 4 | size |
-| 30 | 33 | name: a length byte, then up to 32 characters |
+| 0 | 41 | the search, for findnext |
+| 41 | 1 | attributes |
+| 42 | 2 | time |
+| 44 | 2 | date |
+| 46 | 4 | size |
+| 50 | 33 | name: a length byte, then up to 32 characters |
 
 ## Break modes
 

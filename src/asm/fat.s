@@ -26,7 +26,7 @@
 
 .export drives_init, drives_add, path_last, file_find, file_create, file_io, file_close
 .export file_copy, create_attr
-.export api_findfirst, api_findnext, api_getdrive, api_setdrive, api_chdir, api_getcwd
+.export api_getdrive, api_setdrive, api_chdir, api_getcwd
 .export api_seek, api_delete, api_rename, api_mkdir, api_rmdir, api_diskfree
 .export DPB, current_drive
 .exportzp fcb_name, cluster, dpb, file_size
@@ -34,21 +34,12 @@
 .importzp driver, io_ptr, io_left
 .import jsrfar, lib_seek, sector_lba
 
-; Directory entry fields
-DIR_ATTR      = 11
-DIR_CLUSTER_HIGH = 20
-DIR_TIME      = 22
-DIR_CLUSTER_LOW = 26
-DIR_FILE_SIZE = 28
-
-FIND_STATE    = 19              ; dpb to pos+1: the search state in a find buffer
-
 .segment "KERNELZP" : zeropage
 
-; Keep the order from dpb to entry_ptr: a find buffer holds dpb to pos+1, and an SFT entry
-; holds cluster to entry_ptr. Keep lba and ptr in order: entry_keep copies them.
+; Keep the order from cluster to entry_ptr: an SFT entry holds them. Keep lba and ptr in order:
+; entry_keep copies them.
 dpb:          .res 1            ; the DPB offset of the drive in use: drive * DPB_SIZE
-search_attr:  .res 1            ; the attributes dir_search takes, as findfirst's A
+search_attr:  .res 1            ; the attributes dir_search takes
 fcb_name:     .res 11           ; a name: 8 and 3 characters, padded with spaces; ? matches any
 cluster:      .res 4
 pos:          .res 4
@@ -1805,123 +1796,6 @@ api_seek:
 
 seek_base:
         .byte SFT_POS, SFT_FILE_SIZE
-
-api_findfirst:
-        pha
-        jsr path_walk
-        bcc @walked
-        plx                     ; keeps A, the error
-        rts
-@walked:
-        pla
-        sta search_attr
-        lda fcb_name
-        cmp #' '
-        bne @search
-        lda #'?'                ; no name: every name
-        jsr fcb_fill
-@search:
-        jsr dir_first
-        bcc find_found
-        cmp #ERR_NO_MORE_FILES
-        bne @done
-        lda #ERR_NOT_FOUND
-        sec
-@done:
-        rts
-
-api_findnext:
-        ldy #FIND_STATE - 1
-@state:
-        lda (r1),y
-        sta dpb,y
-        dey
-        bpl @state
-        jsr dir_step
-        bcs find_done
-        jsr dir_search
-        bcs find_done
-        ; fall through
-
-; find_found: fills the find buffer at r1 from the entry at ptr, with the search state.
-find_found:
-        ldy #FIND_STATE - 1
-@state:
-        lda dpb,y
-        sta (r1),y
-        dey
-        bpl @state
-        ldy #DIR_ATTR
-        lda (ptr),y
-        ldy #FIND_ATTR
-        sta (r1),y
-        ldy #DIR_TIME           ; the time and the date
-@time:
-        lda (ptr),y
-        sta (r1),y
-        iny
-        cpy #DIR_TIME + 4
-        bne @time
-        ldy #DIR_FILE_SIZE
-@size:
-        lda (ptr),y
-        dey
-        dey
-        sta (r1),y
-        iny
-        iny
-        iny
-        cpy #DIR_FILE_SIZE + 4
-        bne @size
-        ldx #FIND_NAME          ; X: the index of the last character put
-        ldy #0
-@name:
-        lda (ptr),y
-        cmp #' '
-        beq @extension
-        jsr find_put
-        iny
-        cpy #8
-        bne @name
-@extension:
-        ldy #8
-        lda (ptr),y
-        cmp #' '
-        beq @length
-        lda #'.'
-        jsr find_put
-@extension_char:
-        lda (ptr),y
-        cmp #' '
-        beq @length
-        jsr find_put
-        iny
-        cpy #11
-        bne @extension_char
-@length:
-        txa
-        sec
-        sbc #FIND_NAME
-        ldy #FIND_NAME
-        sta (r1),y
-        clc
-find_done:
-        rts
-
-; find_put: puts A at r1 + X + 1 and moves X on.
-find_put:
-        inx
-        phy
-        pha
-        txa
-        tay
-        pla
-        sta (r1),y
-        ply
-        rts
-        .assert DIR_TIME = FIND_TIME && FIND_DATE = FIND_TIME + 2, error, "find_found copies time and date"
-        .assert FIND_SIZE = DIR_FILE_SIZE - 2, error, "find_found copies the size 2 bytes down"
-        .assert FIND_STATE <= FIND_ATTR, error, "the search state overlaps the result"
 
 api_getdrive:
         lda current_drive

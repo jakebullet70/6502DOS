@@ -111,11 +111,13 @@ CALLS = [
          errors=[6],
          written=True),
     call(13, "findfirst", 0x4E, "Finds the first name that matches a pattern with `*` and `?`. "
-         "A pattern that ends in a separator matches every name in that directory. Normal files "
-         "always match; directories, hidden files, system files and the volume label match "
-         "only when their attribute bit is set in A.",
+         "`*` matches any run of characters, dots too, and `?` matches one character. A "
+         "pattern that ends in `.` or `.*` also matches a name with no dot. A pattern that "
+         "ends in a separator matches every name in that directory. The pattern is up to 32 "
+         "characters. Normal files always match; directories, hidden files and system files "
+         "match only when their attribute bit is set in A. The volume label never matches.",
          in_=[("r0", "pattern"), ("A", "attributes to include: $02 hidden, $04 system, "
-               "$08 label, $10 directory"), ("r1", "find buffer, 63 bytes")],
+               "$10 directory"), ("r1", "find buffer, 83 bytes")],
          out=[("r1", "find buffer, filled")],
          errors=[2, 3, 15, 21, 30],
          written=True),
@@ -367,13 +369,13 @@ UXI_ERROR_NAMES = {
     "NO_MORE_FILES": "NO_MORE",
 }
 
-# The find buffer of findfirst and findnext, laid out as MS-DOS 2.0's DTA up to the name:
+# The find buffer of findfirst and findnext, laid out as MS-DOS 2.0's DTA after the search:
 # (offset, size, name, field). The name becomes FIND_NAME in asm.
 FIND_BUFFER = [
-    (0, 21, None, "the search, for findnext"),
-    (21, 1, "ATTR", "attributes"),
-    (22, 2, "TIME", "time"),
-    (24, 2, "DATE", "date"),
-    (26, 4, "SIZE", "size"),
-    (30, 33, "NAME", "name: a length byte, then up to 32 characters"),
+    (0, 41, None, "the search, for findnext"),
+    (41, 1, "ATTR", "attributes"),
+    (42, 2, "TIME", "time"),
+    (44, 2, "DATE", "date"),
+    (46, 4, "SIZE", "size"),
+    (50, 33, "NAME", "name: a length byte, then up to 32 characters"),
 ]

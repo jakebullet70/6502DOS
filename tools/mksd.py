@@ -5,9 +5,11 @@
 
 The image has an MBR with one partition of type $0C at sector 2048. The partition holds a FAT32
 file system with 512-byte sectors, 32 reserved sectors and 2 FATs. Every file and folder in
-FOLDER goes in, with its 8.3 name in upper case; names that start with a dot are left out. Each
-FILE goes in the root directory too. Each file's clusters follow each other. The times are the files' modification times, or noon of
---date. Exit status 1 when a name is not 8.3 or the files do not fit.
+FOLDER goes in; names that start with a dot are left out. A name that is 8.3 goes in as its 8.3
+name in upper case. Any other name, up to 32 characters, goes in as a long name, as typed, with
+an 8.3 alias BASE~N.EXT. Each FILE goes in the root directory too. Each file's clusters follow
+each other. The times are the files' modification times, or noon of --date. Exit status 1 when
+a name is too long or holds a character a long name cannot, or the files do not fit.
 
 The defaults, 1 sector per cluster and 6016 clusters, make a 4 MB image, the size of the X16's
 standard card. UXDOS16 reads it, but other systems take it for FAT16: FAT32 needs 65525 clusters.
@@ -23,6 +25,10 @@ PARTITION_START = 2048
 RESERVED = 32
 FATS = 2
 NAME_CHARACTERS = set("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!#$%&'()-@^_`{}~")
+LONG_NAME_MAX = 32
+LONG_NAME_BANNED = set('\\/:*?"<>|')
+LONG_NAME_CHARACTERS = 13           # the characters of one long-name entry
+ATTR_LONG_NAME = 0x0F
 ATTR_DIR = 0x10
 ATTR_ARCHIVE = 0x20
 BAD_CLUSTER = 0x0FFFFFF7
@@ -40,10 +46,50 @@ def name83(name):
     return (base.ljust(8) + extension.ljust(3)).encode("ascii")
 
 
+def alias83(name, taken):
+    """Return an 11-byte 8.3 alias BASE~N.EXT of the long name name, not in taken."""
+    upper = name.upper()
+    base, dot, extension = upper.rpartition(".")
+    if not dot:
+        base, extension = upper, ""
+    base = "".join(c for c in base if c in NAME_CHARACTERS) or "_"
+    extension = "".join(c for c in extension if c in NAME_CHARACTERS)[:3]
+    for n in range(1, 1000000):
+        tail = "~%d" % n
+        short = (base[:8 - len(tail)] + tail).ljust(8) + extension.ljust(3)
+        if short.encode("ascii") not in taken:
+            return short.encode("ascii")
+    sys.exit("mksd: no alias for %s" % name)
+
+
+def checksum(short):
+    """Return the checksum of an 11-byte 8.3 name that its long-name entries hold."""
+    total = 0
+    for byte in short:
+        total = (((total & 1) << 7) + (total >> 1) + byte) & 0xFF
+    return total
+
+
+def long_entries(name, short):
+    """Return the long-name entries of name, before the entry of its 8.3 alias short."""
+    units = [ord(c) for c in name] + [0]
+    units += [0xFFFF] * (-len(units) % LONG_NAME_CHARACTERS)
+    count = len(units) // LONG_NAME_CHARACTERS
+    total = checksum(short)
+    entries = []
+    for n in range(count):
+        part = units[n * LONG_NAME_CHARACTERS:(n + 1) * LONG_NAME_CHARACTERS]
+        order = n + 1 | (0x40 if n == count - 1 else 0)
+        entries.append(struct.pack("<B5HBBB6HH2H", order, *part[:5], ATTR_LONG_NAME, 0, total,
+                                   *part[5:11], 0, *part[11:13]))
+    return b"".join(reversed(entries))
+
+
 class Node:
-    def __init__(self, path, name, is_dir):
+    def __init__(self, path, name, is_dir, long_name=None):
         self.path = path
         self.name = name
+        self.long_name = long_name
         self.is_dir = is_dir
         self.children = []
         self.size = 0 if is_dir else os.path.getsize(path)
@@ -55,20 +101,29 @@ class Node:
 def scan(path, name, extra=()):
     """Return the Node of the folder path, with the files in extra added to it."""
     node = Node(path, name, True)
-    names = []
     fulls = [os.path.join(path, entry) for entry in os.listdir(path) if not entry.startswith(".")]
-    for full in sorted(fulls + list(extra), key=lambda f: os.path.basename(f).upper()):
-        entry = os.path.basename(full)
-        short = name83(entry)
-        if short is None:
-            sys.exit("mksd: %s is not an 8.3 name" % full)
-        if short in names:
+    fulls = sorted(fulls + list(extra), key=lambda f: os.path.basename(f).upper())
+    entries = [os.path.basename(full) for full in fulls]
+    uppers = [entry.upper() for entry in entries]
+    taken = set(short for short in map(name83, entries) if short is not None)
+    for full, entry in zip(fulls, entries):
+        if uppers.count(entry.upper()) > 1:
             sys.exit("mksd: %s repeats a name" % full)
-        names.append(short)
+        short = name83(entry)
+        long_name = None
+        if short is None:
+            if len(entry) > LONG_NAME_MAX:
+                sys.exit("mksd: %s is longer than %d characters" % (full, LONG_NAME_MAX))
+            if set(entry) & LONG_NAME_BANNED or any(ord(c) < 32 or ord(c) > 255 for c in entry):
+                sys.exit("mksd: %s holds a character a long name cannot" % full)
+            short = alias83(entry, taken)
+            taken.add(short)
+            long_name = entry
         if os.path.isdir(full):
             child = scan(full, short)
+            child.long_name = long_name
         else:
-            child = Node(full, short, False)
+            child = Node(full, short, False, long_name)
         child.extra = full in extra
         node.children.append(child)
     return node
@@ -113,7 +168,9 @@ def make(folder, image, sectors_per_cluster=1, clusters=6016, date=None, extra=(
                 allocate(child, -(-child.size // cluster_bytes))
 
     def place(node, is_root, least=1):
-        entries = len(node.children) + (0 if is_root else 2)
+        entries = (0 if is_root else 2) + sum(
+            1 + (-(-(len(child.long_name) + 1) // LONG_NAME_CHARACTERS) if child.long_name else 0)
+            for child in node.children)
         allocate(node, max(least, -(-entries * 32 // cluster_bytes)))
         place_children(node, [child for child in node.children if not child.extra])
 
@@ -187,6 +244,8 @@ def make(folder, image, sectors_per_cluster=1, clusters=6016, date=None, extra=(
                     data += entry(b"..         ", ATTR_DIR, parent_first, 0, time, date_)
                 for child in node.children:
                     child_time, child_date = stamp(child)
+                    if child.long_name:
+                        data += long_entries(child.long_name, child.name)
                     data += entry(child.name, ATTR_DIR if child.is_dir else ATTR_ARCHIVE,
                                   child.first, child.size, child_time, child_date)
                 # A subdirectory's ".." names the root as cluster 0.

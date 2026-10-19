@@ -26,7 +26,7 @@ MONITOR_TEXT  = MONITOR_LINE + 2
 LINE_MAX      = 79              ; the prompt, then 78 characters
 DUMP_TEXT     = 55              ; the column of a dump line's characters
 DIR_COLUMNS   = 23              ; a DIR line: the name, then the size or <DIR> up to column 22
-MONITOR_FIND  = MONITOR_OUT + $40 ; DIR's find buffer, past DIR's line
+MONITOR_FIND  = MONITOR_OUT + $20 ; DIR's find buffer, past DIR's line
 TYPE_CHUNK    = 128             ; TYPE reads this many bytes to MONITOR_OUT at a time
 
 .segment "KERNELZP" : zeropage
@@ -321,6 +321,8 @@ dir:
         jsr put_text
         jsr print_line
         jmp monitor
+
+        .assert DIR_COLUMNS + 2 <= $20 && MONITOR_FIND + FIND_BUFFER_SIZE <= GATE_PAGE, error, "DIR's line and find buffer fit"
 
 ; find_buffer: points r1 at MONITOR_FIND. Keeps A.
 find_buffer:

@@ -2,7 +2,7 @@
 ;
 ; Ported from x16-rom, fat32/match.s, github.com/X16Community/x16-rom, master fbe32a6.
 ; Changed: the code is in segment B1CODE and the variables in FATBSS; fat32_regs.inc
-; replaces regs.inc.
+; replaces regs.inc; match_name takes Windows wildcards: '*' matches any run of characters.
 ;
 ; Original header:
 ;----------------------------------------------------------------------
@@ -46,6 +46,10 @@
 .segment "FATBSS"
 
 char_tmp:
+	.byte 0
+star_pattern:			; match_name: the pattern index after the last '*'
+	.byte 0
+star_name:			; match_name: the name index that '*' matched up to
 	.byte 0
 
 .segment "B1CODE"
@@ -265,52 +269,77 @@ cp437_to_iso8859_15_tab:
 ;-----------------------------------------------------------------------------
 ; match_name
 ;
-; Check if name matches
+; Check if name matches. '*' matches any run of characters, '.' too, and '?'
+; one character. A pattern that ends in '.' or '.*' also matches at the end
+; of a name with no dot. The pattern ends at 0 or '/'.
 ;
 ; In:   fat32_ptr   name
 ;       y           name offset
-; Out:  c           =1: matched
+; Out:  c           =1: matched; y at the end of the pattern
 ;-----------------------------------------------------------------------------
 match_name:
 	ldx #0
-@1:	lda (fat32_ptr), y
-	beq @match
-	cmp #'/'
-	beq @match
-	cmp #'?'
-	beq @char_match
+	stz star_pattern ; 0: no '*' yet
+@char:	lda (fat32_ptr), y
 	cmp #'*'
 	beq @asterisk
+	lda fat32_dirent + dirent::name, x
+	beq @name_end
+	lda (fat32_ptr), y
+	beq @retry
+	cmp #'/'
+	beq @retry
+	cmp #'?'
+	beq @char_match
 	jsr to_lower
 	sta char_tmp
 	lda fat32_dirent + dirent::name, x
 	jsr to_lower
 	cmp char_tmp
-	beq @char_match
-	bne @no
+	bne @retry
 @char_match:
 	inx
 	iny
-	bra @1
+	bra @char
 
-; '*' found: consume excess characters in input until '/' or end
 @asterisk:
 	iny
+	sty star_pattern
+	stx star_name
+	bra @char
+
+; Mismatch: the last '*' takes one more character
+@retry:	lda star_pattern
+	beq @no
+	tay
+	inc star_name
+	ldx star_name
+	bra @char
+
+@name_end:
 	lda (fat32_ptr), y
+	cmp #'.'
+	bne @end
+	ldx #0		; the name must have no dot
+@scan:	lda fat32_dirent + dirent::name, x
+	beq @dot
+	inx
+	cmp #'.'
+	bne @scan
+	bra @no
+@dot:	iny
+	lda (fat32_ptr), y
+	cmp #'*'
+	beq @dot
+@end:	cmp #'/'
 	beq @yes
-	cmp #'/'
-	bne @asterisk
-	bra @yes
-
-@match:	; Search string also at end?
-	lda fat32_dirent + dirent::name, x
-	bne @no
-
-@yes:
-	sec
-	rts
+	cmp #0
+	beq @yes
 @no:
 	clc
+	rts
+@yes:
+	sec
 	rts
 
 ;---------------------------------------------------------------

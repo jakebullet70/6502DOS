@@ -3,8 +3,9 @@
 ; Ported from x16-rom, fat32/fat32.s, github.com/X16Community/x16-rom, master fbe32a6.
 ; Changed: the code is in segment B1CODE and the variables in FATBSS; fat32_lib.inc and
 ; fat32_regs.inc replace lib.inc and regs.inc; the long branches are written out; krn_ptr1
-; and bank_save are imported at the top, so each use is zero page; fat32_cwd is exported. Left
-; out: the 65816 routines fat32_read_long and fat32_write_long, and their MVN trampoline.
+; and bank_save are imported at the top, so each use is zero page; fat32_cwd is exported;
+; fat32_tell_dir and fat32_seek_dir are added. Left out: the 65816 routines fat32_read_long and
+; fat32_write_long, and their MVN trampoline.
 ; fat32glue.s holds the routines and variables the library imports.
 ;
 ; Original header:
@@ -57,6 +58,7 @@
 .import fat32_dirent
 .import fat32_errno
 .import fat32_readonly
+.import fat32_dir_pos
 
 
 FLAG_IN_USE = 1<<0  ; Context in use
@@ -218,6 +220,8 @@ _fat32_bss_end:
 ; fat32_cwd: the volume's current directory, which fat32dos.s sets.
 fat32_cwd = cur_volume + fs::cwd_cluster
 .export fat32_cwd
+.export fat32_tell_dir
+.export fat32_seek_dir
 
 .segment "B1CODE"
 
@@ -4176,4 +4180,70 @@ fat32_set_time:
 	sta fat32_time_minutes
 	lda 7
 	sta fat32_time_seconds
+	rts
+
+;-----------------------------------------------------------------------------
+; fat32_tell_dir
+;
+; Put the position of the next directory entry in fat32_dir_pos: the cluster,
+; the sector in it, and the offset in sector_buffer, 7 bytes.
+;-----------------------------------------------------------------------------
+fat32_tell_dir:
+	set32 fat32_dir_pos, cur_context + context::cluster
+	lda cur_context + context::cluster_sector
+	sta fat32_dir_pos + 4
+	sec
+	lda fat32_bufptr
+	sbc #<sector_buffer
+	sta fat32_dir_pos + 5
+	lda fat32_bufptr + 1
+	sbc #>sector_buffer
+	sta fat32_dir_pos + 6
+	rts
+
+;-----------------------------------------------------------------------------
+; fat32_seek_dir
+;
+; Open a directory at the position fat32_tell_dir gave, in the current
+; context, which must be free.
+;
+; * c=0: failure; sets errno
+;-----------------------------------------------------------------------------
+fat32_seek_dir:
+	stz fat32_errno
+
+	; Check if context is free
+	lda cur_context + context::flags
+	bne @error
+
+	set32 cur_context + context::cluster, fat32_dir_pos
+	jsr calc_cluster_lba
+	lda fat32_dir_pos + 4
+	sta cur_context + context::cluster_sector
+	clc
+	adc cur_context + context::lba
+	sta cur_context + context::lba
+	bcc @1
+	inc cur_context + context::lba + 1
+	bne @1
+	inc cur_context + context::lba + 2
+	bne @1
+	inc cur_context + context::lba + 3
+@1:	jsr load_sector_buffer
+	bcc @error
+	clc
+	lda fat32_dir_pos + 5
+	adc #<sector_buffer
+	sta fat32_bufptr
+	lda fat32_dir_pos + 6
+	adc #>sector_buffer
+	sta fat32_bufptr + 1
+
+	; Set context as in-use
+	lda #FLAG_IN_USE
+	sta cur_context + context::flags
+	sec
+	rts
+
+@error:	clc
 	rts

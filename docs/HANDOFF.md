@@ -2211,7 +2211,7 @@
      - F3 split: F3a open for reading, read, seek, close, exec load; F3b findfirst and
        findnext (the find buffer grows, `match.s` needs Windows `*` rules: today `*` ends the
        part, so `A*.TXT` matches `ABC.DOC`).
-     - Done, F3a (2026-10-19), not committed. Build 756 ms, the new baseline:
+     - Done, F3a (2026-10-19), committed by the user as 7081af3 "Step 3". Build 756 ms:
        - New `src/asm/fat32dos.s` (bank 1): `lib_init` (`fat32_init`, `fat32_readonly` 1,
          `skip_mask` 0, `sector_lba` all $FF), `lib_open` (path at r0 in the caller's bank,
          read byte by byte with `path_char`; drive checks on fat.s's `DPB`; `\` to `/` into
@@ -2246,6 +2246,54 @@
          6; F3b is the 7th, so the full suite runs after it.
        - `lib_path` $A574, `lib_len` $A674, `lib_slash` $A675; `fat32_errno` $A792,
          `sector_lba` $A795. FATBSS $A100-$A798.
+     - Done, F3b (2026-10-19), not committed. Build 1.54 s (7 commandlet compiles), ROM only
+       about 0.9 s, the new baseline:
+       - findfirst and findnext on the library: `api_findfirst` and `api_findnext` live in
+         `fat32dos.s`, bank 1; the gate calls them there (api_table holds the bank). fat.s lost
+         its find code, `FIND_STATE` and the find-buffer order rule on its zero page (`dpb` to
+         `pos+1`): `fcb_name` and `free_next` may move now.
+       - Find buffer 63 to 83 bytes (`tools/api.py`): the search 0-40 (`FIND_PATTERN` 0, 33
+         bytes, the name part ended by 0 and zero-filled; `FIND_SEARCH` 33, findfirst's A;
+         `FIND_POS` 34, 7 bytes: cluster, sector in it, offset in `sector_buffer`), `FIND_ATTR`
+         41, `FIND_TIME` 42, `FIND_DATE` 44, `FIND_SIZE` 46, `FIND_NAME` 50. A pattern over 32
+         characters gives error 2. The volume label never matches ($08 dropped from the doc).
+         find_put copies up to the end of the name only.
+       - `fat32dos.s`: `lib_enter` (bank, path, context, chdir) shared by `lib_open` and
+         `api_findfirst`; `lib_drop` closes and frees the context on a fault. `path_copy` sets
+         `lib_wild` (bit 7: the name part holds `*` or `?`); a wildcard in a directory part
+         gives error 3 (was 2) for open and find. The find buffer is built in `lib_path`
+         (`lib_find`): the pattern copy runs forward, so it cannot overrun its source.
+       - `fat32.s` adds `fat32_tell_dir` and `fat32_seek_dir` (import `fat32_dir_pos`, which
+         fat32dos.s sets to `lib_find + FIND_POS`). `fat32_match.s` `match_name`: Windows
+         rules: `*` any run, dots too, by one backtrack point (`star_pattern`, `star_name`);
+         `?` one character; a trailing `.` or `.*` matches the end of a name with no dot.
+         `*.` lists the names with no dot; `*` lists every name.
+       - `DIR_` entry fields moved from fat.s to `mem.inc`. Monitor `MONITOR_FIND` is
+         `MONITOR_OUT + $20` (an assert keeps it below `GATE_PAGE`).
+       - LFN in `tools/mksd.py` (the user, 2026-10-19: commandlets named `.CBIN`): a name that
+         is not 8.3, up to 32 characters, goes in as a long name as typed, with an alias
+         `BASE~N.EXT`. build.py compiles commandlets to `build/DOS/NAME.CBIN`. Stale `.CBI`
+         outputs in build/DOS must be deleted by hand once (done here). fatcheck.py already
+         skips LFN entries.
+       - `lib/DOS.UXI` `DIM FIND_BUFFER(FIND_BUFFER_SIZE)`. TREE and XCOPY `STATE_SIZE` 41,
+         `STATES_SIZE` 1312: RAM +640 bytes each.
+       - Cost: bank 0 CODE -164 bytes; bank 1 B1CODE +483 (end $E2FD, 7330 free below $FFA0);
+         FATBSS +3 ($A100-$A79B).
+       - Tests: `DISK` ok 0.5 s (DISK.IN dumps $1300-$1352), `DOSAPI` 0.9 (`FIND *` became
+         `FIND *.`, `FIND \DOCS\*O*.TXT` added), `CWD` 0.5, `WRITE` 0.7, `MONITOR` 0.4, `DIRS`
+         0.9, `TREE` 1.4, `XCOPY` 1.5, `XCOPYS` 1.3, `SHFILES` 0.7, `SHELL` 0.5, `FILES` 0.5,
+         `SHTAB` 0.5, `WHERE` 1.2, `CMDLETS` 1.5.
+       - Full suite (step 7), 34.7 s: 46 ok, 3 failed. Fixed, rerun: `TREE` ok 1.2 s (`.CBIN`
+         names), `CLOCKCMD` ok 1.5 s (UPTIME 4 to 5 s: lookups through the library are
+         slower). Still failing: `SHRUN`: `COPY ARGS.COM BIN\TOOL.CBIN` creates through fat.s,
+         which cuts the name to `TOOL.CBI`, so `TOOL` is not found. F4 (create on the library)
+         fixes it; the golden stays as it is.
+       - Goldens updated (their own commit): `DISK`, `DOSAPI`, `FILES` (DOSAPI.COM size),
+         `TREE`, `CLOCKCMD`. Test sources changed: `DISK.IN`, `DOSAPI.UXB`.
+       - Steps since the full suite: 0.
+       - Docs owed: API.md is generated; PLAN wildcard rules (§ names: `*` fills with `?`),
+         the `.CBIN`/`.CBI` trap (PLAN line ~654), the 8.3-only line, §3, §9; NOTICE;
+         `GATE_PAGE` comment.
    - To do: find what the 492 bytes of 7i2b cost in `DISKFREE.CBI` (1861 to 2353 bytes), with
      pyuxc's link map, and cut them. Ideas: read `P2$` once, drop `FREE_TEXT` and pass the
      `MID$` straight to `SYS_STRINGS_SET`, reuse `DRIVE_NAME` for the text (11 bytes of RAM).

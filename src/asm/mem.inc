@@ -101,6 +101,13 @@ ATTR_LABEL    = $08
 ATTR_DIR      = $10
 ATTR_ARCHIVE  = $20
 ATTR_LONG_NAME = $0F
+
+; Directory entry fields
+DIR_ATTR      = 11
+DIR_CLUSTER_HIGH = 20
+DIR_TIME      = 22
+DIR_CLUSTER_LOW = 26
+DIR_FILE_SIZE = 28
 ; Trap: x16emu -bas pastes characters into KBD_QUEUE and counts them in KBD_COUNT, the stock
 ; KERNAL's keyboard queue. It starts once the PC reaches CHRIN, $FFCF.
 KBD_QUEUE     = $A800           ; 10 characters, the oldest first

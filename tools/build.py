@@ -12,8 +12,8 @@ UXCBASIC/tpl/MKTPL.PY rebuilds the template tables when a UXCBASIC/tpl or UXCBAS
 .ASM file is newer than UXCBASIC/tpl/UXDOS/UXC.TPL.BIN. Each src/bas/NAME.UXB compiles to
 build/bas/NAME.COM with tools/uxb.py when the COM file is older than the source, than a file it
 includes, than the template table or than pyuxc. Each src/cbin/NAME.UXB, a
-commandlet, compiles the same way to build/DOS/NAME.CBI. The kernel keeps 3 characters of an
-extension, so NAME.CBIN opens NAME.CBI. Each src/dos/NAME.UXB, a DOS utility, compiles to
+commandlet, compiles the same way to build/DOS/NAME.CBIN, a long name on the card. Each
+src/dos/NAME.UXB, a DOS utility, compiles to
 build/DOS/NAME.COM, and each src/dos/NAME.TXT and NAME.HLP is copied to build/DOS.
 
 Then tools/mksd.py makes the SD card image build/SD.IMG from the folder sd, the COM files in
@@ -91,11 +91,11 @@ def compile_bas():
 
 
 def compile_cbin():
-    """Compile each src/cbin/NAME.UXB to build/DOS/NAME.CBI and each src/dos/NAME.UXB to
+    """Compile each src/cbin/NAME.UXB to build/DOS/NAME.CBIN and each src/dos/NAME.UXB to
     build/DOS/NAME.COM, and copy each src/dos/NAME.TXT and NAME.HLP to build/DOS. Return the folder build/DOS."""
     os.makedirs(CBIN_OUT, exist_ok=True)
     for source in sorted(glob.glob(os.path.join(CBIN, "*.UXB"))):
-        name = os.path.splitext(os.path.basename(source))[0].upper() + ".CBI"
+        name = os.path.splitext(os.path.basename(source))[0].upper() + ".CBIN"
         uxb.compile(source, os.path.join(CBIN_OUT, name))
     for source in sorted(glob.glob(os.path.join(UTILITIES, "*.UXB"))):
         name = os.path.splitext(os.path.basename(source))[0].upper() + ".COM"
