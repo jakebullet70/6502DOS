@@ -51,9 +51,15 @@ reset:
         lda boot_shell
         beq @monitor
 @shell:
-        lda #<shell_path
+        ldx #.strlen(SHELL_PATH)
+@copy:
+        lda shell_path,x        ; to RAM: bank 1 opens the file and cannot read this bank
+        sta MONITOR_LINE,x
+        dex
+        bpl @copy
+        lda #<MONITOR_LINE
         sta r0
-        lda #>shell_path
+        lda #>MONITOR_LINE
         sta r0+1
         lda #<banner_end        ; the tail: the banner's 0, an empty tail
         sta r1

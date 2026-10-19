@@ -3,8 +3,8 @@
 ; Ported from x16-rom, fat32/fat32.s, github.com/X16Community/x16-rom, master fbe32a6.
 ; Changed: the code is in segment B1CODE and the variables in FATBSS; fat32_lib.inc and
 ; fat32_regs.inc replace lib.inc and regs.inc; the long branches are written out; krn_ptr1
-; and bank_save are imported at the top, so each use is zero page. Left out:
-; the 65816 routines fat32_read_long and fat32_write_long, and their MVN trampoline.
+; and bank_save are imported at the top, so each use is zero page; fat32_cwd is exported. Left
+; out: the 65816 routines fat32_read_long and fat32_write_long, and their MVN trampoline.
 ; fat32glue.s holds the routines and variables the library imports.
 ;
 ; Original header:
@@ -214,6 +214,10 @@ _fat32_bss_end:
 .export fat32_get_size
 .export fat32_get_lba
 .export fat32_get_cluster
+
+; fat32_cwd: the volume's current directory, which fat32dos.s sets.
+fat32_cwd = cur_volume + fs::cwd_cluster
+.export fat32_cwd
 
 .segment "B1CODE"
 

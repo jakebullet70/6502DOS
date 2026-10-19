@@ -77,8 +77,10 @@ SFT_SIZE      = 32
 SFT_REFS      = 0               ; the number of handles that refer to the entry, 0 when free
 SFT_ACCESS    = 1               ; 0 read, 1 write, 2 read and write
 SFT_DRIVER    = 2               ; the address of the driver header, 2 bytes
-SFT_FLAGS     = 4               ; SFT_DEVICE for a device; for a file, the DPB offset of its drive
-SFT_CLUSTER   = 5               ; a file: the cluster that holds SFT_POS, 4 bytes; 0 when not known
+SFT_FLAGS     = 4               ; SFT_DEVICE for a device; SFT_LIB for a file of the FAT32 library;
+                                ; for a file of fat.s, the DPB offset of its drive
+SFT_CLUSTER   = 5               ; a file: the cluster that holds SFT_POS, 4 bytes; 0 when not known.
+                                ; A file of the library: its context, 1 byte
 SFT_POS       = 9               ; a file: the position, 4 bytes
 SFT_FILE_SIZE = 13              ; a file: the size, 4 bytes
 SFT_FIRST     = 17              ; a file: the first cluster, 4 bytes, 0 for an empty file
@@ -87,6 +89,7 @@ SFT_ENTRY_PTR = 25              ; a file: the entry's address in SECTOR_BUFFER, 
 SFT_MODIFIED  = 27              ; a file: not 0 after a write, until the close
 SFT_STATE     = 22              ; the bytes from SFT_CLUSTER to the end of SFT_ENTRY_PTR
 SFT_DEVICE    = $80
+SFT_LIB       = $01             ; no DPB offset has bit 0 set
 FAT32_RAM     = $A100           ; $A100-$A7FF: the FAT32 library's variables, FATRAM in rom.cfg
 FAT32_BUFFER  = $A900           ; $A900-$AAFF: the FAT32 library's sector buffer, FATBUFRAM
 
@@ -130,6 +133,19 @@ DRV_OUTPUT    = 8               ; r0 buffer, r1 count; returns r1 bytes written
 ; Drives
 DRIVES        = 4               ; A: to D:
 FIRST_DRIVE   = 2               ; C:, the drive of the first block unit
+; The fields of a drive's DPB, in fat.s
+DPB_DRIVER    = 0               ; the block driver header, 2 bytes; 0 when the drive does not exist
+DPB_UNIT      = 2
+DPB_SHIFT     = 3               ; log2 of the sectors per cluster; $FF without a file system
+DPB_CMASK     = 4               ; sectors per cluster * 2 - 1: the cluster bits of pos+1
+DPB_FAT       = 5               ; the first sector of the first FAT, 4 bytes
+DPB_BASE      = 9               ; the sector of cluster 0, 4 bytes
+DPB_ROOT      = 13              ; the first cluster of the root directory, 4 bytes
+DPB_CWD       = 17              ; the first cluster of the current directory, 4 bytes
+DPB_FATS      = 21              ; the number of FATs
+DPB_FAT_SIZE  = 22              ; the sectors of one FAT, 4 bytes
+DPB_LIMIT     = 26              ; the number of clusters + 2: the first cluster number not used, 4 bytes
+DPB_SIZE      = 32
 
 ; VIA 1
 VIA1_PRA      = $9F01           ; bit 0 I2C data, bit 1 I2C clock

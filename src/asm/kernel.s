@@ -1,5 +1,6 @@
 ; The kernel: the driver chain, the system file table, the handles, and the calls on handles.
-; fat.s holds the drives and the file system.
+; fat.s holds the drives and the file system; fat32dos.s, in ROM bank 1, opens a file for
+; reading through the FAT32 library.
 ;
 ; A handle is an index into PSP_HANDLES, which holds an SFT entry number. The SFT is in RAM
 ; bank 0. A device's SFT entry holds the address of its driver header; a file's holds its drive
@@ -9,6 +10,7 @@
 
 .include "mem.inc"
 .include "api.inc"
+.include "far.inc"
 
 .export kernel_init, to_upper
 .export api_create, api_open, api_close, api_read, api_write, api_version, api_ticks, api_errmsg
@@ -17,7 +19,7 @@
 .exportzp driver, io_ptr, io_left, saved_bank
 .import con_init, api_con_status, CHRIN, CHROUT, errmsg_table, sd_driver
 .import drives_init, drives_add, path_last, file_find, file_create, file_io, file_close
-.import create_attr
+.import create_attr, jsrfar, lib_init, lib_open, lib_read, lib_close
 .importzp ticks, fcb_name, cluster, dpb
 
 .segment "KERNELZP" : zeropage
@@ -49,6 +51,7 @@ kernel_init:
         lda #>nul_driver
         sta driver_chain+1
         jsr drives_init
+        FARCALL lib_init
         jsr chain_first
 @init:
         ldy #DRV_INIT
@@ -217,11 +220,16 @@ open_common:
         bcc @driver
         bit open_create
         bmi @create
+        lda open_access
+        bne @write
+        FARCALL lib_open        ; the state of the file in cluster
+        bcs @done
+        lda #SFT_LIB
+        bra @found
+@write:
         jsr file_find
         bcs @done
         and #ATTR_READ_ONLY
-        beq @file
-        lda open_access
         beq @file
         lda #ERR_ACCESS
         sec
@@ -235,7 +243,7 @@ open_common:
 @found:
         sta open_flags
         jsr handle_free
-        bcs @done
+        bcs @refused
         sty open_handle
         jsr bank0
         ldy #0
@@ -248,7 +256,19 @@ open_common:
         tay
         bne @entry
         jsr bank_restore
-        bra too_many
+        jsr too_many
+@refused:                       ; a file of the library is closed again
+        ldx open_flags
+        cpx #SFT_LIB
+        bne @done
+        pha
+        jsr bank0
+        lda cluster
+        FARCALL lib_close
+        jsr bank_restore
+        pla
+        sec
+        rts
 @free_entry:                    ; A = 0
         sta SFT + SFT_MODIFIED,y
         lda #1
@@ -385,14 +405,31 @@ api_close:
         sta PSP_HANDLES,x
         lda SFT + SFT_FLAGS,y
         bmi @device
+        lsr                     ; SFT_LIB
+        bcs @library
         phx
         jsr file_close
         plx
         rts
+@library:
+        lda SFT + SFT_REFS,y
+        bne @device             ; another handle refers to the file
+        lda SFT + SFT_CLUSTER,y
+        phx
+        FARCALL lib_close
+        plx
+        bra bank_return
 @device:
         clc
         jmp bank_restore
 @done:
+        rts
+
+; bank_return: selects the caller's bank and returns A and carry.
+bank_return:
+        pha
+        jsr bank_restore
+        pla
         rts
 
 ; sft_end: returns carry set when SFT entry Y is a file whose position is at or past its size.
@@ -442,6 +479,8 @@ handle_io:
         ldy io_slot
         jmp drv_call
 @file:
+        lsr                     ; SFT_LIB: opened for reading, so this is a read
+        bcs lib_io
         lda io_refused          ; 1 for a read, 0 for a write
         eor #1
         lsr
@@ -453,6 +492,31 @@ handle_io:
         sec
 @done:
         rts
+
+; lib_io: reads r1 bytes to r0 from the file of the library at SFT entry Y, and moves its
+; position on by the bytes read. Entered with RAM bank 0 selected; returns the caller's bank.
+lib_io:
+        lda SFT + SFT_CLUSTER,y
+        phy
+        FARCALL lib_read
+        ply
+        bcs bank_return
+        tya
+        tax
+        clc
+        lda SFT + SFT_POS,x
+        adc r1
+        sta SFT + SFT_POS,x
+        lda SFT + SFT_POS+1,x
+        adc r1+1
+        sta SFT + SFT_POS+1,x
+        bcc @moved
+        inc SFT + SFT_POS+2,x
+        bne @moved
+        inc SFT + SFT_POS+3,x
+@moved:
+        clc
+        jmp bank_restore
 
 ; sft_driver: points driver at the driver of SFT entry Y, then selects the caller's bank.
 ; Changes A, keeps carry.

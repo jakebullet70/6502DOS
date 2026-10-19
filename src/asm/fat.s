@@ -22,28 +22,17 @@
 
 .include "mem.inc"
 .include "api.inc"
+.include "far.inc"
 
 .export drives_init, drives_add, path_last, file_find, file_create, file_io, file_close
 .export file_copy, create_attr
 .export api_findfirst, api_findnext, api_getdrive, api_setdrive, api_chdir, api_getcwd
 .export api_seek, api_delete, api_rename, api_mkdir, api_rmdir, api_diskfree
+.export DPB, current_drive
 .exportzp fcb_name, cluster, dpb, file_size
 .import drv_call, bank0, bank_restore, sft_find, io_start, io_done, to_upper
 .importzp driver, io_ptr, io_left
-
-; DPB fields
-DPB_DRIVER    = 0               ; the block driver header, 2 bytes; 0 when the drive does not exist
-DPB_UNIT      = 2
-DPB_SHIFT     = 3               ; log2 of the sectors per cluster; $FF without a file system
-DPB_CMASK     = 4               ; sectors per cluster * 2 - 1: the cluster bits of pos+1
-DPB_FAT       = 5               ; the first sector of the first FAT, 4 bytes
-DPB_BASE      = 9               ; the sector of cluster 0, 4 bytes
-DPB_ROOT      = 13              ; the first cluster of the root directory, 4 bytes
-DPB_CWD       = 17              ; the first cluster of the current directory, 4 bytes
-DPB_FATS      = 21              ; the number of FATs
-DPB_FAT_SIZE  = 22              ; the sectors of one FAT, 4 bytes
-DPB_LIMIT     = 26              ; the number of clusters + 2: the first cluster number not used, 4 bytes
-DPB_SIZE      = 32
+.import jsrfar, lib_seek, sector_lba
 
 ; Directory entry fields
 DIR_ATTR      = 11
@@ -407,6 +396,7 @@ buf_flush:
         ldy #DRV_OUTPUT
         jsr drv_call
         bcs @fault
+        jsr lib_forget
         dec buf_dirty
         beq @done               ; carry clear
         ldx buf_drive           ; the next FAT
@@ -427,6 +417,19 @@ buf_flush:
         stx buf_drive
         stz buf_dirty
 @done:
+        rts
+
+; lib_forget: empties the FAT32 library's sector buffer, which may hold a sector fat.s wrote.
+; Changes A and X.
+lib_forget:
+        ldx RAM_BANK
+        stz RAM_BANK
+        lda #$FF
+        sta sector_lba
+        sta sector_lba+1
+        sta sector_lba+2
+        sta sector_lba+3
+        stx RAM_BANK
         rts
 
 ; buf_claim: makes the buffer sector lba of the drive at dpb, to be written back, without
@@ -1732,7 +1735,7 @@ file_copy:
 ; api_seek: moves handle X by the signed offset in r0 and r1 from the start (A = 0), the
 ; position (1) or the end (2). Returns r0 and r1 = the new position. A position may pass the
 ; end; a read there gives 0 bytes. A device stays at 0. The next read or write finds the
-; cluster.
+; cluster; a file of the FAT32 library moves its context.
 api_seek:
         cmp #3
         bcc @from
@@ -1771,6 +1774,8 @@ api_seek:
         bne @add
 @set:
         ldy sft_entry
+        lda SFT + SFT_CLUSTER,y
+        pha                     ; a file of the library: its context
         ldx #0
 @store:
         lda r0,x
@@ -1781,8 +1786,22 @@ api_seek:
         inx
         cpx #4
         bne @store
-        clc
-        jmp bank_restore
+        ldy sft_entry
+        pla
+        tax
+        lda SFT + SFT_FLAGS,y
+        lsr                     ; SFT_LIB
+        bcc @done
+        txa
+        sta SFT + SFT_CLUSTER,y
+        FARCALL lib_seek
+        bcc @done
+        pha
+        jsr bank_restore
+        pla
+        rts
+@done:
+        jmp bank_restore        ; carry clear
 
 seek_base:
         .byte SFT_POS, SFT_FILE_SIZE

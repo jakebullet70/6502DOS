@@ -9,7 +9,7 @@
     `MSBASIC/ref/`, `MSBASIC/docs/x16/` and `MSBASIC/docs/x16-basic-compare.md`. Those are
     copied in and stay local.
   - `make all` in `MSBASIC/`: 1099 ms, the baseline. `make verify` matches. `make test` not run.
-  - Not committed.
+  - Committed by the user (295e2df).
 - UXCBASIC moved in (2026-10-17). `C:\dev\UXCBASIC` was copied, not changed; the user
   retires it, then puts this folder in git.
   - `UXCBASIC/` holds pyuxc (`pyuxc/`), the templates (`tpl/`), the help (`help/`), the
@@ -2176,8 +2176,7 @@
          full suite: 4.
        - Docs owed: PLAN §3 (ROM banks, `jsrfar`, the vector-pull trap), §9 (the ROM layout);
          `mem.inc`'s `GATE_PAGE` comment names jsrfar and the IRQ vectors, which are not there.
-       - Not committed: `far.inc`, `bank1.s`, `boot.s`, `gate.s`, `rom.cfg`, `build.py`,
-         `tests/FAR.S`, `FAR.IN`; the golden `FAR.OUT` goes in its own commit.
+       - Committed by the user.
      - Done, F2 (2026-10-19): the library in bank 1, linked, not called.
        - `src/asm/fat32.s`, `fat32_match.s`, `fat32_lib.inc`, `fat32_regs.inc`: copies of
          x16-rom `fat32.s`, `match.s`, `lib.inc`, `regs.inc` (master `fbe32a6`), made by
@@ -2206,11 +2205,47 @@
          8212 free below $FFA0.
        - Build 758 ms, the new baseline. Tests: `FAR` ok 0.6 s, `DISK` 0.4, `DIRS` 0.9,
          `FILES` 0.4, `HANDLES` 0.4, `WRITE` 0.6. The user stopped testing there (low tokens);
-         not yet run: `SHELL`, `BOOT`, `SHBOOT`, `EXEC`. Steps since the full suite: 5.
-       - Not committed: F1 and F2 files, `fat.s`, `kernel.s`, `sdcard.s`, `mem.inc`.
-     - Next, F3: reads on the library (open, read, seek, close, exec load, findfirst,
-       findnext). Trap: `fat.s` keeps its own sector at $0400; after a `fat.s` write the
-       library's `sector_lba` must be made invalid ($FF), and the reverse.
+         then `SHELL` ok 0.9 s, `BOOT` 0.4, `SHBOOT` 0.5, `EXEC` 0.9 (build 1.93 s, rc 0).
+         Steps since the full suite: 5.
+       - Committed by the user (F1 and F2 in ab76f5e and 8fb9ae1).
+     - F3 split: F3a open for reading, read, seek, close, exec load; F3b findfirst and
+       findnext (the find buffer grows, `match.s` needs Windows `*` rules: today `*` ends the
+       part, so `A*.TXT` matches `ABC.DOC`).
+     - Done, F3a (2026-10-19), not committed. Build 756 ms, the new baseline:
+       - New `src/asm/fat32dos.s` (bank 1): `lib_init` (`fat32_init`, `fat32_readonly` 1,
+         `skip_mask` 0, `sector_lba` all $FF), `lib_open` (path at r0 in the caller's bank,
+         read byte by byte with `path_char`; drive checks on fat.s's `DPB`; `\` to `/` into
+         `lib_path`; `*` or `?` gives error 2; the library's cwd set from `DPB_CWD`; the
+         directory part by `fat32_chdir`, error 3 when missing; returns A = the context,
+         `file_size`, and `cluster` = context then 7 zeros for the SFT), `lib_read`,
+         `lib_seek`, `lib_close` (context in A, RAM bank 0 selected), `errno_errors` table.
+       - `fat32_regs.inc`: `FAT32_CONTEXTS` 8, `FAT32_VOLUMES` 1. `fat32.s` exports
+         `fat32_cwd`. `mem.inc`: the `DPB_` fields moved there from fat.s; `SFT_LIB` = $01 in
+         `SFT_FLAGS`, the context in `SFT_CLUSTER`. fat.s exports `DPB`, `current_drive`.
+       - kernel.s: `open_common` sends access 0 (no create) to `lib_open`, flags `SFT_LIB`;
+         `@refused` closes the context when no handle or SFT entry is free; `handle_io` sends
+         `SFT_LIB` reads to `lib_io` (adds r1 to `SFT_POS`); `api_close` closes the context
+         only when `SFT_REFS` reaches 0; `bank_return`. fat.s: `api_seek` keeps the context and
+         calls `lib_seek`; `buf_flush` calls `lib_forget` after each write (sets `sector_lba`
+         to $FF). exec.s: `lib_open`, `exec_read`, `exec_close` (`exec_file` in KERNELRAM);
+         every failure after the open closes the file.
+       - boot.s copies `SHELL_PATH` to `MONITOR_LINE` before `API_EXEC`: bank 1 cannot read
+         ROM bank 0, where the path lies.
+       - Bug fixed in `lib_io`: `cpx` in the add loop clobbered the carry, so `SFT_POS` went
+         wrong (15 read as $03000F) and IOCTL status said end of file early (DUP failed).
+         Now a straight add, 2 bytes shorter.
+       - Trap: tools/tests.py stops at the first line that departs from the golden, and the
+         "got" printed after that line is cut short. A cut-off line is not a bug; capture the
+         whole output with `--update` on a copy.
+       - Goldens updated (not committed; their own commit): `EXEC`, `HANDLES`, `DISK`. Only
+         leftovers changed, none in a call's contract: X after a failed open or exec ($FF or
+         7 to 0), A after a close (0 to 1).
+       - Tests: `SHBOOT` ok 0.5 s, `EXEC` 0.7, `BOOT` 0.4, `HANDLES` 0.4, `FILES` 0.4, `DISK`
+         0.4, `DIRS` 0.8, `WRITE` 0.7, `FAR` 0.4, `SHELL` 0.5, `DUP` 0.4, `SEEK` 0.4, `TAIL`
+         1.2, `HEAD` 0.9, `GREP` 1.6, `SHSCRIPT` 0.8, `XCOPY` 1.3. Steps since the full suite:
+         6; F3b is the 7th, so the full suite runs after it.
+       - `lib_path` $A574, `lib_len` $A674, `lib_slash` $A675; `fat32_errno` $A792,
+         `sector_lba` $A795. FATBSS $A100-$A798.
    - To do: find what the 492 bytes of 7i2b cost in `DISKFREE.CBI` (1861 to 2353 bytes), with
      pyuxc's link map, and cut them. Ideas: read `P2$` once, drop `FREE_TEXT` and pass the
      `MID$` straight to `SYS_STRINGS_SET`, reuse `DRIVE_NAME` for the text (11 bytes of RAM).

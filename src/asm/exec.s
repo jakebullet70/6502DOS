@@ -8,10 +8,12 @@
 
 .include "mem.inc"
 .include "api.inc"
+.include "far.inc"
 
 .export api_exec, api_exit, api_exitcode, exec_break
-.import file_find, file_copy, handles_inherit, handles_close, heap_exec, heap_exit, CHROUT
-.importzp file_size
+.import handles_inherit, handles_close, heap_exec, heap_exit, CHROUT
+.import jsrfar, bank0, lib_open, lib_read, lib_close
+.importzp file_size, saved_bank
 .exportzp exec_depth
 
 SYS_TOKEN     = $9E             ; BASIC's SYS
@@ -30,23 +32,30 @@ exec_entry:   .res 2            ; the load address, then the program's start
 
 exec_result:  .res 1            ; exec_unwind: A to return
 exit_how:     .res 1            ; how the last program ended: 0 exit, 1 break
+exec_file:    .res 1            ; the program file's context in the FAT32 library
 
 .segment "CODE"
 
 api_exec:
         ldx exec_depth
         cpx #EXEC_LEVELS
-        bcs @no_memory
-        jsr file_find
-        bcs @done
+        bcc @open
+        lda #ERR_NO_MEMORY
+        rts                     ; carry set
+@open:
+        FARCALL lib_open
+        bcc @opened
+        rts
+@opened:
+        sta exec_file
         lda file_size+2         ; the load address, then up to PROGRAM_SIZE bytes
         ora file_size+3
-        bne @no_memory
+        bne @too_big
         lda file_size
         cmp #<(PROGRAM_SIZE + 3)
         lda file_size+1
         sbc #>(PROGRAM_SIZE + 3)
-        bcs @no_memory
+        bcs @too_big
         lda file_size+1
         bne @fits
         lda file_size
@@ -68,7 +77,7 @@ api_exec:
         lda #2
         sta r1
         stz r1+1
-        jsr file_copy
+        jsr exec_read
         bcs exec_fail
         lda exec_entry
         cmp #<PROGRAM
@@ -83,8 +92,9 @@ api_exec:
         lda #$FF                ; the rest of the file
         sta r1
         sta r1+1
-        jsr file_copy
+        jsr exec_read
         bcs exec_fail
+        jsr exec_close
         jsr find_start
         pla
         pha
@@ -98,19 +108,42 @@ api_exec:
         jmp (exec_entry)
 @bad_format:
         lda #ERR_BAD_FORMAT
-        sec
-        rts
-@no_memory:
+        bra @refused
+@too_big:
         lda #ERR_NO_MEMORY
+@refused:                       ; the program file is open
+        pha
+        jsr exec_close
+        pla
         sec
-@done:
         rts
 
 exec_bad:
         lda #ERR_BAD_FORMAT
 exec_fail:                      ; A = the error; the child has not run
+        pha
+        jsr exec_close
+        pla
         sec
         bra exec_unwind
+
+; exec_read: reads r1 bytes of the program file to r0. Returns carry set and A = the error.
+; Changes X and Y.
+exec_read:
+        jsr bank0
+        lda exec_file
+        FARCALL lib_read
+        bra exec_bank
+
+; exec_close: closes the program file. Changes A, X and Y.
+exec_close:
+        jsr bank0
+        lda exec_file
+        FARCALL lib_close
+exec_bank:
+        ldx saved_bank          ; keeps A and carry
+        stx RAM_BANK
+        rts
 
 api_exit:
         ldx exec_depth
