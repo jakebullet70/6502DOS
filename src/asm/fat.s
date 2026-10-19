@@ -1,13 +1,8 @@
-; Drives, paths and FAT32: the drive table, the sector buffer, path parsing, directory search,
-; the current directories and the seek of a handle. fat.s reads only; fat32dos.s writes.
+; Drives: the drive table, the mount of each drive, the current drive, the last part of a path
+; and the seek of a handle. fat32dos.s does the rest on the FAT32 library.
 ;
-; A drive's DPB holds its block driver and unit and the layout of its FAT32 file system. A
-; directory is read as a chain like a file, 32 bytes an entry: cluster holds the byte at pos.
-; Names are 8.3 and upper case.
-;
-; Each drive keeps the first cluster of its current directory, and no path text: getcwd finds
-; the names through the .. entries. . and .. in a path are the directory's own entries; the
-; root directory has none, and there both name the root.
+; A drive's DPB holds its block driver and unit and the layout of its FAT32 file system. Each
+; drive keeps the first cluster of its current directory, and no path text.
 
 .setcpu "65C02"
 
@@ -16,7 +11,7 @@
 .include "far.inc"
 
 .export drives_init, drives_add, path_last, create_attr, buf_drive
-.export api_getdrive, api_setdrive, api_chdir, api_getcwd, api_seek
+.export api_getdrive, api_setdrive, api_seek
 .export DPB, current_drive
 .exportzp fcb_name, cluster, dpb, file_size
 .import drv_call, bank0, bank_restore, sft_find, to_upper
@@ -27,7 +22,6 @@
 
 ; Keep the order from cluster to entry_ptr: an SFT entry holds them.
 dpb:          .res 1            ; the DPB offset of the drive in use: drive * DPB_SIZE
-search_attr:  .res 1            ; the attributes dir_search takes
 fcb_name:     .res 11           ; a name: 8 and 3 characters, padded with spaces; ? matches any
 cluster:      .res 4
 pos:          .res 4
@@ -36,7 +30,6 @@ file_first:   .res 4
 entry_sector: .res 4            ; the sector of a file's directory entry
 entry_ptr:    .res 2            ; the entry in SECTOR_BUFFER
 lba:          .res 4            ; a sector number
-ptr:          .res 2            ; a byte in SECTOR_BUFFER
 chunk:        .res 1            ; api_seek: A
         .assert SFT_POS - SFT_CLUSTER = pos - cluster && SFT_FIRST - SFT_CLUSTER = file_first - cluster, error, "the SFT state follows the zero page order"
         .assert SFT_ENTRY - SFT_CLUSTER = entry_sector - cluster && SFT_STATE = entry_ptr + 2 - cluster, error, "the SFT state follows the zero page order"
@@ -285,21 +278,6 @@ lba_store:
         bne @copy
         rts
 
-; lba_add: adds the 4 bytes at DPB + X to lba. Changes A, X and Y.
-lba_add:
-        ldy #0
-        clc
-@byte:
-        lda lba,y
-        adc DPB,x
-        sta lba,y
-        inx
-        iny
-        tya
-        eor #4                  ; keeps carry
-        bne @byte
-        rts
-
 ; read_sector: reads sector lba of the drive at dpb into SECTOR_BUFFER, unless the buffer holds
 ; it. Writes the buffer back first. Returns carry set and A = the error when the driver fails.
 ; Changes A, X and Y.
@@ -351,252 +329,6 @@ blk_request:
         sta BLK_BUFFER
         lda #>SECTOR_BUFFER
         sta BLK_BUFFER+1
-        rts
-
-; cursor_sector: reads the sector that holds pos in cluster and points ptr at pos in it.
-; Returns carry set and A = the error on a fault. Changes A, X and Y.
-cursor_sector:
-        ldx dpb
-        lda pos+1               ; the sector within the cluster
-        and DPB + DPB_CMASK,x
-        lsr
-        jsr cluster_lba
-        jsr read_sector
-        bcs @done
-        lda pos
-        sta ptr
-        lda pos+1
-        and #1
-        ora #>SECTOR_BUFFER
-        sta ptr+1
-@done:
-        rts
-        .assert <SECTOR_BUFFER = 0 && >SECTOR_BUFFER & 1 = 0, error, "cursor_sector ORs pos into ptr"
-
-; cluster_lba: lba = sector A of the cluster at cluster, on the drive at dpb. Changes A, X and Y.
-cluster_lba:
-        pha
-        ldx #3
-@copy:
-        lda cluster,x
-        sta lba,x
-        dex
-        bpl @copy
-        ldx dpb
-        ldy DPB + DPB_SHIFT,x
-        beq @sector
-@shift:
-        asl lba
-        rol lba+1
-        rol lba+2
-        rol lba+3
-        dey
-        bne @shift
-@sector:
-        pla                     ; the sector fills the low bits
-        ora lba
-        sta lba
-        txa
-        ora #DPB_BASE
-        tax
-        jmp lba_add
-
-; cluster_step: called when pos is at the start of a sector. Moves cluster to the next cluster
-; of the chain when pos is at the start of a cluster. Returns carry set and A = the error on a
-; fault. Changes A, X and Y.
-cluster_step:
-        ldx dpb
-        lda pos+1
-        and DPB + DPB_CMASK,x
-        beq next_cluster
-        clc
-        rts
-
-; next_cluster: moves cluster to the next cluster of its chain. At the end of the chain it
-; leaves cluster at the end mark, $0Fxxxxxx.
-; Returns carry set and A = the error on a fault. Changes A, X and Y.
-next_cluster:
-        ldx #cluster
-        jsr fat_entry
-        bcs @done
-        ldy #3
-        lda (ptr),y
-        and #$0F                ; FAT32 entries are 28 bits
-        sta cluster+3
-        ldy #2
-@byte:
-        lda (ptr),y
-        sta cluster,y
-        dey
-        bpl @byte
-        clc
-@done:
-        rts
-
-; fat_entry: reads the FAT sector that holds the entry of the cluster at zero page X, on the
-; drive at dpb, and points ptr at the entry. Returns carry set and A = the error on a fault.
-; Keeps X. Changes A and Y.
-fat_entry:
-        lda 0,x                 ; the FAT sector: cluster / 128
-        asl
-        lda 1,x
-        rol
-        sta lba
-        lda 2,x
-        rol
-        sta lba+1
-        lda 3,x
-        rol
-        sta lba+2
-        lda #0
-        rol
-        sta lba+3
-        phx
-        lda dpb
-        ora #DPB_FAT
-        tax
-        jsr lba_add
-        jsr read_sector
-        plx
-        bcs @done
-        lda 0,x                 ; the entry: (cluster & 127) * 4
-        asl
-        asl
-        sta ptr
-        lda #>SECTOR_BUFFER
-        adc #0
-        sta ptr+1
-@done:
-        rts
-
-; cluster_cwd: sets cluster to the current directory of the drive at dpb. Returns carry
-; clear. Changes A, X and Y.
-cluster_cwd:
-        lda #DPB_CWD + 3
-        bra cluster_field
-
-; cluster_root: sets cluster to the root directory of the drive at dpb. Returns carry clear.
-; Changes A, X and Y.
-cluster_root:
-        lda #DPB_ROOT + 3
-cluster_field:
-        ora dpb
-        tax
-        ldy #3
-@copy:
-        lda DPB,x
-        sta cluster,y
-        dex
-        dey
-        bpl @copy
-        clc
-        rts
-
-; entry_cluster: sets cluster to the first cluster of the directory entry at ptr. Cluster 0,
-; as in a ".." entry, is the root directory. Changes A, X and Y.
-entry_cluster:
-        ldy #DIR_CLUSTER_LOW
-        lda (ptr),y
-        sta cluster
-        iny
-        lda (ptr),y
-        sta cluster+1
-        ldy #DIR_CLUSTER_HIGH
-        lda (ptr),y
-        sta cluster+2
-        iny
-        lda (ptr),y
-        sta cluster+3
-        ora cluster+2
-        ora cluster+1
-        ora cluster
-        beq cluster_root
-        rts
-
-; dir_first: dir_search from the first entry of the directory at cluster.
-dir_first:
-        stz pos
-        stz pos+1
-        stz pos+2
-        stz pos+3
-        ; fall through
-
-; dir_search: finds the first entry from pos on whose name matches fcb_name and whose
-; attributes pass search_attr. Returns carry clear and ptr at the entry. Returns carry set and
-; A = ERR_NO_MORE_FILES at the end of the directory, or another error. Changes A, X and Y.
-dir_search:
-        jsr cursor_sector
-        bcs @done
-        lda (ptr)
-        beq @end                ; no entries follow
-        cmp #$E5                ; deleted
-        beq @next
-        ldy #DIR_ATTR
-        lda (ptr),y
-        cmp #ATTR_LONG_NAME
-        beq @next
-        lda search_attr         ; hidden, system, label and directory need their bit in A
-        eor #$FF
-        and (ptr),y
-        and #ATTR_HIDDEN | ATTR_SYSTEM | ATTR_LABEL | ATTR_DIR
-        bne @next
-        ldy #10
-@char:
-        lda fcb_name,y
-        cmp #'?'
-        beq @match
-        cmp (ptr),y
-        bne @next
-@match:
-        dey
-        bpl @char
-        clc
-@done:
-        rts
-@next:
-        jsr dir_step
-        bcc dir_search
-        rts
-@end:
-        lda #ERR_NO_MORE_FILES
-        sec
-        rts
-
-; dir_step: moves pos to the next directory entry. Returns carry set and A =
-; ERR_NO_MORE_FILES after the last cluster of the directory, or another error. Changes A, X
-; and Y.
-dir_step:
-        lda pos
-        clc
-        adc #32
-        sta pos
-        bcc @same
-        inc pos+1               ; a directory never reaches 64 KB
-        lda pos+1
-        lsr
-        bcs @same               ; the second half of the sector
-        jsr cluster_step
-        bcs @done
-        lda cluster+3
-        cmp #$0F                ; the end of the chain: $0FFFFFF8 and up
-        bcc @done
-        lda #ERR_NO_MORE_FILES
-@done:
-        rts
-@same:
-        clc
-        rts
-
-; drive_ready: drive_exists, and returns carry set and A = ERR_NOT_READY when the drive has no
-; file system. Changes A and X.
-drive_ready:
-        jsr drive_exists
-        bcs @done
-        lda DPB + DPB_SHIFT,x
-        bpl @done               ; carry clear
-        lda #ERR_NOT_READY
-        sec
-@done:
         rts
 
 ; drive_exists: makes drive A the drive at dpb, and X = dpb. Returns carry set and A =
@@ -683,21 +415,6 @@ fcb_fill:
         bpl @fill
         rts
 
-; is_dots: returns Z set when fcb_name is . or .. Changes A.
-is_dots:
-        lda fcb_name
-        cmp #'.'
-        bne @done
-        lda fcb_name+2
-        cmp #' '
-        bne @done
-        lda fcb_name+1
-        cmp #' '
-        beq @done
-        cmp #'.'
-@done:
-        rts
-
 ; component: reads the path from path_index to the next separator into fcb_name. A * fills the
 ; rest of its field with ?. Dots at the start of the name stay in it, for . and .. Returns
 ; carry clear when a separator ended it, carry set at the end of the path. Changes A, X and Y.
@@ -760,80 +477,6 @@ path_last:
 @part:
         jsr component
         bcc @part
-        rts
-
-; path_walk: finds the directory that holds the last part of the path at r0. A path that
-; starts with a separator starts at the root, any other at the current directory. Returns
-; carry clear, dpb at its drive, cluster at the directory and fcb_name the last part. Returns
-; carry set and A = the error. Changes A, X and Y.
-path_walk:
-        jsr path_start
-        lda path_drive
-        jsr drive_ready
-        bcs @done
-        jsr cluster_cwd
-        ldy path_index          ; 0, or the index of the separator path_start passed
-        beq @part
-        lda (r0),y
-        jsr is_separator
-        bne @part
-        jsr cluster_root
-@part:
-        jsr component
-        bcs @last
-        jsr dir_enter
-        bcc @part
-        rts
-@last:
-        clc
-@done:
-        rts
-
-; dir_enter: moves cluster to the directory that fcb_name names in the directory at cluster.
-; Returns carry set and A = the error. Changes A, X and Y.
-dir_enter:
-        lda #ATTR_DIR | ATTR_HIDDEN | ATTR_SYSTEM
-        sta search_attr
-        jsr dir_first
-        bcs @missing
-        ldy #DIR_ATTR
-        lda (ptr),y
-        and #ATTR_DIR
-        beq @no_path
-        jmp entry_cluster       ; carry clear
-@missing:
-        cmp #ERR_NO_MORE_FILES
-        bne @fail
-        jsr is_dots             ; . and .. are missing only from the root
-        bne @no_path
-        jmp cluster_root
-@no_path:
-        lda #ERR_NO_PATH
-@fail:
-        sec
-        rts
-
-; is_root: returns Z set when cluster is the root directory of the drive at dpb. Changes A, X
-; and Y.
-is_root:
-        lda #DPB_ROOT + 3
-        ; fall through
-
-; cluster_is: returns Z set when cluster equals the DPB field that ends at A of the drive at
-; dpb. Changes A, X and Y.
-cluster_is:
-        ora dpb
-        tax
-        ldy #3
-@byte:
-        lda cluster,y
-        cmp DPB,x
-        bne @done
-        dex
-        dey
-        bpl @byte
-        iny                     ; Y = 0: Z set
-@done:
         rts
 
 ; api_seek: moves handle X by the signed offset in r0 and r1 from the start (A = 0), the
@@ -923,173 +566,3 @@ api_setdrive:
         lda #DRIVES
 @done:
         rts
-
-api_chdir:
-        jsr path_walk
-        bcs @done
-        lda fcb_name
-        cmp #' '
-        beq @set                ; the path ends at a separator, or names no directory
-        jsr dir_enter
-        bcs @done
-@set:
-        lda dpb
-        ora #DPB_CWD + 3
-        tax
-        ldy #3
-@copy:
-        lda cluster,y
-        sta DPB,x
-        dex
-        dey
-        bpl @copy
-        clc
-@done:
-        rts
-
-; getcwd builds the path from the end of the buffer back: a \ and a name for each directory,
-; from the current one up to the root. Then it moves the path down after the length byte,
-; without its first \. path_index holds the index of the path's first character, 0 while it is
-; empty. file_first holds the cluster of the directory whose name is wanted, and file_size the
-; first cluster of its parent: the search leaves cluster at the cluster that holds the entry.
-api_getcwd:
-        dec                     ; 0, the current drive, becomes $FF
-        bpl @drive
-        lda current_drive
-@drive:
-        jsr drive_ready
-        bcs @done
-        jsr cluster_cwd
-        stz path_index
-@level:
-        jsr is_root             ; at the root: done
-        bne @up
-        clc                     ; ptr = r0 + path_index: the path's first \ is at ptr + 0
-        lda r0
-        adc path_index
-        sta ptr
-        lda r0+1
-        adc #0
-        sta ptr+1
-        lda path_index
-        beq @length             ; the root: length 0
-        eor #$FF                ; the length: 255 - path_index
-        tax
-        ldy #1
-@move:
-        lda (ptr),y
-        sta (r0),y
-        iny
-        dex
-        bne @move
-        dey
-        tya
-@length:
-        sta (r0)
-        clc
-@done:
-        rts
-@missing:
-        cmp #ERR_NO_MORE_FILES
-        bne @fail
-@no_path:
-        lda #ERR_NO_PATH
-@fail:
-        sec
-        rts
-@up:
-        lda path_index          ; room for a \ and 12 characters
-        beq @room
-        cmp #14
-        bcc @no_path
-@room:
-        ldx #3
-@child:
-        lda cluster,x
-        sta file_first,x
-        dex
-        bpl @child
-        lda #' '                ; the parent: the cluster in the .. entry
-        jsr fcb_fill
-        lda #'.'
-        sta fcb_name
-        sta fcb_name+1
-        jsr dir_enter
-        bcs @done
-        ldx #3
-@parent:
-        lda cluster,x
-        sta file_size,x
-        dex
-        bpl @parent
-        lda #'?'                ; the child's entry in the parent
-        jsr fcb_fill
-        jsr dir_first
-@entry:
-        bcs @missing
-        lda (ptr)
-        cmp #'.'
-        beq @next
-        ldy #DIR_ATTR
-        lda (ptr),y
-        and #ATTR_DIR
-        beq @next
-        ldx #3
-@same:
-        ldy cluster_fields,x
-        lda (ptr),y
-        cmp file_first,x
-        bne @next
-        dex
-        bpl @same
-        ldy #10
-@name:
-        lda (ptr),y
-        sta fcb_name,y
-        dey
-        bpl @name
-        ldy path_index          ; the extension, a dot, the name and a \, back from path_index
-        ldx #10
-@extension:
-        lda fcb_name,x
-        jsr put_back
-        dex
-        cpx #8
-        bcs @extension
-        cpy path_index
-        beq @base
-        lda #'.'
-        jsr put_back
-@base:
-        lda fcb_name,x
-        jsr put_back
-        dex
-        bpl @base
-        lda #'\'
-        jsr put_back
-        sty path_index
-        ldx #3                  ; the parent is the next level
-@next_level:
-        lda file_size,x
-        sta cluster,x
-        dex
-        bpl @next_level
-        jmp @level
-@next:
-        jsr dir_step
-        bcs @entry              ; the end: @entry takes the error
-        jsr dir_search
-        bra @entry
-
-; put_back: puts A before the byte at r0 + Y and moves Y back, unless A is a space.
-put_back:
-        cmp #' '
-        beq @done
-        dey
-        sta (r0),y
-@done:
-        rts
-
-; cluster_fields: the bytes of a directory entry's first cluster, the low byte first.
-cluster_fields:
-        .byte DIR_CLUSTER_LOW, DIR_CLUSTER_LOW + 1, DIR_CLUSTER_HIGH, DIR_CLUSTER_HIGH + 1

@@ -2,15 +2,16 @@
 ;
 ; Ported from x16-rom, fat32/fat32.s, github.com/X16Community/x16-rom, master fbe32a6.
 ; Changed: the code is in segment B1CODE and the variables in FATBSS; fat32_lib.inc and
-; fat32_regs.inc replace lib.inc and regs.inc; the long branches are written out; krn_ptr1
-; and bank_save are imported at the top, so each use is zero page; fat32_cwd and
-; fat32_free_clusters are exported;
-; fat32_tell_dir and fat32_seek_dir are added; fat32_create takes the attributes in A;
-; fat32_close sets the archive bit of a file written; fat32_write loops to fat32_write_again,
-; past the stream flag, as fat32_read does; create_shortname gives a name that fits
-; 8.3 that name as its short name; cluster_count is the cluster past the last, from the
-; sectors of the partition, so find_free_cluster stops at the end of the volume. Left out: the 65816 routines fat32_read_long and
-; fat32_write_long, and their MVN trampoline.
+; fat32_regs.inc replace lib.inc and regs.inc; the long branches are written out; krn_ptr1 and
+; bank_save are imported at the top, so each use is zero page; fat32_cwd and fat32_free_clusters
+; are exported; fat32_tell_dir and fat32_seek_dir are added; fat32_create takes the attributes in
+; A; fat32_close sets the archive bit of a file written; fat32_write loops to fat32_write_again,
+; past the stream flag, as fat32_read does; create_shortname gives a name that fits 8.3 that name
+; as its short name; find_dirent takes . and .. in the root as the root, and fails on the root in
+; a search for files only, so fat32_walk_tree calls find_dir; cluster_count is the cluster past
+; the last, from the sectors of the partition, so find_free_cluster stops at the end of the
+; volume. Left out: the 65816 routines fat32_read_long and fat32_write_long, and their MVN
+; trampoline.
 ; fat32glue.s holds the routines and variables the library imports.
 ;
 ; Original header:
@@ -1144,7 +1145,11 @@ find_dirent:
 	bne @open
 
 	; Fake a directory entry for the root directory
-	lda #'/'
+@root:	bit tmp_filetype
+	bpl @fake
+	clc			; files only
+	rts
+@fake:	lda #'/'
 	sta fat32_dirent + dirent::name
 	stz fat32_dirent + dirent::name + 1
 	lda #$10
@@ -1164,7 +1169,33 @@ find_dirent:
 
 @open:	set32 tmp_dir_cluster, cur_context + context::cluster
 
-	jsr open_cluster
+	; The root has no . and .. entries: there both name the root.
+	lda cur_context + context::cluster + 0
+	ora cur_context + context::cluster + 1
+	ora cur_context + context::cluster + 2
+	ora cur_context + context::cluster + 3
+	bne @read
+	ldy name_offset
+	lda (fat32_ptr), y
+	cmp #'.'
+	bne @read
+	iny
+	lda (fat32_ptr), y
+	cmp #'.'
+	bne @dots
+	iny
+	lda (fat32_ptr), y
+@dots:	tax
+	beq @root		; the end of the path
+	cmp #'/'
+	bne @read
+	iny
+	sty name_offset
+	lda (fat32_ptr), y
+	beq @root
+	bra @open
+
+@read:	jsr open_cluster
 	bcc @error
 
 @next:	; Read entry
@@ -4199,7 +4230,7 @@ fat32_walk_tree:
 	sta fat32_ptr
 	lda #>@slash
 	sta fat32_ptr+1
-	jsr find_dirent
+	jsr find_dir
 	bcs :+
 	jmp @error
 :

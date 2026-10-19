@@ -2337,7 +2337,7 @@
          changed. fatcheck after creates, a long name, a mkdir and a DEL: no problems.
        - Steps since the full suite: 1.
        - Docs owed, added: PLAN on the short-name rule and the case kept on create.
-     - Done, F4b (2026-10-20), committed. Build 713 ms, ROM only, the new baseline:
+     - Done, F4b (2026-10-20), committed b6bb965. Build 713 ms, ROM only:
        - `api_delete`, `api_rename`, `api_mkdir`, `api_rmdir`, `api_diskfree` live in
          `fat32dos.s`, bank 1, on the library. fat.s reads only now: it lost delete, rename,
          mkdir, rmdir, diskfree, `file_find`, `file_create`, `dir_make`, `dir_slot`,
@@ -2384,6 +2384,39 @@
        - Steps since the full suite: 2.
        - Docs owed, added: PLAN on rmdir of a read-only directory, the dots-only name, diskfree
          from FS info; NOTICE on the two upstream fixes.
+     - Done, F5 (2026-10-20), not committed. Build 731 ms, ROM only, the new baseline:
+       - `api_chdir` and `api_getcwd` live in `fat32dos.s`, bank 1, on the library. fat.s lost
+         them and the code only they used: the directory search, the cluster chain, `path_walk`,
+         `dir_enter`, `drive_ready`, `lba_add`, and the zero page `search_attr` and `ptr`. It
+         keeps the drive table, `mount`, `read_sector`, `path_last` (the kernel's device names),
+         getdrive, setdrive and seek.
+       - chdir: `lib_enter`, then `dir_change` on the name part unless it is empty; a wildcard
+         gives 3. The library's current directory goes back to `DPB_CWD`, cluster 0 as
+         `DPB_ROOT`.
+       - getcwd: `fat32_open_tree` and `fat32_walk_tree` give each directory's entry in its
+         parent, long names included. The path is built backward in `lib_path`; the length
+         byte goes where the first `\` is, and the result is copied to r0 in the caller's bank.
+         Over 254 characters gives 3. chdir does not check the length yet (F6).
+       - `drive_enter` (bank switch, drive 0 the current one, then `drive_check`) is shared by
+         getcwd and diskfree: 13 bytes saved.
+       - Upstream change in `find_dirent`: `.` and `..` in the root name the root, as fat.s
+         had it, so `CD ..` at the root and `\..\DOCS` work for every library call. The faked
+         root entry fails a search for files only, so `OPEN ..` at the root gives 2.
+         `fat32_walk_tree` now calls `find_dir`: it called `find_dirent` with A = the high byte
+         of a ROM address, which reads as files only.
+       - Cost: bank 0 CODE -734 bytes (7111 free below $FFA0); bank 1 B1CODE +260 (end $E77D,
+         6178 free); KERNELZP -3 (ends $F8).
+       - Tests: `CWD` ok 0.7 s, `DIRS` 1.0, `DOSAPI` 0.7, `SHELL` 0.5, `SHFILES` 0.7, `TREE`
+         1.4, `XCOPY` 1.6, `CMDLETS` 1.5, `SHRUN` 0.8, `XCOPYS` 1.3, `WHERE` 1.1, `SHBOOT` 0.5;
+         after `drive_enter` `CWD` 0.6, `DISK` 1.0, `DIRS` 1.1. No golden changed. A scratch
+         test (deleted): `CD \..`, `CD \..\DOCS`, `CD ..\..\.`, `CD ./`, `CD D*` 3, `OPEN ..`
+         and `OPEN \` 2, a long-name directory shown as created, 7 levels of 32-character
+         names to 252 characters, the 8th gives getcwd 3; fatcheck clean.
+       - For F7: `mount` still fills `DPB_FAT`, `DPB_BASE`, `DPB_FATS` and `DPB_FAT_SIZE`,
+         which nothing reads now.
+       - Steps since the full suite: 3.
+       - Docs owed, added: PLAN on `.` and `..` in the root and long names from getcwd; NOTICE
+         on the `find_dirent` change.
    - To do: find what the 492 bytes of 7i2b cost in `DISKFREE.CBI` (1861 to 2353 bytes), with
      pyuxc's link map, and cut them. Ideas: read `P2$` once, drop `FREE_TEXT` and pass the
      `MID$` straight to `SYS_STRINGS_SET`, reuse `DRIVE_NAME` for the text (11 bytes of RAM).
