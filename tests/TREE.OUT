@@ -85,10 +85,10 @@ ROOT
  |      README.TXT
  |      
  +- DOS
- |      DATE.CBI
- |      DISKFREE.CBI
- |      DISKINFO.CBI
- |      EXIST.CBI
+ |      DATE.CBIN
+ |      DISKFREE.CBIN
+ |      DISKINFO.CBIN
+ |      EXIST.CBIN
  |      GREP.COM
  |      HEAD.COM
  |      HELP.COM
@@ -97,11 +97,11 @@ ROOT
  |      TAIL.COM
  |      TED.COM
  |      TED.HLP
- |      TIME.CBI
+ |      TIME.CBIN
  |      TREE.COM
- |      UPTIME.CBI
+ |      UPTIME.CBIN
  |      VIEW.COM
- |      WHERE.CBI
+ |      WHERE.CBIN
  |      XCOPY.COM
  |      
  +- MANY

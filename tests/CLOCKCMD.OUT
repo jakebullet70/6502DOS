@@ -54,7 +54,7 @@ C>TIME 9:05:30 SILENT
 C>PRINT P1$ + " " + P2$ + " " + P3$ + " " + P4$
 09:05:30 9 5 30
 C>UPTIME
-0 days 00:00:04
+0 days 00:00:05
 C>UPTIME SILENT
 C>PRINT P1$ + " " + P2$ + " " + P3$
 5 0 00:00:05
