@@ -43,6 +43,7 @@ api_exec:
         lda #ERR_NO_MEMORY
         rts                     ; carry set
 @open:
+        lda #0                  ; read; carry clear: no create
         FARCALL lib_open
         bcc @opened
         rts

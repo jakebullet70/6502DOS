@@ -2246,7 +2246,8 @@
          6; F3b is the 7th, so the full suite runs after it.
        - `lib_path` $A574, `lib_len` $A674, `lib_slash` $A675; `fat32_errno` $A792,
          `sector_lba` $A795. FATBSS $A100-$A798.
-     - Done, F3b (2026-10-19), not committed. Build 1.54 s (7 commandlet compiles), ROM only
+     - Done, F3b (2026-10-19), committed 1a12853 (code) and 1331cb4 (goldens). Build 1.54 s (7
+       commandlet compiles), ROM only
        about 0.9 s, the new baseline:
        - findfirst and findnext on the library: `api_findfirst` and `api_findnext` live in
          `fat32dos.s`, bank 1; the gate calls them there (api_table holds the bank). fat.s lost
@@ -2294,6 +2295,48 @@
        - Docs owed: API.md is generated; PLAN wildcard rules (§ names: `*` fills with `?`),
          the `.CBIN`/`.CBI` trap (PLAN line ~654), the 8.3-only line, §3, §9; NOTICE;
          `GATE_PAGE` comment.
+     - F4 split (2026-10-20): the user's choice: a library create, mkdir or rename of a name
+       that fits 8.3 gets that name, upper case, as its short name; a long name keeps the hex
+       alias. So fat.s still finds every name the library makes, and the steps stay small: F4a
+       create, write, close; F4b delete, rename, mkdir, rmdir, diskfree; F5 chdir, getcwd.
+     - Done, F4a (2026-10-20), not committed. Build 845 ms, ROM only, the new baseline:
+       - Every file handle is the library's now. `lib_open` (bank 1) takes A = access and
+         carry set to create with `create_attr` (masked to read only, hidden, system, archive);
+         access 1 or 2 on a read-only file gives 5; a blank or wildcard name on create gives 3.
+         kernel.s `open_common` sends every non-device open there; exec.s passes A = 0, carry
+         clear. `api_close` closes every non-device through `lib_close`.
+       - `lib_io` (bank 1, replaces the kernel's) takes Y = the SFT entry, X = 1 read or 0
+         write, moves `SFT_POS`. `lib_write`: a position past the size first takes zeros
+         (`fat32_write_byte`, a byte at a time); a full drive (errno 0) gives r1 short, carry
+         clear; sets `SFT_FILE_SIZE` from the context. `errno_errors` maps errno 0 to 5.
+       - Two sector buffers: the library's writes empty fat.s's (`buf_forget`: `buf_drive` =
+         $FF after a create, a write, a close). fat.s `lib_forget` empties the library's only
+         when it holds `BLK_SECTOR`, the sector just written: a blind empty would lose a file's
+         data not yet written, since `save_sector_buffer` writes to `sector_lba`. It keeps carry:
+         `buf_flush` returns the carry after it (bug found: fat.s reads failed after a write).
+       - `fat32.s`: `fat32_create` takes A = the attributes; `fat32_close` sets the archive bit
+         of a file written; `create_shortname` makes a name that fits 8.3 (no `+,;=[]~`, no
+         byte under `!` or over `~`) its own short name, upper case, else the hex alias
+         (`short_limit`, 1 byte). Upstream bug fixed: `fat32_write` looped to its start, so the
+         `ror krn_ptr1` took a stale carry as the stream flag: an overwrite across a sector end
+         repeated one byte. It loops to `fat32_write_again` now.
+       - `fat32_readonly` 0: the library writes. fat.s lost `file_io`, `file_close`,
+         `file_copy`, `cluster_at`, `walk`; kernel.s lost its `lib_io` and the `SFT_MODIFIED`
+         store. `file_find` and `file_create` stay for delete and mkdir.
+       - Trap until F4b: fat.s `DEL` marks only the 8.3 entry, so a file the library made
+         leaves its long-name entries orphaned. The library skips them (checksum); fatcheck
+         skips long-name entries.
+       - Names the library creates keep the case as typed: `DIR` shows `out.txt`, `Mixed.Txt`.
+       - Cost: bank 0 CODE -579 bytes (4947 free below $FFA0); bank 1 B1CODE +387 (end $E480,
+         6943 free); FATBSS +7 ($A100-$A7A2); KERNELRAM -3.
+       - Tests: `SHRUN` ok 0.9 s (fixed), `WRITE` 1.1, `DUP` 0.5, `SEEK` 0.5, `HANDLES` 0.4,
+         `FILES` 0.4, `DOSAPI` 0.7, `DISK` 0.5, `DIRS` 1.0, `EXEC` 0.7, `SHFILES` 0.8,
+         `SHREDIR` 1.3, `SHSCRIPT` 1.1, `SHVARS` 0.8, `XCOPY` 1.7, `XCOPYS` 1.2, `TARGET` 0.5,
+         `CLOCK` 0.4, `TED` 1.1, `SHELL` 0.5, `BOOT` 0.4, `SHBOOT` 0.5, `CMDLETS` 1.5, `WHERE`
+         1.1, `TREE` 1.3, `GREP` 1.7, `HEAD` 1.0, `TAIL` 1.3, `MORE` 0.9, `VIEW` 1.0. No golden
+         changed. fatcheck after creates, a long name, a mkdir and a DEL: no problems.
+       - Steps since the full suite: 1.
+       - Docs owed, added: PLAN on the short-name rule and the case kept on create.
    - To do: find what the 492 bytes of 7i2b cost in `DISKFREE.CBI` (1861 to 2353 bytes), with
      pyuxc's link map, and cut them. Ideas: read `P2$` once, drop `FREE_TEXT` and pass the
      `MID$` straight to `SYS_STRINGS_SET`, reuse `DRIVE_NAME` for the text (11 bytes of RAM).

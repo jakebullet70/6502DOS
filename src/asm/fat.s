@@ -24,14 +24,13 @@
 .include "api.inc"
 .include "far.inc"
 
-.export drives_init, drives_add, path_last, file_find, file_create, file_io, file_close
-.export file_copy, create_attr
+.export drives_init, drives_add, path_last, file_find, file_create, create_attr, buf_drive
 .export api_getdrive, api_setdrive, api_chdir, api_getcwd
 .export api_seek, api_delete, api_rename, api_mkdir, api_rmdir, api_diskfree
 .export DPB, current_drive
 .exportzp fcb_name, cluster, dpb, file_size
-.import drv_call, bank0, bank_restore, sft_find, io_start, io_done, to_upper
-.importzp driver, io_ptr, io_left
+.import drv_call, bank0, bank_restore, sft_find, to_upper
+.importzp driver
 .import jsrfar, lib_seek, sector_lba
 
 .segment "KERNELZP" : zeropage
@@ -50,7 +49,7 @@ entry_ptr:    .res 2            ; the entry in SECTOR_BUFFER
 lba:          .res 4            ; a sector number
 ptr:          .res 2            ; a byte in SECTOR_BUFFER
 free_next:    .res 4            ; the next cluster cluster_free looks at, on any drive
-chunk:        .res 1           ; file_copy: the bytes it copies from the buffer page, minus 1
+chunk:        .res 1            ; cluster_zero: the sectors left, minus 1; api_seek: A
         .assert SFT_POS - SFT_CLUSTER = pos - cluster && SFT_FIRST - SFT_CLUSTER = file_first - cluster, error, "the SFT state follows the zero page order"
         .assert SFT_ENTRY - SFT_CLUSTER = entry_sector - cluster && SFT_STATE = entry_ptr + 2 - cluster, error, "the SFT state follows the zero page order"
         .assert ptr = lba + 4 && entry_ptr = entry_sector + 4, error, "entry_keep copies lba and ptr"
@@ -63,7 +62,6 @@ buf_drive:    .res 1            ; its DPB offset, $FF when the buffer holds none
 buf_dirty:    .res 1            ; the copies of the buffer to write back: 0, 1, or DPB_FATS
 writing:      .res 1            ; bit 7: a cluster chain grows at its end; bit 6: a new cluster is zeroed
 free_pass:    .res 1            ; cluster_free: 1 after it went back to cluster 2
-walk:         .res 3            ; cluster_at: the clusters to step
 create_attr:  .res 1            ; file_create: the attributes; ATTR_DIR makes a directory
 entry_copy:   .res 21           ; rename: bytes 11 to 31 of the directory entry
 rename_drive: .res 1            ; rename: the dpb of the old path
@@ -410,17 +408,31 @@ buf_flush:
 @done:
         rts
 
-; lib_forget: empties the FAT32 library's sector buffer, which may hold a sector fat.s wrote.
-; Changes A and X.
+; lib_forget: empties the FAT32 library's sector buffer when it holds BLK_SECTOR, the sector
+; fat.s just wrote. A buffer of another sector may hold a file's data not yet written. Keeps
+; carry. Changes A and X.
 lib_forget:
-        ldx RAM_BANK
+        php
+        lda RAM_BANK
+        pha
         stz RAM_BANK
+        ldx #3
+@same:
+        lda BLK_SECTOR,x
+        cmp sector_lba,x
+        bne @keep
+        dex
+        bpl @same
         lda #$FF
-        sta sector_lba
-        sta sector_lba+1
-        sta sector_lba+2
-        sta sector_lba+3
-        stx RAM_BANK
+        ldx #3
+@empty:
+        sta sector_lba,x
+        dex
+        bpl @empty
+@keep:
+        pla
+        sta RAM_BANK
+        plp
         rts
 
 ; buf_claim: makes the buffer sector lba of the drive at dpb, to be written back, without
@@ -768,78 +780,6 @@ fat_entry:
         lda #>SECTOR_BUFFER
         adc #0
         sta ptr+1
-@done:
-        rts
-
-; cluster_at: makes cluster hold the byte at pos of a file, before it is read or written. Walks
-; the chain from file_first when cluster is 0, else steps when pos is at the start of a
-; cluster. Returns carry set and A = the error on a fault. Changes A, X and Y.
-cluster_at:
-        lda cluster
-        ora cluster+1
-        ora cluster+2
-        ora cluster+3
-        beq @walk
-        lda pos
-        bne @here
-        ldx dpb
-        lda pos+1
-        and DPB + DPB_CMASK,x
-        bne @here
-        jmp next_cluster
-@walk:
-        lda pos+3               ; walk = pos >> 9 >> DPB_SHIFT
-        lsr
-        sta walk+2
-        lda pos+2
-        ror
-        sta walk+1
-        lda pos+1
-        ror
-        sta walk
-        ldx dpb
-        ldy DPB + DPB_SHIFT,x
-        beq @first
-@shift:
-        lsr walk+2
-        ror walk+1
-        ror walk
-        dey
-        bne @shift
-@first:
-        ldx #3
-@copy:
-        lda file_first,x
-        sta cluster,x
-        dex
-        bpl @copy
-        ora cluster+1
-        ora cluster+2
-        ora cluster+3
-        bne @step
-        bit writing             ; an empty file; a read never gets here
-        bpl @step
-        jsr cluster_add
-        bcs @done
-@step:
-        lda walk
-        ora walk+1
-        ora walk+2
-        beq @here
-        jsr next_cluster
-        bcs @done
-        lda walk
-        bne @low
-        lda walk+1
-        bne @middle
-        dec walk+2
-@middle:
-        dec walk+1
-@low:
-        dec walk
-        bra @step
-@here:
-        clc
 @done:
         rts
 
@@ -1489,238 +1429,6 @@ dir_slot:
         rts
 @found:
         clc
-        rts
-
-; file_io: the read (A = 0) or write (A = $80) call for a file, entered with RAM bank 0 selected
-; and Y = the offset of its SFT entry. Moves r1 bytes between r0 and the file. Returns r1 = the
-; bytes moved, and the caller's bank.
-file_io:
-        sta writing
-        sty sft_entry
-        lda SFT + SFT_FLAGS,y
-        sta dpb
-        ldx #0
-@load:
-        lda SFT + SFT_CLUSTER,y
-        sta cluster,x
-        iny
-        inx
-        cpx #SFT_ENTRY - SFT_CLUSTER
-        bne @load
-        jsr bank_restore
-        jsr file_copy
-        bcs @fault
-        jsr bank0
-        ldy sft_entry
-        ldx #0
-        lda writing
-        beq @store
-        sta SFT + SFT_MODIFIED,y
-@store:                         ; cluster, pos, file_size and file_first
-        lda cluster,x
-        sta SFT + SFT_CLUSTER,y
-        iny
-        inx
-        cpx #SFT_ENTRY - SFT_CLUSTER
-        bne @store
-        clc
-        jsr bank_restore
-@fault:
-        stz writing
-        rts
-
-; file_close: the close call for a file, entered with RAM bank 0 selected and Y = the offset of
-; its SFT entry. The directory entry of a written file takes its size, its first cluster and
-; the archive bit. Then the buffer is written back. Returns the caller's bank, and carry set and
-; A = the error on a fault.
-file_close:
-        lda SFT + SFT_MODIFIED,y
-        beq @flush
-        lda #0
-        sta SFT + SFT_MODIFIED,y
-        lda SFT + SFT_FLAGS,y
-        sta dpb
-        ldx #0
-@load:                          ; file_size, file_first, entry_sector and entry_ptr
-        lda SFT + SFT_FILE_SIZE,y
-        sta file_size,x
-        iny
-        inx
-        cpx #SFT_STATE - (SFT_FILE_SIZE - SFT_CLUSTER)
-        bne @load
-        jsr bank_restore
-        jsr entry_load
-        bcs @done
-        ldy #DIR_FILE_SIZE + 3
-@size:
-        lda file_size - DIR_FILE_SIZE,y
-        sta (ptr),y
-        dey
-        cpy #DIR_FILE_SIZE - 1
-        bne @size
-        ldx #3
-@first:
-        ldy cluster_fields,x
-        lda file_first,x
-        sta (ptr),y
-        dex
-        bpl @first
-        ldy #DIR_ATTR
-        lda (ptr),y
-        ora #ATTR_ARCHIVE
-        sta (ptr),y
-        lda #1
-        sta buf_dirty
-        jmp buf_flush
-@flush:
-        jsr bank_restore
-        jmp buf_flush
-@done:
-        rts
-
-; file_copy: moves r1 bytes between r0 and the file at dpb, cluster, pos, file_size and
-; file_first: reads when writing is 0, writes when it is $80. A read stops at the end of the
-; file. A write past the end makes the file longer, and stops when the drive is full. Returns
-; r1 = the bytes moved, and the file's state after them. Returns carry set and A = the error on
-; a fault. Changes A, X and Y.
-file_copy:
-        jsr io_start
-        bit writing
-        bmi @chunk
-        sec                     ; lba = the bytes left in the file
-        ldx #0
-@left:
-        lda file_size,x
-        sbc pos,x
-        sta lba,x
-        inx
-        txa
-        eor #4                  ; keeps carry
-        bne @left
-        bcs @inside             ; a position past the size reads 0 bytes
-        stz io_left
-        stz io_left+1
-@inside:
-        lda lba+2
-        ora lba+3
-        bne @count              ; 64 KB or more
-        lda lba
-        cmp io_left
-        lda lba+1
-        sbc io_left+1
-        bcs @count
-        lda lba
-        sta io_left
-        lda lba+1
-        sta io_left+1
-@count:
-        lda io_left
-        sta r1
-        lda io_left+1
-        sta r1+1
-@chunk:
-        jsr io_done
-        bne @more
-        jmp @done
-@more:
-        jsr cluster_at
-        bcs @stop
-        jsr cursor_sector
-        bcs @stop               ; a fault: @stop passes it on
-        lda pos                 ; chunk = the bytes to the end of the buffer page, minus 1,
-        eor #$FF                ; or io_left - 1 when that is less
-        ldx io_left+1
-        bne @take
-        ldx io_left
-        dex
-        stx chunk
-        cmp chunk
-        bcc @take
-        txa
-@take:
-        sta chunk
-        tax
-        inx                     ; the bytes to copy, 0 for 256
-        ldy #0
-        bit writing
-        bmi @write
-@copy:
-        lda (ptr),y
-        sta (io_ptr),y
-        iny
-        dex
-        bne @copy
-        bra @moved
-@write:
-        lda (io_ptr),y
-        sta (ptr),y
-        iny
-        dex
-        bne @write
-        lda #1
-        sta buf_dirty
-@moved:
-        sec                     ; io_ptr += chunk + 1
-        lda io_ptr
-        adc chunk
-        sta io_ptr
-        bcc @less
-        inc io_ptr+1
-@less:
-        clc                     ; io_left -= chunk + 1
-        lda io_left
-        sbc chunk
-        sta io_left
-        bcs @ahead
-        dec io_left+1
-@ahead:
-        sec                     ; pos += chunk + 1
-        lda pos
-        adc chunk
-        sta pos
-        bcc @chunk
-        inc pos+1
-        bne @chunk
-        inc pos+2
-        bne @chunk
-        inc pos+3
-        bra @chunk
-@stop:
-        cmp #ERR_ACCESS         ; the drive is full: r1 = the bytes written
-        bne @fault
-        stz cluster             ; a walk may have stopped short of pos
-        stz cluster+1
-        stz cluster+2
-        stz cluster+3
-        sec
-        lda r1
-        sbc io_left
-        sta r1
-        lda r1+1
-        sbc io_left+1
-        sta r1+1
-@done:
-        bit writing
-        bpl @end
-        sec                     ; file_size = pos when pos is past it
-        ldx #0
-@past:
-        lda file_size,x
-        sbc pos,x
-        inx
-        txa
-        eor #4                  ; keeps carry
-        bne @past
-        bcs @end
-        ldx #3
-@grow:
-        lda pos,x
-        sta file_size,x
-        dex
-        bpl @grow
-@end:
-        clc
-@fault:
         rts
 
 ; api_seek: moves handle X by the signed offset in r0 and r1 from the start (A = 0), the

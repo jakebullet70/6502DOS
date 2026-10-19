@@ -18,8 +18,8 @@
 .export sft_find, api_dup, api_dup2, api_ioctl
 .exportzp driver, io_ptr, io_left, saved_bank
 .import con_init, api_con_status, CHRIN, CHROUT, errmsg_table, sd_driver
-.import drives_init, drives_add, path_last, file_find, file_create, file_io, file_close
-.import create_attr, jsrfar, lib_init, lib_open, lib_read, lib_close
+.import drives_init, drives_add, path_last
+.import create_attr, jsrfar, lib_init, lib_open, lib_io, lib_close
 .importzp ticks, fcb_name, cluster, dpb
 
 .segment "KERNELZP" : zeropage
@@ -218,28 +218,12 @@ open_common:
 @next:
         jsr drv_next
         bcc @driver
-        bit open_create
-        bmi @create
+        lda open_create
+        asl                     ; carry set: create
         lda open_access
-        bne @write
         FARCALL lib_open        ; the state of the file in cluster
         bcs @done
         lda #SFT_LIB
-        bra @found
-@write:
-        jsr file_find
-        bcs @done
-        and #ATTR_READ_ONLY
-        beq @file
-        lda #ERR_ACCESS
-        sec
-@done:
-        rts
-@create:
-        jsr file_create
-        bcs @done
-@file:
-        lda dpb
 @found:
         sta open_flags
         jsr handle_free
@@ -268,9 +252,9 @@ open_common:
         jsr bank_restore
         pla
         sec
+@done:
         rts
-@free_entry:                    ; A = 0
-        sta SFT + SFT_MODIFIED,y
+@free_entry:
         lda #1
         sta SFT + SFT_REFS,y
         lda open_access
@@ -283,7 +267,7 @@ open_common:
         sta SFT + SFT_FLAGS,y
         phy
         ldx #0
-@state:                         ; a file's state: from file_find or file_create
+@state:                         ; a file's state: from lib_open
         lda cluster,x
         sta SFT + SFT_CLUSTER,y
         iny
@@ -405,13 +389,6 @@ api_close:
         sta PSP_HANDLES,x
         lda SFT + SFT_FLAGS,y
         bmi @device
-        lsr                     ; SFT_LIB
-        bcs @library
-        phx
-        jsr file_close
-        plx
-        rts
-@library:
         lda SFT + SFT_REFS,y
         bne @device             ; another handle refers to the file
         lda SFT + SFT_CLUSTER,y
@@ -479,44 +456,15 @@ handle_io:
         ldy io_slot
         jmp drv_call
 @file:
-        lsr                     ; SFT_LIB: opened for reading, so this is a read
-        bcs lib_io
-        lda io_refused          ; 1 for a read, 0 for a write
-        eor #1
-        lsr
-        ror                     ; 0 for a read, $80 for a write
-        jmp file_io
+        ldx io_refused          ; 1 for a read, 0 for a write
+        FARCALL lib_io
+        bra bank_return
 @denied:
         jsr bank_restore
         lda #ERR_ACCESS
         sec
 @done:
         rts
-
-; lib_io: reads r1 bytes to r0 from the file of the library at SFT entry Y, and moves its
-; position on by the bytes read. Entered with RAM bank 0 selected; returns the caller's bank.
-lib_io:
-        lda SFT + SFT_CLUSTER,y
-        phy
-        FARCALL lib_read
-        ply
-        bcs bank_return
-        tya
-        tax
-        clc
-        lda SFT + SFT_POS,x
-        adc r1
-        sta SFT + SFT_POS,x
-        lda SFT + SFT_POS+1,x
-        adc r1+1
-        sta SFT + SFT_POS+1,x
-        bcc @moved
-        inc SFT + SFT_POS+2,x
-        bne @moved
-        inc SFT + SFT_POS+3,x
-@moved:
-        clc
-        jmp bank_restore
 
 ; sft_driver: points driver at the driver of SFT entry Y, then selects the caller's bank.
 ; Changes A, keeps carry.

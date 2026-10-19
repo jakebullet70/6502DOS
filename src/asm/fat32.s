@@ -4,7 +4,10 @@
 ; Changed: the code is in segment B1CODE and the variables in FATBSS; fat32_lib.inc and
 ; fat32_regs.inc replace lib.inc and regs.inc; the long branches are written out; krn_ptr1
 ; and bank_save are imported at the top, so each use is zero page; fat32_cwd is exported;
-; fat32_tell_dir and fat32_seek_dir are added. Left out: the 65816 routines fat32_read_long and
+; fat32_tell_dir and fat32_seek_dir are added; fat32_create takes the attributes in A;
+; fat32_close sets the archive bit of a file written; fat32_write loops to fat32_write_again,
+; past the stream flag, as fat32_read does; create_shortname gives a name that fits
+; 8.3 that name as its short name. Left out: the 65816 routines fat32_read_long and
 ; fat32_write_long, and their MVN trampoline.
 ; fat32glue.s holds the routines and variables the library imports.
 ;
@@ -138,6 +141,7 @@ tmp_dir_cluster:     .dword 0
 tmp_attrib:          .byte 0       ; temporary: attribute when creating a dir entry
 tmp_dirent_flag:     .byte 0
 shortname_buf:       .res 11       ; Used for shortname creation
+short_limit:         .byte 0       ; create_shortname: the end of the part being filled
 tmp_timestamp:       .byte 0
 tmp_filetype:        .byte 0       ; Used to match file type in find_dirent
 
@@ -832,6 +836,58 @@ validate_char:
 ; * c=0: failure; sets errno
 ;-----------------------------------------------------------------------------
 create_shortname:
+	; A name that fits 8.3 is its own short name, in upper case
+	ldx #10
+	lda #' '
+@blank:	sta shortname_buf, x
+	dex
+	bpl @blank
+	inx
+	lda #8
+	sta short_limit
+	ldy name_offset
+@char:	lda (fat32_ptr), y
+	beq @end
+	iny
+	cmp #'.'
+	beq @dot
+	cmp #'a'
+	bcc @upper
+	cmp #'z' + 1
+	bcs @upper
+	and #$DF
+@upper:	cpx short_limit
+	bcs @hex
+	cmp #'!'
+	bcc @hex
+	cmp #$7F
+	bcs @hex
+	phx
+	ldx #short_banned_end - short_banned - 1
+@banned:
+	cmp short_banned, x
+	beq @hex_pull
+	dex
+	bpl @banned
+	plx
+	sta shortname_buf, x
+	inx
+	bra @char
+@dot:	txa
+	beq @hex	; no base name
+	lda short_limit
+	cmp #11
+	beq @hex	; a second dot
+	ldx #8
+	lda #11
+	sta short_limit
+	bra @char
+@end:	txa
+	bne @checksum
+	bra @hex
+@hex_pull:
+	plx
+@hex:
 	ldx #0
 	lda marked_entry_lba + 3
 	jsr hexbuf8
@@ -862,6 +918,7 @@ create_shortname:
 	sta shortname_buf, x
 
 	; Checksum
+@checksum:
 	lda #0
 	tay
 @checksum_loop:
@@ -876,6 +933,12 @@ create_shortname:
 	bne @checksum_loop
 	sta lfn_checksum
 	rts
+
+; The characters a long name may hold and a short name made here may not. Without ~, such a
+; short name never equals an alias, which holds ~.
+short_banned:
+	.byte "+,;=[]~"
+short_banned_end:
 
 hexbuf8:
 	pha
@@ -2748,9 +2811,11 @@ create_dir_entry:
 ;
 ; Create file.
 ;
+; a: the attributes
 ; c=1: Delete it if it already exists.
 ;-----------------------------------------------------------------------------
 fat32_create:
+	sta tmp_attrib
 	php ; overwrite flag
 	stz fat32_errno
 
@@ -2791,7 +2856,7 @@ fat32_create:
 	bcc @error
 
 @ok:	; Create directory entry
-	lda #0
+	lda tmp_attrib
 	jmp create_dir_entry
 
 ;-----------------------------------------------------------------------------
@@ -2919,6 +2984,12 @@ fat32_close:
 	sta (fat32_bufptr), y
 	iny
 	lda cur_context + context::file_size + 3
+	sta (fat32_bufptr), y
+
+	; Set the archive bit
+	ldy #11
+	lda (fat32_bufptr), y
+	ora #$20
 	sta (fat32_bufptr), y
 
 	; Encode mtime timestamp
@@ -3443,6 +3514,7 @@ fat32_write:
 
 	; Store carry flag
 	ror krn_ptr1
+fat32_write_again:
 
 	; Calculate number of bytes remaining in buffer
 	sec
@@ -3529,7 +3601,7 @@ fat32_write:
 	lda fat32_size + 0
 	ora fat32_size + 1
 	beq @6
-	jmp fat32_write		; Not done yet
+	jmp fat32_write_again	; Not done yet
 @6:
 	sec	; Indicate success
 	rts
