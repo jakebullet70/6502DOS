@@ -2107,6 +2107,71 @@
    - Long file names are needed (the user, 2026-10-16). Talk the design over with the user
      before a step goes into PLAN section 11. PLAN section 5 has the target: 32 characters a
      name, 255 a path.
+     - The user's choice (2026-10-18): take the x16-rom FAT32 library (X16Community/x16-rom,
+       `fat32/fat32.s`, master `fbe32a6`, Frank van den Hoef and Michael Steil, 2-clause BSD)
+       for its testing; it replaces `fat.s`. The limits stay 32 and 255. Not started: the
+       open questions below go to the user first. `src/asm/sdcard.s` is already a port of its
+       `sdcard.s`, with the notice.
+     - Measured with our ca65 against stubs: `fat32.s` code 7977 bytes, of it 483 the 65816
+       `fat32_read_long` and `fat32_write_long`; `match.s` 453 (CMDR-DOS policy: ISO-8859-15,
+       `*` ends a part, `,` refused). BSS 1199 bytes, of it `lfn_buf` 640 (20 entries);
+       `fat32_dirent` 278 (name 256). Zero page 8 bytes, and the KERNAL's `krn_ptr1` (2) and
+       `bank_save` (1). Our `fat.o` is 3563 bytes.
+     - What it does: `read_dirent` collects LFN entries into `lfn_buf` with index and checksum
+       checks, and falls back to the 8.3 name with the case flags of byte 12. Every create
+       writes an LFN, even for an 8.3 name; the 8.3 alias is 8 hex digits of the entry's LBA,
+       `~`, its slot, `~`, so no `~1` search. `delete_entry` marks the LFN entries too. Rename
+       is create, then delete. One shared `sector_buffer`; `FAT32_CONTEXTS` 4 (8 fit in the
+       256-byte limit). The cwd is per volume; `fat32_walk_tree` gives the names up to the
+       root. Paths are Unix: `/`, no drive. Free space reads the FSInfo count.
+       `mount` needs an MBR partition of type $0B or $0C and 2 FATs: `mksd.py` images pass.
+       Its BSS sits in RAM bank 0; `x16_banked_copy` selects `bank_save` for a buffer at
+       `$A000-$BFFF` and goes back to bank 0.
+     - Trap: `add_lfn_entry` has no bound: an LFN of more entries than `lfn_buf` holds
+       overwrites what follows. A smaller `lfn_buf` needs a check on the entry count.
+     - Trap: ca65 V2.19 has no `.macpack longbranch` file here, and a cheap local label is not
+       seen inside a macro (`jmi @stream_save`, `jcc @error`).
+     - Draft layout: ROM bank 1 holds the library, its callbacks, a layer for our calls, and
+       the SD driver. The gate already calls a routine in any ROM bank. RAM bank 0 holds the
+       BSS and a 256-byte path buffer. Bank 0 drops `fat.s`.
+     - The user's answers (2026-10-19): keep the case as typed on create; Windows wildcard
+       rules; grow the find buffer from 63 bytes to about 84; keep the library's hex 8.3
+       aliases. The asm of F1 to F7 is approved.
+     - Steps: F1 two ROM banks and the far calls; F2 the library in bank 1, unused, with the
+       callbacks and the SD glue (65816 code dropped); F3 reads on it (open, read, seek,
+       close, exec load, findfirst, findnext); F4 writes (create, write, delete, rename,
+       mkdir, rmdir, free space); F5 chdir and getcwd; F6 the 32/255 limits, LFN in `mksd.py`
+       and `fatcheck.py`, new tests, the shell's 12-character pipe path; F7 delete `fat.s`,
+       docs. Each step runs the tests of the code it touches.
+     - Done, F1 (2026-10-19): `rom.cfg` links banks 0 and 1; `build/UXDOS16.ROM` is 32768
+       bytes. `src/asm/far.inc` holds `FARCALL target [, entry]` (6 bytes a call), `JSRFAR`
+       and the IRQ entry and exit. `jsrfar` (bank 0, `gate.s`) and `jsrfar1` (bank 1,
+       `bank1.s`) read the 3 bytes after the JSR, push the caller's bank and end in the gate's
+       tail at `gate_far`; A, X, Y and C go in and out. About 140 cycles a call. No RAM, no
+       zero page: they share `gate_a`, `gate_x` and `gate_vector` with the gate.
+       - Trap, found in x16emu's source (`vp6502`): an interrupt's vector pull selects ROM
+         bank 0, but `$01` reads the interrupted bank until written. So bank 0's vectors serve
+         every interrupt. `irq_entry` saves A and the bank, `irq_exit` selects the bank and
+         RTIs; both sit at `$FFA0` with the same 14 bytes in each bank, since a write to `$01`
+         goes on at the next address in the new bank. `irq` and `nmi` in `boot.s` exit
+         through `irq_exit`; a BRK drops the bank and goes to the monitor in bank 0. x16-rom's
+         `__irq` does the same in RAM. Bank 1's own vectors point at its copy.
+       - `bank1.s` holds `b1_probe` at `$C000` for the new test `FAR` (`tests/FAR.S`): it
+         waits for an IRQ in bank 1, writes "B" through `FARCALL CHROUT, jsrfar1`, and returns
+         `api_con_colour`'s A with carry set going in: A $05, X $5A, Y $A5, carry clear. F2
+         puts the library's jump table at `$C000`: move the probe, or drop `FAR`.
+       - Cost: bank 0 +74 bytes (`jsrfar` 49, `irq` and `nmi` 11, entry and exit 14), about
+         4430 bytes free below `$FFA0`; bank 1 holds 96. An IRQ costs about 22 cycles more.
+         RAM and zero page: none.
+       - Build 1.14 s, the new ROM-only baseline. Tests: `FAR` ok 0.8 s, `MONITOR` 0.7 (has a
+         BRK), `BOOT` 0.8, `SHBOOT` 1.0, `CLOCK` 0.9, `BREAK` 0.9, `SHELL` 1.1. Steps since the
+         full suite: 4.
+       - Docs owed: PLAN §3 (ROM banks, `jsrfar`, the vector-pull trap), §9 (the ROM layout);
+         `mem.inc`'s `GATE_PAGE` comment names jsrfar and the IRQ vectors, which are not there.
+       - Not committed: `far.inc`, `bank1.s`, `boot.s`, `gate.s`, `rom.cfg`, `build.py`,
+         `tests/FAR.S`, `FAR.IN`; the golden `FAR.OUT` goes in its own commit.
+     - Next, F2: the library in bank 1. Trap: `fat.s` (51 zero-page bytes) and the library (8
+       + 3) coexist until F7, and KERNELZP has 1 byte free.
    - To do: find what the 492 bytes of 7i2b cost in `DISKFREE.CBI` (1861 to 2353 bytes), with
      pyuxc's link map, and cut them. Ideas: read `P2$` once, drop `FREE_TEXT` and pass the
      `MID$` straight to `SYS_STRINGS_SET`, reuse `DRIVE_NAME` for the text (11 bytes of RAM).

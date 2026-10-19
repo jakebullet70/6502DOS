@@ -3,8 +3,8 @@ r"""Build the UXDOS16 ROM image.
     python tools/build.py
 
 Runs tools/genapi.py, assembles every src/asm/*.s and build/gen/*.s with ca65, links them
-with src/asm/rom.cfg into build/UXDOS16.ROM, and copies LICENSE and NOTICE beside it. ca65 and
-ld65 come from tools/cc65/bin only. Includes are found in src/asm and build/gen. The map is
+with src/asm/rom.cfg into build/UXDOS16.ROM, ROM banks 0 and 1, and copies LICENSE and NOTICE
+beside it. ca65 and ld65 come from tools/cc65/bin only. Includes are found in src/asm and build/gen. The map is
 build/UXDOS16.MAP, the label file build/UXDOS16.LBL, and each listing build/obj/NAME.LST.
 build/TEST.ROM is the same image with boot_shell cleared: it boots to the monitor, not the shell.
 
