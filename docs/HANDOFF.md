@@ -2170,8 +2170,39 @@
          `mem.inc`'s `GATE_PAGE` comment names jsrfar and the IRQ vectors, which are not there.
        - Not committed: `far.inc`, `bank1.s`, `boot.s`, `gate.s`, `rom.cfg`, `build.py`,
          `tests/FAR.S`, `FAR.IN`; the golden `FAR.OUT` goes in its own commit.
-     - Next, F2: the library in bank 1. Trap: `fat.s` (51 zero-page bytes) and the library (8
-       + 3) coexist until F7, and KERNELZP has 1 byte free.
+     - Done, F2 (2026-10-19): the library in bank 1, linked, not called.
+       - `src/asm/fat32.s`, `fat32_match.s`, `fat32_lib.inc`, `fat32_regs.inc`: copies of
+         x16-rom `fat32.s`, `match.s`, `lib.inc`, `regs.inc` (master `fbe32a6`), made by
+         `port_fat32.py` in the session scratchpad, from the upstream copy in the old session's
+         `scratchpad/x16fat`. Each header names the changes and holds the BSD-2 text. Changes:
+         code in `B1CODE`, variables in `FATBSS`; `fat32_read_long`, `fat32_write_long` and
+         the MVN trampoline gone; the 2 long branches written out; `krn_ptr1` and `bank_save`
+         imported at the top; `regs.inc` takes `mem.inc` and `ram_bank = RAM_BANK`.
+       - `src/asm/fat32glue.s` (bank 1): the library's zero page (`fat32_bufptr`,
+         `fat32_lfn_bufptr`, `fat32_ptr`, `fat32_ptr2`, `krn_ptr1`, 10 bytes); `bank_save` is
+         kernel.s `saved_bank`; `fat32_size`, `fat32_dirent`, `fat32_errno`, `fat32_readonly`,
+         `skip_mask`, `sector_lba`; `sdcard_read_sector` and `sdcard_write_sector` fill BLK_*
+         and FARCALL `sd_input`/`sd_output` (now exported), carry flipped;
+         `sdcard_set_fast_mode` does nothing; `to_lower` ASCII only. No `sdcard_init`: the
+         library does not call it. Trap: `fat32_init` does not clear the glue's variables;
+         the caller sets `fat32_readonly`. No library jump table: bank 0 calls by FARCALL.
+       - RAM bank 0: `FATBSS` $A100-$A6CC (1485 bytes, rom.cfg `FATRAM` to $A7FF), the sector
+         buffer `FATBUF` $A900-$AAFF (`FATBUFRAM`), past `KBD_QUEUE` at $A800. `mem.inc` has
+         `FAT32_RAM` and `FAT32_BUFFER`.
+       - Zero page: moved to KERNELRAM, from `fat.s` `path_len`, `path_index`, `path_drive`,
+         `fcb_limit`, `sft_entry` (back to zero page or gone in F7), from `kernel.s`
+         `io_refused`, `open_access`, `open_flags`, `open_create`. KERNELZP is full, $80-$FF.
+         `fcb_name` and `free_next` cannot move: the find buffer copies `dpb` to `pos+1`, and
+         `fat_entry` takes `free_next` and `cluster` by zero page address. KERNELRAM ends $06C5.
+       - Cost: bank 0 CODE +35 bytes; 4445 bytes free below $FFA0. Bank 1 B1CODE 8050 bytes,
+         8212 free below $FFA0.
+       - Build 758 ms, the new baseline. Tests: `FAR` ok 0.6 s, `DISK` 0.4, `DIRS` 0.9,
+         `FILES` 0.4, `HANDLES` 0.4, `WRITE` 0.6. The user stopped testing there (low tokens);
+         not yet run: `SHELL`, `BOOT`, `SHBOOT`, `EXEC`. Steps since the full suite: 5.
+       - Not committed: F1 and F2 files, `fat.s`, `kernel.s`, `sdcard.s`, `mem.inc`.
+     - Next, F3: reads on the library (open, read, seek, close, exec load, findfirst,
+       findnext). Trap: `fat.s` keeps its own sector at $0400; after a `fat.s` write the
+       library's `sector_lba` must be made invalid ($FF), and the reverse.
    - To do: find what the 492 bytes of 7i2b cost in `DISKFREE.CBI` (1861 to 2353 bytes), with
      pyuxc's link map, and cut them. Ideas: read `P2$` once, drop `FREE_TEXT` and pass the
      `MID$` straight to `SYS_STRINGS_SET`, reuse `DRIVE_NAME` for the text (11 bytes of RAM).

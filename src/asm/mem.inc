@@ -87,6 +87,8 @@ SFT_ENTRY_PTR = 25              ; a file: the entry's address in SECTOR_BUFFER, 
 SFT_MODIFIED  = 27              ; a file: not 0 after a write, until the close
 SFT_STATE     = 22              ; the bytes from SFT_CLUSTER to the end of SFT_ENTRY_PTR
 SFT_DEVICE    = $80
+FAT32_RAM     = $A100           ; $A100-$A7FF: the FAT32 library's variables, FATRAM in rom.cfg
+FAT32_BUFFER  = $A900           ; $A900-$AAFF: the FAT32 library's sector buffer, FATBUFRAM
 
 ; Directory entry attributes
 ATTR_READ_ONLY = $01

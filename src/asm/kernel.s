@@ -14,7 +14,7 @@
 .export api_create, api_open, api_close, api_read, api_write, api_version, api_ticks, api_errmsg
 .export drv_call, bank0, bank_restore, io_start, io_step, io_done, handles_inherit, handles_close
 .export sft_find, api_dup, api_dup2, api_ioctl
-.exportzp driver, io_ptr, io_left
+.exportzp driver, io_ptr, io_left, saved_bank
 .import con_init, api_con_status, CHRIN, CHROUT, errmsg_table, sd_driver
 .import drives_init, drives_add, path_last, file_find, file_create, file_io, file_close
 .import create_attr
@@ -28,10 +28,13 @@ drv_vector:   .res 2
 saved_bank:   .res 1            ; the caller's RAM bank, while bank 0 is selected
 io_ptr:       .res 2            ; the buffer of a driver input or output
 io_left:      .res 2            ; the bytes still to move
-io_refused:   .res 1            ; the access mode that refuses a read or a write
 io_slot:      .res 1            ; the driver command of a read or a write
-open_access:  .res 1
 open_handle:  .res 1
+
+.segment "KERNELRAM"
+
+io_refused:   .res 1            ; the access mode that refuses a read or a write
+open_access:  .res 1
 open_flags:   .res 1            ; SFT_FLAGS of the entry api_open fills
 open_create:  .res 1            ; bit 7 set for create
 

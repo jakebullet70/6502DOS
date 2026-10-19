@@ -70,12 +70,7 @@ entry_ptr:    .res 2            ; the entry in SECTOR_BUFFER
 lba:          .res 4            ; a sector number
 ptr:          .res 2            ; a byte in SECTOR_BUFFER
 free_next:    .res 4            ; the next cluster cluster_free looks at, on any drive
-path_len:     .res 1
-path_index:   .res 1            ; the path index of the last character read
-path_drive:   .res 1
-fcb_limit:    .res 1            ; the end of the fcb_name field being filled
-sft_entry:    .res 1
-chunk:        .res 1            ; file_copy: the bytes it copies from the buffer page, minus 1
+chunk:        .res 1           ; file_copy: the bytes it copies from the buffer page, minus 1
         .assert SFT_POS - SFT_CLUSTER = pos - cluster && SFT_FIRST - SFT_CLUSTER = file_first - cluster, error, "the SFT state follows the zero page order"
         .assert SFT_ENTRY - SFT_CLUSTER = entry_sector - cluster && SFT_STATE = entry_ptr + 2 - cluster, error, "the SFT state follows the zero page order"
         .assert ptr = lba + 4 && entry_ptr = entry_sector + 4, error, "entry_keep copies lba and ptr"
@@ -96,6 +91,11 @@ current_drive: .res 1
 next_dpb:     .res 1            ; drives_add: the DPB of the next drive letter
 add_unit:     .res 1
 add_units:    .res 1
+path_len:     .res 1
+path_index:   .res 1            ; the path index of the last character read
+path_drive:   .res 1
+fcb_limit:    .res 1            ; the end of the fcb_name field being filled
+sft_entry:    .res 1
 
 .segment "CODE"
 
