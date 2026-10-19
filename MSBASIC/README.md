@@ -1,7 +1,7 @@
 # ux6502Basic
 
 Microsoft BASIC for the 6502, brought forward from its 1978 source and extended for new 6502
-hardware with a new Unix-style kernal. This code is an exercise at the moment; maybe something
+hardware with a new DOS-style kernal. This code is an exercise at the moment; maybe something
 will come of it.
 
 The code is a fork of [mist64/msbasic](https://github.com/mist64/msbasic), a ca65 version of the
