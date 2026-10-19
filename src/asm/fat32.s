@@ -3,11 +3,13 @@
 ; Ported from x16-rom, fat32/fat32.s, github.com/X16Community/x16-rom, master fbe32a6.
 ; Changed: the code is in segment B1CODE and the variables in FATBSS; fat32_lib.inc and
 ; fat32_regs.inc replace lib.inc and regs.inc; the long branches are written out; krn_ptr1
-; and bank_save are imported at the top, so each use is zero page; fat32_cwd is exported;
+; and bank_save are imported at the top, so each use is zero page; fat32_cwd and
+; fat32_free_clusters are exported;
 ; fat32_tell_dir and fat32_seek_dir are added; fat32_create takes the attributes in A;
 ; fat32_close sets the archive bit of a file written; fat32_write loops to fat32_write_again,
 ; past the stream flag, as fat32_read does; create_shortname gives a name that fits
-; 8.3 that name as its short name. Left out: the 65816 routines fat32_read_long and
+; 8.3 that name as its short name; cluster_count is the cluster past the last, from the
+; sectors of the partition, so find_free_cluster stops at the end of the volume. Left out: the 65816 routines fat32_read_long and
 ; fat32_write_long, and their MVN trampoline.
 ; fat32glue.s holds the routines and variables the library imports.
 ;
@@ -102,7 +104,7 @@ lba_partition        .dword        ; Start sector of FAT32 partition
 fat_size             .dword        ; Size in sectors of each FAT table
 lba_fat              .dword        ; Start sector of first FAT table
 lba_data             .dword        ; Start sector of first data cluster
-cluster_count        .dword        ; Total number of cluster on volume
+cluster_count        .dword        ; The cluster past the last: the clusters on the volume + 2
 lba_fsinfo           .dword        ; Sector number of FS info
 ; Variables
 free_clusters        .dword        ; Number of free clusters (from FS info)
@@ -224,6 +226,9 @@ _fat32_bss_end:
 ; fat32_cwd: the volume's current directory, which fat32dos.s sets.
 fat32_cwd = cur_volume + fs::cwd_cluster
 .export fat32_cwd
+; fat32_free_clusters: the volume's free clusters, from the FS info sector.
+fat32_free_clusters = cur_volume + fs::free_clusters
+.export fat32_free_clusters
 .export fat32_tell_dir
 .export fat32_seek_dir
 
@@ -1437,8 +1442,10 @@ mount:
 	add32 cur_volume + fs::lba_data, cur_volume + fs::lba_fat, cur_volume + fs::fat_size
 	add32 cur_volume + fs::lba_data, cur_volume + fs::lba_data, cur_volume + fs::fat_size
 
-	; Calculate number of clusters on volume: (total_sectors - lba_data) >> cluster_shift
+	; The cluster past the last: (total_sectors + lba_partition - lba_data) >> cluster_shift + 2.
+	; total_sectors counts from the partition's start, lba_data from the card's.
 	set32 cur_volume + fs::cluster_count, sector_buffer + 32
+	add32 cur_volume + fs::cluster_count, cur_volume + fs::cluster_count, cur_volume + fs::lba_partition
 	sub32 cur_volume + fs::cluster_count, cur_volume + fs::cluster_count, cur_volume + fs::lba_data
 	ldy cur_volume + fs::cluster_shift
 	beq @7
@@ -1446,6 +1453,7 @@ mount:
 	dey
 	bne @6
 @7:
+	add32_val cur_volume + fs::cluster_count, cur_volume + fs::cluster_count, 2
 	; Get FS info sector
 	add32_16 cur_volume + fs::lba_fsinfo, cur_volume + fs::lba_partition, sector_buffer + 48
 

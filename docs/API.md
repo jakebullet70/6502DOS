@@ -93,7 +93,7 @@ Conventions:
 - `getcwd`: Gives the current directory of a drive, without the drive letter and the first \.
 - `getdrive`: Gives the current drive.
 - `setdrive`: Sets the current drive.
-- `diskfree`: Gives the size and free space of a drive. It reads the whole FAT.
+- `diskfree`: Gives the size and free space of a drive. The free clusters are the count in the FS info sector.
 - `con_line`: Reads a line from the console with editing. Byte 0 of the buffer holds the most characters it takes, CR included, from 1 to 254. The call puts the length read, CR not included, in byte 1 and the text after it, ended by CR. Tab does nothing.
 - `con_status`: Tells whether a key is waiting, and which modifier keys are held. `lib/KEYS.UXI` names the modifier bits.
 - `exec`: Runs a program and returns when it ends. `exitcode` gives its code. The file starts with its load address, which must be $0801, and the rest loads at $0801. A program that starts with a BASIC line `SYS n` starts at n, any other at $0801. The program gets the command tail in its PSP at $0780: cut to 126 characters, and followed by a CR that the length does not count. Its handles are copies of the caller's. Up to 4 programs run one inside another; a fifth gives error 8.

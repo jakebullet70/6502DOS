@@ -164,8 +164,8 @@ CALLS = [
          out=[("A", "number of drive letters")],
          errors=[15],
          written=True),
-    call(22, "diskfree", 0x36, ("Gives the size and free space of a drive. It reads the whole "
-          "FAT."),
+    call(22, "diskfree", 0x36, ("Gives the size and free space of a drive. The free clusters "
+          "are the count in the FS info sector."),
          in_=[("A", "drive: 0 the current drive, 1 A:, 2 B:")],
          out=[("r0", "sectors per cluster"), ("r1 r2", "free clusters"),
               ("r3", "bytes per sector"), ("r4 r5", "total clusters")],

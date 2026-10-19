@@ -2299,7 +2299,7 @@
        that fits 8.3 gets that name, upper case, as its short name; a long name keeps the hex
        alias. So fat.s still finds every name the library makes, and the steps stay small: F4a
        create, write, close; F4b delete, rename, mkdir, rmdir, diskfree; F5 chdir, getcwd.
-     - Done, F4a (2026-10-20), not committed. Build 845 ms, ROM only, the new baseline:
+     - Done, F4a (2026-10-20), committed 493144d. Build 845 ms, ROM only:
        - Every file handle is the library's now. `lib_open` (bank 1) takes A = access and
          carry set to create with `create_attr` (masked to read only, hidden, system, archive);
          access 1 or 2 on a read-only file gives 5; a blank or wildcard name on create gives 3.
@@ -2337,6 +2337,53 @@
          changed. fatcheck after creates, a long name, a mkdir and a DEL: no problems.
        - Steps since the full suite: 1.
        - Docs owed, added: PLAN on the short-name rule and the case kept on create.
+     - Done, F4b (2026-10-20), committed. Build 713 ms, ROM only, the new baseline:
+       - `api_delete`, `api_rename`, `api_mkdir`, `api_rmdir`, `api_diskfree` live in
+         `fat32dos.s`, bank 1, on the library. fat.s reads only now: it lost delete, rename,
+         mkdir, rmdir, diskfree, `file_find`, `file_create`, `dir_make`, `dir_slot`,
+         `buf_flush`, `buf_claim`, `lib_forget`, the cluster allocation and freeing, and the
+         variables `free_next`, `buf_dirty`, `writing`, `free_pass`, `entry_copy`,
+         `rename_drive`. It keeps chdir, getcwd, seek, mount and the path walk for F5.
+       - `lib_enter` points `fat32_ptr` at the name part. `cwd_set` gives the library the
+         drive's current directory with cluster 0 for the root, as a `..` entry holds it, so a
+         directory made in the root gets `..` = 0. `name_check`: a blank name, only dots, or `*`
+         `?` gives 3 on create, mkdir and the new name of rename, 2 on delete and the old name.
+         `dir_change` maps a missing directory to 3. `drive_check` is split out of `path_start`.
+       - rmdir: `fat32_chdir` into the name gives its cluster; equal to `DPB_CWD` gives 16. The
+         library refuses a read-only directory (5).
+       - rename: `lib_enter` on the new path (its directory checked, cluster kept in `lib_dir`),
+         the path copied to `lib_new`; then `lib_enter` on the old path. Directories differ and
+         `fat32_chdir` into the old name succeeds: a directory moved, 5. Then `fat32_rename`
+         with both paths from the current directory. Trap: `lib_new` is fat.s's
+         `SECTOR_BUFFER` ($0400); `lib_close` empties that buffer by `buf_drive`.
+       - diskfree: the free clusters are the library's FS info count (`fat32_free_clusters`,
+         exported); sectors per cluster and the clusters still come from fat.s's DPB. The
+         FS info count equals a count of the FAT on the test card, before and after writes.
+         `tools/api.py` says so.
+       - Upstream bug fixed in `mount`: `cluster_count` was the partition's sectors minus the
+         card-relative `lba_data`, 0 on the test card, so `find_free_cluster` never stopped at
+         the end of the FAT and could hand out a cluster past the volume on a full drive. It is
+         now the cluster past the last (1026 on the test card). A scratch run filled the drive:
+         694 clusters exactly, then a short write with no error, mkdir 5, delete back to 694
+         free; fatcheck clean.
+       - The F4a trap is gone: the library's delete marks the long-name entries too.
+       - Cost: bank 0 CODE -1430 bytes (6377 free below $FFA0); bank 1 B1CODE +505 (end $E679,
+         6438 free); FATBSS +1 ($A100-$A7A3); KERNELRAM -25 ($0600-$06AA); KERNELZP -4 (ends
+         $FB).
+       - Tests: `DIRS` ok 1.2 s, `DOSAPI` 0.6, `SHFILES` 0.7, `CMDLETS` 1.5, `XCOPYS` 1.3,
+         `SHRUN` 0.8, `CWD` 0.5, `DISK` 0.4, `WRITE` 0.9, `GREP` 1.8, `SHSCRIPT` 1.0, `SHTAB`
+         0.5, `TREE` 1.3, `WHERE` 1.1, `XCOPY` 2.2, `FILES` 0.5, `HANDLES` 0.5, `SEEK` 0.5, `DUP`
+         0.5, `EXEC` 0.8, `SHELL` 0.5, `BOOT` 0.4, `SHBOOT` 0.5, `SHREDIR` 1.5, `CLOCKCMD` 1.7;
+         after the `cluster_count` fix again `DIRS` 1.3, `DOSAPI` 0.7, `WRITE` 0.9, `XCOPY` 1.5,
+         `XCOPYS` 1.6, `SHFILES` 0.8, `SHRUN` 0.8, `DISK` 0.4, `CMDLETS` 1.7, `TREE` 1.4. No
+         golden changed. A scratch shell run of long names (MD, COPY, REN across directories,
+         DEL, RD): fatcheck clean.
+       - Proposal for F7: the SFT state copy is 22 bytes, from `cluster` to `entry_ptr`; the
+         library needs the context byte only, so `file_first`, `entry_sector` and `entry_ptr`
+         (10 zero page bytes) and most of `SFT_STATE` can go.
+       - Steps since the full suite: 2.
+       - Docs owed, added: PLAN on rmdir of a read-only directory, the dots-only name, diskfree
+         from FS info; NOTICE on the two upstream fixes.
    - To do: find what the 492 bytes of 7i2b cost in `DISKFREE.CBI` (1861 to 2353 bytes), with
      pyuxc's link map, and cut them. Ideas: read `P2$` once, drop `FREE_TEXT` and pass the
      `MID$` straight to `SYS_STRINGS_SET`, reuse `DRIVE_NAME` for the text (11 bytes of RAM).

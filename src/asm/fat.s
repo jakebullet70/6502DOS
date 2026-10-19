@@ -1,18 +1,9 @@
 ; Drives, paths and FAT32: the drive table, the sector buffer, path parsing, directory search,
-; findfirst and findnext, file reads, writes, creation, deletion and renaming, directories, and
-; the free space of a drive.
+; the current directories and the seek of a handle. fat.s reads only; fat32dos.s writes.
 ;
 ; A drive's DPB holds its block driver and unit and the layout of its FAT32 file system. A
 ; directory is read as a chain like a file, 32 bytes an entry: cluster holds the byte at pos.
 ; Names are 8.3 and upper case.
-;
-; A file's cluster is 0 when not known: after an open or a seek. The next read or write walks
-; the chain from file_first. After that, cluster holds the byte before pos, and a read or write
-; steps to the next cluster when pos is at the start of one. A write past the end of the chain
-; adds clusters.
-;
-; The sector buffer is written back before another sector is read into it, and at each close of
-; a file. A FAT sector is written to each FAT.
 ;
 ; Each drive keeps the first cluster of its current directory, and no path text: getcwd finds
 ; the names through the .. entries. . and .. in a path are the directory's own entries; the
@@ -24,19 +15,17 @@
 .include "api.inc"
 .include "far.inc"
 
-.export drives_init, drives_add, path_last, file_find, file_create, create_attr, buf_drive
-.export api_getdrive, api_setdrive, api_chdir, api_getcwd
-.export api_seek, api_delete, api_rename, api_mkdir, api_rmdir, api_diskfree
+.export drives_init, drives_add, path_last, create_attr, buf_drive
+.export api_getdrive, api_setdrive, api_chdir, api_getcwd, api_seek
 .export DPB, current_drive
 .exportzp fcb_name, cluster, dpb, file_size
 .import drv_call, bank0, bank_restore, sft_find, to_upper
 .importzp driver
-.import jsrfar, lib_seek, sector_lba
+.import jsrfar, lib_seek
 
 .segment "KERNELZP" : zeropage
 
-; Keep the order from cluster to entry_ptr: an SFT entry holds them. Keep lba and ptr in order:
-; entry_keep copies them.
+; Keep the order from cluster to entry_ptr: an SFT entry holds them.
 dpb:          .res 1            ; the DPB offset of the drive in use: drive * DPB_SIZE
 search_attr:  .res 1            ; the attributes dir_search takes
 fcb_name:     .res 11           ; a name: 8 and 3 characters, padded with spaces; ? matches any
@@ -48,23 +37,16 @@ entry_sector: .res 4            ; the sector of a file's directory entry
 entry_ptr:    .res 2            ; the entry in SECTOR_BUFFER
 lba:          .res 4            ; a sector number
 ptr:          .res 2            ; a byte in SECTOR_BUFFER
-free_next:    .res 4            ; the next cluster cluster_free looks at, on any drive
-chunk:        .res 1            ; cluster_zero: the sectors left, minus 1; api_seek: A
+chunk:        .res 1            ; api_seek: A
         .assert SFT_POS - SFT_CLUSTER = pos - cluster && SFT_FIRST - SFT_CLUSTER = file_first - cluster, error, "the SFT state follows the zero page order"
         .assert SFT_ENTRY - SFT_CLUSTER = entry_sector - cluster && SFT_STATE = entry_ptr + 2 - cluster, error, "the SFT state follows the zero page order"
-        .assert ptr = lba + 4 && entry_ptr = entry_sector + 4, error, "entry_keep copies lba and ptr"
 
 .segment "KERNELRAM"
 
 DPB:          .res DRIVES * DPB_SIZE
 buf_sector:   .res 4            ; the sector in SECTOR_BUFFER
 buf_drive:    .res 1            ; its DPB offset, $FF when the buffer holds none
-buf_dirty:    .res 1            ; the copies of the buffer to write back: 0, 1, or DPB_FATS
-writing:      .res 1            ; bit 7: a cluster chain grows at its end; bit 6: a new cluster is zeroed
-free_pass:    .res 1            ; cluster_free: 1 after it went back to cluster 2
-create_attr:  .res 1            ; file_create: the attributes; ATTR_DIR makes a directory
-entry_copy:   .res 21           ; rename: bytes 11 to 31 of the directory entry
-rename_drive: .res 1            ; rename: the dpb of the old path
+create_attr:  .res 1            ; api_create: the attributes, for lib_open
 current_drive: .res 1
 next_dpb:     .res 1            ; drives_add: the DPB of the next drive letter
 add_unit:     .res 1
@@ -86,8 +68,6 @@ drives_init:
         bpl @clear
         lda #$FF
         sta buf_drive
-        stz buf_dirty
-        stz writing
         lda #FIRST_DRIVE
         sta current_drive
         lda #FIRST_DRIVE * DPB_SIZE
@@ -337,8 +317,6 @@ read_sector:
         clc
         rts
 @read:
-        jsr buf_flush
-        bcs @done
         ldx #3
 @copy:
         lda lba,x
@@ -356,98 +334,6 @@ read_sector:
         lda dpb
         sta buf_drive
 @done:
-        rts
-
-; api_mkdir makes the directory through file_create, then writes the buffer back.
-api_mkdir:
-        lda #ATTR_DIR
-        sta create_attr
-        jsr file_create
-        bcc buf_flush
-        rts
-
-; buf_flush: writes the buffer back when buf_dirty says so, to each FAT for a FAT sector.
-; Returns carry set and A = the error on a fault: the buffer then holds no sector. Changes A, X
-; and Y.
-buf_flush:
-        clc
-        lda buf_dirty
-        beq @done
-        ldx #3
-@copy:
-        lda buf_sector,x
-        sta BLK_SECTOR,x
-        dex
-        bpl @copy
-@write:
-        ldx buf_drive
-        jsr blk_request
-        ldy #DRV_OUTPUT
-        jsr drv_call
-        bcs @fault
-        jsr lib_forget
-        dec buf_dirty
-        beq @done               ; carry clear
-        ldx buf_drive           ; the next FAT
-        ldy #0
-        clc
-@next:
-        lda BLK_SECTOR,y
-        adc DPB + DPB_FAT_SIZE,x
-        sta BLK_SECTOR,y
-        inx
-        iny
-        tya
-        eor #4                  ; keeps carry
-        bne @next
-        bra @write
-@fault:
-        ldx #$FF
-        stx buf_drive
-        stz buf_dirty
-@done:
-        rts
-
-; lib_forget: empties the FAT32 library's sector buffer when it holds BLK_SECTOR, the sector
-; fat.s just wrote. A buffer of another sector may hold a file's data not yet written. Keeps
-; carry. Changes A and X.
-lib_forget:
-        php
-        lda RAM_BANK
-        pha
-        stz RAM_BANK
-        ldx #3
-@same:
-        lda BLK_SECTOR,x
-        cmp sector_lba,x
-        bne @keep
-        dex
-        bpl @same
-        lda #$FF
-        ldx #3
-@empty:
-        sta sector_lba,x
-        dex
-        bpl @empty
-@keep:
-        pla
-        sta RAM_BANK
-        plp
-        rts
-
-; buf_claim: makes the buffer sector lba of the drive at dpb, to be written back, without
-; reading it. Changes A and X.
-buf_claim:
-        ldx #3
-@copy:
-        lda lba,x
-        sta buf_sector,x
-        dex
-        bpl @copy
-        lda dpb
-        sta buf_drive
-        lda #1
-        sta buf_dirty
         rts
 
 ; blk_request: sets the block request for one sector to or from SECTOR_BUFFER on the drive at
@@ -526,8 +412,8 @@ cluster_step:
         clc
         rts
 
-; next_cluster: moves cluster to the next cluster of its chain. At the end of the chain it adds
-; a cluster when writing has bit 7 set, else it leaves cluster at the end mark, $0Fxxxxxx.
+; next_cluster: moves cluster to the next cluster of its chain. At the end of the chain it
+; leaves cluster at the end mark, $0Fxxxxxx.
 ; Returns carry set and A = the error on a fault. Changes A, X and Y.
 next_cluster:
         ldx #cluster
@@ -536,11 +422,6 @@ next_cluster:
         ldy #3
         lda (ptr),y
         and #$0F                ; FAT32 entries are 28 bits
-        cmp #$0F                ; the end of the chain: $0FFFFFF8 and up
-        bcc @copy
-        bit writing
-        bmi cluster_add
-@copy:
         sta cluster+3
         ldy #2
 @byte:
@@ -550,201 +431,6 @@ next_cluster:
         bpl @byte
         clc
 @done:
-        rts
-
-; cluster_add: takes a free cluster and ends the chain there. Links it after cluster, or makes
-; it file_first when cluster is 0. Zeroes it when writing has bit 6 set. Returns cluster = the
-; new cluster. Returns carry set and A = ERR_ACCESS when the drive is full, or the error of a
-; fault. Changes A, X and Y.
-cluster_add:
-        jsr cluster_free
-        bcs @done
-        ldy #3                  ; the end of the chain; the top 4 bits stay
-        lda (ptr),y
-        ora #$0F
-        sta (ptr),y
-        lda #$FF
-@end:
-        dey
-        sta (ptr),y
-        bne @end
-        jsr fat_dirty
-        lda cluster
-        ora cluster+1
-        ora cluster+2
-        ora cluster+3
-        beq @first
-        ldx #cluster
-        jsr fat_entry
-        bcs @done
-        ldy #3
-        lda (ptr),y
-        and #$F0
-        ora free_next+3
-        sta (ptr),y
-        dey
-@link:
-        lda free_next,y
-        sta (ptr),y
-        dey
-        bpl @link
-        jsr fat_dirty
-        bra @move
-@first:
-        ldx #3
-@copy_first:
-        lda free_next,x
-        sta file_first,x
-        dex
-        bpl @copy_first
-@move:
-        ldx #3
-@copy:
-        lda free_next,x
-        sta cluster,x
-        dex
-        bpl @copy
-        inc free_next
-        bne @zero
-        inc free_next+1
-        bne @zero
-        inc free_next+2
-        bne @zero
-        inc free_next+3
-@zero:
-        bit writing
-        bvs cluster_zero
-        clc
-@done:
-        rts
-
-; cluster_free: finds a free cluster from free_next on, going back to cluster 2 once, and points
-; free_next and ptr at it. Returns carry set and A = ERR_ACCESS when the drive has none, or the
-; error of a fault. Changes A, X and Y.
-cluster_free:
-        stz free_pass
-@check:
-        ldx dpb                 ; free_next < DPB_LIMIT
-        lda free_next
-        cmp DPB + DPB_LIMIT,x
-        lda free_next+1
-        sbc DPB + DPB_LIMIT+1,x
-        lda free_next+2
-        sbc DPB + DPB_LIMIT+2,x
-        lda free_next+3
-        sbc DPB + DPB_LIMIT+3,x
-        bcc @entry
-        lda free_pass
-        bne @full
-        inc free_pass
-        lda #2                  ; FAT entries 0 and 1 are never free
-        sta free_next
-        stz free_next+1
-        stz free_next+2
-        stz free_next+3
-@entry:
-        ldx #free_next
-        jsr fat_entry
-        bcs @done
-        ldy #3
-        lda (ptr),y
-        and #$0F
-        ldy #2
-@zero:
-        ora (ptr),y
-        dey
-        bpl @zero
-        tax
-        beq @done               ; carry clear, from fat_entry
-        inc free_next
-        bne @check
-        inc free_next+1
-        bne @check
-        inc free_next+2
-        bne @check
-        inc free_next+3
-        bra @check
-@full:
-        lda #ERR_ACCESS
-        sec
-@done:
-        rts
-
-; cluster_zero: writes zeros to each sector of the cluster at cluster. The buffer then holds its
-; last sector. Returns carry set and A = the error on a fault. Changes A, X and Y.
-cluster_zero:
-        jsr buf_flush
-        bcs @done
-        ldx #0
-@clear:
-        stz SECTOR_BUFFER,x
-        stz SECTOR_BUFFER + $100,x
-        inx
-        bne @clear
-        lda #0
-        jsr cluster_lba
-        ldx dpb
-        lda DPB + DPB_CMASK,x   ; the sectors of a cluster, minus 1
-        lsr
-        sta chunk
-@sector:
-        jsr buf_claim
-        jsr buf_flush
-        bcs @done
-        inc lba
-        bne @next
-        inc lba+1
-        bne @next
-        inc lba+2
-        bne @next
-        inc lba+3
-@next:
-        dec chunk
-        bpl @sector
-        clc
-@done:
-        rts
-
-; chain_free: frees the chain from the cluster at cluster. Returns carry set and A = the error
-; on a fault. Changes A, X and Y, and cluster.
-chain_free:
-        lda cluster+3
-        cmp #$0F                ; the end of the chain
-        bcs @end
-        ora cluster+2
-        ora cluster+1
-        ora cluster
-        beq @end
-        ldx #cluster
-        jsr fat_entry
-        bcs @done
-        ldy #3                  ; the next cluster to cluster, 0 to the entry; the top 4 bits stay
-        lda (ptr),y
-        and #$0F
-        sta cluster+3
-        lda (ptr),y
-        and #$F0
-        sta (ptr),y
-        dey
-@byte:
-        lda (ptr),y
-        sta cluster,y
-        lda #0
-        sta (ptr),y
-        dey
-        bpl @byte
-        jsr fat_dirty
-        bra chain_free
-@end:
-        clc
-@done:
-        rts
-
-; fat_dirty: marks the buffer, a FAT sector, to be written to each FAT. Changes A and X.
-fat_dirty:
-        ldx dpb
-        lda DPB + DPB_FATS,x
-        sta buf_dirty
         rts
 
 ; fat_entry: reads the FAT sector that holds the entry of the cluster at zero page X, on the
@@ -1127,264 +813,6 @@ dir_enter:
         sec
         rts
 
-; name_check: returns carry set when fcb_name is blank, starts with a dot or holds a ?. Changes
-; A and X.
-name_check:
-        lda fcb_name
-        cmp #' '
-        beq @done               ; carry set
-        cmp #'.'
-        beq @done
-        ldx #10
-@char:
-        lda fcb_name,x
-        cmp #'?'
-        beq @done
-        dex
-        bpl @char
-        clc
-@done:
-        rts
-
-; entry_keep: keeps lba and ptr, the sector and the address of a directory entry, in
-; entry_sector and entry_ptr. Changes A and X.
-entry_keep:
-        ldx #5
-@copy:
-        lda lba,x
-        sta entry_sector,x
-        dex
-        bpl @copy
-        rts
-
-; entry_load: reads the sector at entry_sector and points ptr at entry_ptr. Returns carry set
-; and A = the error on a fault. Changes A, X and Y.
-entry_load:
-        ldx #5
-@copy:
-        lda entry_sector,x
-        sta lba,x
-        dex
-        bpl @copy
-        jmp read_sector
-
-; file_find: finds the file of the path at r0. Returns carry clear, A = its attributes, dpb at
-; its drive, file_first at its first cluster, file_size its size, entry_sector and entry_ptr at
-; its directory entry, and cluster and pos 0. Returns carry set and A = the error. Clears
-; writing. Changes A, X and Y.
-file_find:
-        stz writing
-        jsr path_walk
-        bcs @done
-        jsr name_check
-        bcs @not_found
-        lda #ATTR_HIDDEN | ATTR_SYSTEM
-        sta search_attr
-        jsr dir_first
-        bcc @found
-        cmp #ERR_NO_MORE_FILES
-        bne @fail
-@not_found:
-        lda #ERR_NOT_FOUND
-@fail:
-        sec
-@done:
-        rts
-@found:
-        jsr entry_keep
-        ldy #DIR_FILE_SIZE + 3
-@size:
-        lda (ptr),y
-        sta file_size - DIR_FILE_SIZE,y
-        dey
-        cpy #DIR_FILE_SIZE - 1
-        bne @size
-        ldx #3
-@first:
-        ldy cluster_fields,x
-        lda (ptr),y
-        sta file_first,x
-        stz pos,x
-        stz cluster,x
-        dex
-        bpl @first
-        ldy #DIR_ATTR
-        lda (ptr),y
-        clc
-        rts
-
-; file_create: creates the file of the path at r0 with the attributes create_attr, or empties
-; it when it exists. Returns what file_find returns, for the empty file, but A. Returns carry
-; set and A = ERR_NO_PATH for a name that is blank or has a wildcard, ERR_ACCESS for a
-; directory, a read-only file or a full drive, or another error. With ATTR_DIR in create_attr
-; it makes a directory instead, and any name that exists gives ERR_ACCESS. The buffer then
-; holds the new entry, not yet written back. Changes A, X and Y.
-file_create:
-        stz writing
-        jsr path_walk
-        bcs @done
-        jsr name_check
-        bcc @named
-@no_path:
-        lda #ERR_NO_PATH
-@fail:
-        sec
-@done:
-        rts
-@denied:
-        lda #ERR_ACCESS
-        bra @fail
-@named:
-        ldx #3                  ; file_first keeps the directory: the search moves cluster
-@keep:
-        lda cluster,x
-        sta file_first,x
-        dex
-        bpl @keep
-        lda #ATTR_HIDDEN | ATTR_SYSTEM | ATTR_DIR
-        sta search_attr
-        jsr dir_first
-        bcc @exists
-        cmp #ERR_NO_MORE_FILES
-        bne @fail
-        ldx #3
-@back:
-        lda file_first,x
-        sta cluster,x
-        dex
-        bpl @back
-        lda #$C0                ; a full directory grows by a zeroed cluster
-        sta writing
-        jsr dir_slot
-        stz writing
-        bcs @fail
-        jsr entry_keep
-        lda create_attr
-        and #ATTR_DIR
-        beq @fill
-        jsr dir_make
-        bcs @fail
-        jsr entry_load
-        bcc @fill
-        rts
-@exists:
-        ldy #DIR_ATTR
-        lda create_attr         ; a directory to make: any entry refuses it
-        and #ATTR_DIR
-        ora (ptr),y
-        and #ATTR_READ_ONLY | ATTR_DIR
-        bne @denied
-        jsr entry_keep
-        ldx #3
-@first:
-        ldy cluster_fields,x
-        lda (ptr),y
-        sta cluster,x
-        dex
-        bpl @first
-        jsr chain_free
-        bcs @fail
-        jsr entry_load
-        bcs @fail
-@fill:                          ; the name, the attributes, then 0: no clock, no cluster, size 0
-        lda #0
-        ldy #31
-@zero:
-        sta (ptr),y
-        dey
-        cpy #DIR_ATTR
-        bne @zero
-        lda create_attr
-        and #ATTR_READ_ONLY | ATTR_HIDDEN | ATTR_SYSTEM | ATTR_DIR | ATTR_ARCHIVE
-        sta (ptr),y
-@name:
-        dey
-        lda fcb_name,y
-        sta (ptr),y
-        tya
-        bne @name
-        lda create_attr
-        and #ATTR_DIR
-        beq @dirty
-        ldx #3                  ; a directory: its first cluster
-@cluster:
-        ldy cluster_fields,x
-        lda file_first,x
-        sta (ptr),y
-        dex
-        bpl @cluster
-@dirty:
-        lda #1
-        sta buf_dirty
-        ldx #15                 ; cluster, pos, file_size and file_first
-@state:
-        stz cluster,x
-        dex
-        bpl @state
-        clc
-        rts
-        .assert file_first + 4 - cluster = 16, error, "file_create clears cluster to file_first"
-
-; dir_make: takes a zeroed cluster for a new directory in the directory at file_first, and puts
-; its . and .. entries in the buffer, to be written back. Returns file_first = the new cluster.
-; Returns carry set and A = ERR_ACCESS when the drive is full, or the error of a fault. Changes
-; A, X and Y.
-dir_make:
-        ldx #3                  ; file_size = the parent, 0 for the root
-@parent:
-        lda file_first,x
-        sta cluster,x
-        sta file_size,x
-        dex
-        bpl @parent
-        jsr is_root
-        bne @new
-        ldx #3
-@root:
-        stz file_size,x
-        dex
-        bpl @root
-@new:
-        ldx #3                  ; cluster 0: cluster_add starts a chain at file_first
-@clear:
-        stz cluster,x
-        dex
-        bpl @clear
-        lda #$40
-        sta writing
-        jsr cluster_add
-        stz writing
-        bcs @done
-        lda #0                  ; the buffer holds zeros: it becomes the first sector
-        jsr cluster_lba
-        jsr buf_claim
-        ldx #10
-@names:
-        lda #' '
-        sta SECTOR_BUFFER,x
-        sta SECTOR_BUFFER + 32,x
-        dex
-        bpl @names
-        lda #'.'
-        sta SECTOR_BUFFER
-        sta SECTOR_BUFFER + 32
-        sta SECTOR_BUFFER + 33
-        lda #ATTR_DIR
-        sta SECTOR_BUFFER + DIR_ATTR
-        sta SECTOR_BUFFER + 32 + DIR_ATTR
-        ldx #3
-@clusters:
-        ldy cluster_fields,x
-        lda cluster,x
-        sta SECTOR_BUFFER,y
-        lda file_size,x
-        sta SECTOR_BUFFER + 32,y
-        dex
-        bpl @clusters
-        clc
-@done:
-        rts
-
 ; is_root: returns Z set when cluster is the root directory of the drive at dpb. Changes A, X
 ; and Y.
 is_root:
@@ -1406,29 +834,6 @@ cluster_is:
         bpl @byte
         iny                     ; Y = 0: Z set
 @done:
-        rts
-
-; dir_slot: finds the first unused or deleted entry of the directory at cluster and points ptr
-; at it. When writing is $C0, a full directory grows by a zeroed cluster. Returns carry set and
-; A = the error. Changes A, X and Y.
-dir_slot:
-        stz pos
-        stz pos+1
-        stz pos+2
-        stz pos+3
-@entry:
-        jsr cursor_sector
-        bcs @done
-        lda (ptr)
-        beq @done               ; carry clear
-        cmp #$E5
-        beq @found
-        jsr dir_step
-        bcc @entry
-@done:
-        rts
-@found:
-        clc
         rts
 
 ; api_seek: moves handle X by the signed offset in r0 and r1 from the start (A = 0), the
@@ -1538,333 +943,6 @@ api_chdir:
         dex
         dey
         bpl @copy
-        clc
-@done:
-        rts
-
-; api_delete deletes a file: directories are not found.
-api_delete:
-        jsr file_find
-        bcs @done
-        and #ATTR_READ_ONLY
-        beq entry_drop
-        lda #ERR_ACCESS
-        sec
-@done:
-        rts
-
-; entry_drop: marks the directory entry at entry_sector deleted, frees the chain from
-; file_first, and writes the buffer back. Returns carry set and A = the error on a fault.
-; Changes A, X and Y.
-entry_drop:
-        jsr entry_erase
-        bcs @done
-        ldx #3
-@first:
-        lda file_first,x
-        sta cluster,x
-        dex
-        bpl @first
-        jsr chain_free
-        bcs @done
-        jmp buf_flush
-@done:
-        rts
-
-; entry_erase: marks the directory entry at entry_sector deleted, in the buffer. Returns carry
-; set and A = the error on a fault. Changes A, X and Y.
-entry_erase:
-        jsr entry_load
-        bcs @done
-        lda #$E5
-        sta (ptr)
-        lda #1
-        sta buf_dirty
-@done:
-        rts
-
-; api_rmdir refuses a directory that holds any entry but . and .., and the current directory
-; of its drive.
-api_rmdir:
-        jsr path_walk
-        bcs @done
-        jsr name_check
-        bcs @no_path
-        lda #ATTR_DIR | ATTR_HIDDEN | ATTR_SYSTEM
-        sta search_attr
-        jsr dir_first
-        bcs @missing
-        ldy #DIR_ATTR
-        lda (ptr),y
-        and #ATTR_DIR
-        beq @no_path
-        jsr entry_keep
-        ldx #3
-@first:
-        ldy cluster_fields,x
-        lda (ptr),y
-        sta file_first,x
-        sta cluster,x
-        dex
-        bpl @first
-        lda #DPB_CWD + 3
-        jsr cluster_is
-        bne @scan
-        lda #ERR_CURRENT_DIR
-        sec
-        rts
-@scan:
-        lda #'?'
-        jsr fcb_fill
-        lda #ATTR_DIR | ATTR_HIDDEN | ATTR_SYSTEM | ATTR_LABEL
-        sta search_attr
-        jsr dir_first
-@entry:
-        bcs @end
-        lda (ptr)
-        cmp #'.'
-        bne @denied
-        jsr dir_step
-        bcs @entry              ; the end: @entry takes the error
-        jsr dir_search
-        bra @entry
-@end:
-        cmp #ERR_NO_MORE_FILES
-        bne @fail
-        jmp entry_drop
-@denied:
-        lda #ERR_ACCESS
-        bra @fail
-@missing:
-        cmp #ERR_NO_MORE_FILES
-        bne @fail
-@no_path:
-        lda #ERR_NO_PATH
-@fail:
-        sec
-@done:
-        rts
-
-; api_rename makes the new entry from the old one, then marks the old one deleted. A directory
-; keeps its parent: moving it gives ERR_ACCESS. file_size holds the old parent, and file_first
-; the new one while its name is searched.
-api_rename:
-        jsr path_walk
-        bcs @exit
-        jsr name_check
-        bcs @not_found
-        ldx #3
-@old_parent:
-        lda cluster,x
-        sta file_size,x
-        dex
-        bpl @old_parent
-        lda #ATTR_DIR | ATTR_HIDDEN | ATTR_SYSTEM
-        sta search_attr
-        jsr dir_first
-        bcc @found
-        cmp #ERR_NO_MORE_FILES
-        bne @exit_fail
-@not_found:
-        lda #ERR_NOT_FOUND
-@exit_fail:
-        sec
-@exit:
-        rts
-@found:
-        jsr entry_keep
-        ldy #31
-@save:
-        lda (ptr),y
-        sta entry_copy - DIR_ATTR,y
-        dey
-        cpy #DIR_ATTR - 1
-        bne @save
-        lda dpb
-        sta rename_drive
-        lda r1
-        sta r0
-        lda r1+1
-        sta r0+1
-        jsr path_walk
-        bcs @done
-        lda dpb
-        cmp rename_drive
-        bne @not_same
-        jsr name_check
-        bcs @no_path
-        ldx #3
-@new_parent:
-        lda cluster,x
-        sta file_first,x
-        cmp file_size,x
-        beq @same
-        lda entry_copy          ; the attributes
-        and #ATTR_DIR
-        bne @denied
-@same:
-        dex
-        bpl @new_parent
-        jsr dir_first           ; search_attr is still every kind
-        bcc @denied             ; the new name exists
-        cmp #ERR_NO_MORE_FILES
-        bne @fail
-        ldx #3
-@back:
-        lda file_first,x
-        sta cluster,x
-        dex
-        bpl @back
-        lda #$C0                ; a full directory grows by a zeroed cluster
-        sta writing
-        jsr dir_slot
-        stz writing
-        bcs @fail
-        ldy #31
-@entry:
-        lda entry_copy - DIR_ATTR,y
-        sta (ptr),y
-        dey
-        cpy #DIR_ATTR - 1
-        bne @entry
-@name:
-        lda fcb_name,y
-        sta (ptr),y
-        dey
-        bpl @name
-        lda #1
-        sta buf_dirty
-        jsr entry_erase
-        bcs @done
-        jmp buf_flush
-@not_same:
-        lda #ERR_NOT_SAME_DEVICE
-        bra @fail
-@denied:
-        lda #ERR_ACCESS
-        bra @fail
-@no_path:
-        lda #ERR_NO_PATH
-@fail:
-        sec
-@done:
-        rts
-
-; api_diskfree counts the free entries of the FAT, sector by sector. pos counts down the
-; entries left, from DPB_LIMIT, and file_size counts the free ones. Entries 0 and 1 are never
-; 0.
-api_diskfree:
-        dec                     ; 0, the current drive, becomes $FF
-        bpl @drive
-        lda current_drive
-@drive:
-        jsr drive_ready
-        bcc @ready
-@fault:
-        rts
-@ready:
-        ldy #0
-@start:
-        lda DPB + DPB_LIMIT,x
-        sta pos,y
-        lda DPB + DPB_FAT,x
-        sta lba,y
-        lda #0
-        sta file_size,y
-        inx
-        iny
-        cpy #4
-        bne @start
-@sector:
-        jsr read_sector
-        bcs @fault
-        lda #<SECTOR_BUFFER
-        sta ptr
-        lda #>SECTOR_BUFFER
-        sta ptr+1
-@entry:
-        ldy #3
-        lda (ptr),y
-        and #$0F                ; FAT32 entries are 28 bits
-        dey
-        ora (ptr),y
-        dey
-        ora (ptr),y
-        dey
-        ora (ptr),y
-        bne @used
-        inc file_size
-        bne @used
-        inc file_size+1
-        bne @used
-        inc file_size+2
-        bne @used
-        inc file_size+3
-@used:
-        lda pos
-        bne @low
-        lda pos+1
-        bne @middle
-        lda pos+2
-        bne @high
-        dec pos+3
-@high:
-        dec pos+2
-@middle:
-        dec pos+1
-@low:
-        dec pos
-        lda pos
-        ora pos+1
-        ora pos+2
-        ora pos+3
-        beq @count
-        lda ptr
-        clc
-        adc #4
-        sta ptr
-        bne @entry
-        inc ptr+1
-        lda ptr+1
-        cmp #>SECTOR_BUFFER + 2
-        bne @entry
-        inc lba
-        bne @sector
-        inc lba+1
-        bne @sector
-        inc lba+2
-        bne @sector
-        inc lba+3
-        bra @sector
-@count:
-        ldx #3
-@free:
-        lda file_size,x
-        sta r1,x                ; r1 and r2
-        dex
-        bpl @free
-        ldx dpb
-        lda DPB + DPB_CMASK,x   ; the sectors per cluster * 2 - 1
-        lsr
-        inc
-        sta r0
-        stz r0+1
-        stz r3
-        lda #>512
-        sta r3+1
-        lda DPB + DPB_LIMIT,x   ; r4 and r5: the clusters from cluster 2
-        sec
-        sbc #2
-        sta r4
-        lda DPB + DPB_LIMIT+1,x
-        sbc #0
-        sta r4+1
-        lda DPB + DPB_LIMIT+2,x
-        sbc #0
-        sta r5
-        lda DPB + DPB_LIMIT+3,x
-        sbc #0
-        sta r5+1
         clc
 @done:
         rts

@@ -2,11 +2,12 @@
 ;
 ; lib_open takes a path and gives a context; lib_read, lib_seek and lib_close take that context
 ; in A, lib_io an SFT entry in Y. Each returns carry set and A = the error, an ERR_ of api.inc,
-; on a fault. The gate calls api_findfirst and api_findnext here.
+; on a fault. The gate calls api_findfirst, api_findnext, api_delete, api_rename, api_mkdir,
+; api_rmdir and api_diskfree here.
 ;
 ; The library has one volume: drive C:. Its current directory is set from the drive's DPB at
-; each open, so fat.s keeps the current directories. fat.s and the library each keep a sector
-; buffer: a write through the library empties fat.s's, by buf_drive.
+; each call, with cluster 0 for the root, so fat.s keeps the current directories. fat.s and the
+; library each keep a sector buffer: a write through the library empties fat.s's, by buf_drive.
 
 .setcpu "65C02"
 
@@ -14,10 +15,12 @@
 .include "api.inc"
 
 .export lib_init, lib_open, lib_read, lib_io, lib_seek, lib_close, api_findfirst, api_findnext
+.export api_delete, api_rename, api_mkdir, api_rmdir, api_diskfree
 .export fat32_dir_pos
 .import fat32_init, fat32_alloc_context, fat32_free_context, fat32_set_context
 .import fat32_chdir, fat32_open, fat32_read, fat32_seek, fat32_close, fat32_get_size
 .import fat32_create, fat32_write, fat32_write_byte
+.import fat32_delete, fat32_rename, fat32_mkdir, fat32_rmdir, fat32_free_clusters
 .import fat32_open_dir, fat32_read_dirent_filtered, fat32_tell_dir, fat32_seek_dir
 .import fat32_cwd, fat32_size, fat32_dirent, fat32_errno, fat32_readonly, skip_mask, sector_lba
 .import DPB, current_drive, create_attr, buf_drive
@@ -42,7 +45,11 @@ lib_context:  .res 1
 lib_access:   .res 1            ; lib_open: the access, 0 to read only
 lib_entry:    .res 1            ; lib_io: the SFT entry
 lib_gap:      .res 4            ; lib_write: the bytes from the end of the file to the position
+lib_dir       = lib_gap         ; api_rename, api_rmdir: a directory's cluster
+lib_new_dpb:  .res 1            ; api_rename: the DPB offset of the new path's drive
 lib_find      = lib_path        ; findfirst, findnext: the find buffer, built here
+; Trap: lib_new is fat.s's sector buffer. api_rename empties that buffer after it, by lib_close.
+lib_new       = SECTOR_BUFFER   ; api_rename: the new path, as lib_path
 fat32_dir_pos = lib_find + FIND_POS
 
 .segment "B1CODE"
@@ -173,6 +180,40 @@ lib_drop:
         pla
         bra lib_error
 
+; lib_no_path: lib_drop with ERR_NO_PATH.
+lib_no_path:
+        lda #ERR_NO_PATH
+        bra lib_drop
+
+; lib_done: closes and frees lib_context after a call of the library, which returns carry
+; clear on a fault. Returns in the caller's bank, carry set and A = the error on a fault.
+lib_done:
+        bcc lib_drop_errno
+        lda lib_context
+        jsr lib_close
+        bra lib_bank
+
+; api_delete: delete, call 6. Selects RAM bank 0 while it runs and keeps the caller's bank in
+; saved_bank.
+api_delete:
+        jsr lib_enter
+        bcs lib_bank
+        jsr name_check
+        lda #ERR_NOT_FOUND      ; keeps carry
+        bcs lib_drop
+        jsr fat32_delete
+        bra lib_done
+
+; api_mkdir: mkdir, call 15. Selects RAM bank 0 while it runs and keeps the caller's bank in
+; saved_bank.
+api_mkdir:
+        jsr lib_enter
+        bcs lib_bank
+        jsr name_check
+        bcs lib_no_path
+        jsr fat32_mkdir
+        bra lib_done
+
 ; lib_open: opens the file of the path at r0 with access A: 0 read, 1 write, 2 read and write.
 ; With carry set it creates the file with the attributes create_attr, or empties it when it
 ; exists. A path with no drive is on the current drive. Returns carry clear, A = the context,
@@ -187,20 +228,14 @@ lib_open:
         ply                     ; the flags: carry in bit 0
         bcs lib_bank
         stx lib_access
-        ldx lib_slash           ; the name starts after the last /, or at 0
-        inx
-        txa
-        clc
-        adc #<lib_path
-        sta fat32_ptr
-        lda #>lib_path
-        adc #0
-        sta fat32_ptr+1
         tya
         lsr
         bcs @create
         bit lib_wild
-        bmi @wild
+        bpl @open
+        lda #ERR_NOT_FOUND
+        bra lib_drop
+@open:
         jsr fat32_open
         bcc lib_drop_errno
         lda lib_access
@@ -211,14 +246,8 @@ lib_open:
         lda #ERR_ACCESS
         bra lib_drop
 @create:
-        lda (fat32_ptr)         ; a blank name
-        beq @no_path
-        bit lib_wild
-        bpl @named
-@no_path:
-        lda #ERR_NO_PATH
-        bra lib_drop
-@named:
+        jsr name_check
+        bcs lib_no_path
         lda create_attr
         and #ATTR_READ_ONLY | ATTR_HIDDEN | ATTR_SYSTEM | ATTR_ARCHIVE
         sec                     ; empty a file that exists
@@ -238,15 +267,188 @@ lib_open:
         lda lib_context
         sta cluster
         clc
-        bra lib_bank
-@wild:
-        lda #ERR_NOT_FOUND
-        bra lib_drop
+        jmp lib_bank
+
+; api_rmdir: rmdir, call 17. The current directory of the path's drive gives ERR_CURRENT_DIR.
+; Selects RAM bank 0 while it runs and keeps the caller's bank in saved_bank.
+api_rmdir:
+        jsr lib_enter
+        bcs @bank
+        jsr name_check
+        lda #ERR_NO_PATH        ; keeps carry
+        bcs @drop
+        ldx #3
+@parent:
+        lda fat32_cwd,x
+        sta lib_dir,x
+        dex
+        bpl @parent
+        jsr dir_change          ; fat32_cwd = the directory's cluster
+        bcs @drop
+        lda lib_dpb
+        ora #DPB_CWD
+        tax
+        ldy #0
+@current:
+        lda DPB,x
+        cmp fat32_cwd,y
+        bne @other
+        inx
+        iny
+        cpy #4
+        bne @current
+        lda #ERR_CURRENT_DIR
+        bra @drop
+@other:
+        ldx #3
+@back:
+        lda lib_dir,x
+        sta fat32_cwd,x
+        dex
+        bpl @back
+        jsr fat32_rmdir
+        jmp lib_done
+@bank:
+        jmp lib_bank
+@drop:
+        jmp lib_drop
+
+; api_rename: rename, call 7. Checks the directories of both paths, then hands the library both
+; paths from the current directory. A directory moved to another directory gives ERR_ACCESS.
+; Selects RAM bank 0 while it runs and keeps the caller's bank in saved_bank.
+api_rename:
+        lda r0+1                ; the old path, for later
+        pha
+        lda r0
+        pha
+        lda r1
+        sta r0
+        lda r1+1
+        sta r0+1
+        jsr lib_enter           ; the new path
+        ply                     ; keeps carry
+        sty r0
+        ply
+        sty r0+1
+        bcs @bank
+        jsr name_check
+        lda #ERR_NO_PATH        ; keeps carry
+        bcs @drop
+        lda lib_dpb
+        sta lib_new_dpb
+        ldx #3
+@new_dir:
+        lda fat32_cwd,x
+        sta lib_dir,x
+        dex
+        bpl @new_dir
+        jsr path_join
+        ldx #0
+@copy:
+        lda lib_path,x
+        sta lib_new,x
+        inx
+        bne @copy
+        lda lib_context
+        jsr lib_close
+        lda saved_bank          ; lib_enter keeps the bank it finds
+        sta RAM_BANK
+        jsr lib_enter           ; the old path
+        bcs @bank
+        jsr name_check
+        lda #ERR_NOT_FOUND      ; keeps carry
+        bcs @drop
+        lda lib_dpb
+        cmp lib_new_dpb
+        beq @same_drive
+        lda #ERR_NOT_SAME_DEVICE
+        bra @drop
+@same_drive:
+        ldx #3
+@same:
+        lda fat32_cwd,x
+        cmp lib_dir,x
+        bne @moved
+        dex
+        bpl @same
+        bra @rename
+@moved:
+        jsr fat32_chdir         ; carry set: the old name is a directory
+        lda #ERR_ACCESS         ; keeps carry
+        bcs @drop
+@rename:
+        jsr cwd_set
+        jsr path_join
+        lda #<lib_path
+        sta fat32_ptr
+        lda #>lib_path
+        sta fat32_ptr+1
+        lda #<lib_new
+        sta fat32_ptr2
+        lda #>lib_new
+        sta fat32_ptr2+1
+        jsr fat32_rename
+        jmp lib_done
+@bank:
+        jmp lib_bank
+@drop:
+        jmp lib_drop
+
+; api_diskfree: diskfree, call 22. The free clusters are the FS info sector's count, which the
+; library keeps. Selects RAM bank 0 while it runs and keeps the caller's bank in saved_bank.
+api_diskfree:
+        ldx RAM_BANK
+        stx saved_bank
+        stz RAM_BANK
+        dec                     ; 0, the current drive, becomes $FF
+        bpl @drive
+        lda current_drive
+@drive:
+        tax
+        jsr drive_check
+        bcs @bank
+        lda #0                  ; the volume: a context mounts it
+        jsr fat32_alloc_context
+        bcs @mounted
+        jmp lib_fault
+@mounted:
+        jsr fat32_free_context
+        ldx #3
+@free:
+        lda fat32_free_clusters,x
+        sta r1,x                ; r1 and r2
+        dex
+        bpl @free
+        ldx lib_dpb
+        lda DPB + DPB_CMASK,x   ; the sectors per cluster * 2 - 1
+        lsr
+        inc
+        sta r0
+        stz r0+1
+        stz r3
+        lda #>512
+        sta r3+1
+        lda DPB + DPB_LIMIT,x   ; r4 and r5: the clusters from cluster 2
+        sec
+        sbc #2
+        sta r4
+        lda DPB + DPB_LIMIT+1,x
+        sbc #0
+        sta r4+1
+        lda DPB + DPB_LIMIT+2,x
+        sbc #0
+        sta r5
+        lda DPB + DPB_LIMIT+3,x
+        sbc #0
+        sta r5+1
+        clc
+@bank:
+        jmp lib_bank
 
 ; lib_enter: selects RAM bank 0 and keeps the caller's bank in saved_bank, takes the path at r0
-; with path_start, takes the context lib_context, and makes the path's directory the library's
-; current directory. Returns carry set and A = the error, with no context taken. Changes X and
-; Y.
+; with path_start, takes the context lib_context, makes the path's directory the library's
+; current directory, and points fat32_ptr at the name part. Returns carry set and A = the error,
+; with no context taken. Changes X and Y.
 lib_enter:
         lda RAM_BANK
         sta saved_bank
@@ -261,17 +463,7 @@ lib_enter:
         sta lib_context
         jsr fat32_set_context
         bcc @drop
-        lda lib_dpb
-        ora #DPB_CWD
-        tax
-        ldy #0
-@cwd:
-        lda DPB,x
-        sta fat32_cwd,y
-        inx
-        iny
-        cpy #4
-        bne @cwd
+        jsr cwd_set
         ldx lib_slash
         inx
         beq @entered            ; no directory
@@ -282,19 +474,21 @@ lib_enter:
         sta fat32_ptr
         lda #>lib_path
         sta fat32_ptr+1
-        jsr fat32_chdir
-        bcs @entered
-        lda fat32_errno
-        cmp #ERRNO_FILE_NOT_FOUND
-        bne @drop
-        lda #ERR_NO_PATH
-        bra @drop_error
+        jsr dir_change
+        bcs @drop_error
+        bra @entered
 @root:
-        stz fat32_cwd
-        stz fat32_cwd+1
-        stz fat32_cwd+2
-        stz fat32_cwd+3
+        jsr cwd_root
 @entered:
+        ldx lib_slash           ; fat32_ptr = the name, after the last / or at 0
+        inx
+        txa
+        clc
+        adc #<lib_path
+        sta fat32_ptr
+        lda #>lib_path
+        adc #0
+        sta fat32_ptr+1
         clc
 @done:
         rts
@@ -305,6 +499,55 @@ lib_enter:
         lda lib_context
         jsr lib_close
         pla
+        sec
+        rts
+
+; cwd_set: makes the current directory of drive lib_dpb the library's, with cluster 0 for the
+; root, as a .. entry holds it. Changes A, X and Y.
+cwd_set:
+        lda lib_dpb
+        ora #3
+        tax
+        ldy #3
+@root:
+        lda DPB + DPB_CWD,x
+        sta fat32_cwd,y
+        cmp DPB + DPB_ROOT,x
+        bne @copy
+        dex
+        dey
+        bpl @root
+        bra cwd_root
+@copy:                          ; the bytes below the one that differs
+        dex
+        dey
+        bmi @done
+        lda DPB + DPB_CWD,x
+        sta fat32_cwd,y
+        bra @copy
+@done:
+        rts
+
+; cwd_root: makes the root the library's current directory. Changes nothing else.
+cwd_root:
+        stz fat32_cwd
+        stz fat32_cwd+1
+        stz fat32_cwd+2
+        stz fat32_cwd+3
+        rts
+
+; dir_change: makes the directory at fat32_ptr the library's current directory. Returns carry
+; set and A = the error, ERR_NO_PATH when the directory is missing. Changes X and Y.
+dir_change:
+        jsr fat32_chdir
+        bcc @fault
+        clc
+        rts
+@fault:
+        lda fat32_errno
+        cmp #ERRNO_FILE_NOT_FOUND
+        bne lib_errno_set
+        lda #ERR_NO_PATH
         sec
         rts
 
@@ -597,6 +840,17 @@ path_start:
         tax
         ldy #3
 @drive:
+        jsr drive_check
+        bcs @done
+        jsr path_copy
+        bcc @done
+        lda #ERR_NO_PATH
+@done:
+        rts
+
+; drive_check: sets lib_dpb to the DPB offset of drive X, 0 for A:. Returns carry set and A =
+; the error when the drive does not exist or is not ready. Changes A and X.
+drive_check:
         cpx #DRIVES
         bcs @bad_drive
         txa
@@ -611,18 +865,14 @@ path_start:
         beq @bad_drive
         lda DPB + DPB_SHIFT,x
         bmi @not_ready
-        jsr path_copy
-        bcc @done
-        lda #ERR_NO_PATH
         rts
 @bad_drive:
         lda #ERR_BAD_DRIVE
-        bra @fail
+        sec
+        rts
 @not_ready:
         lda #ERR_NOT_READY
-@fail:
         sec
-@done:
         rts
 
 ; path_char: returns character Y of the path at r0, in RAM bank saved_bank. Changes A.
@@ -675,6 +925,34 @@ path_copy:
         rts
 @wild_directory:
         sec
+        rts
+
+; name_check: returns carry set when the name part of lib_path is blank, only dots, or holds *
+; or ?. Changes A and X.
+name_check:
+        bit lib_wild
+        bmi @bad
+        ldx lib_slash
+@char:
+        inx
+        lda lib_path,x
+        beq @bad
+        cmp #'.'
+        beq @char
+        clc
+        rts
+@bad:
+        sec
+        rts
+
+; path_join: puts back the / that lib_enter ended the directory part with. Changes A and X.
+path_join:
+        ldx lib_slash
+        inx
+        beq @done               ; no /
+        lda #'/'
+        sta lib_path - 1,x
+@done:
         rts
 
 ; errno_errors: the error of each errno of the library.
