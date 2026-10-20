@@ -17,11 +17,11 @@ C>EXIST
 C>PRINT "[" + P1$ + "]"
 []
 C>DISKFREE
-690 KB free
+689 KB free
 C>DISKFREE C:
-690 KB free
+689 KB free
 C>DISKFREE c
-690 KB free
+689 KB free
 C>DISKFREE A:
 Invalid drive
 C>DISKFREE @
@@ -32,26 +32,26 @@ C>PRINT "[" + P1$ + "]"
 []
 C>DISKFREE SILENT
 C>PRINT P1$
-690
+689
 C>DISKFREE C: SILENT
 C>PRINT P1$
-690
+689
 C>DISKFREE Q: SILENT
 C>PRINT "[" + P1$ + "]"
 []
 C>DISKFREE
-690 KB free
+689 KB free
 C>PRINT P1$
-690
+689
 C>DISKINFO
      1024 KB total
-      690 KB free
+      689 KB free
      1024 bytes a cluster
      1024 clusters
-      690 clusters free
+      689 clusters free
 C>DISKINFO C: SILENT
 C>PRINT P1$ + " " + P2$ + " " + P3$ + " " + P4$ + " " + P5$
-1024 690 1024 1024 690
+1024 689 1024 1024 689
 C>DISKINFO Q:
 Invalid drive
 C>PRINT "[" + P1$ + "]"

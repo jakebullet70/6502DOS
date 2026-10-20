@@ -76,8 +76,10 @@ ROOT
  |  DUP.COM
  |  ENDCHILD.COM
  |  HEAPKID.COM
+ |  HELLO.BAS
  |  HELLO.TXT
  |  KEYTEST.COM
+ |  MSBASIC.COM
  |  SCRSIZE.COM
  |  SEEK.COM
  |  SHOW.COM
@@ -99,6 +101,8 @@ ROOT
  |      HEAD.COM
  |      HELP.COM
  |      HELP.TXT
+ |      HELPBAS.COM
+ |      HELPBAS.HLP
  |      MORE.COM
  |      TAIL.COM
  |      TED.COM
