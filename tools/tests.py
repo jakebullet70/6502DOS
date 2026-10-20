@@ -19,15 +19,23 @@ tools/build.py. Each test gets a new copy of the image.
 A test can type keys into the monitor with x16emu -bas:
 - tests/NAME.S, a program assembled with ca65 to run at $1000, typed in with E commands;
 - or RUN NAME.COM, when tests/NAME.UXB exists: it compiles to NAME.COM on the test card;
-- then tests/NAME.IN, each line ended by CR. \XE0 then a scan code types an extended key:
-  \XE0\X48 is Up.
+- then tests/NAME.IN, each line ended by CR. \\XE0 then a scan code types an extended key:
+  \\XE0\\X48 is Up.
 
 NAMEs pick tests; with none, every test runs. --update runs each test for 2 s and writes
 NAME.OUT from what it printed: read the .OUT before you keep it. Build first
 (tools/build.py). Exit status 1 when a test failed or a program did not assemble.
+
+--msbasic runs MSBASIC's tests instead, on build/6502DOS.ROM: MSBASIC/tests/name.bas is typed
+into MSBASIC at the shell, then QUIT. The transcript after the banner must equal name.out after
+its banner, the sim's transcript, with line ends and trailing spaces ignored. name.rom.out, when
+it exists, replaces name.out: the ROM's transcript where the target differs from the sim.
+NAMEs pick tests, in any case. --update writes name.rom.out from the transcript: read it before
+you keep it.
 """
 
 import datetime
+import difflib
 import glob
 import os
 import shutil
@@ -62,6 +70,8 @@ LIMIT = 5.0
 UPDATE_SECONDS = 2.0
 # x16emu prints these itself: when the ROM has no stock KERNAL symbols, and at -sdcard.
 EMULATOR_LINES = ("Unable to find KERNAL ", "SD card attached.")
+BASIC_TESTS = os.path.join(ROOT, "MSBASIC", "tests")
+BASIC_END = "\nQUIT\nC>"        # the QUIT typed after a test, then the shell's prompt
 
 
 def clean(raw):
@@ -102,10 +112,11 @@ def program_keys(source):
     return "".join(lines)
 
 
-def boot(rom, want, keys):
+def boot(rom, want, keys, done=None):
     """Boot rom, type keys when it is not None, and return what the ROM
     printed. Stop when the output is as long as want or departs from it, or after LIMIT
-    seconds. With want None, stop after UPDATE_SECONDS."""
+    seconds. With want None, stop after UPDATE_SECONDS, or, with done, when done(output) is
+    true or after LIMIT seconds."""
     env = dict(os.environ, SDL_VIDEODRIVER="dummy")
     command = [EMU, "-rom", rom, "-warp", "-sound", "none", "-nohostfs", "-echo", "raw",
                "-sdcard", RUN_IMAGE]
@@ -125,19 +136,68 @@ def boot(rom, want, keys):
 
     thread = threading.Thread(target=reader, daemon=True)
     thread.start()
-    deadline = time.time() + (UPDATE_SECONDS if want is None else LIMIT)
+    deadline = time.time() + (UPDATE_SECONDS if want is None and done is None else LIMIT)
     while time.time() < deadline:
         if want is not None:
             # A CR at the end may be the start of a CR LF still arriving.
             got = clean(b"".join(chunks).rstrip(b"\r"))
             if len(got) >= len(want) or not want.startswith(got):
                 break
+        elif done is not None and done(clean(b"".join(chunks))):
+            break
         time.sleep(0.02)
     # Kill by this handle only: never by image name, other emulators may be running.
     emu.kill()
     emu.wait(timeout=5)
     thread.join(timeout=5)
     return clean(b"".join(chunks))
+
+
+def normalize(text):
+    """As MSBASIC/tests/run.py: no CRs, no trailing spaces, one line end at the end."""
+    return "\n".join(l.rstrip() for l in text.replace("\r", "").split("\n")).rstrip() + "\n"
+
+
+def after_banner(text):
+    """The transcript after MSBASIC's banner line, which names the free bytes."""
+    start = text.find("UX6502BASIC ")
+    return text[text.index("\n", start) + 1:] if start >= 0 else text
+
+
+def basic_tests(names, update):
+    """Run MSBASIC's tests on the shell ROM and return the names that failed. With update,
+    write name.rom.out instead."""
+    if not names:
+        names = sorted(os.path.splitext(f)[0] for f in os.listdir(BASIC_TESTS)
+                       if f.endswith(".bas"))
+    failed = []
+    for name in [n.lower() for n in names]:
+        expected = os.path.join(BASIC_TESTS, name + ".rom.out")
+        if not os.path.exists(expected):
+            expected = os.path.join(BASIC_TESTS, name + ".out")
+        want = normalize(after_banner(open(expected, encoding="latin-1").read()))
+        source = open(os.path.join(BASIC_TESTS, name + ".bas"), encoding="latin-1").read()
+        shutil.copyfile(SD_IMAGE, RUN_IMAGE)
+        took = time.time()
+        got = boot(SHELL_ROM, None, "MSBASIC\n" + source + "QUIT\n",
+                   done=lambda output: BASIC_END in output)
+        took = time.time() - took
+        quit = BASIC_END in got
+        got = normalize(after_banner(got[:got.index(BASIC_END)] if quit else got))
+        if update:
+            with open(os.path.join(BASIC_TESTS, name + ".rom.out"), "w", encoding="latin-1",
+                      newline="\n") as out:
+                out.write(got)
+            print("WROTE %-12s %4.1f s%s" % (name, took, "" if quit else ", no QUIT"))
+            continue
+        if quit and got == want and took <= LIMIT:
+            print("ok    %-12s %4.1f s" % (name, took))
+            continue
+        failed.append(name)
+        print("FAIL  %-12s %4.1f s%s" % (name, took, "" if quit else ", no QUIT"))
+        sys.stdout.writelines("      " + l for l in difflib.unified_diff(
+            want.splitlines(True), got.splitlines(True), os.path.basename(expected), "ROM"))
+    return failed
 
 
 def test_name(out_path):
@@ -148,11 +208,14 @@ def test_name(out_path):
 def main():
     args = sys.argv[1:]
     update = "--update" in args
+    msbasic = "--msbasic" in args
     names = [a.upper() for a in args if not a.startswith("--")]
     if not os.path.exists(ROM):
         sys.exit("tests: no build/TEST.ROM; run tools/build.py first")
     outs = sorted(glob.glob(os.path.join(TESTS, "*.OUT")))
-    if names:
+    if msbasic:
+        outs = []
+    elif names:
         outs = [o for o in outs if test_name(o) in names]
         if len(outs) != len(names):
             sys.exit("tests: no such test among %s" % " ".join(names))
@@ -176,6 +239,10 @@ def main():
               date=datetime.date(2026, 10, 13), extra=programs, reserve=256, root_clusters=2)
     failed = []
     started = time.time()
+    count = len(outs)
+    if msbasic:
+        failed = basic_tests(names, update)
+        count = len(names or glob.glob(os.path.join(BASIC_TESTS, "*.bas")))
     for out_path in outs:
         name = os.path.splitext(os.path.basename(out_path))[0]
         want = open(out_path, encoding="latin-1").read().replace("\r\n", "\n")
@@ -208,7 +275,7 @@ def main():
         print("      got:")
         for line in got.split("\n"):
             print("      | " + line)
-    print("%d tests, %d failed, %.1f s" % (len(outs), len(failed), time.time() - started))
+    print("%d tests, %d failed, %.1f s" % (count, len(failed), time.time() - started))
     if failed:
         print("failed: " + " ".join(failed))
         sys.exit(1)
