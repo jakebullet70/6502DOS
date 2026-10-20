@@ -24,6 +24,8 @@ Bad command or file name
 C>PATH$ = "C:\DOS"
 C>TRE   TREE -?
 Invalid switch
+C>WHE   WHERE HEAD
+C:\DOS\HEAD.COM
 C>COPY HELLO.TXT "Q R.TXT"
      1 File(s) copied
 C>TYPE Q      TYPE "Q R.TXT"
