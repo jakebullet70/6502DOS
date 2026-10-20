@@ -2422,7 +2422,7 @@
        `TEMP$` variable, `PIPE_PATH` 128. F6a the limits in the ROM; F6b `fatcheck.py` LFN
        checks and new tests (a PC name over 32 in `tests/sd`, goldens in their own commit);
        F6c the shell's `TEMP$` pipe directory.
-     - Done, F6a (2026-10-20), not committed. Build 965 ms, ROM only, the new baseline:
+     - Done, F6a (2026-10-20), committed b005cc4. Build 965 ms, ROM only, the new baseline:
        - `name_check` refuses a name part over `NAME_MAX` (32) characters: 3 on create, mkdir
          and the new name of rename.
        - `cwd_build`, split out of `api_getcwd`, builds the path in `lib_path`; `api_chdir`
@@ -2442,6 +2442,33 @@
        - Steps since the full suite: 4.
        - Docs owed, added: PLAN §5 (a name over 32 shows as its alias; chdir refuses a path over
          254); NOTICE on the `read_dirent` change.
+     - Done, F6b (2026-10-20), not committed. Build 1534 ms, the ROM and 3 programs, the new
+       baseline:
+       - `tools/fatcheck.py` checks each run of long-name entries: the orders count down from
+         the entry with bit 6 to 1, each entry holds the run's checksum, type 0 and cluster 0,
+         and the run ends at the 8.3 entry whose checksum it holds. A run cut by a deleted entry,
+         another run or the end of the directory is an orphan. A scratch check on copies of the
+         card with a bad checksum, a broken order, a deleted 8.3 entry and a cluster in a
+         long-name entry: each reported.
+       - `tools/mksd.py`: a long name of exactly 13·n characters takes n entries, with no 0 and
+         no padding.
+       - `tests/sd/MANY/SUB.DIR/INNER` holds `Notes from the PC with a long name.txt` (38,
+         `NOTESF~1.TXT`), `Twenty-six characters.text` (26, two full entries) and the directory
+         `A directory with a longer name too` (34, `ADIREC~1`) with `IN.TXT`.
+       - `tests/LFN.IN`, new: FILES, LIST by the long name and by the alias, CD by the alias and
+         `CURDIR$`, CD by the long name gives Path not found, REN of a long name to a long name,
+         DEL by the alias. fatcheck after: no problems.
+       - Shell `FILES`: a name and size over 22 characters get one space between them; the
+         count went negative and printed about 250 spaces. CMDSHELL.COM +32 bytes.
+       - `TREE.UXB` and `XCOPY.UXB` leave room for `\` and a 32-character name (33), not 13:
+         TREE enters a directory whose path is up to 217 characters, XCOPY up to 222 less the
+         root.
+       - Tests: `LFN` ok 0.5 s (new), `TREE` 1.4, `XCOPYS` 1.5, `CMDLETS` 1.6, `DIRS` 1.1,
+         `DOSAPI` 0.7, `CWD` 0.5, `FILES` 0.4, `SHFILES` 0.8, `XCOPY` 1.5, `WHERE` 1.6.
+         Golden files changed: `LFN` (new), `TREE` and `XCOPYS` (the files in `INNER`),
+         `CMDLETS` and `DIRS` (free space), `FILES` (the size of CMDSHELL.COM).
+       - Steps since the full suite: 5.
+       - Docs owed, added: PLAN on fatcheck's long-name checks; TREE and XCOPY path room.
    - To do: find what the 492 bytes of 7i2b cost in `DISKFREE.CBI` (1861 to 2353 bytes), with
      pyuxc's link map, and cut them. Ideas: read `P2$` once, drop `FREE_TEXT` and pass the
      `MID$` straight to `SYS_STRINGS_SET`, reuse `DRIVE_NAME` for the text (11 bytes of RAM).

@@ -837,7 +837,11 @@ SUB DO_FILES()
       NAME_TEXT = MID$(STR$(FILE_SIZE), 2)
     ENDIF
     PRINT DOS.FOUND_NAME;
-    PRINT_SPACES(23 - LEN(DOS.FOUND_NAME) - LEN(NAME_TEXT))
+    IF LEN(DOS.FOUND_NAME) + LEN(NAME_TEXT) < 23
+      PRINT_SPACES(23 - LEN(DOS.FOUND_NAME) - LEN(NAME_TEXT))
+    ELSE
+      PRINT " ";                                   ' a name past the column
+    ENDIF
     PRINT NAME_TEXT
     COUNT = COUNT + 1
     DOS.FINDNEXT()

@@ -72,8 +72,9 @@ def checksum(short):
 
 def long_entries(name, short):
     """Return the long-name entries of name, before the entry of its 8.3 alias short."""
-    units = [ord(c) for c in name] + [0]
-    units += [0xFFFF] * (-len(units) % LONG_NAME_CHARACTERS)
+    units = [ord(c) for c in name]
+    if len(units) % LONG_NAME_CHARACTERS:
+        units += [0] + [0xFFFF] * (-len(units) % LONG_NAME_CHARACTERS - 1)
     count = len(units) // LONG_NAME_CHARACTERS
     total = checksum(short)
     entries = []

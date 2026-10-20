@@ -39,7 +39,7 @@
 #INCLUDE "KEYS.UXI"
 CONST SLOT_P1 AS UBYTE = 0, SLOT_P9 AS UBYTE = 8
 CONST MAX_DEPTH AS UBYTE = 32, PATH_MAX AS UBYTE = 255
-CONST NAME_ROOM AS UBYTE = 13                      ' "\" and a name of 12
+CONST NAME_ROOM AS UBYTE = 33                      ' "\" and a name of 32
 ' A find buffer's search state is its bytes before FIND_ATTR. STATES keeps one a level.
 CONST STATE_SIZE AS UBYTE = 41
 CONST STATES_SIZE AS UWORD = 1312                  ' MAX_DEPTH * STATE_SIZE

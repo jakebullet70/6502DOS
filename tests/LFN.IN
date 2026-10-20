@@ -1,0 +1,15 @@
+RUN CMDSHELL.COM
+CD \MANY\SUB.DIR\INNER
+FILES
+LIST "Twenty-six characters.text"
+LIST NOTESF~1.TXT
+LIST "Notes from the PC with a long name.txt"
+CD ADIREC~1
+PRINT CURDIR$
+FILES
+CD "A directory with a longer name too"
+CD ..
+REN "Twenty-six characters.text" "A new long name.text"
+DEL NOTESF~1.TXT
+FILES
+END
