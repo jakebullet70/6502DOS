@@ -107,6 +107,31 @@ KILL "U.BAS"
 
 ?FILE NOT FOUND ERROR
 OK
+FILES "*.BAS"
+HELLO.BAS            71
+     1 File(s)
+
+OK
+FILES "DOCS"
+.                 <DIR>
+..                <DIR>
+LONG.TXT           3200
+README.TXT           44
+     4 File(s)
+
+OK
+FILES "NOSUCH.*"
+
+?FILE NOT FOUND ERROR
+OK
+HELP FILES
+FILES ["pattern"]
+  Lists the names that match pattern, each with its size or <DIR>, then
+  their count. * and ? are wildcards. A directory's name lists the names in
+  it; no pattern lists the current directory.
+  FILES "*.BAS"
+
+OK
 HELP NAME
 NAME "old" AS "new"
   Renames a file or a directory, or moves a file to another directory of the
