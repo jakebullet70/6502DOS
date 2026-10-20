@@ -4,13 +4,16 @@
 ; one call in 256 looks; K_JIFFY makes the next call look.
 ; Trap: a key typed ahead stays waiting, and con_status reads no more keys
 ; until the program takes it, so a Ctrl+C after it is not seen.
-; Ctrl+C: Z and carry set, on into STOP, which breaks.
+; Ctrl+C: Z and carry set, on into STOP, which breaks. Keeps Y: LIST reads
+; its line with the Y it had before the call.
 ISCNTC:
         dec     DOS_POLL
         bne     RET2
+        phy
         jsr     API_CON_STATUS
         sec
         jsr     API_CON_BREAK		; X = the flag
+        ply
         dex
         bne     RET2
         sec

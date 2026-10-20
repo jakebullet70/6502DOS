@@ -2791,11 +2791,28 @@
        `CMDLETS` 1.5, `DIRS` 1.1, `TREE` 1.5, `DISK` 0.4, `FILES` 0.5. Goldens changed:
        `BASHELP` and `HELPBAS` (the list has LOAD and SAVE). MSBASIC `make all verify` ok
        (1127 ms), `make test` 31/31 (1019 ms). ROM build 966 ms, the new baseline.
-     - Steps since the full suite: 1.
+     - Step 4 done (2026-10-20), the user's three picks, details in `MSBASIC/docs/changes.md`:
+       - `K_READ` reads a file 64 bytes a call into `DOS_BUF`; a read of another handle seeks
+         the holder back by its unread bytes. +90 bytes, RAM +67 (`IORAM` 713 of 768).
+         `K_OPEN` empties the buffer when it hands out the holder's handle again (+11);
+         `DOS_BOOT` empties it at the cold start (+6).
+       - `LIST_NUMBER`: a file gets no space before LIST's line number, so SAVE writes
+         `10 PRINT`. +23.
+       - `HELP_FOUND` starts as the topic length; the two topic CR checks are gone. -7.
+       - Bug fixed: `ISCNTC`'s poll changed Y, and LIST then listed a wrong line
+         (`8369 3:PRINT`), at random, one poll in 256. `phy`/`ply`, +2.
+       - +125 bytes. Bank 2: 12505 used, 3879 free. `sim`, `cbmbasic1`, `cbmbasic2` unchanged.
+       - `BASLOAD` gained a program that reads `T.BAS` and `HELLO.BAS` a byte each in turn with
+         `GET#`, which drives the seek-back. Its golden: that part, and `TYPE T.BAS` with no
+         leading spaces.
+       - Tests: `BASLOAD` ok 0.6 s, `BASHELP` 0.7 (was 1.6), `BASRUN` 0.5, `BASBOOT` 0.5,
+         `HELPBAS` 2.0. MSBASIC `make all verify` ok (1108 ms), `make test` 31/31 (1001 ms).
+         ROM build 949 ms, the new baseline.
+     - Steps since the full suite: 2.
      - Docs owed to the batch: a `HELP.TXT` topic `HELPBAS`, PLAN's utilities list, `HELP`,
        `LOAD` and `SAVE` in `MSBASIC/CLAUDE.md`.
-     - Next: the user's choice. Ideas: a buffered `K_READ` (HELP and LOAD read a byte per API
-       call); SAVE without the line number's leading space.
+     - Next: the user's choice. `HELPBAS.HLP`'s SAVE topic says "as LIST shows it"; it could say
+       there is no space before the line numbers.
    - To do: find what the 492 bytes of 7i2b cost in `DISKFREE.CBI` (1861 to 2353 bytes), with
      pyuxc's link map, and cut them. Ideas: read `P2$` once, drop `FREE_TEXT` and pass the
      `MID$` straight to `SYS_STRINGS_SET`, reuse `DRIVE_NAME` for the text (11 bytes of RAM).

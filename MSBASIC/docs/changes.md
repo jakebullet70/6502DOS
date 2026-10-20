@@ -886,3 +886,27 @@ are allowed in this target only.
 - `HELPBAS.HLP` has topics `LOAD` and `SAVE`.
 - `cbmbasic1` and `cbmbasic2` are byte for byte as before. Bank 2 holds 12380 bytes, and 4004
   bytes are free.
+
+## 6502dos: buffered file reads, SAVE without the space, ISCNTC keeps Y (+125 bytes)
+
+- `K_READ` reads a file 64 bytes (`DOS_BUFMAX`) a call into `DOS_BUF`, not one byte a call.
+  `DOS_BUF` holds the bytes of one handle, `DOS_BUFHND`. A read of another handle seeks the
+  holder back by the bytes it has not taken (`seek` from the position), then fills the buffer
+  for the new handle. The console, `K_STDIN`, is still read a byte a call. +90 bytes; RAM +67
+  (`DOS_BUF`, `DOS_BUFHND`, `DOS_BUFPOS`, `DOS_BUFLEN`), `IORAM` now 713 of its 768 bytes.
+  About 68 cycles a byte from the buffer. `HELP`, `LOAD`, `MSBASIC NAME.BAS`, `INPUT#` and
+  `GET#` all read through it.
+- `K_OPEN` empties `DOS_BUF` when the new handle is `DOS_BUFHND`: the buffer then holds the
+  bytes of a closed file. +11 bytes. `DOS_BOOT` empties it at the cold start. +6 bytes.
+- `LIST_NUMBER`, new in `6502dos_extra.s`, prints LIST's line number as `LINPRT` does, but
+  output to a file gets no space before the number. `program.s` calls it in the `6502dos`
+  target only. So `SAVE`, and `LIST` after `CMD`, write `10 PRINT`, not ` 10 PRINT`. +23 bytes.
+- `HELP`: `HELP_FOUND` starts as the topic's length, so 0 means the topic list, and the found
+  flag is bit 7, set by `ror` with carry set. The two `lda HELP_TOPIC / cmp #CR` checks are
+  gone. -7 bytes.
+- Bug fixed, `6502dos_iscntc.s`: the poll, one call in 256, called `con_status` and `con_break`,
+  which change Y. LIST calls `ISCNTC` between lines and then reads the next line with Y, so a
+  poll there listed a wrong line number and text, such as `8369 3:PRINT` for line 20. `ISCNTC`
+  now keeps Y with `phy`/`ply`. +2 bytes, 7 cycles a poll.
+- `cbmbasic1`, `cbmbasic2` and `sim` are byte for byte as before. Bank 2 holds 12505 bytes, and
+  3879 bytes are free.

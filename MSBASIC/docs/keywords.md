@@ -116,13 +116,14 @@ built from existing tokens, so they need no table entries.
 `QUIT [n]` (`CONFIG_QUIT`, 18 bytes) is in the `6502dos` target only. It ends BASIC and returns
 to the shell with exit code n, 0 to 255, or 0.
 
-`HELP [topic]` (`CONFIG_HELP`, 311 bytes) is in the `6502dos` target only, in direct mode only;
+`HELP [topic]` (`CONFIG_HELP`, 304 bytes) is in the `6502dos` target only, in direct mode only;
 in a program it gives ?SYNTAX ERROR. It prints the topic from `C:\DOS\HELPBAS.HLP`, or with no
 topic the topic names.
 
 `LOAD "name"` and `SAVE "name"` (114 bytes, no flag) work in the `6502dos` target only. SAVE
-writes the program as text, as LIST shows it; LOAD does a NEW and reads the lines back. A LOAD
-in a program runs the program it loads. SAVE ends a program, as LIST does.
+writes the program as text, as LIST shows it but with no space before a line number (23 bytes
+more); LOAD does a NEW and reads the lines back. A LOAD in a program runs the program it loads.
+SAVE ends a program, as LIST does.
 
 ## Internals (no keywords)
 

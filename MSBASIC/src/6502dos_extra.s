@@ -17,6 +17,11 @@ DOS_COLUMN:	.res 1
 DOS_COLOR:	.res 1		; COLOR: the background
 DOS_LOADRUN:	.res 1		; logical file 0 ends with OK if $FF, else with RUN
 DOS_FILE	:= DOS_ROW	; LOAD and SAVE: the handle
+DOS_BUFMAX	= 64		; K_READ: bytes a read call
+DOS_BUFHND:	.res 1		; K_READ: the handle whose bytes DOS_BUF holds
+DOS_BUFPOS:	.res 1		; K_READ: the next byte in DOS_BUF
+DOS_BUFLEN:	.res 1		; K_READ: the bytes in DOS_BUF
+DOS_BUF:	.res DOS_BUFMAX
 
 .segment "EXTRA"
 
@@ -33,22 +38,69 @@ DOS_FRAME:
 
 ; X = handle. Returns carry clear and the byte in A, or carry set at the end
 ; of the file or on an error. Keeps X and Y. LF is dropped: a file ends its
-; lines with CR LF, BASIC with CR.
+; lines with CR LF, BASIC with CR. A file is read DOS_BUFMAX bytes a call
+; into DOS_BUF, which holds the bytes of one handle at a time. A read of
+; another handle seeks the holder back by the bytes not yet taken. The
+; console, K_STDIN, is read a byte a call.
 K_READ:
         stx     DOS_X
         sty     DOS_Y
 @again:
         ldx     DOS_X
+        bne     @file			; K_STDIN is 0
         jsr     DOS_FRAME
         jsr     API_READ
         bcs     @done
         lda     r1
         beq     @eof
         lda     DOS_BYTE
+@byte:
         cmp     #LF
         beq     @again
         clc
         bra     @done
+@file:
+        cpx     DOS_BUFHND
+        beq     @take
+        lda     DOS_BUFPOS
+        sec
+        sbc     DOS_BUFLEN		; minus the bytes not taken, 0 to -64
+        beq     @claim
+        sta     r0
+        lda     #$FF
+        sta     r0+1
+        sta     r1
+        sta     r1+1
+        ldx     DOS_BUFHND
+        lda     #1			; from the position
+        jsr     API_SEEK
+        ldx     DOS_X
+@claim:
+        stx     DOS_BUFHND
+        stz     DOS_BUFLEN		; empty: @take reads
+@take:
+        ldy     DOS_BUFPOS
+        cpy     DOS_BUFLEN
+        bcs     @fill
+        inc     DOS_BUFPOS
+        lda     DOS_BUF,y
+        bra     @byte
+@fill:
+        lda     #<DOS_BUF
+        sta     r0
+        lda     #>DOS_BUF
+        sta     r0+1
+        lda     #DOS_BUFMAX
+        sta     r1
+        stz     r1+1
+        jsr     API_READ		; X = handle
+        stz     DOS_BUFPOS
+        lda     #0
+        bcs     @fail			; an error ends the file
+        lda     r1
+@fail:
+        sta     DOS_BUFLEN
+        bne     @take
 @eof:
         sec
 @done:
@@ -94,6 +146,11 @@ K_OPEN:
         bcs     @fail
 @opened:
         stx     DOS_X
+        cpx     DOS_BUFHND		; the handle of a closed file: DOS_BUF
+        bne     @new			; holds that file's bytes
+        stz     DOS_BUFLEN
+        stz     DOS_BUFPOS
+@new:
         lda     DOS_MODE
         cmp     #2
         bne     @done
@@ -253,13 +310,12 @@ HELP_NAME	:= HIO_NAME+40		; a :NAME line, CR at its end
 HELP_MAX	= 19			; longest topic and name
 .assert HELP_NAME+HELP_MAX < HIO_NAME+HIO_NAMEMAX+1, error, "HELP's buffers pass HIO_NAME"
 HELP_HND	:= DOS_ROW		; TEXTAT's bytes, free while HELP runs
-HELP_FOUND	:= DOS_COLUMN		; $FF after the topic's :NAME line
-
+HELP_FOUND	:= DOS_COLUMN		; the topic's length, 0 for the list;
+					; bit 7 after the topic's :NAME line
 HELP:
         ldx     CURLIN+1
         inx
         jne     SYNERR			; CURLIN+1 is $FF in direct mode
-        stz     HELP_FOUND
         ldx     #0
         jsr     CHRGOT
 @topic:
@@ -296,6 +352,7 @@ HELP:
 @topic_end:
         lda     #CR
         sta     HELP_TOPIC,x
+        stx     HELP_FOUND
         ldx     #HELP_PATH_END-HELP_PATH-1
 @path:
         lda     HELP_PATH,x
@@ -341,8 +398,7 @@ HELP:
         iny
         bra     @name_letter
 @name_end:
-        lda     HELP_TOPIC
-        cmp     #CR
+        lda     HELP_FOUND
         beq     @list
         ldx     #$FF
 @compare:
@@ -352,7 +408,7 @@ HELP:
         bne     @line
         cmp     #CR
         bne     @compare
-        dec     HELP_FOUND
+        ror     HELP_FOUND		; carry is set: bit 7
         bra     @line
 @list:
         tya				; Y = the name's length
@@ -378,10 +434,8 @@ HELP_READ:
 HELP_CLOSE:
         ldx     HELP_HND
         jsr     K_CLOSE
-        lda     HELP_TOPIC
-        cmp     #CR
+        lda     HELP_FOUND
         beq     @list_end
-        bit     HELP_FOUND
         bmi     HELP_RTS
         lda     #<HELP_NONE
         ldy     #>HELP_NONE
@@ -423,6 +477,8 @@ HELP_NONE:
 ; ----------------------------------------------------------------------------
 DOS_BOOT:
         ldx     #0
+        stx     DOS_BUFLEN		; K_READ: DOS_BUF empty
+        stx     DOS_BUFPOS
 @skip:
         inx
         lda     COMMAND_TAIL,x
@@ -476,7 +532,8 @@ DOS_NOTFOUND:
 
 ; ----------------------------------------------------------------------------
 ; "SAVE" STATEMENT: SAVE "name" writes the program to the file as LIST shows
-; it, with CR LF line ends, and makes the file or empties it. As LIST, it ends
+; it, with no space before a line number and CR LF line ends, and makes the
+; file or empties it. As LIST, it ends
 ; a program. RESTART prints OK through GOSTROUT, which SAVE points at
 ; SAVE_END, so the file closes after the last line or after a Ctrl+C break.
 ; ----------------------------------------------------------------------------
@@ -521,6 +578,23 @@ SAVE_END:
         ply
         pla
         jmp     STROUT
+
+; LIST's line number: A high, X low. Prints it as LINPRT does, but output to
+; a file, as SAVE's, gets no space before it.
+LIST_NUMBER:
+        sta     FAC+1
+        stx     FAC+2
+        ldx     #$90
+        sec
+        jsr     FLOAT2
+        jsr     FOUT			; A/Y = the text at STACK2, a space first
+        ldx     HIO_OUT
+        dex
+        beq     @console		; K_STDOUT is 1
+        inc     a
+@console:
+        jmp     STROUT
+.assert K_STDOUT = 1, error, "LIST_NUMBER needs K_STDOUT = 1"
 
 DOS_RUN:
         .byte   "RUN",0
