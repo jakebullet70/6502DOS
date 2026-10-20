@@ -15,7 +15,7 @@
 '=============================================================================================
 #INCLUDE "DOS.UXI"
 #INCLUDE "HEAP.UXI"
-#INCLUDE "CBIN.UXI"
+#INCLUDE "SCOM.UXI"
 
 DIM ARGUMENT AS STRING * 255
 DIM FIELDS(3) AS UWORD, FIELD_COUNT AS UBYTE

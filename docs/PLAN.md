@@ -677,16 +677,16 @@ Short names:
 - `RUN name` takes the name as a file argument, and skips the statement names and the aliases:
   `RUN FILES` runs a program `FILES`, and `RUN "TO" + "OL"` runs `TOOL`.
 - The name is taken in capitals. A name with `*` or `?` names nothing.
-- A name with an extension is looked for as typed. Any other is looked for as `NAME.CBIN`, then
+- A name with an extension is looked for as typed. Any other is looked for as `NAME.SCOM`, then
   `NAME.COM`, then `NAME.CMD`.
 - A name with a directory is looked for in that directory only. Any other is looked for in the
   current directory, then in each directory of `PATH$`. An empty part of `PATH$` is skipped, and
   a `\` is added to a part that does not end in one. An alias (Aliases, above) comes before
   all of them.
 - A name not found prints `Bad command or file name`.
-- A `.CBIN` file is a commandlet. Its format is a `.COM` file's (section 7).
-- `NAME.CBIN` is a long name on the card, with an 8.3 alias that ends in `.CBI`.
-- A `.CBIN` or `.COM` program runs as a child with `exec`. The script goes on when the child ends.
+- A `.SCOM` file, a scriptable COM file, is a commandlet. Its format is a `.COM` file's (section 7).
+- `NAME.SCOM` is a long name on the card, with an 8.3 alias that ends in `.SCO`.
+- A `.SCOM` or `.COM` program runs as a child with `exec`. The script goes on when the child ends.
   An `exec` error prints the kernel's message for it.
 - The words after the name are file arguments (Arguments, above). The shell sets `P1$` to `P9$`
   to empty, then puts the first 9 arguments in them, one each. The command tail is every
@@ -820,14 +820,14 @@ Short names:
 
 ### Commandlets
 
-- These stay out of the shell, as `.CBIN` UXCBASIC programs: `EXIST`, `DISKFREE`, `DISKINFO`,
+- These stay out of the shell, as `.SCOM` UXCBASIC programs: `EXIST`, `DISKFREE`, `DISKINFO`,
   `DATE`, `TIME`, `UPTIME`, `WHERE`, `MEM`. There is no `FORMAT` and no `MOUNT`.
 - `HELP` is a DOS utility, `HELP.COM`, not a commandlet.
 - Both lie in the card's folder `\DOS`. `PATH$` is empty at boot, so the shell finds them only
   after `PATH$ = "C:\DOS"`.
-- The build compiles each `src/cbin/NAME.UXB` to `build/DOS/NAME.CBIN`, and each
+- The build compiles each `src/scom/NAME.UXB` to `build/DOS/NAME.SCOM`, and each
   `src/dos/NAME.UXB` to `build/DOS/NAME.COM`. It copies each `src/dos/NAME.TXT` to `build/DOS`.
-- `src/cbin/CBIN.UXI` is included by each commandlet, after `DOS.UXI` and `HEAP.UXI`. It gives
+- `src/scom/SCOM.UXI` is included by each commandlet, after `DOS.UXI` and `HEAP.UXI`. It gives
   the constants `SLOT_P1` to `SLOT_P9`, the system string numbers 0 to 8 of `P1$` to `P9$`,
   and the flag `SILENT AS UBYTE`. `HEAP.SYS_STRINGS_GET(SLOT_P1)` reads `P1$`, and
   `HEAP.SYS_STRINGS_SET(SLOT_P1, text)` writes it.
@@ -974,7 +974,7 @@ Short names:
 - `WHERE name [SILENT]` prints the path of the program the shell runs for `name`:
   `C:\DOS\HEAD.COM`. It is for the command line and scripts.
   - The look-up is the shell's. A name with an extension is looked for as typed, any other
-    as `NAME.CBIN`, then `NAME.COM`, then `NAME.CMD`. A name with a directory is looked for
+    as `NAME.SCOM`, then `NAME.COM`, then `NAME.CMD`. A name with a directory is looked for
     there only, any other in the current directory, then in each directory of `PATH$`.
   - Only the first match prints. A match in the current directory prints after the drive
     and the current directory.
@@ -1041,7 +1041,7 @@ Folders:
 | `src/asm/` | layer 0 and the asm parts of layer 1 |
 | `src/bas/` | the UXCBASIC programs |
 | `lib/` | the UXCBASIC library: `DOS.UXI`, `HEAP.UXI`, `KEYS.UXI`, `CONS.UXI` and `STR.UXI` |
-| `src/cbin/` | the commandlets and `CBIN.UXI` |
+| `src/scom/` | the commandlets and `SCOM.UXI` |
 | `src/dos/` | the DOS utilities and their text files |
 | `tools/` | `api.py`, the generator, `build.py`, `tests.py` |
 | `tools/cc65/` | `ca65.exe`, `ld65.exe` and the cc65 licence |
@@ -1185,7 +1185,7 @@ Each step boots and shows something, and each has a test.
    7b. The variables `A` to `Z` and `A$` to `Z$`, `=`, expressions, `PRINT` lists, `INPUT`.
    7c. `FILES`, `LIST`, `CHDIR`, `MKDIR`, `RMDIR`, `DELETE`, `RENAME`, `COPY`, `CURDIR$`.
    7d. `A$` to `Z$` in VARBANK. The slots `P1$` to `P9$` in VARBANK's system descriptors.
-       Running `.CBIN` and `.COM` by name, with `PATH$`. `RUN`.
+       Running `.SCOM` and `.COM` by name, with `PATH$`. `RUN`.
    7e. Scripts, in five parts:
        7e1. A `.CMD` file, read and run one line at a time. `ONERROR`, script arguments,
             `STARTUP.CMD`.

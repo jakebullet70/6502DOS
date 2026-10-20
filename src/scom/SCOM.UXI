@@ -1,4 +1,4 @@
-' CBIN.UXI: the argument slots and the SILENT flag of a commandlet. Include DOS.UXI and HEAP.UXI
+' SCOM.UXI: the argument slots and the SILENT flag of a commandlet. Include DOS.UXI and HEAP.UXI
 ' first.
 '
 ' The shell puts the arguments in P1$ to P9$, VARBANK system strings 0 to 8, before the run.

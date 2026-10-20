@@ -19,7 +19,7 @@
 '=============================================================================================
 #INCLUDE "DOS.UXI"
 #INCLUDE "HEAP.UXI"
-#INCLUDE "CBIN.UXI"
+#INCLUDE "SCOM.UXI"
 DIM DRIVE_NAME AS STRING * 255, DRIVE AS UBYTE
 DIM CLUSTER_BYTES AS ULONG, TOTAL_CLUSTERS AS ULONG, FREE_CLUSTERS AS ULONG
 

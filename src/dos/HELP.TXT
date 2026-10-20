@@ -61,7 +61,7 @@ UPTIME [SILENT]                 (Command line or Script)
 WHERE name [SILENT]             (Command line or Script)
   Tells the path of the program the shell runs for name.
   Prints a path such as C:\DOS\HEAD.COM.
-  A name with no extension is looked for as .CBIN, then .COM, then .CMD.
+  A name with no extension is looked for as .SCOM, then .COM, then .CMD.
   Sets P1$ to the path, or to an empty string when nothing is found.
   At the prompt: WHERE HEAD
   In a script:   WHERE HEAD SILENT

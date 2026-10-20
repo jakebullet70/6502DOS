@@ -958,14 +958,14 @@ FUNCT IS_FILE() AS UBYTE
 END FUNCT
 
 ' Whether the program PROGRAM_NAME is in DIRECTORY$, which is empty or ends in a separator.
-' A name with an extension is taken as it is, else NAME.CBIN, NAME.COM, then NAME.CMD. Puts
+' A name with an extension is taken as it is, else NAME.SCOM, NAME.COM, then NAME.CMD. Puts
 ' the path in PROGRAM_PATH.
 FUNCT FIND_IN(DIRECTORY$) AS UBYTE
   IF INSTR(PROGRAM_NAME, ".", DIRECTORY_LENGTH(PROGRAM_NAME) + 1)
     PROGRAM_PATH = DIRECTORY$ + PROGRAM_NAME
     RETURN IS_FILE()
   ENDIF
-  PROGRAM_PATH = DIRECTORY$ + PROGRAM_NAME + ".CBIN"
+  PROGRAM_PATH = DIRECTORY$ + PROGRAM_NAME + ".SCOM"
   IF IS_FILE() THEN RETURN 1
   PROGRAM_PATH = DIRECTORY$ + PROGRAM_NAME + ".COM"
   IF IS_FILE() THEN RETURN 1

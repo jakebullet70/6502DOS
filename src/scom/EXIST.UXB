@@ -9,14 +9,14 @@
 ' --     IF P1$ = "1"
 ' --       PRINT "Found the readme"
 ' --     ENDIF
-' -- The shell finds EXIST.CBIN (EXIST.CBI on the card) in the current folder or a PATH$ folder.
+' -- The shell finds EXIST.SCOM (EXIST.SCO on the card) in the current folder or a PATH$ folder.
 ' -- The result replaces the name in P1$.
 ' -- END n hands n to the kernel's exit call. A program that runs this one reads n with
 ' -- DOS.EXITCODE(). The shell does not read it.
 '=============================================================================================
 #INCLUDE "DOS.UXI"
 #INCLUDE "HEAP.UXI"
-#INCLUDE "CBIN.UXI"
+#INCLUDE "SCOM.UXI"
 DIM FILENAME_2_CHK AS STRING * 255
 
 FILENAME_2_CHK = HEAP.SYS_STRINGS_GET(SLOT_P1)

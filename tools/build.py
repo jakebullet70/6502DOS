@@ -11,8 +11,8 @@ build/TEST.ROM is the same image with boot_shell cleared: it boots to the monito
 UXCBASIC/tpl/MKTPL.PY rebuilds the template tables when a UXCBASIC/tpl or UXCBASIC/tpl/UXDOS
 .ASM file is newer than UXCBASIC/tpl/UXDOS/UXC.TPL.BIN. Each src/bas/NAME.UXB compiles to
 build/bas/NAME.COM with tools/uxb.py when the COM file is older than the source, than a file it
-includes, than the template table or than pyuxc. Each src/cbin/NAME.UXB, a
-commandlet, compiles the same way to build/DOS/NAME.CBIN, a long name on the card. Each
+includes, than the template table or than pyuxc. Each src/scom/NAME.UXB, a
+commandlet, compiles the same way to build/DOS/NAME.SCOM, a long name on the card. Each
 src/dos/NAME.UXB, a DOS utility, compiles to
 build/DOS/NAME.COM, and each src/dos/NAME.TXT and NAME.HLP is copied to build/DOS.
 
@@ -50,8 +50,8 @@ TEST_SD_FOLDER = os.path.join(ROOT, "tests", "sd")
 SD_IMAGE = os.path.join(BUILD, "SD.IMG")
 BAS = os.path.join(ROOT, "src", "bas")
 BAS_OUT = os.path.join(BUILD, "bas")
-CBIN = os.path.join(ROOT, "src", "cbin")
-CBIN_OUT = os.path.join(BUILD, "DOS")
+SCOM = os.path.join(ROOT, "src", "scom")
+SCOM_OUT = os.path.join(BUILD, "DOS")
 UTILITIES = os.path.join(ROOT, "src", "dos")
 TEMPLATES = os.path.join(ROOT, "UXCBASIC", "tpl")
 
@@ -90,19 +90,19 @@ def compile_bas():
     return programs
 
 
-def compile_cbin():
-    """Compile each src/cbin/NAME.UXB to build/DOS/NAME.CBIN and each src/dos/NAME.UXB to
+def compile_scom():
+    """Compile each src/scom/NAME.UXB to build/DOS/NAME.SCOM and each src/dos/NAME.UXB to
     build/DOS/NAME.COM, and copy each src/dos/NAME.TXT and NAME.HLP to build/DOS. Return the folder build/DOS."""
-    os.makedirs(CBIN_OUT, exist_ok=True)
-    for source in sorted(glob.glob(os.path.join(CBIN, "*.UXB"))):
-        name = os.path.splitext(os.path.basename(source))[0].upper() + ".CBIN"
-        uxb.compile(source, os.path.join(CBIN_OUT, name))
+    os.makedirs(SCOM_OUT, exist_ok=True)
+    for source in sorted(glob.glob(os.path.join(SCOM, "*.UXB"))):
+        name = os.path.splitext(os.path.basename(source))[0].upper() + ".SCOM"
+        uxb.compile(source, os.path.join(SCOM_OUT, name))
     for source in sorted(glob.glob(os.path.join(UTILITIES, "*.UXB"))):
         name = os.path.splitext(os.path.basename(source))[0].upper() + ".COM"
-        uxb.compile(source, os.path.join(CBIN_OUT, name))
+        uxb.compile(source, os.path.join(SCOM_OUT, name))
     for text in sorted(glob.glob(os.path.join(UTILITIES, "*.TXT")) + glob.glob(os.path.join(UTILITIES, "*.HLP"))):
-        shutil.copyfile(text, os.path.join(CBIN_OUT, os.path.basename(text).upper()))
-    return CBIN_OUT
+        shutil.copyfile(text, os.path.join(SCOM_OUT, os.path.basename(text).upper()))
+    return SCOM_OUT
 
 
 def make_test_rom():
@@ -141,7 +141,7 @@ def main():
         shutil.copyfile(os.path.join(ROOT, name), os.path.join(BUILD, name))
     test_files = [os.path.join(TEST_SD_FOLDER, entry) for entry in os.listdir(TEST_SD_FOLDER)
                   if not entry.startswith(".")]
-    mksd.make(SD_FOLDER, SD_IMAGE, extra=compile_bas() + [compile_cbin()] + test_files)
+    mksd.make(SD_FOLDER, SD_IMAGE, extra=compile_bas() + [compile_scom()] + test_files)
     print("built %s, %d bytes, %.2f s" % (os.path.relpath(ROM, ROOT), os.path.getsize(ROM),
                                           time.time() - started))
 

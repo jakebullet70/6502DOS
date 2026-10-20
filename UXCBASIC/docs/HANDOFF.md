@@ -18,7 +18,7 @@ Paths are from `UXCBASIC/`. A path marked "repo" is from the repo root.
 | `tests/STRINGS.UXI` | The include of STRLR and STRNS: `NAMESPACE STR`, the user's `InStrRev`, and the user's notes as `//` lines |
 | `samples/` | Sample programs. `MKHELP.PY` gives each a row under EXAMPLE PROGRAMS. |
 | repo `lib/` | The library: `DOS.UXI`, `HEAP.UXI`, `KEYS.UXI`, `CONS.UXI` and `STR.UXI`, each one namespace of its own name |
-| repo `src/bas/`, `src/cbin/`, `src/dos/` | UXDOS16's UXCBASIC programs. Repo `tools/build.py` compiles them with repo `tools/uxb.py`, whose `#INCLUDE` looks in the source's folder, then repo `lib/`. |
+| repo `src/bas/`, `src/scom/`, `src/dos/` | UXDOS16's UXCBASIC programs. Repo `tools/build.py` compiles them with repo `tools/uxb.py`, whose `#INCLUDE` looks in the source's folder, then repo `lib/`. |
 | repo `tools/build.py` | Also runs `tpl/MKTPL.PY` when a template is newer than `tpl/UXDOS/UXC.TPL.BIN` |
 | repo `attic/gpc/` | The frozen GPC UXC, with `pyuxc/compare.py`, `pyuxc/golden.py`, `golden/` and `cases/`. Its `README.md` lists the rest. Nothing uses it. |
 

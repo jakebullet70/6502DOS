@@ -15,7 +15,7 @@
 '=============================================================================================
 #INCLUDE "DOS.UXI"
 #INCLUDE "HEAP.UXI"
-#INCLUDE "CBIN.UXI"
+#INCLUDE "SCOM.UXI"
 CONST WEEKDAY_NAMES$ = "SunMonTueWedThuFriSat"
 
 DIM ARGUMENT AS STRING * 255

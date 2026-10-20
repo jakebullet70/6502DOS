@@ -13,7 +13,7 @@
 '=============================================================================================
 #INCLUDE "DOS.UXI"
 #INCLUDE "HEAP.UXI"
-#INCLUDE "CBIN.UXI"
+#INCLUDE "SCOM.UXI"
 CONST TICKS_STEP AS ULONG = 1250, SECONDS_STEP AS ULONG = 21
 
 DIM TICKS AS ULONG, TOTAL_SECONDS AS ULONG, DAYS AS ULONG, DAY_SECONDS AS ULONG

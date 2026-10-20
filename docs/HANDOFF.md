@@ -2542,6 +2542,15 @@
        - Docs still owed, from before the F steps: `HELP.TXT` and PLAN §8 on the shell's Tab
          completion and Up and Down; PLAN §4 rows for `con_line` and `con_edit`; the
          `HELP.TXT` topic `XCOPY` (Command line only) and PLAN §8 and §11 on `XCOPY`.
+     - Done, SCOM (2026-10-20, the user): commandlets are `.SCOM`, scriptable COM files, not
+       `.CBIN`. The 8.3 alias ends in `.SCO`. `src/cbin/` is `src/scom/`, `CBIN.UXI` is
+       `SCOM.UXI`. Changed: the shell's and `WHERE`'s search order, `build.py` (`SCOM`,
+       `SCOM_OUT`, `compile_scom`), `tests.py`, PLAN, `HELP.TXT` `WHERE`, UXCBASIC HANDOFF's
+       folder table, `SHRUN.IN`. Entries above this one keep the old name.
+       - Build 1913 ms, 8 programs recompiled, the new baseline.
+       - Tests: `WHERE` ok 1.3 s, `TREE` 1.4, `SHRUN` 0.8, `CMDLETS` 1.6. Goldens changed:
+         `WHERE`, `TREE`, `SHRUN`.
+       - Steps since the full suite: 2.
    - MSBASIC in ROM (planned 2026-10-20), after F7b. Steps M0 to M5; each asm step asks first.
      - Facts:
        - The `sim` build is 12068 bytes. It goes in ROM bank 2, `$C000-$FFFF`; the ROM image

@@ -14,7 +14,7 @@
 '=============================================================================================
 #INCLUDE "DOS.UXI"
 #INCLUDE "HEAP.UXI"
-#INCLUDE "CBIN.UXI"
+#INCLUDE "SCOM.UXI"
 DIM DRIVE_NAME AS STRING * 255, DRIVE AS UBYTE, FREE_KB AS ULONG, FREE_TEXT AS STRING * 10
 
 ' Clears P1$, prints Invalid drive unless SILENT, and ends with exit code 1.
