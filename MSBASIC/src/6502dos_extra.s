@@ -62,22 +62,9 @@ K_READ:
 @file:
         cpx     DOS_BUFHND
         beq     @take
-        lda     DOS_BUFPOS
-        sec
-        sbc     DOS_BUFLEN		; minus the bytes not taken, 0 to -64
-        beq     @claim
-        sta     r0
-        lda     #$FF
-        sta     r0+1
-        sta     r1
-        sta     r1+1
-        ldx     DOS_BUFHND
-        lda     #1			; from the position
-        jsr     API_SEEK
+        jsr     DOS_GIVEBACK		; empty: @take reads
         ldx     DOS_X
-@claim:
         stx     DOS_BUFHND
-        stz     DOS_BUFLEN		; empty: @take reads
 @take:
         ldy     DOS_BUFPOS
         cpy     DOS_BUFLEN
@@ -106,6 +93,26 @@ K_READ:
 @done:
         ldx     DOS_X
         ldy     DOS_Y
+        rts
+
+; Seeks the file whose bytes DOS_BUF holds back by the bytes not yet taken,
+; and empties DOS_BUF, so that other code may use it. Changes A, X and Y.
+DOS_GIVEBACK:
+        lda     DOS_BUFPOS
+        sec
+        sbc     DOS_BUFLEN		; minus the bytes not taken, 0 to -64
+        beq     @empty
+        sta     r0
+        lda     #$FF
+        sta     r0+1
+        sta     r1
+        sta     r1+1
+        ldx     DOS_BUFHND
+        lda     #1			; from the position
+        jsr     API_SEEK
+        lda     DOS_BUFPOS
+        sta     DOS_BUFLEN		; empty: POS = LEN
+@empty:
         rts
 
 ; X = handle, A = byte. Keeps A, X and Y; N and Z come from A.
@@ -529,6 +536,58 @@ DOS_LOAD:
 DOS_NOTFOUND:
         ldx     #HIO_ERR_NOTFOUND
         jmp     HIO_ERROR
+
+; ----------------------------------------------------------------------------
+; "KILL" STATEMENT: KILL "name" deletes the file. Any failure is ?FILE NOT
+; FOUND ERROR. The kernel does not check for open handles: close it first.
+; ----------------------------------------------------------------------------
+KILL:
+        jsr     HIO_GETNAME
+        lda     #<HIO_NAMELEN
+        sta     r0
+        lda     #>HIO_NAMELEN
+        sta     r0+1
+        jsr     API_DELETE
+        bcs     DOS_NOTFOUND
+        rts
+
+; ----------------------------------------------------------------------------
+; "NAME" STATEMENT: NAME "old" AS "new" renames a file or a directory, or
+; moves a file to another directory of the same drive. A new name that exists
+; is ?FILE EXISTS ERROR, any other failure ?FILE NOT FOUND ERROR. AS is two
+; letters, not a keyword.
+; ----------------------------------------------------------------------------
+NAME:
+        jsr     HIO_GETNAME		; the old name
+        jsr     DOS_GIVEBACK		; DOS_BUF takes the old name
+        ldx     HIO_NAMELEN
+@copy:
+        lda     HIO_NAMELEN,x
+        sta     DOS_BUF,x
+        dex
+        bpl     @copy
+        lda     #'A'
+        jsr     SYNCHR
+        lda     #'S'
+        jsr     SYNCHR
+        jsr     HIO_GETNAME		; the new name
+        lda     #<DOS_BUF
+        sta     r0
+        lda     #>DOS_BUF
+        sta     r0+1
+        lda     #<HIO_NAMELEN
+        sta     r1
+        lda     #>HIO_NAMELEN
+        sta     r1+1
+        jsr     API_RENAME
+        bcc     @done
+        cmp     #ERR_ACCESS
+        bne     DOS_NOTFOUND
+        ldx     #HIO_ERR_EXISTS
+        jmp     HIO_ERROR
+@done:
+        rts
+.assert HIO_NAMEMAX < DOS_BUFMAX, error, "NAME's old name does not fit DOS_BUF"
 
 ; ----------------------------------------------------------------------------
 ; "SAVE" STATEMENT: SAVE "name" writes the program to the file as LIST shows

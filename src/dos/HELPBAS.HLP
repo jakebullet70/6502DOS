@@ -165,6 +165,10 @@ INSTR([start,] a$, b$)
 INT(n)
   Returns the largest whole number not above n.
   PRINT INT(-2.5)
+:KILL
+KILL "name"
+  Deletes the file. Close it first.
+  KILL "OLD.BAS"
 :LABELS
 name:
   A name and a colon at the start of a line make a label. GOTO, GOSUB,
@@ -209,6 +213,11 @@ a MOD b
   Returns the remainder of a / b, with the sign of a. Both are rounded to
   whole numbers first.
   PRINT 7 MOD 3
+:NAME
+NAME "old" AS "new"
+  Renames a file or a directory, or moves a file to another directory of the
+  same drive. A new name that exists gives ?FILE EXISTS ERROR.
+  NAME "OLD.BAS" AS "NEW.BAS"
 :NEW
 NEW
   Deletes the program and its variables.
@@ -288,7 +297,8 @@ RUN [line or label]
   Clears the variables and runs the program, from the start or from line.
 :SAVE
 SAVE "name"
-  Writes the program to the file as LIST shows it. Ends a program.
+  Writes the program to the file as LIST shows it, with no space before a
+  line number. A file of that name is replaced. Ends a program.
   SAVE "HELLO.BAS"
 :SCREEN
 SCREEN mode

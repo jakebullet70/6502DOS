@@ -125,6 +125,10 @@ writes the program as text, as LIST shows it but with no space before a line num
 more); LOAD does a NEW and reads the lines back. A LOAD in a program runs the program it loads.
 SAVE ends a program, as LIST does.
 
+`KILL "name"` (29 bytes, no flag) and `NAME "old" AS "new"` (74 bytes, no flag) work in the
+`6502dos` target only. KILL deletes a file. NAME renames a file or a directory; a new name that
+exists gives ?FILE EXISTS ERROR. `AS` is not a keyword.
+
 ## Internals (no keywords)
 
 | Feature | Flag | Bytes |

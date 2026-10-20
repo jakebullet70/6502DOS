@@ -910,3 +910,22 @@ are allowed in this target only.
   now keeps Y with `phy`/`ply`. +2 bytes, 7 cycles a poll.
 - `cbmbasic1`, `cbmbasic2` and `sim` are byte for byte as before. Bank 2 holds 12505 bytes, and
   3879 bytes are free.
+
+## KILL and NAME in the 6502dos target (+104 bytes)
+
+- `KILL "name"`, new in `6502dos_extra.s`, deletes the file with `delete`. Any failure is
+  ?FILE NOT FOUND ERROR. 17 bytes.
+- `NAME "old" AS "new"`, new in `6502dos_extra.s`, renames a file or a directory with
+  `rename`. `AS` is two letters, checked with `SYNCHR`, not a keyword. The old name goes to
+  `DOS_BUF`, so `NAME` first calls `DOS_GIVEBACK`. Error 5 (`ERR_ACCESS`), a new name that
+  exists, is ?FILE EXISTS ERROR; any other failure is ?FILE NOT FOUND ERROR. 62 bytes.
+- `token.s`: `KILL` and `NAME` follow `HELP`, in the `6502dos` target only. 12 bytes.
+- `handle_io.s`: the message `EXISTS`, `HIO_ERR_EXISTS`, in the `6502dos` target only. It
+  takes the shared `?FILE ` prefix. 6 bytes.
+- `DOS_GIVEBACK`, new in `6502dos_extra.s`, is the seek-back of `K_READ` as a routine: it seeks
+  the holder of `DOS_BUF` back by the bytes not taken and empties the buffer by setting
+  `DOS_BUFLEN` to `DOS_BUFPOS`. `K_READ` calls it on a change of handle. +7 bytes; 12 cycles
+  more on a change of handle.
+- `SAVE` is unchanged: `create` empties a file that exists.
+- `cbmbasic1`, `cbmbasic2` and `sim` are byte for byte as before. Bank 2 holds 12609 bytes, and
+  3775 bytes are free. `IORAM` is unchanged at 713 bytes.

@@ -115,6 +115,10 @@
 .ifdef CONFIG_HELP
 		keyword_rts "HELP", HELP
 .endif
+.ifdef DOS6502
+		keyword_rts "KILL", KILL
+		keyword_rts "NAME", NAME
+.endif
 
 		count_tokens
 

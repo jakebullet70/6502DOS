@@ -372,6 +372,10 @@ HIO_ERR_MODE = *-HIO_ERRORS
         htasc   "MODE"
 HIO_ERR_TOOMANY = *-HIO_ERRORS
         htasc   "LIMIT"		; no free file entry
+.ifdef DOS6502
+HIO_ERR_EXISTS = *-HIO_ERRORS
+        htasc   "EXISTS"	; NAME: the new name is taken
+.endif
 HIO_ERR_NOFILE = *-HIO_ERRORS
 HIO_ERR_FILE = *-HIO_ERRORS
         htasc   "?FILE "

@@ -2808,11 +2808,33 @@
        - Tests: `BASLOAD` ok 0.6 s, `BASHELP` 0.7 (was 1.6), `BASRUN` 0.5, `BASBOOT` 0.5,
          `HELPBAS` 2.0. MSBASIC `make all verify` ok (1108 ms), `make test` 31/31 (1001 ms).
          ROM build 949 ms, the new baseline.
-     - Steps since the full suite: 2.
+     - Step 5 done (2026-10-20), step A of the user's FILES/KILL/NAME request:
+       - `KILL "name"` (17 bytes) and `NAME "old" AS "new"` (62 bytes; GW-BASIC's syntax, the
+         user's pick). NAME's new name taken: ?FILE EXISTS ERROR (new message, 6 bytes); other
+         failures ?FILE NOT FOUND. NAME keeps the old name in `DOS_BUF` after `DOS_GIVEBACK`,
+         the seek-back of `K_READ` made a routine (+7). Keywords 12. +104 bytes in all. Bank 2:
+         12609 used, 3775 free. RAM unchanged (`IORAM` 713 of 768).
+       - SAVE over an existing file: the user wants it to overwrite and saw an error once. Not
+         reproduced: SAVE replaced the same file twice, longer then shorter (over 1 KB),
+         `HELLO.TXT`, a long name, lowercase, a name with a space, `DOCS\README.TXT`, no
+         extension. SAVE is unchanged. Any `create` failure there shows as ?FILE NOT FOUND.
+         Ask the user for the exact message and steps.
+       - `HELPBAS.HLP`: topics KILL and NAME; SAVE says no space before a line number and that
+         a file of that name is replaced. `BASLOAD` tests SAVE over T.BAS, NAME, NAME onto
+         HELLO.BAS (EXISTS), NAME of a missing file, KILL twice.
+       - Trap: `tools/build.py` cannot write `build/SD.IMG` while the user's emulator runs
+         (PermissionError at mksd); the ROM and `build/DOS` are written before it. Tests use
+         their own card.
+       - Trap: `tests.py --update` cut `HELPBAS.OUT` at 2 s; its golden was spliced by hand.
+       - Tests: `BASLOAD` ok 0.8 s, `BASHELP` 1.2, `HELPBAS` 2.4, `BASRUN` 0.8, `BASBOOT` 0.9.
+         `make all verify` ok (1459 ms). ROM build 1205 ms, the new baseline.
+     - Steps since the full suite: 3.
      - Docs owed to the batch: a `HELP.TXT` topic `HELPBAS`, PLAN's utilities list, `HELP`,
-       `LOAD` and `SAVE` in `MSBASIC/CLAUDE.md`.
-     - Next: the user's choice. `HELPBAS.HLP`'s SAVE topic says "as LIST shows it"; it could say
-       there is no space before the line numbers.
+       `LOAD`, `SAVE`, `KILL` and `NAME` in `MSBASIC/CLAUDE.md`.
+     - Next: step B, `FILES ["pattern"]`, approved in outline: the shell's format (name, size
+       right to column 23 or `<DIR>`, `n File(s)`), hidden, system and directories listed, a
+       directory name lists its contents, Ctrl+C stops it. The 83-byte find buffer is `DOS_BUF`
+       plus 19 new `IORAM` bytes, after `DOS_GIVEBACK`. About 185 bytes.
    - To do: find what the 492 bytes of 7i2b cost in `DISKFREE.CBI` (1861 to 2353 bytes), with
      pyuxc's link map, and cut them. Ideas: read `P2$` once, drop `FREE_TEXT` and pass the
      `MID$` straight to `SYS_STRINGS_SET`, reuse `DRIVE_NAME` for the text (11 bytes of RAM).
