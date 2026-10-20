@@ -17,9 +17,11 @@ DOSAPI.COM         8612
 DUP.COM            3882
 ENDCHILD.COM        126
 HEAPKID.COM         128
+HELLO.BAS            71
 HELLO.TXT            25
 KEYTEST.COM        2700
 MANY              <DIR>
+MSBASIC.COM          14
 SCRIPTS           <DIR>
 SCRSIZE.COM         239
 SEEK.COM           1943
@@ -28,7 +30,7 @@ SLOTKID.COM        1150
 STRLIB.COM         1981
 TARGET.COM         1671
 WRITE.COM          4798
-    27 File(s)
+    29 File(s)
 >>DIR C:\DOCS\
 .                 <DIR>
 ..                <DIR>
