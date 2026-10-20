@@ -2589,12 +2589,14 @@
          failed on the new line, as expected; updated, diffed, ok 0.7 s. `CMDLETS` ok 1.6 s.
          Golden changed: `SHTAB`.
        - Steps since the full suite: 6. The next step runs the full suite.
+     - Full suite after M0 (step 7), 39.5 s: 50 tests, 49 ok, the slowest 1.6 s. `FILES`
+       failed on the size of CMDSHELL.COM (22056, from S4); updated, ok 0.4 s, golden
+       1ce2fb5. Steps since the full suite: 0.
    - MSBASIC in ROM (planned 2026-10-20), after F7b. Steps M0 to M5; each asm step asks first.
      - Facts:
        - The `sim` build is 12068 bytes. It goes in ROM bank 2, `$C000-$FFFF`; the ROM image
          grows from 32 KB to 48 KB.
-       - The `sim` zero page runs from `$00` to about `$DA`, plus `$F0-$FA`: about 165
-         bytes. `CHRGET` is at `$C3`. `TXTPTR` sits inside `CHRGET` and 19 places read
+       - The `sim` zero page is `$00-$12`, `$5B-$DF` and `$F0-$F9`: 162 bytes. `CHRGET` is at `$C3`. `TXTPTR` sits inside `CHRGET` and 19 places read
          `(TXTPTR),y`, so it must stay in zero page.
        - A program owns `$22-$7F`, 94 bytes. The kernel owns `$80-$FF`; `$DB-$FF` is unused.
        - `exec` saves a parent's `r0` to `$7F` and its pages from `$0700` to `PSP_TOP`.
@@ -2602,9 +2604,15 @@
          program text, so it survives a child.
        - The console obeys ANSI.SYS sequences, so `CLS`, `LOCATE`, `COLOR` and `TEXTAT` work
          as in the sim.
-     - M0, the zero page audit, no code: every MSBASIC zero page byte, its users, and
-       whether it needs zero page (indirect use or speed). A layout in `$22-$7F`, with the
-       rest moved to the RAM data at `$0801`. The user picks the layout.
+     - Done, M0 (2026-10-20), the zero page audit, no code: `MSBASIC/docs/uxdos-zeropage.md`.
+       - 89 bytes need zero page: `(zp),y`, `sty zp,x`, `sta 0,x` on `TEMPST`, `SHIFT_RIGHT`'s
+         `sty n,x` on `RESULT`, `FAC` and `ARG`, and `CHRGET` with `TXTPTR`. 71 bytes do not.
+       - The proposed layout fills `$22-$7F`: the 89, then `CURLIN`, `VALTYP` and `EOLPNTR`.
+         66 bytes move to the RAM data at `$0801`: about 328 instructions take the absolute
+         form, about +328 bytes of ROM and 1 cycle each.
+       - Traps found: `REASON` relies on zero page wrap in the `TEMP1` block; `INPUTBUFFER` at
+         `$0200` is the monitor's line, and `exec` does not save it.
+       - Waits on the user: the layout, and where `INPUTBUFFER` goes.
      - M1, a `uxdos` target in `MSBASIC/` (`defines_uxdos.s`, `uxdos.cfg`):
        - the M0 layout;
        - `K_OPEN`, `K_CLOSE`, `K_READ`, `K_WRITE` on the API through the gate entries at
