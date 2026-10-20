@@ -1,0 +1,6 @@
+' #INCLUDE reads another file in place of its line
+PRINT "A";
+  #include "INCLUDED.UXI"
+DIM COUNT AS UBYTE
+COUNT = ADD3(1, 2, 3) + EXTRA
+PRINT COUNT

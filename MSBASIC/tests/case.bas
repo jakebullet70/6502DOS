@@ -1,0 +1,11 @@
+PRINT UCASE$("Hello, World 123 az@[`{");LCASE$("Hello, World 123 AZ@[`{")
+A$="MiXeD":B$=UCASE$(A$):PRINT A$;" ";B$;" ";LCASE$(A$);LEN(LCASE$(""))
+PRINT UCASE$(LEFT$("abcdef",3)+"xyz");ASC(LCASE$("Q"));UCASE$(CHR$(97))
+10 DIM S$(20):FOR I=1 TO 20:S$(I)=LCASE$(STR$(I)+RPT$("AB",100)):NEXT
+20 FOR I=1 TO 300:T$=UCASE$(S$(I MOD 20+1)):NEXT:PRINT LEN(T$);LEFT$(T$,6)
+30 IF UCASE$("yes")="YES" THEN PRINT "OK"
+LIST
+RUN
+PRINT UCASE$(5)
+PRINT LCASE$("A","B")
+PRINT UCASE$

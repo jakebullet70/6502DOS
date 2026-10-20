@@ -1,0 +1,6 @@
+' CHAIN.UXB -- UXC.INPUT line 3 names CHAIN.PRG, so UXC loads and runs it after the compile
+DIM A AS UWORD
+A = 500 + 5
+PRINT "CHAINED"
+PRINT "A = "; A
+END

@@ -1,0 +1,135 @@
+' The string library. Add #INCLUDE "STRINGS.UXI" to a program to use it.
+' STR.name is the built-in function name: STR.MID$ is MID$.
+
+// --- we like NAMESPACES!
+NAMESPACE STR
+  BIND LEN LEN        ' STR.LEN(S$)                  the length of S$
+  BIND ASC ASC        ' STR.ASC(S$)                  the code of the first character
+  BIND VAL VAL        ' STR.VAL(S$)                  the number in S$
+  BIND CHR$ CHR$      ' STR.CHR$(N)                  the character with code N
+  BIND STR$ STR$      ' STR.STR$(N)                  N as a string
+  BIND MID$ MID$      ' STR.MID$(S$, START[, COUNT]) COUNT characters from START
+  BIND INSTR INSTR    ' STR.INSTR(S$, F$[, START])   the position of F$ in S$, or 0
+  BIND LEFT$ LEFT$    ' STR.LEFT$(S$, N)             the first N characters of S$
+  BIND RIGHT$ RIGHT$  ' STR.RIGHT$(S$, N)            the last N characters of S$
+  BIND AddressOf AddrOf
+
+  //--- these are all TODO's
+//   SUB TRIM(S$)
+//   END SUB
+//   SUB RTRIM(S$)
+//   END SUB
+//   SUB LTRIM(S$)
+//   END SUB
+
+//   SUB LPAD(S$)
+//   END SUB
+//   SUB RPAD(S$)
+//   END SUB
+
+//   SUB EndsWith(S1$,S2$) as BYTE
+//     retirn 0
+//   END SUB
+//   SUB StartsWith(S1$,S2$) as BYTE
+//     return 0
+//   END SUB
+
+//   // UPPER and LOWER on the string in place
+
+// also add to todo, plan for 
+// select case, match xc-basics way of doing it
+// and do this as a 2nd style select case, do a fast jump table or?, only take nums, no strings
+// ```
+// ON CASE X
+//     CASE 1   
+//         PRINT "ONE"
+//     CASE 2,3  
+//         PRINT "TWO"
+// END
+// ```
+// ---------------------------------------------------------
+// add the _ character splits long lines
+// ```
+// dim a as byte, _
+//        b as word, _
+//        c as string * 10
+// ```
+
+// make a sys2
+// see https://xc-basic.net/doku.php?id=sys
+
+// add conv.UXi
+// then  cbyte(), cword(), etc
+
+// BIND GUI TEXT_GUI
+// NAMESPACE TEXT_GUI
+    
+//     Lib setup --> Box Chars, save screen setup (file, vram?)
+//     SUBS...  BOX, HLINE, VLINE, Shadow
+//              SAY, MENUH, MENUV, GET
+
+// END NAMESPACE
+
+// handle = timer.init(1000,procudure)
+// timer.on(handle)
+// timer.off(handle)
+// ON TIMER <cycles> GOSUB irqserv
+// TIMER INTERRUPT ON
+// TIMER INTERRUPT Off
+
+
+
+  function InStrRev(s$, f$, start as ubyte) as ubyte
+    
+    '--- testing out new keywords (works fine)
+    '--- some day will make into ASM
+
+    dim sa as uword, fa as uword, sd as uword, fd as uword
+    dim sl as ubyte, fl as ubyte, startPos as ubyte, i as ubyte, j as ubyte, ch as ubyte, matched as ubyte
+
+    sa = AddrOf(s$)
+    fa = AddrOf(f$)
+
+    sl = ContentsAt(sa + 1)
+    fl = ContentsAt(fa + 1)
+
+    if fl = 0  then return 0
+    if fl > sl then return 0
+
+    sd = sa + 2
+    fd = fa + 2
+
+    if start = 0 or start > sl then
+        startPos = sl
+    else
+        startPos = start
+    endif
+
+    ' Fast path: single character
+    if fl = 1 then
+        ch = ContentsAt(fd)
+        for i = startPos to 1 step -1
+            if ContentsAt(sd + i - 1) = ch then return i
+        next
+        return 0
+    endif
+
+    if startPos > sl - fl + 1 then startPos = sl - fl + 1
+
+    for i = startPos to 1 step -1
+        matched = 1
+        for j = 0 to fl - 1
+            if ContentsAt(sd + i + j - 1) <> ContentsAt(fd + j) then
+                matched = 0
+                exit for
+            endif
+        next
+        if matched then return i
+    next
+    return 0
+
+end function
+
+
+END NAMESPACE
+

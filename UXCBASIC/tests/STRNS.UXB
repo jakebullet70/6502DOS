@@ -1,0 +1,9 @@
+' STRNS -- BIND to a built-in: STR.name from STRINGS.UXI, a top-level alias, and an
+' #INCLUDE after the lines that use it
+DIM T$ * 20
+BIND FIND = INSTR
+T$ = "ABCABC"
+PRINT STR.LEN(T$); STR.ASC(T$); STR.VAL("42") + 1; STR.INSTR(T$, "CA", 1)
+PRINT STR.MID$(T$, 2, 3); STR.CHR$(33); STR.STR$(7); "|"
+PRINT STR.INSTR(STR.MID$(T$, 2), STR.CHR$(65)); LEN(T$); FIND(T$, "C")
+#INCLUDE "STRINGS.UXI"

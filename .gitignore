@@ -20,10 +20,10 @@ MSBASIC/ref/
 MSBASIC/docs/x16/
 MSBASIC/docs/x16-basic-compare.md
 
-# Tests stay local and are never committed.
-tests/
-UXCBASIC/tests/
-MSBASIC/tests/
+# Golden outputs of the tests stay local and are never committed. The test sources are kept.
+tests/*.OUT
+UXCBASIC/tests/*.OUT
+MSBASIC/tests/*.out
 
 # Claude Code per-machine settings.
 .claude/settings.local.json

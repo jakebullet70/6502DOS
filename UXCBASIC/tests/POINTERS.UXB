@@ -1,0 +1,36 @@
+' POINTERS -- AddrOf(name), ContentsAt(a) and ContentsAtW(a), read and assigned
+DIM X AS UBYTE, Y AS UBYTE, P AS UWORD, W AS UWORD, V AS UWORD
+DIM B(4) AS UBYTE
+X = 42
+P = AddrOf(X)
+PRINT P = @X
+Y = ContentsAt(P)
+PRINT Y; ContentsAt(AddrOf(X))
+ContentsAt(P) = 7
+PRINT X
+ContentsAt(AddrOf(X)) = 9
+PRINT X
+' a constant address
+ContentsAt($9E00) = 200
+PRINT ContentsAt($9E00); PEEK($9E00)
+ContentsAtW($9E00) = $1234
+PRINT ContentsAtW($9E00); PEEK($9E01)
+' WORDs through a pointer
+W = 1000
+P = AddrOf(W)
+PRINT ContentsAtW(P); ContentsAtW(AddrOf(W))
+ContentsAtW(P) = 2000
+PRINT W
+ContentsAtW(AddrOf(V)) = W + 1
+PRINT V
+' an array, walked by a pointer
+B(2) = 12
+P = AddrOf(B)
+PRINT ContentsAt(P + 2)
+ContentsAt(P + 3) = 33
+PRINT B(3)
+' ASM: AddrOf(name) is two bytes
+Y = 5
+ASM $AD, AddrOf(Y)           ' lda Y
+ASM $8D, AddrOf(X)           ' sta X
+PRINT X

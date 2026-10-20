@@ -1,0 +1,49 @@
+RUN CMDSHELL.COM
+VERSION
+VER
+PRINT "HELLO,  THERE"
+PRINT
+  print "lower"; " case"
+PRINT "A";
+PRINT 42; -7; " "; 0
+PRINT "NO END
+PRINT 1 2
+PRINT ;
+CLS
+CLS X
+
+NOPE
+1PRINT
+A = 7
+b = a * (2 + 3) - -4
+PRINT A; " "; B
+PRINT 10 / 3; " "; -7 / 2; " "; 2 + 3 * 4; " "; (2 + 3) * 4
+A = 32767 + 1
+PRINT A
+PRINT (1 + 2
+PRINT 1 + 2)
+PRINT 1 / 0
+PRINT (((((((((((((((((1
+N$ = "ADA"
+G$ = "HI, " + N$ + "!"
+PRINT G$; " "; N$ + N$
+PRINT N$ + 1
+X = N$
+A$ = B
+AB = 1
+A =
+PRINT Z; Z$; "|"
+PRINT BLACK; " "; blue; " "; LIGHTGRAY * 16 + WHITE
+BLUE = 1
+PRINT BLUEX
+COLOR WHITE, BLUE
+COLOR 16, 0
+COLOR 1
+COLOR GREEN, BLACK
+INPUT C
+42
+INPUT C$
+hello world
+PRINT C + 1; " "; C$
+INPUT 5
+END

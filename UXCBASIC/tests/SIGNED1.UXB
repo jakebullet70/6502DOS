@@ -1,0 +1,24 @@
+' SIGNED1 -- signed BYTE and WORD: arithmetic, divide, MOD, shift, compares, PRINT, STR$, VAL
+DIM B AS BYTE, C AS BYTE, U AS UBYTE, W AS WORD, X AS INT, UW AS UWORD
+B = -5
+C = 3
+PRINT B; C; B + C; B - C; B * C
+PRINT B / C; B MOD C; -7 / 2; -7 MOD 2
+W = -1000
+X = 7
+PRINT W; W / X; W MOD X; W >> 2; -W
+PRINT B < C; B > C; B <= -5; B >= -4; B < 0
+PRINT W < X; W > X; W < -999; W > -1001
+U = 200
+PRINT U > B; U < B; U + B
+W = B
+PRINT W; W + 1000
+PRINT STR$(B); STR$(W); STR$(-3)
+PRINT -1; -32768; 32767
+UW = 65535
+PRINT UW; UW > 0
+C = -128
+PRINT C; C - 1
+PRINT VAL("-42")
+X = VAL("-42")
+PRINT X

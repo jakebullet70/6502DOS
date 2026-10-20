@@ -1,0 +1,3 @@
+DIM A$ * 5, N AS UWORD
+PRINT "A" + A$
+N = A$

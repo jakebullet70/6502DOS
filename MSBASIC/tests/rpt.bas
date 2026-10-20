@@ -1,0 +1,9 @@
+PRINT "[";RPT$("AB",3);"]";RPT$(42,5);"[";RPT$("X",0);"]"
+PRINT "[";RPT$("",200);"]";LEN(RPT$("-",255))
+A$="HI":B$=RPT$(A$,2)+RPT$(A$+"!",2):PRINT B$
+PRINT LEN(RPT$("ABC",85))
+PRINT RPT$("ABC",86)
+PRINT RPT$(256,1)
+PRINT RPT$("A",-1)
+FOR I=1 TO 400:C$=RPT$(CHR$(65+I-INT(I/26)*26)+"-",127):NEXT
+PRINT LEFT$(C$,8);LEN(C$);RPT$(ASC(C$),3)

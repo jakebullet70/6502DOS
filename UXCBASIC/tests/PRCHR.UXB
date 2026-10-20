@@ -1,0 +1,12 @@
+' PRCHR -- a PRINT item of one character is printed from A
+DIM N AS UBYTE, W AS UWORD, S$ * 4
+N = 66
+W = 76
+PRINT "A";
+PRINT CHR$(N);
+PRINT CHR$(N + 1); "D"
+PRINT CHR$(69) + "F"; CHR$(N) + "G"
+S$ = CHR$(72)
+PRINT S$; "X" + CHR$(73)
+PRINT CHR$(65 + 9); CHR$(W); "M"
+IF N = 66 THEN PRINT CHR$(N)

@@ -1,0 +1,23 @@
+' STR3 -- appending in place, printing the parts of a +, literals kept once
+DIM A$ * 8, B$ * 8
+A$ = "ABC"
+A$ = A$ + "DE"
+PRINT A$
+A$ = A$ + "FGHIJK"
+PRINT A$; LEN(A$)
+A$ = "XY"
+A$ = A$ + "-" + A$
+PRINT A$
+B$ = "Q"
+A$ = (A$ + B$)
+PRINT A$
+A$ = "ABCDEFG"
+B$ = MID$(A$ + "XYZ", 2)
+PRINT B$
+PRINT A$ + B$ + "!"
+PRINT "<" + A$ + ">"; LEN(A$)
+PRINT "N=" + STR$(LEN(B$)) + "."
+PRINT (A$ + "1") + (B$ + "2")
+A$ = A$ + MID$(B$, 1, 2)
+PRINT A$
+PRINT "DUP"; "DUP"; "DUP"

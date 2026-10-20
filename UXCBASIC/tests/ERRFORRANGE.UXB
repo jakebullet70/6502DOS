@@ -1,0 +1,4 @@
+' a signed counter's limit must fit its type
+DIM B AS BYTE
+FOR B = 0 TO 200
+NEXT

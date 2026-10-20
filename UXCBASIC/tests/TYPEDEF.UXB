@@ -1,0 +1,13 @@
+' TYPEDEF -- a name with no mark and no AS is a BYTE, as a variable and as a parameter
+DIM B AS UBYTE, C AS UBYTE, W AS UWORD
+B = 255
+B = B + 1
+C = 255
+C = C + 1
+W = 255
+W = W + 1
+PRINT B; C; W
+FUNCTION HALF(N AS UBYTE) AS UBYTE
+  RETURN N / 2
+ENDFUNCTION
+PRINT HALF(200)

@@ -1,0 +1,3 @@
+' the last line has no line end
+PRINT "LAST"
+PRINT "LINE"

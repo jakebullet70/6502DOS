@@ -1,0 +1,5 @@
+' LONGIN -- INPUT into LONG and ULONG variables reads 32 bits
+DIM L AS LONG, U AS ULONG
+INPUT L
+INPUT U
+PRINT L; U; L + 1

@@ -1,0 +1,8 @@
+' BRKKID: the program the BREAK and SHBREAK tests run. exec starts it in BREAK_END. It prints
+' the code of each key it reads, until a Ctrl+C ends it with ^C.
+#INCLUDE "DOS.UXI"
+PRINT "KID"
+DO
+  SYS DOS.API_CON_IN
+  PRINT "KEY"; DOS.REG_A
+LOOP

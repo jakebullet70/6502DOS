@@ -1,0 +1,16 @@
+' Tags: {NAME} in a string literal is Esc [ and its sequence, case does not matter, {{ is a {,
+' a } alone stays, m sequences from tags join up to 4 parameters, and an escape does not join
+DIM I AS UBYTE
+SUB DUMP(TEXT AS STRING)
+  FOR I = 1 TO LEN(TEXT)
+    PRINT ASC(MID$(TEXT, I, 1));
+  NEXT
+  PRINT
+ENDSUB
+CONST STATUS$ = "{black}{ON WHITE}"
+DUMP(STATUS$)
+DUMP("{CURSOR HOME}{CLS}{CLEAR EOL}")
+DUMP("{NORMAL}{RED}{ON BLUE}{REVERSE}{GREEN}")
+DUMP("{YELLOW}x{CYAN}")
+DUMP(!"\27[0m{MAGENTA}\t{{}")
+PRINT "{{A}"

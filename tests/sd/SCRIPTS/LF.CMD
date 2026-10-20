@@ -1,0 +1,4 @@
+PRINT "LF ONE"
+
+   PRINT "LF TWO"
+PRINT "LAST"

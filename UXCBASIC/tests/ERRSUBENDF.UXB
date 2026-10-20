@@ -1,0 +1,3 @@
+SUB F()
+  PRINT 1
+ENDFUNCT

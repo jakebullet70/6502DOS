@@ -1,0 +1,9 @@
+' PRINT commas: 14-column zones on an 80-column screen, as in MS BASIC
+PRINT 1, 2, 3
+PRINT "A", "B", "C", "D", "E", "F"
+PRINT , "X"
+PRINT "ABCDEFGHIJKLMNOP", "Y"
+PRINT "T",
+PRINT "U"
+PRINT "A" "B"; "C" 7 8
+PRINT ;"S"
