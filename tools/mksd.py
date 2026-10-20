@@ -5,9 +5,11 @@
 
 The image has an MBR with one partition of type $0C at sector 2048. The partition holds a FAT32
 file system with 512-byte sectors, 32 reserved sectors and 2 FATs. Every file and folder in
-FOLDER goes in; names that start with a dot are left out. A name that is 8.3 goes in as its 8.3
-name in upper case. Any other name, up to 255 characters, goes in as a long name, as typed,
-with an 8.3 alias BASE~N.EXT; 6502DOS shows a long name over 32 characters as its alias. Each
+FOLDER goes in; names that start with a dot are left out. A name that is 8.3 and upper case goes
+in as its 8.3 name. A name that is 8.3 with a lower-case letter goes in as a long name, as typed,
+with its 8.3 name in upper case as the alias. Any other name, up to 255 characters, goes in as a
+long name, as typed, with an 8.3 alias BASE~N.EXT; 6502DOS shows a long name over 32 characters
+as its alias. Each
 FILE goes in the root directory too. Each file's clusters follow each other. The times are the
 files' modification times, or noon of --date. Exit status 1 when a name is too long or holds a
 character a long name cannot, or the files do not fit.
@@ -113,7 +115,9 @@ def scan(path, name, extra=()):
             sys.exit("mksd: %s repeats a name" % full)
         short = name83(entry)
         long_name = None
-        if short is None:
+        if short is not None and entry != entry.upper():
+            long_name = entry
+        elif short is None:
             if len(entry) > LONG_NAME_MAX:
                 sys.exit("mksd: %s is longer than %d characters" % (full, LONG_NAME_MAX))
             if set(entry) & LONG_NAME_BANNED or any(ord(c) < 32 or ord(c) > 255 for c in entry):
