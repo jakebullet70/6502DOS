@@ -189,7 +189,10 @@ CALLS = [
          "at $0801. A program that starts with a BASIC line `SYS n` starts at n, any other at "
          "$0801. The program gets the command tail in its PSP at $0780: cut to 126 characters, "
          "and followed by a CR that the length does not count. Its handles are copies of the "
-         "caller's. Up to 4 programs run one inside another; a fifth gives error 8.",
+         "caller's. `exec` saves the caller's pages from $0700 to the page in its `PSP_TOP`, "
+         "$0702, then its zero page from r0 to $7F, in RAM banks 1 to 10, right after the "
+         "save of the program that ran the caller. A save that does not fit gives error 8, and "
+         "so does a fifth program inside 4.",
          in_=[("r0", "path"), ("r1", "command tail, length-prefixed")],
          errors=[2, 3, 8, 11, 15, 21, 30],
          written=True),
@@ -286,10 +289,10 @@ CALLS = [
     call(44, "str_gc", None, "Compacts the program's string heap.",
          out=[("r0", "free bytes")],
          written=True),
-    call(45, "str_heap", None, ("Chooses the program's string heap. Bank 21 is the shared heap, "
+    call(45, "str_heap", None, ("Chooses the program's string heap. Bank 11 is the shared heap, "
           "every program's at its start. A higher bank becomes a new, empty heap whose blocks "
           "start at r0; the bytes from $A00C to r0 are the program's."),
-         in_=[("A", "bank, 21 or higher"), ("r0", "the first block, $A00C or higher; not for bank 21")],
+         in_=[("A", "bank, 11 or higher"), ("r0", "the first block, $A00C or higher; not for bank 11")],
          errors=[9],
          written=True),
     call(46, "con_colour", None, ("Gets the console color with carry set, sets it with carry clear. "

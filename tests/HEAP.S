@@ -22,7 +22,7 @@ SNAP3   = $1A00                 ; bank 22
 second  = $1A80                 ; a descriptor in program RAM
 stale   = $1A82                 ; a descriptor whose block is not its own
 many    = $1B00                 ; 40 descriptors in bank 22
-VARBANK = 21
+VARBANK = 11
 SYSTEM  = $A00C                 ; the first system descriptor of VARBANK
 
 .macro point register, address
@@ -33,7 +33,7 @@ SYSTEM  = $A00C                 ; the first system descriptor of VARBANK
 .endmacro
 
         stz index
-        point r0, first         ; 1: 5 bytes: A = 21, r1 = $A04E
+        point r0, first         ; 1: 5 bytes: A = 11, r1 = $A04E
         lda #5
         jsr API_STR_ALLOC
         jsr save

@@ -27,6 +27,8 @@ copy_low:     .res 2            ; parent_copy: a page from PSP to PROGRAM_END
 copy_high:    .res 2            ; parent_copy: a page of the save banks
 copy_back:    .res 1            ; parent_copy: bit 7 set to copy to the parent
 exec_entry:   .res 2            ; the load address, then the program's start
+save_bank:    .res EXEC_LEVELS + 1 ; where the save of each level starts: the bank - 1
+save_page:    .res EXEC_LEVELS + 1 ; and the page EOR >BANKED_RAM; reset zeroes level 0's
 
 .segment "KERNELRAM"
 
@@ -67,6 +69,7 @@ api_exec:
         pha                     ; the child's bank, then the parent's again
         clc
         jsr parent_copy
+        bcs @full
         inc exec_depth
         jsr tail_copy           ; r0 and r1 are the caller's up to here
         jsr handles_inherit
@@ -110,6 +113,9 @@ api_exec:
 @bad_format:
         lda #ERR_BAD_FORMAT
         bra @refused
+@full:                          ; the save banks are full
+        pla
+        sta RAM_BANK
 @too_big:
         lda #ERR_NO_MEMORY
 @refused:                       ; the program file is open
@@ -291,24 +297,24 @@ find_start:
 @done:
         rts
 
-; parent_copy: copies the pages from PSP to PSP_TOP, at most to PROGRAM_END, then r0 to
-; PROGRAM_ZP_END, to the save banks of level exec_depth with carry clear, or back from them with
-; carry set. The copy back restores the PSP first, so PSP_TOP is the parent's from the second
-; page on. Changes A, X, Y and RAM_BANK.
+; parent_copy: copies the pages from PSP to PSP_TOP, at most to PROGRAM_END, then a page of r0
+; to PROGRAM_ZP_END, to the save of level exec_depth with carry clear, or back from it with
+; carry set. Sets the start of the next level's save to the page after. The copy back restores
+; the PSP first, so PSP_TOP is the parent's from the second page on. Returns carry set when the
+; save does not fit in the save banks. Changes A, X, Y and RAM_BANK.
 parent_copy:
         ror copy_back
-        lda exec_depth          ; the first bank: 1 + SAVE_BANKS * exec_depth
-        asl
-        asl
-        adc exec_depth          ; carry clear: exec_depth is small
+        ldx exec_depth
+        lda save_bank,x
         inc
         sta RAM_BANK
+        lda save_page,x
+        eor #>BANKED_RAM
+        sta copy_high+1
         stz copy_low
         stz copy_high
         lda #>PSP
         sta copy_low+1
-        lda #>BANKED_RAM
-        sta copy_high+1
         ldy #0
 @page:
         bit copy_back
@@ -326,14 +332,8 @@ parent_copy:
         bne @back
 @next:
         inc copy_low+1
-        inc copy_high+1
-        lda copy_high+1
-        cmp #>ROM
-        bne @same_bank
-        lda #>BANKED_RAM
-        sta copy_high+1
-        inc RAM_BANK
-@same_bank:
+        jsr next_page
+        bcs @full               ; only a save: a copy back fits
         lda copy_low+1
         cmp #>(PROGRAM_END + 1)
         beq @zero_page
@@ -354,9 +354,33 @@ parent_copy:
 @zp_next:
         iny
         bpl @zp
+        jsr next_page           ; a copy back writes the same start again
+        lda RAM_BANK
+        dec
+        sta save_bank+1,x
+        lda copy_high+1
+        eor #>BANKED_RAM
+        sta save_page+1,x
+        clc
+@full:
         rts
-        .assert SAVE_BANKS = 5, error, "parent_copy multiplies by 5"
         .assert PROGRAM_ZP_END = $7F, error, "parent_copy ends the zero page with BPL"
         .assert <PSP = 0 && <(PROGRAM_END + 1) = 0, error, "parent_copy copies whole pages"
-        .assert >(PROGRAM_END + 1) - >PSP < SAVE_BANKS * 32, error, "the save banks need a page for the zero page"
-        .assert 1 + SAVE_BANKS * EXEC_LEVELS <= 64, error, "the save banks pass 512 KB"
+        .assert >(PROGRAM_END + 1) - >PSP < SAVE_BANKS * 32, error, "a full save fits the save banks"
+        .assert VARBANK <= 64, error, "the save banks pass 512 KB"
+
+; next_page: moves copy_high to the next page of the save banks. Returns carry set when that page
+; is in VARBANK. Changes A and RAM_BANK.
+next_page:
+        inc copy_high+1
+        lda copy_high+1
+        cmp #>ROM
+        clc
+        bne @done
+        lda #>BANKED_RAM
+        sta copy_high+1
+        inc RAM_BANK
+        lda RAM_BANK
+        cmp #VARBANK
+@done:
+        rts

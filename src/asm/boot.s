@@ -34,8 +34,6 @@ reset:
         jsr gate_init
         jsr kernel_init
         jsr heap_init
-        lda #>PROGRAM_END
-        sta PSP_TOP
         stz PSP_BREAK           ; BREAK_OFF for the monitor
         lda #$01                ; VSYNC
         sta VERA_IEN
@@ -50,6 +48,8 @@ reset:
 @booted:
         lda boot_shell
         beq @monitor
+        lda #>PSP               ; exec saves only boot's PSP and zero page
+        sta PSP_TOP
 @shell:
         ldx #.strlen(SHELL_PATH)
 @copy:
@@ -67,8 +67,10 @@ reset:
         sta r1+1
         jsr API_EXEC
         bcc @shell              ; the shell ended: run it again
-@monitor:
-        jmp monitor             ; no shell, or exec failed
+@monitor:                       ; no shell, or exec failed
+        lda #>PROGRAM_END
+        sta PSP_TOP
+        jmp monitor
 
 ; irq: counts VSYNCs, the only VERA interrupt on. A BRK goes to the monitor. irq_entry jumps
 ; here with A and the interrupted ROM bank on the stack.

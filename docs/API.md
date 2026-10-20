@@ -63,7 +63,7 @@ Conventions:
 | `con_cursor` | 42 | `$03BE` | none | `carry` set: get, clear: set<br>`X` row, to set<br>`Y` column, to set | `X` row<br>`Y` column<br>`r0L` the screen's rows, on a get<br>`r0H` the screen's columns, on a get | none | yes |
 | `str_free` | 43 | `$03C1` | none | `r0` descriptor address | none | 9 | yes |
 | `str_gc` | 44 | `$03C4` | none | none | `r0` free bytes | none | yes |
-| `str_heap` | 45 | `$03C7` | none | `A` bank, 21 or higher<br>`r0` the first block, $A00C or higher; not for bank 21 | none | 9 | yes |
+| `str_heap` | 45 | `$03C7` | none | `A` bank, 11 or higher<br>`r0` the first block, $A00C or higher; not for bank 11 | none | 9 | yes |
 | `con_colour` | 46 | `$03CA` | none | `carry` set: get, clear: set<br>`A` color, to set | `A` color | none | yes |
 | `con_break` | 47 | `$03CD` | 33h | `carry` set: get, clear: set<br>`A` mode, to set: 0 to 2 | `A` mode<br>`X` flag: 1 when Ctrl+C came in mode 2 since the last get, else 0 | 13 | yes |
 | `con_getkey` | 48 | `$03D0` | none | `carry` clear: wait, set: return at once | `A` character, 0 for an extended key or none<br>`X` scan code, 0 for a plain key or none<br>`Y` modifiers: $01 Shift, $04 Caps Lock on, $40 Alt, $80 Ctrl | none | yes |
@@ -97,7 +97,7 @@ Conventions:
 - `diskfree`: Gives the size and free space of a drive. The free clusters are the count in the FS info sector.
 - `con_line`: Reads a line from the console with editing. Byte 0 of the buffer holds the most characters it takes, CR included, from 1 to 254. The call puts the length read, CR not included, in byte 1 and the text after it, ended by CR. Tab does nothing.
 - `con_status`: Tells whether a key is waiting, and which modifier keys are held. `lib/KEYS.UXI` names the modifier bits.
-- `exec`: Runs a program and returns when it ends. `exitcode` gives its code. The file starts with its load address, which must be $0801, and the rest loads at $0801. A program that starts with a BASIC line `SYS n` starts at n, any other at $0801. The program gets the command tail in its PSP at $0780: cut to 126 characters, and followed by a CR that the length does not count. Its handles are copies of the caller's. Up to 4 programs run one inside another; a fifth gives error 8.
+- `exec`: Runs a program and returns when it ends. `exitcode` gives its code. The file starts with its load address, which must be $0801, and the rest loads at $0801. A program that starts with a BASIC line `SYS n` starts at n, any other at $0801. The program gets the command tail in its PSP at $0780: cut to 126 characters, and followed by a CR that the length does not count. Its handles are copies of the caller's. `exec` saves the caller's pages from $0700 to the page in its `PSP_TOP`, $0702, then its zero page from r0 to $7F, in RAM banks 1 to 10, right after the save of the program that ran the caller. A save that does not fit gives error 8, and so does a fifth program inside 4.
 - `exit`: Ends the program and returns to its parent. `RTS` from the program's start is `exit` with code 0. Does not return, except with error 1 when no program is running.
 - `exitcode`: Gives the exit code of the last program that ended.
 - `keep`: Ends the program and keeps its RAM banks and its IRQ hook. Does not return.
@@ -117,7 +117,7 @@ Conventions:
 - `con_cursor`: Gets the cursor's row and column with carry set, moves the cursor with carry clear. The screen has 30 rows and 80 columns.
 - `str_free`: Frees the string of the descriptor at r0 and sets the descriptor to 0. A descriptor of 0 does nothing.
 - `str_gc`: Compacts the program's string heap.
-- `str_heap`: Chooses the program's string heap. Bank 21 is the shared heap, every program's at its start. A higher bank becomes a new, empty heap whose blocks start at r0; the bytes from $A00C to r0 are the program's.
+- `str_heap`: Chooses the program's string heap. Bank 11 is the shared heap, every program's at its start. A higher bank becomes a new, empty heap whose blocks start at r0; the bytes from $A00C to r0 are the program's.
 - `con_colour`: Gets the console color with carry set, sets it with carry clear. The high nibble is the background and the low nibble the foreground, from VERA's palette. A new color takes effect for the characters written after the call.
 - `con_break`: Gets the break mode and the break flag with carry set, sets the mode with carry clear. The mode says what Ctrl+C from the console does: 0 nothing, it is the character $03; 1 prints ^C and ends the program with exit code 0, and `exitcode` then gives X = 1; 2 drops the key and sets the flag. A get clears the flag. `exec` starts each program in mode 1. The console sees Ctrl+C only while a program asks it for a key.
 - `con_getkey`: Reads a key in one call, extended or not, with carry clear waiting for it with the cursor blinking, with carry set returning at once. A plain key gives its character in A and 0 in X. An extended key gives 0 in A and its scan code in X, the codes of `con_in`. No key gives 0 in both. Y gives the modifiers, as `con_status` gives them in X.

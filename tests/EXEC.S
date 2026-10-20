@@ -43,7 +43,7 @@ MARK    = $8000
         jsr save
         jsr API_EXITCODE
         jsr save
-        point r1, tail_n        ; 5: CHILD N inside CHILD N, 4 deep, then error 8: exitcode 11
+        point r1, tail_n        ; 5: CHILD N inside CHILD N, then error 8: exitcode 9
         jsr API_EXEC
         jsr save
         jsr API_EXITCODE

@@ -2978,6 +2978,51 @@
          unchanged. `CMDLETS` ok 1.6 s. Build 1964 ms, the new baseline. Steps since the full
          suite: 7; the full suite is due next.
      - Open: the user's SAVE error, not reproduced; wait for the message and steps.
+   - Banked RAM review (the user, 2026-10-20). The fixed save banks 1 to 20 hold 160 KB of a
+     512 KB machine. Banks 1 to 5 (level 0) take the boot's RAM when `boot.s` runs the shell
+     with `exec`, and nothing restores it: `boot.s` runs the shell again when it ends. Banks 6
+     to 10 (level 1) save the shell while a program runs. Banks 11 to 20 serve levels 2 and 3.
+     The order proposed; only 1 is agreed:
+     1. Done (2026-10-20), the packed save stack (the user's choice over fixed levels: depth 0
+        is also the monitor, whose tests at $1000 exec and need their RAM back). Each `exec`
+        saves the pages from `PSP` to `PSP_TOP` and a page of zero page right after the save
+        of the level before, in banks 1 to `SAVE_BANKS` (10). `save_bank` and `save_page`
+        (KERNELZP, `EXEC_LEVELS + 1` bytes each, relative so reset's zeroing starts level 0
+        at bank 1 `$A000`) hold where each level's save starts. `next_page` steps to the next
+        save page and returns carry set at VARBANK: the save fails with error 8, and
+        `api_exec` restores `RAM_BANK` and closes the file. `EXEC_LEVELS` stays 4 for the
+        heap floors. Boot sets `PSP_TOP` to `>PSP` before it runs the shell, so it saves 2
+        pages; `@monitor` sets it back to `>PROGRAM_END`. VARBANK is bank 11 (`HEAP.UXI`,
+        `tests/HEAP.S`). Frees 80 KB (banks 12 to 21). Two full-size saves fit (306 of 320
+        pages); a UXCBASIC program saves only to its end, which `uxc_link` puts in `PSP_TOP`.
+        - CODE +36 B (bank 0), KERNELZP +10 B (now `$80-$E4`). A save costs about 12 cycles
+          a page more (the `jsr next_page`). Boot's shell `exec` copies 2 pages, not 153.
+        - X after `exec` is now `exec_depth`; the call promises no X. The goldens of `EXEC`
+          (also: the `N` chain is 2 deep, exit code 9), `HEAP` and `ENDCODE` take it.
+        - `tools/api.py`: `exec` describes the save and error 8; `str_heap` says bank 11.
+        - Build 4308 ms (all programs recompiled for `HEAP.UXI`), then 1355 ms, the new
+          baseline. Tests: `EXEC` ok 0.7 s, `HEAP` 0.5, `BOOT` 0.4. Full suite 52.4 s: 6 of
+          59 failed, re-run one at a time after a golden update: `ENDCODE` ok 0.5 (X), `DUP`
+          0.4 (stale since 6a0177e: `IOCTL 0` is now subfunction 0), `DOSAPI` 0.7 (stale since
+          6188bdd: the root has `UTILS`), `BASRUN` 0.5, `BASLOAD` 0.8, `BASEDIT` 0.4 (stale
+          since 8a795f5: LIST prints no space before a line number). Steps since the full
+          suite: 0.
+        - No test runs boot's re-run of the shell: no shell command ends the shell.
+        - Doc batch owes: PLAN lines 109-110 (the memory map), 188 (VARBANK bank 11), 495
+          (the nesting), 1338 (section 13).
+     2. PLAN step 10: a kernel allocator, GPC `BANKMGR` style (lowest free bank, free, count)
+        with an owner byte per bank in a 256-byte table in bank 0 (`$AC00`), so `exit` frees a
+        program's banks. Owner = a unique PSP id, so `keep` needs no re-tag. `exec` takes its
+        save banks from it, only as many as `PSP_TOP` needs. `str_heap` checks the owner.
+        Boot counts the banks. Calls 29 and 30 take a size in A (XMS-style blocks later). XMS
+        chains and `xms_move` wait for a RAM disk or arrays that span banks. No fixed bank
+        numbers (`CLAIM n`) in 6502DOS. About 110 B ROM, in ROM bank 1.
+     3. UXCBASIC ROM-able output (PLAN section 12 item 6), then `CMDSHELL` in ROM banks (it is
+        about 19 KB, so two banks). New commands stay `.SCOM` files on disk; a `BIND` alias
+        can replace a ROM built-in. `CONFIG.SYS` `SHELL=` loads a disk shell instead.
+     4. Relocation (section 12 item 7) is optional after 3.
+     5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
+     PLAN sections 3, 7, 11 and 13 take these at the next doc batch.
    - To do: find what the 492 bytes of 7i2b cost in `DISKFREE.CBI` (1861 to 2353 bytes), with
      pyuxc's link map, and cut them. Ideas: read `P2$` once, drop `FREE_TEXT` and pass the
      `MID$` straight to `SYS_STRINGS_SET`, reuse `DRIVE_NAME` for the text (11 bytes of RAM).
