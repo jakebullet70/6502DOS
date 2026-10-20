@@ -636,23 +636,6 @@ SAVE_END:
         pla
         jmp     STROUT
 
-; LIST's line number: A high, X low. Prints it as LINPRT does, but output to
-; a file, as SAVE's, gets no space before it.
-LIST_NUMBER:
-        sta     FAC+1
-        stx     FAC+2
-        ldx     #$90
-        sec
-        jsr     FLOAT2
-        jsr     FOUT			; A/Y = the text at STACK2, a space first
-        ldx     HIO_OUT
-        dex
-        beq     @console		; K_STDOUT is 1
-        inc     a
-@console:
-        jmp     STROUT
-.assert K_STDOUT = 1, error, "LIST_NUMBER needs K_STDOUT = 1"
-
 ; ----------------------------------------------------------------------------
 ; "FILES" STATEMENT: FILES ["pattern"] lists the names that match, with
 ; hidden and system files and directories, each with its size or <DIR> to

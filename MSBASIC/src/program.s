@@ -846,8 +846,8 @@ L25C1:
 ; ---LIST ONE LINE----------------
 L25C3:
         sty     FORPNT
-.ifdef DOS6502
-        jsr     LIST_NUMBER     ; no space before it in a file
+.ifdef CONFIG_HOSTED
+        jsr     LIST_NUMBER     ; no space before it
 .else
         jsr     LINPRT
 .endif

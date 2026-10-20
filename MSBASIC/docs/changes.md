@@ -970,3 +970,13 @@ are allowed in this target only.
 - `K_JIFFY` keeps the tick on the stack, so `DOS_TICK` goes. 2 bytes, 1 byte of `IORAM`.
 - `cbmbasic1`, `cbmbasic2` and `sim` are byte for byte as before. Bank 2 holds 12853 bytes, and
   3531 bytes are free. `IORAM` is 735 bytes of 768.
+
+## LIST prints no space before a line number (saves 6 bytes in 6502dos)
+
+- `LIST_NUMBER` moves to `float.s`, after `LINPRT`, for every `CONFIG_HOSTED` target. It prints
+  LIST's line number as `LINPRT` does, with no space before it, on the console and in a file.
+  `program.s` calls it in `sim` and `6502dos`.
+- `6502dos`: the check of `HIO_OUT` goes. 6 bytes, 7 cycles fewer a line on the console. Bank 2
+  holds 12847 bytes, and 3537 bytes are free.
+- `sim`: 17 bytes more. The space was the sign place of `FOUT`.
+- `cbmbasic1` and `cbmbasic2` are byte for byte as before.

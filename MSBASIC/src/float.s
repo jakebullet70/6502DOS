@@ -1491,6 +1491,25 @@ LINPRT:
 GOSTROUT2:
         jmp     STROUT
 
+.ifdef CONFIG_HOSTED
+; LIST's line number: A high, X low. Prints it as LINPRT does, without the
+; space before it.
+LIST_NUMBER:
+        sta     FAC+1
+        stx     FAC+2
+        ldx     #$90
+        sec
+        jsr     FLOAT2
+        jsr     FOUT            ; A/Y = the text at STACK2, a space first
+  .ifdef DOS6502
+        inc     a
+  .else
+        clc
+        adc     #1
+  .endif
+        jmp     STROUT
+.endif
+
 ; ----------------------------------------------------------------------------
 ; CONVERT (FAC) TO STRING STARTING AT STACK
 ; RETURN WITH (Y,A) POINTING AT STRING
