@@ -235,6 +235,185 @@ QUIT:
         jmp     API_EXIT		; returns only with no parent, to NEWSTT
 .endif
 
+.ifdef CONFIG_HELP
+; ----------------------------------------------------------------------------
+; "HELP" STATEMENT: HELP [TOPIC], DIRECT MODE ONLY; ?SYNTAX ERROR IN A
+; PROGRAM. PRINTS THE TOPIC'S TEXT FROM C:\DOS\HELPBAS.HLP, OR WITH NO TOPIC
+; THE TOPIC NAMES, A NEW LINE BEFORE A NAME THAT WOULD PASS COLUMN 79.
+; THE FILE IS HELP.TXT'S FORMAT: A LINE :NAME STARTS THE TOPIC NAME, CR LF
+; LINE ENDS. A TOKEN IN THE TOPIC IS SPELLED OUT AND "(" IS DROPPED, SO
+; HELP PRINT AND HELP TAB( FIND PRINT AND TAB.
+; ----------------------------------------------------------------------------
+; Trap: the topic and the name buffers share HIO_NAME with the path, which
+; K_OPEN needs only while it opens.
+HELP_TOPIC	:= HIO_NAME+20		; the topic, CR at its end
+HELP_NAME	:= HIO_NAME+40		; a :NAME line, CR at its end
+HELP_MAX	= 19			; longest topic and name
+.assert HELP_NAME+HELP_MAX < HIO_NAME+HIO_NAMEMAX+1, error, "HELP's buffers pass HIO_NAME"
+HELP_HND	:= DOS_ROW		; TEXTAT's bytes, free while HELP runs
+HELP_FOUND	:= DOS_COLUMN		; $FF after the topic's :NAME line
+
+HELP:
+        ldx     CURLIN+1
+        inx
+        jne     SYNERR			; CURLIN+1 is $FF in direct mode
+        stz     HELP_FOUND
+        ldx     #0
+        jsr     CHRGOT
+@topic:
+        beq     @topic_end		; 0 or ":"
+        cmp     #$80
+        bcs     @token
+        cmp     #'('
+        beq     @topic_next
+        jsr     HELP_PUT
+        bra     @topic_next
+@token:
+        sbc     #$7F			; carry is set: 1 is the first keyword
+        sta     HELP_HND		; keyword count
+        jsr     KW_INIT			; KW_INIT and KW_NEXT keep X
+@find:
+        dec     HELP_HND
+        beq     @letter
+        jsr     KW_NEXT
+        bra     @find
+@letter:
+        lda     (KW_PTR),y
+        pha
+        and     #$7F
+        cmp     #'('
+        beq     @skip
+        jsr     HELP_PUT
+@skip:
+        iny
+        pla
+        bpl     @letter
+@topic_next:
+        jsr     CHRGET
+        bra     @topic
+@topic_end:
+        lda     #CR
+        sta     HELP_TOPIC,x
+        ldx     #HELP_PATH_END-HELP_PATH-1
+@path:
+        lda     HELP_PATH,x
+        sta     HIO_NAMELEN,x
+        dex
+        bpl     @path
+        lda     #0			; read
+        jsr     K_OPEN
+        bcc     @opened
+        ldx     #HIO_ERR_NOTFOUND
+        jmp     HIO_ERROR
+@opened:
+        sta     HELP_HND
+@line:
+        jsr     HELP_READ
+        cmp     #':'
+        beq     @name
+@text:
+        cmp     #CR
+        beq     @text_end
+        bit     HELP_FOUND
+        bpl     @text_next
+        jsr     OUTDO
+@text_next:
+        jsr     HELP_READ
+        bra     @text
+@text_end:
+        bit     HELP_FOUND
+        bpl     @line
+        jsr     CRDO
+        bra     @line
+@name:
+        bit     HELP_FOUND
+        bmi     HELP_CLOSE		; the next topic ends the text
+        ldy     #0			; HELP_READ keeps Y
+@name_letter:
+        jsr     HELP_READ
+        sta     HELP_NAME,y
+        cmp     #CR
+        beq     @name_end
+        cpy     #HELP_MAX
+        bcs     @name_letter
+        iny
+        bra     @name_letter
+@name_end:
+        lda     HELP_TOPIC
+        cmp     #CR
+        beq     @list
+        ldx     #$FF
+@compare:
+        inx
+        lda     HELP_NAME,x
+        cmp     HELP_TOPIC,x
+        bne     @line
+        cmp     #CR
+        bne     @compare
+        dec     HELP_FOUND
+        bra     @line
+@list:
+        tya				; Y = the name's length
+        clc
+        adc     POSX
+        cmp     #79
+        bcc     @fits
+        jsr     CRDO
+@fits:
+        ldx     #HELP_NAME-HELP_TOPIC
+        jsr     HELP_PRINT
+        jsr     OUTSP
+        bra     @line
+
+; Returns the next byte of the help file in A; keeps Y. At the end of the
+; file it drops its caller's return, closes the file and returns from HELP.
+HELP_READ:
+        ldx     HELP_HND
+        jsr     K_READ
+        bcc     HELP_RTS
+        pla
+        pla
+HELP_CLOSE:
+        ldx     HELP_HND
+        jsr     K_CLOSE
+        lda     HELP_TOPIC
+        cmp     #CR
+        beq     @list_end
+        bit     HELP_FOUND
+        bmi     HELP_RTS
+        lda     #<HELP_NONE
+        ldy     #>HELP_NONE
+        jsr     STROUT
+        ldx     #0
+        jsr     HELP_PRINT
+@list_end:
+        jmp     CRDO
+
+; Prints HELP_TOPIC,X up to the CR.
+HELP_PRINT:
+        lda     HELP_TOPIC,x
+        cmp     #CR
+        beq     HELP_RTS
+        jsr     OUTDO
+        inx
+        bra     HELP_PRINT
+
+; Stores A at HELP_TOPIC,X; X counts up to HELP_MAX.
+HELP_PUT:
+        sta     HELP_TOPIC,x
+        cpx     #HELP_MAX
+        bcs     HELP_RTS
+        inx
+HELP_RTS:
+        rts
+
+HELP_PATH:
+        .byte   HELP_PATH_END-HELP_PATH-1, "C:\DOS\HELPBAS.HLP"
+HELP_PATH_END:
+HELP_NONE:
+        .byte   "NO HELP FOR ",0
+.endif
+
 ; ----------------------------------------------------------------------------
 ; The end of the cold start. MSBASIC NAME.BAS opens NAME.BAS, the first word
 ; of the command tail, as logical file 0, BASIC's input; INLIN reads its lines

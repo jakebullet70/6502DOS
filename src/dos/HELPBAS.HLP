@@ -128,6 +128,11 @@ GOTO line or label
   Goes on at line or label.
   GOTO 100
   GOTO MAIN
+:HELP
+HELP [topic]                                        (Direct only)
+  Prints the help on topic, or the topic names, from C:\DOS\HELPBAS.HLP.
+  The shell command HELPBAS does the same.
+  HELP PRINT
 :HEX$
 HEX$(n)
   Returns n in hex: 2 digits below 256, else 4. n is -65535 to 65535;

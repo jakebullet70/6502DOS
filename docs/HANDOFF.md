@@ -2733,7 +2733,7 @@
        `tools/cc65/bin`.
      - Steps since the full suite: 5.
      - Next: M3, files. `LOAD` and `SAVE` can open their file as `DOS_BOOT` does.
-   - BASIC help (2026-10-20), the user`s request, in steps: (1) `HELPBAS.COM` and
+   - BASIC help (2026-10-20), the user's request, in steps: (1) `HELPBAS.COM` and
      `HELPBAS.HLP`; (2) `HELP [topic]` in MSBASIC, direct mode only, reading the same file.
      - Step 1 done. `src/dos/HELPBAS.UXB`, `HELP.UXB` with the path `C:\DOS\HELPBAS.HLP`; the
        topic list starts a new line before a name that would pass column 79. 1769 bytes.
@@ -2741,7 +2741,7 @@
        `LABELS` and `ST`, in A to Z order; 8791 bytes. No topics for `LOAD` and `SAVE` (stubs)
        or `USR`. Lines of 80 characters at most. CR LF line ends (`.gitattributes`), because
        MSBASIC's `K_READ` drops LF; UXC `LINPUT` takes CR LF.
-     - Facts checked in the source: PRINT`s comma zones are 14 columns (no `CONFIG_CBM_ALL`);
+     - Facts checked in the source: PRINT's comma zones are 14 columns (no `CONFIG_CBM_ALL`);
        `GET`, `GET#`, `INPUT` and `DEF` give ?ILLEGAL DIRECT; `CLEAR` closes the files; `FRE`
        over 32767 is negative.
      - Test `HELPBAS`, in `SHELL_ROM_TESTS`: `PATH$ = "C:\DOS"`, `HELPBAS`, `HELPBAS print`,
@@ -2749,13 +2749,38 @@
      - Goldens changed: `CMDLETS` and `DIRS` (free space), `TREE` (also `HELLO.BAS` and
        `MSBASIC.COM` of M2, which had not updated it). `CMDLETS` ok 1.6 s, `DIRS` 1.1, `TREE`
        1.4, `BASBOOT` 0.5, `BASRUN` 0.5. Build 1340 ms, the new baseline.
-     - Docs owed to the batch: a `HELP.TXT` topic `HELPBAS`, PLAN`s utilities list.
+     - Docs owed to the batch: a `HELP.TXT` topic `HELPBAS`, PLAN's utilities list.
      - Steps since the full suite: 6.
-     - Step 2, the plan, asm: `HELP [topic]`, `CONFIG_HELP`, 6502dos only. In a program it
-       gives an error. The topic is tokenized (`HELP PRINT` holds the PRINT token), so a
-       token is spelled out from the keyword table before the compare. It opens
-       `C:\DOS\HELPBAS.HLP` with `K_OPEN`, reads lines with `K_READ` to CR, and prints the
-       topic`s lines, or the list with no topic. `HELPBAS.HLP` gets a topic `HELP`.
+     - Step 2 done (2026-10-20). The user chose ?SYNTAX ERROR in a program and approved the asm.
+       `HELP [topic]`, `CONFIG_HELP`, in `6502dos_extra.s`; the keyword follows `QUIT` in `token.s`.
+       311 bytes: 6 for the keyword, 273 of code, 32 of text. Bank 2: 12266 bytes used, 4118 free
+       (was 11955 / 4429). No new RAM: the topic and a `:NAME` line go in `HIO_NAME` after the
+       path; the handle and the found flag use `DOS_ROW` and `DOS_COLUMN` (TEXTAT's).
+     - A token in the topic is spelled out with `KW_INIT`/`KW_NEXT`; `(` is dropped, so
+       `HELP TAB(` finds `TAB`. A missing topic prints `NO HELP FOR NAME`; a missing file gives
+       ?FILE NOT FOUND ERROR. The list matches `HELPBAS`'s.
+     - Speed: `K_READ` is one API call a byte. A topic near the end of the file, or a missing
+       one, takes 1.2 s at real speed; `HELP ABS` 0.02 s. A buffered `K_READ` would speed this
+       and every file read of BASIC: a later step, if the user wants it.
+     - `HELPBAS.HLP`: topic `HELP`, 92 topics, 8997 bytes.
+     - Test `BASHELP`, in `SHELL_ROM_TESTS`: `MSBASIC`, `HELP`, `help print`, `HELP str$`,
+       `HELP tab(`, `HELP nosuch`, `10 HELP` and `RUN` (?SYNTAX ERROR IN 10), `QUIT`. ok 1.6 s.
+       Its golden needed a 10 s update window (`--update` stops at 2 s); the scratch script
+       ran `tests.py` with `UPDATE_SECONDS` raised. `tests.py` calls `main()` at import.
+     - Goldens changed: `HELPBAS` (the list has `HELP`), `DISK` (from the files added to
+       `\DOS`).
+     - Tests: `BASHELP` ok 1.6 s, `HELPBAS` 1.6, `DISK` 0.4, `CMDLETS` 1.7, `DIRS` 1.2, `TREE`
+       1.5, `BASBOOT` 0.6, `BASRUN` 0.5. MSBASIC `make all verify` ok (1353 ms), `make test`
+       31/31 (1336 ms). ROM build 1083 ms, the new baseline.
+     - Full suite: 54 tests, 52.1 s. 3 failed from M2's `HELLO.BAS` and `MSBASIC.COM` on the
+       card root, which M2 had not run: `DOSAPI` and `FILES` list them; `SHTAB` now completes
+       `LIST HEL` to `HELLO.BAS`. Goldens updated, then ok: `DOSAPI` 0.7 s, `FILES` 0.4, `SHTAB`
+       0.7.
+     - Steps since the full suite: 0.
+     - Docs owed to the batch: a `HELP.TXT` topic `HELPBAS`, PLAN's utilities list, `HELP`
+       in `MSBASIC/CLAUDE.md`.
+     - Next, step 3, the user's request: `LOAD` and `SAVE` of program text (M3's part), and
+       their topics in `HELPBAS.HLP`. `LOAD` and `SAVE` are `rts` stubs in `defines_6502dos.s`.
    - To do: find what the 492 bytes of 7i2b cost in `DISKFREE.CBI` (1861 to 2353 bytes), with
      pyuxc's link map, and cut them. Ideas: read `P2$` once, drop `FREE_TEXT` and pass the
      `MID$` straight to `SYS_STRINGS_SET`, reuse `DRIVE_NAME` for the text (11 bytes of RAM).

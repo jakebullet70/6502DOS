@@ -112,6 +112,9 @@
 .ifdef CONFIG_QUIT
 		keyword_rts "QUIT", QUIT
 .endif
+.ifdef CONFIG_HELP
+		keyword_rts "HELP", HELP
+.endif
 
 		count_tokens
 

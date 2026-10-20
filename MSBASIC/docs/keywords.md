@@ -116,6 +116,10 @@ built from existing tokens, so they need no table entries.
 `QUIT [n]` (`CONFIG_QUIT`, 18 bytes) is in the `6502dos` target only. It ends BASIC and returns
 to the shell with exit code n, 0 to 255, or 0.
 
+`HELP [topic]` (`CONFIG_HELP`, 311 bytes) is in the `6502dos` target only, in direct mode only;
+in a program it gives ?SYNTAX ERROR. It prints the topic from `C:\DOS\HELPBAS.HLP`, or with no
+topic the topic names.
+
 ## Internals (no keywords)
 
 | Feature | Flag | Bytes |

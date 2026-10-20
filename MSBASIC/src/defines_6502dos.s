@@ -35,6 +35,7 @@ CONFIG_PAUSE := 1 ; PAUSE jiffies statement, like SLEEP on the X16 (pause.s)
 CONFIG_SCREEN := 1 ; CLS and LOCATE by ANSI codes, COLOR by con_colour (textat.s)
 CONFIG_VERA := 1 ; VPEEK function and VPOKE statement (vera.s)
 CONFIG_QUIT := 1 ; QUIT [n] statement, back to the shell with exit code n (6502dos_extra.s)
+CONFIG_HELP := 1 ; HELP [topic] statement, direct mode only, from C:\DOS\HELPBAS.HLP (6502dos_extra.s)
 CONFIG_POS_LINE := 1 ; POS(1) gives the cursor row from con_cursor
 CONFIG_PEEK_SAVE_LINNUM := 1 ; PEEK keeps LINNUM, so POKE A,PEEK(B) works
 CONFIG_NAME_NOCRUNCH := 1 ; no keyword search inside a name: BORDER is not B,OR,DER

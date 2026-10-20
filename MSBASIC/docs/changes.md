@@ -843,3 +843,21 @@ are allowed in this target only.
   ?SYNTAX ERROR. 2 bytes less.
 - `cbmbasic1`, `cbmbasic2` and `sim` are byte for byte as before. Bank 2 holds 11955 bytes, and
   4429 bytes are free.
+
+## HELP in the 6502dos target (+311 bytes)
+
+- `HELP [topic]`, new, `CONFIG_HELP`, 311 bytes: 6 for the keyword, 273 of code and 32 of
+  text in `6502dos_extra.s`. The keyword follows `QUIT` in `token.s`. In direct mode it prints
+  the topic's lines from `C:\DOS\HELPBAS.HLP`, the file of the shell's `HELPBAS`. With no topic
+  it prints the topic names, with a new line before a name that would pass column 79. In a
+  program it gives ?SYNTAX ERROR.
+- The tokenizer stores a keyword in the topic as its token, so `HELP` spells a token out from
+  the keyword table, with `KW_INIT` and `KW_NEXT`. It drops `(`, so `HELP TAB(` finds `TAB`.
+- The topic and a `:NAME` line go in the spare bytes of `HIO_NAME`, after the path. The handle
+  and the found flag use `DOS_ROW` and `DOS_COLUMN`, which only `TEXTAT` uses. No new RAM.
+- A topic that is not in the file prints `NO HELP FOR` and the topic. A missing file gives
+  ?FILE NOT FOUND ERROR.
+- `K_READ` reads one byte for each API call. A topic near the end of the file, or a missing
+  one, takes 1.2 s.
+- `cbmbasic1`, `cbmbasic2` and `sim` are byte for byte as before. Bank 2 holds 12266 bytes, and
+  4118 bytes are free.
