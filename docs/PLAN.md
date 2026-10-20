@@ -1032,8 +1032,8 @@ Tab completion:
 - The matches come in this order. For a first word with no directory part and no dot, the
   statement names that start with it, in any case. Then the files and directories that match
   the word and `*`, with `.*` added when its name part has no dot; a directory has a `\` after
-  it, and a name that starts with `.` is left out. Then, for a first word, the `.COM` and
-  `.CMD` files that match in each directory of `PATH$`, shown without the extension.
+  it, and a name that starts with `.` is left out. Then, for a first word, the `.SCOM`,
+  `.COM` and `.CMD` files that match in each directory of `PATH$`, shown without the extension.
 - Each Tab puts the next match in place of the word, and Shift+Tab the one before. After the
   last comes the first. A word with no match stays as it is.
 - A line that Tab did not leave starts again from its first match.

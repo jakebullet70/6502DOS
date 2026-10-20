@@ -2580,6 +2580,15 @@
        - Steps since the full suite: 5.
        - Gap found, by reading the code, not tested: `FIND_MATCH` looks for `*.COM` and
          `*.CMD` on `PATH$`, not `*.SCOM`, so a commandlet's name does not complete.
+     - Done, S4 (2026-10-20, the user): Tab completes `.SCOM` programs on `PATH$`.
+       `FIND_MATCH` looks for `*.SCOM`, then `*.COM`, then `*.CMD` in each `PATH$` directory,
+       the order the shell runs them. `HELP.TXT` `PROMPT` and PLAN §8 Tab completion say so.
+       - `CMDSHELL.COM` 21966 to 22056 bytes (+90).
+       - Build 1212 ms (the shell recompiled), the new baseline.
+       - `SHTAB.IN`: `WHE`, Tab, ` HEAD` gives `WHERE HEAD` and `C:\DOS\HEAD.COM`. `SHTAB`
+         failed on the new line, as expected; updated, diffed, ok 0.7 s. `CMDLETS` ok 1.6 s.
+         Golden changed: `SHTAB`.
+       - Steps since the full suite: 6. The next step runs the full suite.
    - MSBASIC in ROM (planned 2026-10-20), after F7b. Steps M0 to M5; each asm step asks first.
      - Facts:
        - The `sim` build is 12068 bytes. It goes in ROM bank 2, `$C000-$FFFF`; the ROM image

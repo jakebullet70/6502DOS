@@ -129,8 +129,8 @@ The color names, for COLOR and in any number:
 :PROMPT
 The keys and the quotes at the prompt:
   Tab completes the last word: a file or a directory, or, as the first word,
-  a statement or a .COM or .CMD program on PATH$. Each Tab gives the next
-  match, and Shift+Tab the one before.
+  a statement or a .SCOM, .COM or .CMD program on PATH$. Each Tab gives the
+  next match, and Shift+Tab the one before.
   Up brings back the line before, and Down the line after. The last 8 lines
   are kept.
   A name with a space goes in quotes. Tab puts a match with a space in quotes.

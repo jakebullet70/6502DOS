@@ -1749,8 +1749,8 @@ FUNCT TAKE_FILES(ATTRIBUTES AS UBYTE) AS UBYTE
 END FUNCT
 
 ' Puts match MATCH_WANTED of COMPLETE_STEM in MATCH_NAME, and returns 1. The matches are the
-' built-in statements when COMPLETE_COMMAND is 1, then the files and directories, then the .COM
-' and .CMD programs on PATH$ when COMPLETE_COMMAND is 1. Returns 0 when there are not that
+' built-in statements when COMPLETE_COMMAND is 1, then the files and directories, then the .SCOM,
+' .COM and .CMD programs on PATH$ when COMPLETE_COMMAND is 1. Returns 0 when there are not that
 ' many, with their count in MATCH_SEEN.
 FUNCT FIND_MATCH() AS UBYTE
   DIM POSITION AS UBYTE, FINISH AS UBYTE
@@ -1775,6 +1775,8 @@ FUNCT FIND_MATCH() AS UBYTE
   IF COMPLETE_COMMAND
     START_PATH()
     DO WHILE NEXT_DIRECTORY()
+      PROGRAM_PATH = SEARCH_DIRECTORY + COMPLETE_STEM + "*.SCOM"
+      IF TAKE_FILES(0) THEN RETURN 1
       PROGRAM_PATH = SEARCH_DIRECTORY + COMPLETE_STEM + "*.COM"
       IF TAKE_FILES(0) THEN RETURN 1
       PROGRAM_PATH = SEARCH_DIRECTORY + COMPLETE_STEM + "*.CMD"
