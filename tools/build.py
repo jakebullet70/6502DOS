@@ -18,9 +18,10 @@ commandlet, compiles the same way to build/DOS/NAME.SCOM, a long name on the car
 src/dos/NAME.UXB, a DOS utility, compiles to
 build/DOS/NAME.COM, and each src/dos/NAME.TXT and NAME.HLP is copied to build/DOS.
 
-Then tools/mksd.py makes the SD card image build/SD.IMG from the folder sd, the COM files in
-build/bas, the folder build/DOS, which is the card's folder DOS, the files and folders of the
-test card's folder tests/sd, and the folder card, gathered in build/card. A file in card wins a
+Then tools/mksd.py makes the SD card image build/SD.IMG from the folder sd, CMDSHELL.COM and
+MSBASIC.COM, the folder build/DOS, which is the card's folder DOS, the card's folder TEST, and
+the folder card, gathered in build/card. TEST holds the other COM files in build/bas and the
+files and folders of the test card's folder tests/sd. A file in card wins a
 name it shares with the others. Before that, each file and folder that the X16 added to the old
 build/SD.IMG or changed goes into card, and each one it deleted leaves card; build/SD.SUM lists
 what the last build wrote. Exit status 1 when a tool or a compile failed, api.py is inconsistent
@@ -162,14 +163,16 @@ def make_test_rom():
         out.write(image)
 
 
-def stage_card(sources):
-    """Fill build/card with the folder sd and the files and folders in sources. Return the
-    upper-case paths it holds, joined by "/"."""
+def stage_card(sources, tests):
+    """Fill build/card with the folder sd, the files and folders in sources, and those in tests
+    under the folder TEST. Return the upper-case paths it holds, joined by "/"."""
     shutil.rmtree(STAGE, ignore_errors=True)
     ignore = shutil.ignore_patterns(".*")
     shutil.copytree(SD_FOLDER, STAGE, ignore=ignore)
-    for source in sources:
-        target = os.path.join(STAGE, os.path.basename(source))
+    os.makedirs(os.path.join(STAGE, "TEST"), exist_ok=True)
+    for source, folder in [(s, STAGE) for s in sources] + [(s, os.path.join(STAGE, "TEST"))
+                                                          for s in tests]:
+        target = os.path.join(folder, os.path.basename(source))
         if os.path.isdir(source):
             shutil.copytree(source, target, ignore=ignore, dirs_exist_ok=True)
         else:
@@ -227,10 +230,11 @@ def pull_card(staged):
             print("card: deleted %s" % path)
 
 
-def make_card(sources):
-    """Write build/SD.IMG from the folder sd, the files and folders in sources and the folder
-    card, which wins a name they share, after pull_card. Write build/SD.SUM."""
-    staged = stage_card(sources)
+def make_card(sources, tests):
+    """Write build/SD.IMG from the folder sd, the files and folders in sources, those in tests
+    under TEST, and the folder card, which wins a name they share, after pull_card. Write
+    build/SD.SUM."""
+    staged = stage_card(sources, tests)
     pull_card(staged)
     if os.path.isdir(CARD):
         shutil.copytree(CARD, STAGE, ignore=shutil.ignore_patterns(".*"), dirs_exist_ok=True)
@@ -266,7 +270,10 @@ def main():
         shutil.copyfile(os.path.join(ROOT, name), os.path.join(BUILD, name))
     test_files = [os.path.join(TEST_SD_FOLDER, entry) for entry in os.listdir(TEST_SD_FOLDER)
                   if not entry.startswith(".")]
-    make_card(compile_bas() + [basic, compile_scom()] + test_files)
+    programs = compile_bas()
+    shell = [p for p in programs if os.path.basename(p) == "CMDSHELL.COM"]
+    make_card(shell + [basic, compile_scom()],
+              [p for p in programs if p not in shell] + test_files)
     print("built %s, %d bytes, %.2f s" % (os.path.relpath(ROM, ROOT), os.path.getsize(ROM),
                                           time.time() - started))
 
