@@ -9,7 +9,7 @@ FNDLIN2:
 ; ----------------------------------------------------------------------------
 PR_WRITTEN_BY:
 .ifndef KBD
-  .if !(.def(CONFIG_CBM_ALL) || .def(SIM)) ; sim: never reached
+  .if !(.def(CONFIG_CBM_ALL) || .def(CONFIG_HOSTED)) ; hosted: never reached
     .ifndef AIM65
       .ifndef SYM1
         lda     #<QT_WRITTEN_BY
@@ -39,12 +39,20 @@ COLD_START:
         ldx     #$FF
         stx     CURLIN+1
   .endif
+  .ifdef DOS6502
+        lda     #BREAK_CATCH
+        clc
+        jsr     API_CON_BREAK		; Ctrl+C sets the flag ISCNTC reads
+        tsx
+        stx     DOS_STACK		; BASIC's stack starts below its caller's
+  .else
   .ifdef CONFIG_NO_INPUTBUFFER_ZP
         ldx     #$FB
   .elseif .def(AIM65)
         ldx     #$FE
   .endif
         txs
+  .endif
   .ifndef CONFIG_CBM_ALL
         lda     #<COLD_START
         ldy     #>COLD_START
@@ -147,6 +155,8 @@ COLD_START:
   .else
         ldx     #GENERIC_CHRGET_END-GENERIC_CHRGET
   .endif
+.elseif .def(DOS6502)
+        ldx     #CHRGET_SIZE
 .else
         ldx     #GENERIC_CHRGET_END-GENERIC_CHRGET-1 ; XXX
 .endif
@@ -155,6 +165,17 @@ L4098:
         sta     CHRGET-1,x
         dex
         bne     L4098
+.ifdef DOS6502
+; RNDSEED is not behind CHRGET here. On the other targets the loop above
+; copies one byte short, and the sim's RNDSEED ends in 0: do the same.
+        ldx     #BYTES_FP-1
+L4098D:
+        lda     GENERIC_RNDSEED-1,x
+        sta     RNDSEED-1,x
+        dex
+        bne     L4098D
+        stx     RNDSEED+BYTES_FP-1
+.endif
 .ifdef CONFIG_2
         lda     #$03
         sta     DSCLEN
@@ -192,7 +213,7 @@ L4098:
         lda     #$2C
         sta     LINNUM+1
     .endif
-    .ifndef SIM ; sim: the banner comes first
+    .ifndef CONFIG_HOSTED ; hosted: the banner comes first
         jsr     CRDO
     .endif
   .endif
@@ -208,7 +229,7 @@ L4098:
   .endif
         ldx     #TEMPST
         stx     TEMPPT
-.if (!.def(CONFIG_CBM_ALL)) && (!.def(SIM)) ; sim: no MEMORY SIZE? prompt
+.if (!.def(CONFIG_CBM_ALL)) && (!.def(CONFIG_HOSTED)) ; hosted: no MEMORY SIZE? prompt
         lda     #<QT_MEMORY_SIZE
         ldy     #>QT_MEMORY_SIZE
         jsr     STROUT
@@ -229,6 +250,11 @@ L4098:
         tay
         bne     L40EE
 .endif
+.ifdef DOS6502
+; 6502DOS: the RAM up to IORAM is BASIC's; no scan
+        lda     #<__IORAM_RUN__
+        ldy     #>__IORAM_RUN__
+.else
 .ifndef CBM2
         lda     #<RAMSTART2
 .endif
@@ -302,6 +328,7 @@ L40EE:
 L40FA:
         lda     LINNUM
         ldy     LINNUM+1
+.endif
         sta     MEMSIZ
         sty     MEMSIZ+1
 .if !(.def(MICROTAN) || .def(AIM65) || .def(SYM1))
@@ -309,7 +336,7 @@ L40FA:
         sty     FRETOP+1
 .endif
 L4106:
-.if (!.def(CONFIG_CBM_ALL)) && (!.def(SIM)) ; sim: no TERMINAL WIDTH? prompt
+.if (!.def(CONFIG_CBM_ALL)) && (!.def(CONFIG_HOSTED)) ; hosted: no TERMINAL WIDTH? prompt
   .ifdef APPLE
         lda     #$FF
         jmp     L2829
@@ -409,7 +436,7 @@ L4192:
         lda     TXTTAB
         ldy     TXTTAB+1
         jsr     REASON
-.if .def(CBM2) || .def(SIM)
+.if .def(CBM2) || .def(CONFIG_HOSTED)
         lda     #<QT_BASIC
         ldy     #>QT_BASIC
         jsr     STROUT
@@ -460,7 +487,7 @@ QT_WANT:
         .byte   0
   .endif
 QT_WRITTEN_BY:
-  .if !(.def(CONFIG_CBM_ALL) || .def(SIM)) ; sim: prompts are skipped
+  .if !(.def(CONFIG_CBM_ALL) || .def(CONFIG_HOSTED)) ; hosted: prompts are skipped
   .if !(.def(AIM65) || .def(SYM1))
     .ifdef APPLE
 		asc80 "COPYRIGHT 1977 BY MICROSOFT CO"
@@ -490,7 +517,7 @@ QT_BYTES_FREE:
   .ifdef CBM1
   .elseif .def(CBM2)
         .byte   CR,0
-  .elseif .def(SIM)
+  .elseif .def(CONFIG_HOSTED)
         .byte   CR,LF,0 ; RESTART adds the blank line before OK
   .elseif .def(APPLE)
         .byte   0
@@ -526,7 +553,7 @@ QT_BASIC:
         .byte   LF,CR,LF
 		.byte	"APPLE BASIC V1.1"
   .endif
-  .ifdef SIM
+  .ifdef CONFIG_HOSTED
         .byte   "UX6502BASIC V0.1 -",0 ; LINPRT adds a space
   .elseif !.def(CONFIG_CBM_ALL)
         .byte   CR,LF

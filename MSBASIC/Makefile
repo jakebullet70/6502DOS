@@ -11,10 +11,16 @@ PYTHON  ?= /c/Users/Admin/AppData/Local/Programs/Python/Python313/python.exe
 SRC     := src
 BUILD   := build
 ORIG    := ref/msbasic/orig
+DOSREPO := ..
 
 # Targets with an original ROM dump in $(ORIG)
 VERIFY_TARGETS := cbmbasic1 cbmbasic2
-TARGETS := $(VERIFY_TARGETS) sim
+TARGETS := $(VERIFY_TARGETS) sim 6502dos
+
+# A ca65 symbol cannot start with a digit: the 6502dos target is -D DOS6502.
+# It takes mem.inc and far.inc from the 6502DOS sources and api.inc from its build.
+DEFINE_6502dos   := DOS6502
+INCLUDES_6502dos := -I $(DOSREPO)/src/asm -I $(DOSREPO)/build/gen
 
 SOURCES := $(wildcard $(SRC)/*.s)
 
@@ -23,8 +29,13 @@ all: $(TARGETS)
 $(TARGETS): %: $(BUILD)/%.bin
 
 $(BUILD)/%.bin: $(SOURCES) $(SRC)/%.cfg | $(BUILD)
-	$(CA65) -D $* $(SRC)/msbasic.s -o $(BUILD)/$*.o -l $(BUILD)/$*.lst
+	$(CA65) -D $(or $(DEFINE_$*),$*) $(INCLUDES_$*) $(SRC)/msbasic.s -o $(BUILD)/$*.o -l $(BUILD)/$*.lst
 	$(LD65) -C $(SRC)/$*.cfg $(BUILD)/$*.o -o $@ -Ln $(BUILD)/$*.lbl
+
+$(BUILD)/6502dos.bin: $(DOSREPO)/build/gen/api.inc $(DOSREPO)/src/asm/mem.inc $(DOSREPO)/src/asm/far.inc
+
+$(DOSREPO)/build/gen/api.inc: $(DOSREPO)/tools/api.py $(DOSREPO)/tools/genapi.py
+	$(PYTHON) $(DOSREPO)/tools/genapi.py
 
 $(BUILD):
 	mkdir -p $(BUILD)

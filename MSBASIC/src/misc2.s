@@ -32,11 +32,23 @@ GIVAYF:
         jmp     FLOAT1
 POS:
 .ifdef CONFIG_POS_LINE ; POS(0) is the column, any other argument the line
+  .ifdef DOS6502
+        ldy     POSX
+        lda     FAC
+        beq     SNGFLT
+        sec
+        jsr     API_CON_CURSOR		; X = the cursor row
+        txa
+        tay
+  .else
         ldy     POSY
         lda     FAC
         bne     SNGFLT
-.endif
         ldy     POSX
+  .endif
+.else
+        ldy     POSX
+.endif
 
 ; ----------------------------------------------------------------------------
 ; FLOAT (Y) INTO FAC, GIVING VALUE 0-255

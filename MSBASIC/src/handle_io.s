@@ -32,6 +32,9 @@ HIO_XSAVE:	.res 1
 HIO_XSAVE2:	.res 1
 HIO_NEWLF:	.res 1
 HIO_NEWMODE:	.res 1
+.ifdef DOS6502
+HIO_NAMELEN:	.res 1		; the name is length-prefixed too
+.endif
 HIO_NAME:	.res HIO_NAMEMAX+1
 
 .segment "EXTRA"
@@ -254,6 +257,9 @@ OPEN:
         jsr     FRESTR		; A = length, INDEX = text
         cmp     #HIO_NAMEMAX+1
         bcs     @long
+.ifdef DOS6502
+        sta     HIO_NAMELEN
+.endif
         tay
         lda     #0
         sta     HIO_NAME,y

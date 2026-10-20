@@ -8,4 +8,7 @@
 .ifdef SIM
 .include "sim_iscntc.s"
 .endif
+.ifdef DOS6502
+.include "6502dos_iscntc.s"
+.endif
 ;!!! runs into "STOP"

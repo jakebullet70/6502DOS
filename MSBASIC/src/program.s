@@ -375,8 +375,8 @@ LC49E:
         beq     L24D0
         bit     DATAFLG
         bvs     L24AC
-.ifdef SIM
-        jsr     SIM_UPPER
+.ifdef CONFIG_HOSTED
+        jsr     UPPER
         sta     INPUTBUFFERX,x
 .endif
 .ifdef CONFIG_RADIX_LIT
@@ -429,8 +429,8 @@ L2498:
         jsr     GET_UPPER
 .else
         lda     INPUTBUFFERX,x
-  .ifdef SIM
-        jsr     SIM_UPPER
+  .ifdef CONFIG_HOSTED
+        jsr     UPPER
   .endif
   .ifndef CONFIG_2
         cmp     #$20
@@ -684,7 +684,11 @@ STKINI:
 .ifndef CONFIG_2
         sta     STACK+STACK_TOP+2
 .endif
+.ifdef DOS6502
+        ldx     DOS_STACK
+.else
         ldx     #STACK_TOP
+.endif
         txs
 .ifdef CONFIG_2
         pha
@@ -781,7 +785,7 @@ L2581:
         beq     L2598
   .endif
         cmp     #TOKEN_MINUS
-        bne     L2520
+        bne_far L2520
         jsr     CHRGET
   .if .def(MICROTAN) || .def(AIM65) || .def(SYM1)
         beq     L2598
@@ -790,7 +794,7 @@ L2581:
         rts
   .else
         jsr     LINGET
-        bne     L2520
+        bne_far L2520
   .endif
 L2598:
   .if !(.def(MICROTAN) || .def(AIM65) || .def(SYM1))

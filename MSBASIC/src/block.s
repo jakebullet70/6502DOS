@@ -53,9 +53,9 @@ LOOP:
 BLK_FORPNT:
         sta     FORPNT+1
         jsr     GTFORPNT
-        beq     BLK_CONTF	; only CONTINUE (A = 0) finds a FOR frame
+        beq_far BLK_CONTF	; only CONTINUE (A = 0) finds a FOR frame
         cmp     #TOKEN_DO
-        bne     BLK_NODO
+        bne_far BLK_NODO
         txs			; drop the FOR frames above the DO frame
         lda     BLK_MODE
         beq     @loop
@@ -187,7 +187,7 @@ BLK_SCAN:				; BLK_MODE set: TOKEN_LOOP or TOKEN_NEXT
         lda     #0
         sta     BLK_LAST
         iny
-        bne     @loop		; always
+        bne_far @loop		; always
 @exit:					; BLK_MODE closes a loop, the token before it opens one
         cmp     BLK_MODE	; (DO LOOP, FOR NEXT)
         beq     @close

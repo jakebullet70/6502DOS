@@ -2602,9 +2602,10 @@
        - `exec` saves a parent's `r0` to `$7F` and its pages from `$0700` to `PSP_TOP`.
          It does not save `$0200-$05FF`. BASIC's RAM data goes at `$0801`, before the
          program text, so it survives a child.
-       - The console obeys ANSI.SYS sequences, so `CLS`, `LOCATE`, `COLOR` and `TEXTAT` work
-         as in the sim.
-     - Done, M0 (2026-10-20), the zero page audit, no code: `MSBASIC/docs/uxdos-zeropage.md`.
+       - The console obeys `Esc[r;cH`, `Esc[2J`, `Esc[K` and `Esc[..m` (0, 7, 30-37, 40-47),
+         so `CLS` and `LOCATE` work as in the sim. It has no `Esc 7`, `Esc 8` or
+         `Esc[38;5;n`, so `TEXTAT` and `COLOR` use `con_cursor` and `con_colour`.
+     - Done, M0 (2026-10-20), the zero page audit, no code: `MSBASIC/docs/6502dos-zeropage.md`.
        - 89 bytes need zero page: `(zp),y`, `sty zp,x`, `sta 0,x` on `TEMPST`, `SHIFT_RIGHT`'s
          `sty n,x` on `RESULT`, `FAC` and `ARG`, and `CHRGET` with `TXTPTR`. 71 bytes do not.
        - The proposed layout fills `$22-$7F`: the 89, then `CURLIN`, `VALTYP` and `EOLPNTR`.
@@ -2619,18 +2620,19 @@
          BASIC's prompt, as now.
        - `INPUTBUFFER` is on page `$08`, after the stub and the 66 bytes of RAM data, 81 bytes,
          with the 5 bytes `INPUTBUFFER-5` to `-1` in front. The program text starts at `$0901`.
-       - The `uxdos` target may use 65C02 opcodes. The `sim` target and `make verify` stay
+       - The `6502dos` target may use 65C02 opcodes. The `sim` target and `make verify` stay
          NMOS.
      - Why page `$08` for `INPUTBUFFER`:
        - `$0200` fails: it is `CON_LINE` and the monitor's line, `exec` does not save it, and
          `INPUTBUFFER-5` to `-1` land in `$01FB-$01FF`.
        - The buffer must not cross a page (`INPUTBUFFERX,x`). No program text or string may share
          its page: `flow1.s` and `string.s` test `#>INPUTBUFFER` for direct mode.
-       - ROM -10 bytes: the `CONFIG_INPUTBUFFER_0200` code in `program.s` drops out.
+       - The `CONFIG_INPUTBUFFER_0200` code in `program.s` stays: it copies `LINNUM` in front
+         of the buffer, as any buffer outside zero page needs.
      - Trap for M1: the cold start does `ldx #$FB` and `txs`, and `ldx #STACK_TOP`, `txs` on each
        error. That throws away the stack of the shell that ran BASIC, and `STACK+STACK_TOP+1`
-       writes over it. The `uxdos` target must take its stack top from the `S` it starts with.
-     - M1, a `uxdos` target in `MSBASIC/` (`defines_uxdos.s`, `uxdos.cfg`):
+       writes over it. The `6502dos` target must take its stack top from the `S` it starts with.
+     - M1, a `6502dos` target in `MSBASIC/` (`defines_6502dos.s`, `6502dos.cfg`):
        - the M0 layout;
        - `K_OPEN`, `K_CLOSE`, `K_READ`, `K_WRITE` on the API through the gate entries at
          `$0340`, with `OPEN` modes as in 6d;
@@ -2640,7 +2642,7 @@
 
        `make verify` and `make test` must still pass. The target is not in the ROM yet.
      - M2, bank 2 in the ROM:
-       - `build.py` builds the `uxdos` target and links it as bank 2.
+       - `build.py` builds the `6502dos` target and links it as bank 2.
        - `MSBASIC.COM`, a stub of a few bytes, selects ROM bank 2 and calls the cold start. Its
          `RTS` is `exit`.
        - `EXIT` ends BASIC and returns to the shell.
@@ -2652,15 +2654,50 @@
        `MSBASIC/docs/changes.md`.
    - Rename (2026-10-20, the user): `UXDOS16` is `6502DOS` in every tracked file but `attic/`,
      and in the memory notes. The ROM is `build/6502DOS.ROM`, with `.MAP` and `.LBL`; pyuxc's
-     target is `"6502dos"`; `UXCBASIC/tests.py`'s `UXDOS16_REPO` is `DOS_REPO`. The names
-     `uxdos` (the MSBASIC target, `tpl/UXDOS`) stay. Same length, so no size changed.
+     target is `"6502dos"`; `UXCBASIC/tests.py`'s `UXDOS16_REPO` is `DOS_REPO`. The name
+     `tpl/UXDOS` stays; the MSBASIC target is `6502dos` since M1. Same length, so no size changed.
      - Build 4.26 s, every program recompiled (the `lib` files changed): the full-build
        baseline. Tests: `BOOT` ok 0.5 s, `SHBOOT` 0.5, `DISK` 0.5, `CMDLETS` 1.6, `TARGET`
        0.4, UXCBASIC `ARRAY1` 0.5. 50 goldens changed in the banner only.
      - Steps since the full suite: 1.
    - Decisions recorded (2026-10-20), docs only, no test: `INPUTBUFFER` on page `$08`, 65C02
-     for the `uxdos` target. Doc edits go in one commit per batch. Steps since the full
+     for the `6502dos` target. Doc edits go in one commit per batch. Steps since the full
      suite: 2.
+   - Done, M1 (2026-10-20), code and docs in one commit. The user renamed
+     the target: `uxdos` is now `6502dos` (files) and `DOS6502` (the ca65 symbol; a symbol
+     cannot start with a digit; the Makefile maps it with `DEFINE_6502dos`).
+     - New files in `MSBASIC/src/`: `defines_6502dos.s`, `6502dos_zp.s`, `6502dos_extra.s`,
+       `6502dos_iscntc.s`, `6502dos.cfg`. The Makefile builds `6502dos` in `make all`, with
+       `-I ../src/asm -I ../build/gen` (mem.inc, far.inc, api.inc).
+     - Shared changes, each behind `DOS6502` or the new `CONFIG_HOSTED` (sim and 6502dos):
+       `.ifdef SIM` became `CONFIG_HOSTED` where both targets share it; `SIM_UPPER` moved to
+       `extra.s` as `UPPER`; `macros.s` has `bne_far`, `beq_far`, `bcs_far` (long branches in
+       6502dos only, 7 sites); `defines.s` takes `STACK` from mem.inc.
+     - Layout: zero page as M0 at `$22-$7F`; RAM data 66 bytes at `$0810`; `INPUTBUFFER` at
+       `$0860`; `IORAM` (handle_io, the GOTO and variable caches, the DOS variables, 645
+       bytes) at `$9C00`, and `MEMSIZ` is `$9C00`, no RAM scan. `$C000` holds `jmp COLD_START`
+       for the stub.
+     - Cold start sets `BREAK_CATCH` and keeps `S` in `DOS_STACK`; `STKINI` goes back to it.
+       `ISCNTC` polls `con_status` and `con_break` once in 256 calls (I2C is slow); `K_JIFFY`
+       waits for a tick on `API_TICKS` and forces the next poll. Console lines come through
+       `con_line` into `INPUTBUFFER-2`, with no CRDO after; a Ctrl+C in the line breaks a
+       running program. `K_READ`/`K_WRITE` are one-byte `read`/`write`; `K_READ` drops LF.
+       `K_OPEN` as 6d: read `open` 0, write `create`, append `open` 1, create on error 2, seek
+       to the end. `POS(1)` is `con_cursor`'s row. `TEXTAT` keeps the cursor and the color with
+       `con_cursor`/`con_colour`; `COLOR fg[,bg]` is `con_colour` (0-15). `CLS` and `LOCATE`
+       stay ANSI. `SCREEN` does nothing. VPEEK/VPOKE drive VERA's address 0.
+     - Size: bank 2 holds 11821 bytes, +410 over the sim's 11411 bytes of code; 4563 bytes free.
+       The IRQ entry at `$FFA0` matches banks 0 and 1 but the `jmp irq` operand (0; never run).
+     - Tests: `cbmbasic1`, `cbmbasic2` and `sim` binaries are byte for byte as before;
+       `make verify` matches; `make test` 31/31 ok, 1.7 s. The 6502dos image is not run yet:
+       that needs M2. MSBASIC clean build 945 ms, the new baseline.
+     - Docs: `MSBASIC/docs/6502dos-zeropage.md` (was `uxdos-zeropage.md`) has the real RAM map
+       and cost; `MSBASIC/docs/changes.md` has a `6502dos target` section; `MSBASIC/CLAUDE.md`
+       lists the target and its files.
+     - The 6502DOS API name `con_colour` (`API_CON_COLOUR`) breaks the "color" spelling rule.
+       Renaming it is a separate step.
+     - Next: M2. A 65C02 savings pass over the 6502dos code is a later separate step.
+       Steps since the full suite: 3.
    - To do: find what the 492 bytes of 7i2b cost in `DISKFREE.CBI` (1861 to 2353 bytes), with
      pyuxc's link map, and cut them. Ideas: read `P2$` once, drop `FREE_TEXT` and pass the
      `MID$` straight to `SYS_STRINGS_SET`, reuse `DRIVE_NAME` for the text (11 bytes of RAM).

@@ -1,7 +1,7 @@
-# Zero page for the uxdos target
+# Zero page for the 6502dos target
 
-The audit of the `sim` build's zero page, and a layout for the `uxdos` target (6502DOS HANDOFF,
-MSBASIC in ROM, step M0). Counts are of the instructions in `build/sim.lst` that emit a zero page
+The audit of the `sim` build's zero page, and the layout of the `6502dos` target
+(`src/6502dos_zp.s`). Counts are of the instructions in `build/sim.lst` that emit a zero page
 operand.
 
 ## The limits
@@ -116,13 +116,23 @@ is the order of `sim`.
 | `$66` | 24 | `CHRGET`; `TXTPTR` at `$6D` |
 | `$7E` | 2 | `KW_PTR` |
 
-The other 66 bytes go to the RAM data at `$0801`: the 71 bytes of the second table less
-`CURLIN`, `VALTYP` and `EOLPNTR`.
+## RAM
 
-`INPUTBUFFER` is on page `$08`, after the stub and the RAM data: 81 bytes, with the 5 bytes
-`INPUTBUFFER-5` to `-1` in front. It must not cross a page, and no program text or string may
-share its page. The program text starts at `$0901`.
+| Address | Bytes | What |
+|---|---|---|
+| `$0801` | 15 at most | `MSBASIC.COM`, the stub |
+| `$0810` | 66 | The RAM data: the 71 bytes of the second table less `CURLIN`, `VALTYP` and `EOLPNTR` |
+| `$085B` | 5 | `INPUTBUFFER-5` to `-1` |
+| `$0860` | 81 | `INPUTBUFFER`: `LINE_MAX` 80 characters and the CR |
+| `$0900` | | A 0 byte, then the program text at `$0901` |
+| `$9C00` | 645 | Segment `IORAM`: the `handle_io.s` data, the GOTO and variable caches, the DOS variables. `MEMSIZ` is `$9C00`. |
 
-Cost: about 328 instructions take the absolute form, so the ROM grows by about 328 bytes. Each
-run of one costs 1 cycle more; a `zp,x` that becomes `abs,x` costs nothing more unless it
-crosses a page.
+`INPUTBUFFER` must not cross a page, and no program text or string may share its page.
+`CONFIG_INPUTBUFFER_0200` stays on: it copies `LINNUM` in front of the buffer, as any buffer
+outside zero page needs.
+
+## Cost
+
+Bank 2 holds 11821 bytes, 410 more than the `sim` code. The difference is the absolute forms
+of about 328 instructions, the 6502DOS calls in place of the sim65 calls, and 7 long branches. Each absolute form costs 1
+cycle more; a `zp,x` that becomes `abs,x` costs nothing more unless it crosses a page.

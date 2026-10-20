@@ -76,3 +76,29 @@ ERROR_MESSAGES:
 	.endrep
 .endmacro
 
+
+; A branch that is out of reach in the 6502DOS target, whose code is longer:
+; there a long branch (longbranch's jne, jeq, jcs), elsewhere a short one.
+.macro bne_far target
+.ifdef DOS6502
+        jne     target
+.else
+        bne     target
+.endif
+.endmacro
+
+.macro beq_far target
+.ifdef DOS6502
+        jeq     target
+.else
+        beq     target
+.endif
+.endmacro
+
+.macro bcs_far target
+.ifdef DOS6502
+        jcs     target
+.else
+        bcs     target
+.endif
+.endmacro

@@ -159,7 +159,7 @@ L2C65:
 L2C81:
         ldx     CPRTYP
         bne     FRM_RELATIONAL
-        bcs     L2D02
+        bcs_far L2D02
         adc     #TOKEN_GREATER-TOKEN_PLUS
         bcc     L2D02
         adc     VALTYP

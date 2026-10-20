@@ -201,14 +201,3 @@ K_CLOSE:
         txa
         ldx     #0
         jmp     SIM_PV_CLOSE
-
-; fold a-z in A to A-Z; keeps X and Y. The tokenizer uses it so keywords
-; and variable names may be typed in lowercase (strings, REM and DATA stay).
-SIM_UPPER:
-        cmp     #'a'
-        bcc     @keep
-        cmp     #'z'+1
-        bcs     @keep
-        and     #$DF
-@keep:
-        rts

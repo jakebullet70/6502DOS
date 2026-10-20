@@ -94,8 +94,8 @@ L_TOK3:
         iny
         sta     INPUTBUFFER-5,y
         lda     INPUTBUFFERX,x
-.ifdef SIM
-        jsr     SIM_UPPER
+.ifdef CONFIG_HOSTED
+        jsr     UPPER
 .endif
         pha
         jsr     LIT_DIGIT

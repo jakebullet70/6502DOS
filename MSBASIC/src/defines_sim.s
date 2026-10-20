@@ -7,6 +7,8 @@
 CONFIG_2C := 1
 
 CONFIG_SCRTCH_ORDER := 2
+CONFIG_HOSTED := 1 ; runs under an operating system: no MEMORY SIZE? or WIDTH prompt,
+                   ; the banner first, lowercase keywords, line input through handles
 CONFIG_FILE := 1 ; PRINT#, INPUT#, GET#, CMD, OPEN, CLOSE, SYS
 CONFIG_HANDLE_IO := 1 ; files and console through handles (handle_io.s)
 CONFIG_BLOCK := 1 ; block IF/ELSE/END IF, DO/LOOP (block.s); needs CONFIG_HANDLE_IO

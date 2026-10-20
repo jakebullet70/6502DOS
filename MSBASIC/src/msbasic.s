@@ -1,6 +1,10 @@
 .debuginfo +
 
+.ifdef DOS6502
+.setcpu "65C02"
+.else
 .setcpu "6502"
+.endif
 .macpack longbranch
 
 .include "defines.s"

@@ -95,7 +95,7 @@ LE878:
 
 .ifndef KBD
 L29B9:
-  .if .def(CBM2) || .def(SIM) ; buffer at $0200
+  .if .def(CBM2) || .def(CONFIG_HOSTED) ; buffer not in zero page
         lda     #$00
         sta     INPUTBUFFER,x
         ldx     #<(INPUTBUFFER-1)

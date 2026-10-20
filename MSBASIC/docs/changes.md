@@ -784,3 +784,42 @@ OK
   `QT_BYTES_FREE` ends with CR LF and its 0; RESTART adds the blank line before OK.
 - Net: 2 bytes (INIT), image 12056 bytes. All `tests/*.out` files change in their first lines
   only.
+
+## 6502dos target (bank 2 of the 6502DOS ROM, +410 bytes over sim)
+
+A new target, `6502dos`, builds BASIC for ROM bank 2 of the 6502DOS ROM, `$C000-$FFFF`. A stub,
+`MSBASIC.COM`, calls `$C000`. Console and files go through the 6502DOS API. The 65C02 opcodes
+are allowed in this target only.
+
+- New files: `defines_6502dos.s`, `6502dos_zp.s`, `6502dos_extra.s`, `6502dos_iscntc.s`,
+  `6502dos.cfg`. The ca65 symbol is `DOS6502`, because a symbol cannot start with a digit; the
+  Makefile maps the target name to it with `DEFINE_6502dos` and adds the include paths of
+  `mem.inc`, `far.inc` and `api.inc`.
+- `CONFIG_HOSTED`, new, set by `sim` and `6502dos`: no start-up prompts, the banner first,
+  lowercase folding, the `print.s` path of CBM2. The sim's `SIM_UPPER` is `UPPER` in `extra.s`.
+- Zero page `$22-$7F` and RAM data at `$0810`, as in `docs/6502dos-zeropage.md`.
+  `INPUTBUFFER` is at `$0860`, the program text at `$0901`. `zeropage.s` includes
+  `6502dos_zp.s` for this target. The `handle_io.s` data, the GOTO and variable caches and the
+  DOS variables are segment `IORAM` at `$9C00`; `MEMSIZ` is `$9C00`, with no RAM scan.
+- `init.s`: the cold start sets `BREAK_CATCH` with `con_break` and keeps `S` in `DOS_STACK`, and
+  `STKINI` goes back to it, so the shell's stack survives. `CHRGET` and `RNDSEED` are copied by
+  two loops, because `RNDSEED` is not in zero page.
+- `inline.s`: a console line comes from `con_line` into `INPUTBUFFER-2`. A Ctrl+C in the line
+  stops a running program and is ignored in direct mode.
+- `ISCNTC` polls `con_status` and `con_break` once in 256 calls. `K_JIFFY` waits for a tick of
+  `API_TICKS` and forces the next poll.
+- `K_READ` and `K_WRITE` are one-byte `read` and `write`; `K_READ` drops LF. `K_OPEN` mode 0
+  is `open` for reading, mode 1 is `create`, mode 2 is `open` for writing, or `create` when the
+  file is not found, then a seek to the end. `handle_io.s` keeps the name length in
+  `HIO_NAMELEN`.
+- `POS(1)` is the row from `con_cursor`. `TEXTAT` keeps and restores the cursor and the color
+  with `con_cursor` and `con_colour`, because `con_out` has no `Esc 7` or `Esc 8`. `COLOR fg[,bg]`
+  calls `con_colour`, colors 0 to 15. `CLS` and `LOCATE` send ANSI codes as in the sim.
+  `VPEEK` and `VPOKE` use VERA address port 0. `SCREEN` does nothing.
+- `header.s` puts `jmp COLD_START` at `$C000`. `6502dos_extra.s` holds bank 2's IRQ entry at
+  `$FFA0` and the CPU vectors at `$FFFA`, which match banks 0 and 1.
+- Seven branches are out of range in this target. `macros.s` gets `bne_far`, `beq_far` and
+  `bcs_far`, long branches for `DOS6502` only, used in `program.s`, `eval.s`, `array.s` and
+  `block.s`. The other binaries do not change.
+- `cbmbasic1`, `cbmbasic2` and `sim` are byte for byte as before. Bank 2 holds 11821 bytes, 410
+  more than the sim's code, and 4563 bytes are free.

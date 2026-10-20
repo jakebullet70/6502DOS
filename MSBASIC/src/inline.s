@@ -43,9 +43,44 @@ L0C32:
         rts
   .endif
 
-  .ifdef SIM
-; sim: buffer at $0200, LINE_MAX characters, BS or DEL deletes the last
-; character, other control characters are dropped. BEL when the line is full.
+  .ifdef DOS6502
+; 6502DOS: from the console, con_line reads and edits the line, with echo,
+; into INPUTBUFFER-2: the most characters at -2, the length at -1, then the
+; text and a CR. con_line ends the line on the screen, so no CRDO follows.
+; A Ctrl+C typed in the line breaks a running program; in direct mode it
+; does nothing. From a file, the loop below reads the line.
+        lda     HIO_IN
+        bpl     INLIN_FILE
+        lda     #LINE_MAX+1
+        sta     INPUTBUFFER-2
+        lda     #<(INPUTBUFFER-2)
+        sta     r0
+        lda     #>(INPUTBUFFER-2)
+        sta     r0+1
+        jsr     API_CON_LINE
+        sec
+        jsr     API_CON_BREAK		; X = the break flag, now clear
+        dex
+        bne     @line
+        ldx     CURLIN+1
+        inx
+        beq     @line			; direct mode
+        lda     #$00			; Z and carry set: STOP breaks
+        sec
+        jmp     STOP
+@line:
+        ldx     INPUTBUFFER-1		; the length
+        stz     POSX
+        stz     INPUTBUFFER,x
+        ldx     #<(INPUTBUFFER-1)
+        ldy     #>(INPUTBUFFER-1)
+        rts
+INLIN_FILE:
+  .endif
+  .ifdef CONFIG_HOSTED
+; hosted: buffer outside zero page, LINE_MAX characters, BS or DEL deletes
+; the last character, other control characters are dropped. BEL when the
+; line is full.
         ldx     #$00
 INLIN2:
         jsr     GETLN
@@ -75,7 +110,7 @@ L2453:
         jmp     L29B9
   .endif
 
-  .if (!.def(APPLE)) && (!.def(SIM))
+  .if (!.def(APPLE)) && (!.def(CONFIG_HOSTED))
         ldx     #$00
 INLIN2:
         jsr     GETLN

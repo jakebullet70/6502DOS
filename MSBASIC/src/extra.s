@@ -7,6 +7,22 @@
 .ifdef SIM
 .include "sim_extra.s"
 .endif
+.ifdef DOS6502
+.include "6502dos_extra.s"
+.endif
+
+.ifdef CONFIG_HOSTED
+; fold a-z in A to A-Z; keeps X and Y. The tokenizer uses it so keywords
+; and variable names may be typed in lowercase (strings, REM and DATA stay).
+UPPER:
+        cmp     #'a'
+        bcc     @keep
+        cmp     #'z'+1
+        bcs     @keep
+        and     #$DF
+@keep:
+        rts
+.endif
 
 .ifdef CONFIG_HANDLE_IO
 .include "handle_io.s"

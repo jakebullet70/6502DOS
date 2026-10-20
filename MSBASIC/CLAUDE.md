@@ -14,7 +14,7 @@ orders of the 6502DOS `CLAUDE.md` apply here. All paths below are relative to `M
 - Run `make verify` after a change to a shared source; `cbmbasic1` and `cbmbasic2` must match.
 
 - `m6502.asm` is frozen history. Do not edit it. Work goes into `src/` (ca65).
-- CPU is NMOS 6502 only, with no 65C02 opcodes, in every target but `uxdos`. The `uxdos`
+- CPU is NMOS 6502 only, with no 65C02 opcodes, in every target but `6502dos`. The `6502dos`
   target, for the 6502DOS ROM, may use 65C02 opcodes. See `docs/asm/6502-notes.md`.
 - `m6502.asm` is about 50k tokens. Never read it whole; grep, then read line ranges.
 - Use `git mv` / `git rm` for tracked files.
@@ -39,7 +39,17 @@ orders of the 6502DOS `CLAUDE.md` apply here. All paths below are relative to `M
 - `src/`: ca65 sources, forked from mist64/msbasic (2-clause BSD, `LICENSE-msbasic`;
   our changes are public domain, Unlicense, `LICENSE`). One `msbasic.s` builds every target; `-D <target>` picks it, `<target>.cfg` sets the memory map.
   Targets: `cbmbasic1` and `cbmbasic2` (checked against the ROM dumps; BASIC 2 runs in xpet) and
-  `sim`. The other upstream targets were removed; their `.ifdef` code in the shared sources stays.
+  `sim`, and `6502dos`. The other upstream targets were removed; their `.ifdef` code in the
+  shared sources stays.
+- `6502dos` target: BASIC in ROM bank 2 of the 6502DOS ROM, `$C000-$FFFF`. Files
+  `defines_6502dos.s`, `6502dos_zp.s` (zero page and RAM data, `docs/6502dos-zeropage.md`),
+  `6502dos_extra.s` (the target primitives on the 6502DOS API), `6502dos_iscntc.s`,
+  `6502dos.cfg`. The ca65 symbol is `DOS6502`, because a symbol cannot start with a digit; the
+  Makefile maps it with `DEFINE_6502dos`. ca65 reads `mem.inc`, `far.inc` and `api.inc` from
+  `../src/asm` and `../build/gen`. `CONFIG_HOSTED` holds what `sim` and `6502dos` share: no
+  start-up prompts, the banner first, lowercase folding (`UPPER`). The long branches that
+  `6502dos` needs go through `bne_far`, `beq_far` and `bcs_far` in `macros.s`, so the other
+  binaries do not change. The 6502DOS ROM build does not link the image yet.
 - `Makefile` (run in Git Bash): `make all`, `make <target>`, `make test` (see `tests/`), `make verify` (byte-compare with the
   original ROM dumps; prints only mismatches), `make clean`. Output goes to `build/`.
 - `sim` target (our addition): headless build for sim65. Files `defines_sim.s`, `sim_extra.s`,

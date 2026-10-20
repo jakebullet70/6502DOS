@@ -7,6 +7,8 @@ CBM2 := 1
 .elseif .def(sim)
 SIM := 1
 .include "defines_sim.s"
+.elseif .def(DOS6502)
+.include "defines_6502dos.s"
 .endif
 
 .ifdef CONFIG_2C
@@ -48,7 +50,9 @@ FOR_STACK2		:= BYTES_FP+4
 MAX_EXPON = 10
 .endif
 
+.ifndef STACK ; mem.inc has it
 STACK           := $0100
+.endif
 .ifndef STACK2
 STACK2          := STACK
 .endif

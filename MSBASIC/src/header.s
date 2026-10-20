@@ -7,6 +7,10 @@
 .endif
 
 		.segment "HEADER"
+.ifdef DOS6502
+; MSBASIC.COM calls $C000
+        jmp     COLD_START
+.endif
 .ifdef W65C816SXB
 ; Disable emulation mode (is left on from the monitor)
 .setcpu "65816"

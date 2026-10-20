@@ -6,7 +6,9 @@
 ; COLOR C IF GIVEN. THE CURSOR AND POS() STAY WHERE THEY WERE.
 ; THE SIM BUILD SENDS ANSI CODES TO THE CURRENT OUTPUT: ESC 7 (SAVE CURSOR
 ; AND COLOR), ESC[38;5;CCCm, ESC[YYY;XXXH (1-BASED), THE TEXT, ESC 8
-; (RESTORE). THE NEW KERNAL WILL REPLACE THIS WITH ITS OWN SCREEN CALLS.
+; (RESTORE). THE 6502DOS BUILD KEEPS AND RESTORES THE CURSOR AND THE COLOR
+; WITH CON_CURSOR AND CON_COLOUR INSTEAD (6502DOS_EXTRA.S), AND ITS COLOR
+; STATEMENT IS THERE.
 ; ----------------------------------------------------------------------------
 TEXTAT:
         jsr     GETBYT		; X = column
@@ -27,6 +29,13 @@ L_TA1:
         pha
         lda     FAC_LAST
         pha
+.ifdef DOS6502
+        jsr     TA_KEEP
+        jsr     CHRGOT
+        beq     L_TA2
+        jsr     COMBYTE		; X = color
+        jsr     TA_INK
+.else
         ldy     #TA_SAVE-TA_TAB	; an error after this leaves only a
         jsr     TA_PUTS		; saved cursor, which is harmless
         jsr     CHRGOT
@@ -34,6 +43,7 @@ L_TA1:
         jsr     COMBYTE		; X = color
         ldy     #TA_COL-TA_TAB
         jsr     TA_SGR
+.endif
 L_TA2:
         pla
         sta     DSCPTR+1
@@ -56,7 +66,11 @@ L_TA3:
         dex
         bne     L_TA3
 L_TA4:
+.ifdef DOS6502
+        jmp     TA_RESTORE
+.else
         ldy     #TA_REST-TA_TAB
+.endif
 
 ; PRINT TA_TAB FROM OFFSET Y UP TO THE 0
 TA_PUTS:
@@ -79,7 +93,9 @@ CLS:
         sta     POSX
         sta     POSY
         rts
+.endif
 
+.if .def(CONFIG_SCREEN) && !.def(DOS6502) ; 6502dos_extra.s has COLOR
 ; ----------------------------------------------------------------------------
 ; "COLOR" STATEMENT: COLOR FG[,BG], 0-255 EACH, UNTIL THE NEXT COLOR.
 ; ESC[38;5;FGm AND ESC[48;5;BGm.
@@ -94,6 +110,7 @@ COLOR:
         ldy     #TA_BG-TA_TAB
 .endif
 
+.ifndef DOS6502
 ; PRINT TA_TAB FROM OFFSET Y, THEN X IN DECIMAL AND "m"
 TA_SGR:
         jsr     TA_PUTS
@@ -101,6 +118,7 @@ TA_SGR:
         jsr     TA_DEC
         lda     #'m'
         jmp     MONCOUT
+.endif
 
 .ifdef CONFIG_SCREEN
 ; ----------------------------------------------------------------------------
@@ -164,17 +182,23 @@ L_TA7:
 TA_DIV:
         .byte   100,10
 TA_TAB:
+.ifndef DOS6502
 TA_SAVE:
         .byte   $1B,"7",0
 TA_COL:
         .byte   $1B,"[38;5;",0
+.endif
 TA_POS:
         .byte   $1B,"[",0
+.ifndef DOS6502
 TA_REST:
         .byte   $1B,"8",0
+.endif
 .ifdef CONFIG_SCREEN
 TA_CLS:
         .byte   $1B,"[H",$1B,"[2J",0
+  .ifndef DOS6502
 TA_BG:
         .byte   $1B,"[48;5;",0
+  .endif
 .endif
