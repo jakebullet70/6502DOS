@@ -24,6 +24,19 @@ Bad command or file name
 C>PATH$ = "C:\DOS"
 C>TRE   TREE -?
 Invalid switch
+C>COPY HELLO.TXT "Q R.TXT"
+     1 File(s) copied
+C>TYPE Q      TYPE "Q R.TXT"
+Hello from the SD card.
+C>TYPE "Q         TYPE "Q R.TXT"
+Hello from the SD card.
+C>DEL "Q R.TXT"
+C>MD "Z DIR"
+C>CD Z    CD "Z DIR\
+C>PRINT CURDIR$
+C:\Z DIR
+C>CD \
+C>RD "Z DIR"
 C>END
 
 >>
