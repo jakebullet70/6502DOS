@@ -208,12 +208,19 @@ CALLS = [
     call(28, "keep", 0x31, "Ends the program and keeps its RAM banks and its IRQ hook. "
          "Does not return.",
          in_=[("A", "exit code")]),
-    call(29, "bank_alloc", 0x48, "Hands out one 8 KB RAM bank.",
-         out=[("A", "bank")],
-         errors=[8]),
-    call(30, "bank_free", 0x49, "Gives back a RAM bank.",
-         in_=[("A", "bank")],
-         errors=[9]),
+    call(29, "bank_alloc", 0x48, "Hands out a run of 8 KB RAM banks that follow each other: "
+         "the lowest run that is free. A size of 0 gives the number of free banks and hands out "
+         "nothing. The banks belong to the running program, and `exit` frees them. Error 8 "
+         "when no run of the size is free.",
+         in_=[("A", "size in banks, 0 to count")],
+         out=[("A", "the first bank of the run, or the number of free banks")],
+         errors=[8],
+         written=True),
+    call(30, "bank_free", 0x49, "Frees a run of banks from `bank_alloc`. Error 9 when A is not "
+         "the first bank of a run of the running program.",
+         in_=[("A", "the first bank of the run")],
+         errors=[9],
+         written=True),
     call(31, "getvect", 0x35, "Gives a handler address.",
          in_=[("A", "vector: 0 the IRQ hook, 1 the break handler, 2 the disk error handler")],
          out=[("r0", "address")],

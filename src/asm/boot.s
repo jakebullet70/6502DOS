@@ -6,7 +6,7 @@
 .include "api.inc"
 .include "far.inc"
 
-.import CHROUT, gate_init, kernel_init, heap_init, monitor, monitor_brk
+.import CHROUT, gate_init, kernel_init, heap_init, bank_init, monitor, monitor_brk
 .export boot_shell, irq
 .exportzp ticks
 
@@ -34,6 +34,7 @@ reset:
         jsr gate_init
         jsr kernel_init
         jsr heap_init
+        jsr bank_init
         stz PSP_BREAK           ; BREAK_OFF for the monitor
         lda #$01                ; VSYNC
         sta VERA_IEN

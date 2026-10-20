@@ -3020,6 +3020,25 @@
         Boot counts the banks. Calls 29 and 30 take a size in A (XMS-style blocks later). XMS
         chains and `xms_move` wait for a RAM disk or arrays that span banks. No fixed bank
         numbers (`CLAIM n`) in 6502DOS. About 110 B ROM, in ROM bank 1.
+        - Done, 2a (2026-10-21; the user said go): `src/asm/banks.s`, in ROM bank 0 beside
+          `exec`, which calls it. `BANK_OWNER` `$AC00` in RAM bank 0: 0 free, `BANK_SYSTEM`
+          $FF for bank 0, the save banks, VARBANK and the banks the machine lacks, else
+          `exec_depth` + 1 of the taker; `BANK_FIRST` $80 marks a run's first bank.
+          `bank_init` (reset, after `heap_init`) probes bank 64, then 128: missing when a byte
+          written there reads back wrong or lands in bank 0. Call 29 `bank_alloc`: A = a size,
+          the lowest run of that many free banks that follow each other; A = 0 counts the free
+          banks. Error 8. Call 30 `bank_free`: A = a run's first bank of the running program,
+          else error 9; frees the run. `bank_exit` in `exec_unwind`, before `dec exec_depth`,
+          frees the ending program's banks (256 entries, about 4400 cycles).
+          - CODE +189 B, KERNELRAM +1 (`bank_want`). Not in this step: `exec`'s save banks from
+            the allocator (2b), `str_heap` checks the owner and `HEAP.S` takes its bank from
+            `bank_alloc` (2c), `MEM`, `keep`.
+          - New test `BANKS` (`tests/BANKS.S`, child `tests/com/BANKKID.S`): counts, runs,
+            a run past a lone free bank, errors 8 and 9, a child's 3 banks freed at exit.
+          - Build 1403 ms, the new baseline. Tests: `BANKS` ok 0.4 s, `EXEC` 0.7, `HEAP` 0.5,
+            `BOOT` 0.3. Docs owed: PLAN section 3 (the owner table, the probe, the run calls,
+            bank 0 not bank 1), section 4's row, section 11 step 10 in part. Steps since the
+            full suite: 2.
      3. UXCBASIC ROM-able output (PLAN section 12 item 6), then `CMDSHELL` in ROM banks (it is
         about 19 KB, so two banks). New commands stay `.SCOM` files on disk; a `BIND` alias
         can replace a ROM built-in. `CONFIG.SYS` `SHELL=` loads a disk shell instead.

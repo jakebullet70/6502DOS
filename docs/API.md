@@ -47,8 +47,8 @@ Conventions:
 | `exit` | 26 | `$038E` | 4Ch | `A` exit code | none | 1 | yes |
 | `exitcode` | 27 | `$0391` | 4Dh | none | `A` exit code<br>`X` how it ended: 0 exit, 1 break, 2 disk error, 3 keep | none | yes |
 | `keep` | 28 | `$0394` | 31h | `A` exit code | none | none | no |
-| `bank_alloc` | 29 | `$0397` | 48h | none | `A` bank | 8 | no |
-| `bank_free` | 30 | `$039A` | 49h | `A` bank | none | 9 | no |
+| `bank_alloc` | 29 | `$0397` | 48h | `A` size in banks, 0 to count | `A` the first bank of the run, or the number of free banks | 8 | yes |
+| `bank_free` | 30 | `$039A` | 49h | `A` the first bank of the run | none | 9 | yes |
 | `getvect` | 31 | `$039D` | 35h | `A` vector: 0 the IRQ hook, 1 the break handler, 2 the disk error handler | `r0` address | 1 | no |
 | `setvect` | 32 | `$03A0` | 25h | `A` vector: 0 the IRQ hook, 1 the break handler, 2 the disk error handler<br>`r0` address | none | 1 | no |
 | `getdate` | 33 | `$03A3` | 2Ah | none | `r0` year, 2000 to 2099<br>`X` month, 1 to 12<br>`Y` day, 1 to 31<br>`A` day of the week, 0 Sunday | none | yes |
@@ -101,8 +101,8 @@ Conventions:
 - `exit`: Ends the program and returns to its parent. `RTS` from the program's start is `exit` with code 0. Does not return, except with error 1 when no program is running.
 - `exitcode`: Gives the exit code of the last program that ended.
 - `keep`: Ends the program and keeps its RAM banks and its IRQ hook. Does not return.
-- `bank_alloc`: Hands out one 8 KB RAM bank.
-- `bank_free`: Gives back a RAM bank.
+- `bank_alloc`: Hands out a run of 8 KB RAM banks that follow each other: the lowest run that is free. A size of 0 gives the number of free banks and hands out nothing. The banks belong to the running program, and `exit` frees them. Error 8 when no run of the size is free.
+- `bank_free`: Frees a run of banks from `bank_alloc`. Error 9 when A is not the first bank of a run of the running program.
 - `getvect`: Gives a handler address.
 - `setvect`: Sets a handler address.
 - `getdate`: Gives the date from the RTC. The day of the week is worked out from the date.

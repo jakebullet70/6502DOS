@@ -11,7 +11,7 @@
 .include "far.inc"
 
 .export api_exec, api_exit, api_exitcode, exec_break
-.import handles_inherit, handles_close, heap_exec, heap_exit, CHROUT
+.import handles_inherit, handles_close, heap_exec, heap_exit, bank_exit, CHROUT
 .import jsrfar, bank0, lib_open, lib_read, lib_close
 .importzp file_size, saved_bank
 .exportzp exec_depth
@@ -194,6 +194,7 @@ exec_unwind:
         php
         jsr handles_close
         jsr heap_exit
+        jsr bank_exit
         dec exec_depth
         sec
         jsr parent_copy
