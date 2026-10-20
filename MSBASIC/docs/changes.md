@@ -929,3 +929,21 @@ are allowed in this target only.
 - `SAVE` is unchanged: `create` empties a file that exists.
 - `cbmbasic1`, `cbmbasic2` and `sim` are byte for byte as before. Bank 2 holds 12609 bytes, and
   3775 bytes are free. `IORAM` is unchanged at 713 bytes.
+
+## FILES in the 6502dos target (+275 bytes)
+
+- `FILES ["pattern"]`, new in `6502dos_extra.s`, lists the names that match with `findfirst`
+  and `findnext`, hidden and system files and directories too, in the shell's `FILES` format:
+  the name, then the size or `<DIR>` ending at column 23, then the count ending at column 6
+  and ` File(s)`. No pattern lists the current directory. A name with no `*` or `?` and no
+  separator at its end that finds a directory gets a `\`, so the directory's names are listed.
+  A `findfirst` failure is ?FILE NOT FOUND ERROR, and so is a `findnext` error other than 18.
+  `ISCNTC` runs before each name, as in `LIST`. 268 bytes.
+- The find buffer is `DOS_BUF` and 19 bytes after it, so `FILES` first calls `DOS_GIVEBACK`.
+  `FILES_COUNT`, 4 bytes, follows it. `IORAM` +23 bytes.
+- `FILES_NUMBER` makes the text of a 4-byte number: the bytes go into `FAC` high byte first,
+  then `LDB21` with exponent `$A0` and `FOUT`. `FILES_RIGHT` prints a text so that it ends
+  before a column, padding from `POSX`.
+- `token.s`: `FILES` follows `NAME`, in the `6502dos` target only. 7 bytes.
+- `cbmbasic1`, `cbmbasic2` and `sim` are byte for byte as before. Bank 2 holds 12884 bytes, and
+  3500 bytes are free. `IORAM` is 736 bytes of 768.

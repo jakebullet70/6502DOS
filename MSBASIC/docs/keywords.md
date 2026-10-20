@@ -129,6 +129,10 @@ SAVE ends a program, as LIST does.
 `6502dos` target only. KILL deletes a file. NAME renames a file or a directory; a new name that
 exists gives ?FILE EXISTS ERROR. `AS` is not a keyword.
 
+`FILES ["pattern"]` (275 bytes, no flag; 23 bytes of RAM) works in the `6502dos` target only.
+It lists the names that match, each with its size or `<DIR>`, then their count, as the shell's
+`FILES` does. A directory's name lists the names in it; no pattern lists the current directory.
+
 ## Internals (no keywords)
 
 | Feature | Flag | Bytes |

@@ -2828,13 +2828,22 @@
        - Trap: `tests.py --update` cut `HELPBAS.OUT` at 2 s; its golden was spliced by hand.
        - Tests: `BASLOAD` ok 0.8 s, `BASHELP` 1.2, `HELPBAS` 2.4, `BASRUN` 0.8, `BASBOOT` 0.9.
          `make all verify` ok (1459 ms). ROM build 1205 ms, the new baseline.
-     - Steps since the full suite: 3.
+     - Step 6 done (2026-10-20), step B: `FILES ["pattern"]`, details in
+       `MSBASIC/docs/changes.md`. The shell's format, hidden, system and directories listed, a
+       directory's name lists its names, no pattern the current directory, `ISCNTC` each name.
+       The find buffer is `DOS_BUF` plus 19 bytes; `FILES_COUNT` 4. +275 bytes (estimate was
+       185), RAM +23 (`IORAM` 736 of 768). Bank 2: 12884 used, 3500 free. `sim`, `cbmbasic1`,
+       `cbmbasic2` unchanged.
+       - `HELPBAS.HLP`: topic FILES. `BASLOAD` tests `FILES "*.BAS"`, `FILES "DOCS"`,
+         `FILES "NOSUCH.*"`, `HELP FILES`. Checked by hand once: plain `FILES` (the card root,
+         29 files), `FILES "docs\"`, FILES in a program followed by PRINT.
+       - Tests: `BASLOAD` ok 0.8 s, `BASHELP` 0.7, `HELPBAS` 1.6 (golden list spliced from
+         BASHELP's), `BASRUN` 0.6, `BASBOOT` 0.5. `make all verify` ok (1035 ms). ROM build
+         979 ms, the new baseline; `build/SD.IMG` was written.
+     - Steps since the full suite: 4.
      - Docs owed to the batch: a `HELP.TXT` topic `HELPBAS`, PLAN's utilities list, `HELP`,
-       `LOAD`, `SAVE`, `KILL` and `NAME` in `MSBASIC/CLAUDE.md`.
-     - Next: step B, `FILES ["pattern"]`, approved in outline: the shell's format (name, size
-       right to column 23 or `<DIR>`, `n File(s)`), hidden, system and directories listed, a
-       directory name lists its contents, Ctrl+C stops it. The 83-byte find buffer is `DOS_BUF`
-       plus 19 new `IORAM` bytes, after `DOS_GIVEBACK`. About 185 bytes.
+       `LOAD`, `SAVE`, `KILL`, `NAME` and `FILES` in `MSBASIC/CLAUDE.md`.
+     - Open: the user's SAVE error, not reproduced; wait for the message and steps.
    - To do: find what the 492 bytes of 7i2b cost in `DISKFREE.CBI` (1861 to 2353 bytes), with
      pyuxc's link map, and cut them. Ideas: read `P2$` once, drop `FREE_TEXT` and pass the
      `MID$` straight to `SYS_STRINGS_SET`, reuse `DRIVE_NAME` for the text (11 bytes of RAM).

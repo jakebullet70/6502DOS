@@ -118,6 +118,7 @@
 .ifdef DOS6502
 		keyword_rts "KILL", KILL
 		keyword_rts "NAME", NAME
+		keyword_rts "FILES", FILES
 .endif
 
 		count_tokens

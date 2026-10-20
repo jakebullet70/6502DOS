@@ -22,6 +22,8 @@ DOS_BUFHND:	.res 1		; K_READ: the handle whose bytes DOS_BUF holds
 DOS_BUFPOS:	.res 1		; K_READ: the next byte in DOS_BUF
 DOS_BUFLEN:	.res 1		; K_READ: the bytes in DOS_BUF
 DOS_BUF:	.res DOS_BUFMAX
+		.res FIND_BUFFER_SIZE-DOS_BUFMAX ; FILES: the find buffer goes on past DOS_BUF
+FILES_COUNT:	.res 4		; FILES: the names listed
 
 .segment "EXTRA"
 
@@ -654,6 +656,157 @@ LIST_NUMBER:
 @console:
         jmp     STROUT
 .assert K_STDOUT = 1, error, "LIST_NUMBER needs K_STDOUT = 1"
+
+; ----------------------------------------------------------------------------
+; "FILES" STATEMENT: FILES ["pattern"] lists the names that match, with
+; hidden and system files and directories, each with its size or <DIR> to
+; column 23, then their count, as the shell's FILES does. A directory's name
+; lists the names in it; no pattern lists the current directory. A pattern
+; that matches nothing is ?FILE NOT FOUND ERROR. Ctrl+C stops it.
+; ----------------------------------------------------------------------------
+FILES_FIND	:= DOS_BUF		; the find buffer, FIND_BUFFER_SIZE bytes
+FILES:
+        stz     HIO_NAMELEN		; keeps Z: no pattern
+        beq     @search
+        jsr     HIO_GETNAME
+@search:
+        jsr     DOS_GIVEBACK		; DOS_BUF takes the find buffer
+        ldx     HIO_NAMELEN
+        beq     @first			; the current directory
+        lda     HIO_NAME-1,x
+        cmp     #'\'
+        beq     @first			; ends in a separator: lists that directory
+        cmp     #'/'
+        beq     @first
+        cmp     #':'
+        beq     @first
+@wild:
+        lda     HIO_NAME-1,x
+        cmp     #'*'
+        beq     @first
+        cmp     #'?'
+        beq     @first
+        dex
+        bne     @wild
+        jsr     FILES_FIRST
+        bcs     @first			; the search below gives the error
+        lda     FILES_FIND+FIND_ATTR
+        and     #ATTR_DIR
+        beq     @first
+        ldx     HIO_NAMELEN		; a directory: list the names in it
+        lda     #'\'
+        sta     HIO_NAME,x
+        inc     HIO_NAMELEN
+@first:
+        jsr     FILES_FIRST
+        jcs     DOS_NOTFOUND
+        ldx     #3
+@zero:
+        stz     FILES_COUNT,x
+        dex
+        bpl     @zero
+@entry:
+        jsr     ISCNTC
+        ldx     #0
+@name:
+        lda     FILES_FIND+FIND_NAME+1,x
+        jsr     OUTDO
+        inx
+        cpx     FILES_FIND+FIND_NAME
+        bcc     @name
+        lda     FILES_FIND+FIND_ATTR
+        and     #ATTR_DIR
+        beq     @size
+        lda     #<FILES_DIR
+        ldy     #>FILES_DIR
+        bra     @right
+@size:
+        ldx     #FIND_SIZE+3
+        jsr     FILES_NUMBER
+@right:
+        ldx     #23
+        jsr     FILES_RIGHT
+        jsr     CRDO
+        inc     FILES_COUNT
+        bne     @next
+        inc     FILES_COUNT+1
+@next:
+        jsr     FILES_R1
+        jsr     API_FINDNEXT
+        bcc     @entry
+        cmp     #ERR_NO_MORE_FILES
+        jne     DOS_NOTFOUND
+        ldx     #FILES_COUNT-FILES_FIND+3
+        jsr     FILES_NUMBER
+        ldx     #6
+        jsr     FILES_RIGHT
+        lda     #<FILES_TEXT
+        ldy     #>FILES_TEXT
+        jsr     STROUT
+        jmp     CRDO
+.assert FILES_COUNT-FILES_FIND < 253, error, "FILES_NUMBER cannot index FILES_COUNT"
+
+; Starts the search for the pattern at HIO_NAMELEN.
+FILES_FIRST:
+        lda     #<HIO_NAMELEN
+        sta     r0
+        lda     #>HIO_NAMELEN
+        sta     r0+1
+        jsr     FILES_R1
+        lda     #ATTR_DIR | ATTR_HIDDEN | ATTR_SYSTEM
+        jmp     API_FINDFIRST
+
+FILES_R1:
+        lda     #<FILES_FIND
+        sta     r1
+        lda     #>FILES_FIND
+        sta     r1+1
+        rts
+
+; Turns the 4-byte number at FILES_FIND,X down to FILES_FIND,X-3, high byte
+; first, into text: A/Y = the text, a space first, as FOUT gives it.
+FILES_NUMBER:
+        ldy     #1
+@byte:
+        lda     FILES_FIND,x
+        sta     FAC,y
+        dex
+        iny
+        cpy     #5
+        bcc     @byte
+        ldx     #$A0			; 32 bits
+        lda     #0
+        jsr     LDB21			; positive
+        jmp     FOUT
+
+; Prints the text at A/Y, 0 at its end, so that it ends before column X.
+FILES_RIGHT:
+        pha
+        phy
+        sta     INDEX
+        sty     INDEX+1
+        ldy     #0
+@length:
+        lda     (INDEX),y
+        beq     @pad
+        iny
+        dex
+        bra     @length
+@pad:
+        cpx     POSX
+        beq     @print
+        bcc     @print
+        jsr     OUTSP			; keeps X
+        bra     @pad
+@print:
+        ply
+        pla
+        jmp     STROUT
+
+FILES_DIR:
+        .byte   " <DIR>",0
+FILES_TEXT:
+        .byte   " File(s)",0
 
 DOS_RUN:
         .byte   "RUN",0

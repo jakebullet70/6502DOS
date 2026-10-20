@@ -100,6 +100,12 @@ EXIT [DO]
 :EXP
 EXP(n)
   Returns e to the power n.
+:FILES
+FILES ["pattern"]
+  Lists the names that match pattern, each with its size or <DIR>, then
+  their count. * and ? are wildcards. A directory's name lists the names in
+  it; no pattern lists the current directory.
+  FILES "*.BAS"
 :FN
 FN name(x)
   Calls a function that DEF FN made. See DEF.
