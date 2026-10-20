@@ -2,6 +2,9 @@
 
 ## State
 
+- The golden outputs `tests/*.OUT`, `UXCBASIC/tests/*.OUT` and `MSBASIC/tests/*.out` are
+  gitignored and stay local (1d306c9). The test sources in those folders are tracked. Goldens
+  change on disk only.
 - MSBASIC moved in (2026-10-19). `C:\dev\BASIC-M6502` was copied at its commit 52ae025, not
   changed; the user retires it.
   - `MSBASIC/` holds the tracked files and its own `CLAUDE.md`. The old repo's memory notes
@@ -1601,7 +1604,7 @@
    The docs step after 7g, 7h1 (`LOCATE`, `BEEP`, `PAUSE`), 7h2 (`WAIT`) and the docs step
    after 7h are done. `DATE` and `TIME` have their clock calls now (the clock step, Next). 7i1 (`EXIST`), 7i2 (`DISKFREE`) and
    7i3 (`DISKINFO`) are done, and the docs step after them (PLAN section 8: `CBIN.UXI`,
-   `DISKFREE`, `DISKINFO`). 7i4 (`WHICH`) is put off by the user (2026-10-16). 7i5
+   `DISKFREE`, `DISKINFO`). 7i4 is done as `WHERE`. 7i5
    (`HELP`), `PROMPT$` codes, short names, the boot shell, console color and `COLOR` are done,
    and the docs step after them, the 4 MB card, extended keys, ANSI output and Alt and Ctrl
    keys. Next, agreed with the user on 2026-10-17:
@@ -2840,9 +2843,140 @@
        - Tests: `BASLOAD` ok 0.8 s, `BASHELP` 0.7, `HELPBAS` 1.6 (golden list spliced from
          BASHELP's), `BASRUN` 0.6, `BASBOOT` 0.5. `make all verify` ok (1035 ms). ROM build
          979 ms, the new baseline; `build/SD.IMG` was written.
-     - Steps since the full suite: 4.
-     - Docs owed to the batch: a `HELP.TXT` topic `HELPBAS`, PLAN's utilities list, `HELP`,
-       `LOAD`, `SAVE`, `KILL`, `NAME` and `FILES` in `MSBASIC/CLAUDE.md`.
+     - Step 7 done (2026-10-20): the GW-BASIC full-screen editor (the user's request: "what
+       GW-BASIC does"). The user asked what `EDIT n` is; it is not built, and no answer came.
+       - ROM call 50 `con_screen` (`console.s`): the arrows, Ctrl+Left and Ctrl+Right a word,
+         Home, End, Ctrl+Home, Ctrl+End, Esc, Ins (a cursor move ends insert mode), Del,
+         Backspace, Tab. Enter returns the cursor's row, trimmed, from the start column on the
+         start row. A line is one row (`LINE_MAX` 80). A Ctrl+C caught in mode 2 ends the line
+         empty: `con_in` returns 0 then, while `con_end_key` is $FF. `con_file` is the handle-0
+         test, shared with `con_read`. VERA port 1 (`VERA_DATA1`, new in `mem.inc`) shifts a
+         row for Del and insert.
+       - The paste queue: `KBD_EXTENDED` $E0 then a scan code is an extended key; `\XE0\X48` in
+         a `.IN` is Up. Trap: x16emu -bas ends the paste at `\X00`. `kbd_pop` is the queue's
+         shift as a routine.
+       - MSBASIC `inline.s` calls `con_screen` in place of `con_line`: 0 bytes.
+       - Bank 0 +618 bytes (CODE +573, RODATA +45; estimate was 450), 7076 free below $FFA0.
+         KERNELRAM +3 (`scr_row`, `scr_col`, `scr_insert`).
+       - Not done: the insert-mode cursor shape, lines longer than a row. `EDIT n` and the
+         F-key soft keys were started, then cancelled by the user and moved to
+         `MSBASIC/TODO.md` section 6 with their design.
+       - New test `BASEDIT` (in `SHELL_ROM_TESTS`): insert, Del, Backspace, Esc, Ctrl+Left,
+         Ctrl+C, Up onto a listed line to fix it, INPUT past its prompt. ok 0.5 s.
+       - Tests: `BASBOOT` ok 0.7 s, `BASRUN` 0.5, `BASLOAD` 0.9, `BASHELP` 0.8, `HELPBAS` 1.5,
+         `SHTAB` 0.6, `SHELL` 0.5, `SHVARS` 0.6. `make verify` ok (792 ms). ROM build 932 ms
+         after a 3767 ms build that recompiled everything for the new `DOS.UXI`.
+     - `.IN` files untracked (bda8b39); `.gitignore` drops `tests/*.IN`, `UXCBASIC/tests/*.IN`.
+     - Done, M4 (2026-10-20, 72b6511): `tools/tests.py --msbasic [name ...]` types each
+       `MSBASIC/tests/name.bas` into MSBASIC at the shell, then `QUIT`, and compares the
+       transcript after the banner with `name.out` (the sim's), or `name.rom.out` where the
+       target differs by design. `--msbasic --update` writes `name.rom.out`; both are local.
+       - Test changes: `labels.bas` names its label `FINISH`, not `QUIT` (a 6502dos keyword: the
+         line `400 QUIT:` left BASIC). `vera.bas` pokes VRAM 0 with 66 before it reads it; the
+         ROM read random values there. Sim goldens regenerated, only the echoed lines changed.
+       - `name.rom.out` written for `hexbin` (FRE(0) -28008), `vera` (real VRAM), `textat` (no
+         Esc 7/8 or color codes; `con_cursor`/`con_colour`).
+       - 31 tests, run one at a time: 28 ok, 0.5 to 1.0 s each (`pause` 1.0). 3 fail, waiting
+         on the user:
+         - `files`: the 8th OPEN gives ?FILE NOT FOUND, the sim ?FILE LIMIT at the 11th. The
+           kernel's handles run out first. Fix proposed: in `handle_io.s`'s open, under
+           `DOS6502`, `cmp #ERR_TOO_MANY_FILES` / `beq @toomany`, 4 bytes. Then a `rom.out`.
+         - `linein`: lines of 80 and more are cut at 79 (`con_screen` is one row; known).
+         - `screen`: `con_screen` returns the whole row, so text left on the row right of a
+           typed line joins it: `COLOR 2:COLOR 255,4:PRINT "C"` typed on a row with old output
+           gave ?SYNTAX ERROR. Shown also with `PRINT 1` on a row holding `JUNK` at column 40:
+           ` 1  0`. GW-BASIC's editor does the same. Option: clear the rest of the start row
+           when `con_screen` starts. Plus the color codes, which need a `rom.out`.
+       - `tests.py`'s docstring: `\XE0` escaped, which ended a SyntaxWarning at each run.
+       - ROM build 1933 ms (recompiled after the revert of `console.s`). `BASBOOT` 0.5 s and
+         `BOOT` 0.4 s still ok with the normal mode. MSBASIC `make all` 819 ms; sim `labels` and
+         `vera` ok.
+     - Done, the 65C02 savings pass over `6502dos_extra.s` (2026-10-20), the user's request:
+       -31 bytes, `IORAM` -1 (`DOS_TICK`). Details in `MSBASIC/docs/changes.md`. Bank 2: 12853
+       used, 3531 free. `IORAM` 735 of 768.
+       - `TA_INK` merges by `eor`/`and #$0F`/`eor` (-5, -6 cycles) and shares `DOS_SETCOLOR`
+         with `TA_RESTORE` (-2); `COLOR` ends in `TA_INK` (-13); `DOS_R0NAME` for `K_OPEN`,
+         `KILL`, `FILES_FIRST` (-9); `K_JIFFY` keeps the tick on the stack (-2).
+       - Checked by hand with `VPEEK(1,1)` after `CLS`: `COLOR 3,5` gives $53, `TEXTAT ..,2`
+         then $52, `COLOR 12` and a `TEXTAT` with no color $5C.
+       - Not done, a proposal: the shared sources assemble as 65C02 for `6502dos`, but use no
+         65C02 opcode outside `.ifdef DOS6502`. `stz` and the like there need an `.ifdef` or
+         a macro at each site.
+       - Tests: `--msbasic` `textat` ok 0.7 s, `pause` 1.2, `hexbin` 0.7, `vera` 0.6; `screen`
+         and `files` fail as before. `BASLOAD` 0.9, `BASBOOT` 0.5, `BASHELP` 1.5, `BASRUN` 0.7.
+         MSBASIC `make all verify` ok (1236 ms), `make test` 31/31 (1246 ms). ROM build 1007 ms,
+         the new baseline.
+     - Full suite after the 65C02 pass: 56 tests, 0 failed, 48.2 s; the longest `SHREDIR`
+       2.0 s. Steps since the full suite: 0.
+     - Done, the card keeps the X16's files (2026-10-20), the user's request: a BASIC program
+       saved on `build/SD.IMG` was lost at the next build. HostFS (`-fsroot`) is out: x16emu
+       traps the stock KERNAL's entry points, and 6502DOS reads the card by SPI.
+       - `mksd.read(image)` returns each file and folder of a FAT32 image: the path, the bytes,
+         the time.
+       - `build.py` `make_card`: gathers `sd`, the build outputs, `tests/sd` and `card` in
+         `build/card`, `card` winning a shared name, then writes `SD.IMG` and `build/SD.SUM`
+         (each path and its SHA-1). Before that, `pull_card` copies into `card` what the X16
+         added or changed since `SD.SUM`, and deletes from `card` what it deleted. Without
+         `SD.SUM`, only paths not in `build/card` are copied. It prints `card: kept`/`deleted`.
+         `SD.IMG` open in x16emu: exit 1, "close x16emu".
+       - `card/` is gitignored. A build file deleted on the X16 comes back at the next build.
+       - Checked with a fake X16 save (an image rewritten by `mksd.make`): a new file, a
+         long-named folder and a changed `README.TXT` reached `card/` and the next image; a
+         second build kept nothing; deleting them on the card emptied `card/`.
+       - ROM build 1314 ms, the new baseline (+0.3 s: the copy to `build/card` and the read
+         back). `BOOT` ok 0.5 s. Steps since the full suite: 1.
+       - Docs owed: PLAN's card paragraph (line 1112) names `build.py` writing `SD.IMG` from
+         `sd` only.
+     - Done, test files in `C:\TEST` (2026-10-20), the user's request, to keep the root for
+       their own folders (`PROGRAMMING\BASIC` samples): `make_card` puts the `src/bas` COM
+       files but `CMDSHELL.COM` (ARGS, ASK, KEYTEST, SHOW) and the `tests/sd` entries in the
+       card's folder `TEST`. The test card `build/tests/SD.IMG` is unchanged. ROM build 1179 ms,
+       the new baseline. `BOOT` ok 0.5 s. Steps since the full suite: 2.
+     - Done, lower-case 8.3 names (2026-10-20): `mksd` gave a name that fits 8.3 only its 8.3
+       entry, so the user's `sd/programming/basic` showed as `BASIC`. A name that fits 8.3 with
+       a lower-case letter now also gets a long name, as typed, with its upper-case 8.3 name as
+       the alias. `startup.cmd` now shows in lower case too. `tests/sd` has no such name, so the
+       tests are unchanged. ROM build 1363 ms, the new baseline. `BOOT` ok 0.5 s. Steps since
+       the full suite: 3.
+     - Done, LIST with no space (2026-10-20): MSBASIC's `LIST` printed a space before each line
+       number, the sign place of `FOUT`. `LIST_NUMBER` moves to `float.s` for `CONFIG_HOSTED`
+       and always skips it, so `sim` and the ROM match. 6 bytes and 7 cycles a line saved in
+       bank 2; `sim` 17 bytes more; `make verify` matches. The 19 local `.out` goldens with
+       LIST output and `hexbin.rom.out`, `textat.rom.out` are updated. ROM `bitfn`, `hexbin`,
+       `textat`, `block` ok 0.5 to 0.6 s; ROM `files` fails only on the known FILE LIMIT line.
+       ROM build 1275 ms, the new baseline. Steps since the full suite: 4.
+     - Done, HDIR (2026-10-20): a HotDIR port from the user's FreeBASIC source
+       (github.com/jakebullet70/HotDir). `src/utils/hotdir/HDIR.UXB` compiles to the card's
+       `UTILS\HDIR.COM`, 13372 bytes; its source goes to `UTILS\SRC\HOTDIR`. `build.py`
+       `compile_utils` does each `src/utils/FOLDER`; `tests.py` puts `build/UTILS` on the test
+       card. The user's choices: the name `HDIR`, `src/utils/hotdir`, a short X16 list of
+       extension colors, the extras `-a` (skip hidden and system), `-t` dates (and `-d`), plain
+       output when redirected, `C:\UTILS` in `PATH$` (the user's `sd/startup.cmd`).
+       - Switches `-1`..`-9`, `-l`, `-n -e -d -s`, `-t`, `-a`, `-c`, `-?`, combinable. 256
+         names at most, 43-byte records in an 11 KB table, insertion sort of an index array.
+         Pause at each full screen; Esc or Ctrl+C there ends it. The footer is the counts and
+         `DISKFREE`'s free space and size.
+       - Tests `HDIR` 1.3 s, `HDIRARG` 1.2 s, local `.IN`/`.OUT`. `TREE` and `FILES` goldens
+         updated for the folder `UTILS` in the root; `SHTAB`, `WHERE`, `CMDLETS`, `DIRS`,
+         `BASBOOT` ok. Build 1595 ms, the new baseline. Steps since the full suite: 5.
+     - Done, HDIR plain output (2026-10-20; the user agreed the asm): `api_ioctl` subfunction
+       0, device info: r0 = the driver's `DEV_` bits for a device, 0 for a file. +26 bytes in
+       the kernel. `DOS.UXI`: `IOCTL_INFO` and `DEVICE_CHAR`, `_CLOCK`, `_NUL`, `_STDOUT`,
+       `_STDIN`. HDIR is plain when handle 1 lacks `DEVICE_STDOUT` (a file, `NUL`): no colors,
+       no pause, no `-c` clear, lines drawn with `-`, `|`, `+`. The footer counts its own
+       columns, not `POS(0)`, which is the screen's column. HDIR 13713 bytes (+341).
+       - Tests `HDIRRED` 0.7 s (new, local: `HDIR -1c TO \OUT.TXT`, `HDIR DOCS TO NUL`),
+         `HDIR` 1.3 s, `HDIRARG` 1.1 s, `MORE` 0.8 s, `HEAD` 1.0 s. Build 1598 ms, the new
+         baseline (a full rebuild after the kernel and `DOS.UXI` change took 4065 ms). Steps
+         since the full suite: 6.
+     - Done, the doc batch (2026-10-20). `HELP.TXT`: topics `HELPBAS` and `HDIR`. PLAN:
+       `HELPBAS`, the card's `\UTILS`, `HDIR`, the `src/utils` folder row, `ioctl` subfunction
+       0 under the driver header, the card paragraph (`card`, `SD.SUM`, `\TEST`), section 11's
+       utilities. `MSBASIC/CLAUDE.md`: `HELP`, `LOAD`, `SAVE`, `KILL`, `NAME`, `FILES`,
+       `K_READ`'s buffer, `con_screen`. `MSBASIC/TODO.md` section 6. No docs are owed.
+       - The `CMDLETS` golden's topic list gains `HELPBAS HDIR`; the free counts are
+         unchanged. `CMDLETS` ok 1.6 s. Build 1964 ms, the new baseline. Steps since the full
+         suite: 7; the full suite is due next.
      - Open: the user's SAVE error, not reproduced; wait for the message and steps.
    - To do: find what the 492 bytes of 7i2b cost in `DISKFREE.CBI` (1861 to 2353 bytes), with
      pyuxc's link map, and cut them. Ideas: read `P2$` once, drop `FREE_TEXT` and pass the
@@ -3185,12 +3319,6 @@
   IRQ and NMI vectors with a trampoline to bank 0 in every tool bank. A ROM tool uses
   `$0801–$9EFF` as a COM does. A tool in UXCBASIC waits for ROM-able output (PLAN section 12
   item 6). X16Edit calls the stock KERNAL and CBDOS, and is GPL v3.
-- To do (the user, 2026-10-18): `HOTDIR`, a DOS utility in `src/dos`, a directory listing in
-  color. Not started; the design is the user's to agree. Models, all Unlicense:
-  - `github.com/jakebullet70/HotDir`: Windows 64-bit, FreeBASIC (`hd.bas` and `.bi` files).
-  - `github.com/jakebullet70/HDir-FreeDOS`: FreeDOS, FreeBASIC.
-  - `github.com/jakebullet70/HDir-XC16`: the X16, nxtBasic. The first run writes `H.DAT` to
-    the root; it holds the colors and the file extensions, and the user edits it.
 - Shell memory, measured 2026-10-15 from pyuxc's link: code `$0801–$2BC2` (9154 bytes), the
   runtime `$2BC3–$3931` (3439), the strings `$3932–$3AA2` (369), the variables (47), then
   6953 bytes of arrays, strings and SUB locals outside the file. The shell ends at `$55FB`:

@@ -105,6 +105,25 @@ development, and `docs/changes.md` explains how each change was made. Write a re
 build supports, with syntax, a short example and its errors, and marks what is new compared
 with Microsoft BASIC. Keep it updated with each new feature.
 
+## 6. GW-BASIC's EDIT and soft keys (6502dos target)
+
+- **`EDIT n`.** Lists line n with no OK and puts the cursor at its start, for the full-screen
+  editor. A missing line is ?UNDEF'D STATEMENT ERROR. Design: `LINGET`, `FNDLIN`, point
+  `GOSTROUT` at an `EDIT_END` hook (as SAVE does), drop NEWSTT's return, `jmp LIST_LINE`.
+  `EDIT_END` puts `GOSTROUT` back and moves the cursor to column 0 of the line's row with
+  `con_cursor`; LIST prints a CRDO after the line when another line follows, so the row is
+  one up when the column is 0. A shared `DOS_HOOK`/`DOS_UNHOOK` pair for SAVE and EDIT saves
+  about 9 bytes. Estimate: 55 bytes and 6 of keyword table.
+- **F1 to F10 soft keys, `KEY n,a$`, `KEY LIST`.** ROM: `con_screen` takes r1 = 10 slots of
+  16 bytes, each a text ended by 0; F1 to F10 type their slot, a CR as Enter. One KERNELRAM
+  byte holds the offset of the next character; 15, the 0 that ends slot 0, means none.
+  Estimate: 36 bytes of bank 0. MSBASIC: `KEY_TABLE` (160 bytes) in `IORAM`, which moves to
+  `$9B80` (BASIC loses 128 bytes), GW-BASIC's defaults packed in ROM, with FILES, EDIT, HELP
+  and CLS for LPT1, TRON, TROFF and SCREEN 0,0,0. `KEY LIST` shows a control character as `^`
+  and a letter. `LIST` needs `TOKEN_LIST`. Estimate: 200 bytes.
+- Not planned: `KEY ON`/`KEY OFF` and the key labels on the bottom row, which need a scroll
+  region in the console.
+
 ## Parked (long term)
 
 Not scheduled. They need the new kernal's file calls first.

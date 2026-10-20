@@ -52,6 +52,22 @@ orders of the 6502DOS `CLAUDE.md` apply here. All paths below are relative to `M
   binaries do not change. `tools/build.py` of the 6502DOS repo links the image as bank 2 of
   the ROM and assembles `src/6502dos_com.s` to `MSBASIC.COM`, the program that starts it.
   `MSBASIC NAME.BAS` loads NAME.BAS and runs it; `QUIT [n]` returns to the shell.
+  The file keywords, in `6502dos_extra.s`, details in `docs/changes.md`:
+  - `HELP [topic]` (`CONFIG_HELP`), direct mode only, prints a topic of `C:\DOS\HELPBAS.HLP`,
+    or with no topic the list. A token in the topic is spelled out, so `HELP TAB(` finds
+    `TAB`. In a program it is ?SYNTAX ERROR.
+  - `LOAD "name"` does a NEW and reads the program text, as `MSBASIC NAME.BAS` does; in a
+    program it runs the loaded program. A missing file keeps the program.
+  - `SAVE "name"` writes the program as LIST does, with no space before a line number, and
+    replaces a file of that name. It ends a program.
+  - `KILL "name"` deletes a file. `NAME "old" AS "new"` renames one; a new name that is taken
+    is ?FILE EXISTS ERROR.
+  - `FILES ["pattern"]` lists the names as the shell's `FILES` does, the current directory
+    with no pattern. A directory's name lists its names.
+  - `K_READ` reads a file 64 bytes a call into `DOS_BUF`; a read of another handle seeks the
+    holder back by its unread bytes.
+  - Typed lines go through `con_screen`, the full-screen editor: Up onto a listed line edits
+    it.
 - `Makefile` (run in Git Bash): `make all`, `make <target>`, `make test` (see `tests/`), `make verify` (byte-compare with the
   original ROM dumps; prints only mismatches), `make clean`. Output goes to `build/`.
 - `sim` target (our addition): headless build for sim65. Files `defines_sim.s`, `sim_extra.s`,

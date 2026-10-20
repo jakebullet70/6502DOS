@@ -391,6 +391,8 @@ Drivers follow MS-DOS 2.0's device drivers.
   The kernel then returns error 1.
 - Input and output take the buffer in `r0` and the count in `r1`, and return the bytes moved in
   `r1`.
+- `ioctl` subfunction 0 returns a device's attribute byte in `r0`, and 0 for a file. `CON`
+  gives `$83`, `NUL` `$84`.
 - `NUL` is the head of the chain. A driver loaded by `DEVICE=` in `CONFIG.SYS` joins the chain
   after it, so it replaces a built-in driver of the same name.
 - A block driver only reads and writes 512-byte sectors. The kernel holds the FAT code, as
@@ -1003,6 +1005,30 @@ Short names:
     and 2 on Esc at a question. A missing parameter, a bad switch, a third name, a path not
     found, a copy into itself and `Insufficient disk space` give 4. A read or write error
     prints its error message and gives 5.
+- `HELPBAS [topic]` is a DOS utility, `HELPBAS.COM`. It prints the help on an MSBASIC keyword
+  from `C:\DOS\HELPBAS.HLP`, and with no topic lists the topics.
+  - `HELPBAS.HLP` has the format of `HELP.TXT`, with CR LF line ends. MSBASIC's `HELP [topic]`
+    reads the same file.
+  - No help for the topic gives exit code 1, and no `HELPBAS.HLP` exit code 2.
+- The utilities lie in the card's folder `\UTILS`, each with its source in `\UTILS\SRC\FOLDER`.
+  The build compiles each `src/utils/FOLDER/NAME.UXB` to `build/UTILS/NAME.COM`, and copies
+  each `src/utils/FOLDER` to `build/UTILS/SRC/FOLDER`. `sd/startup.cmd` puts `C:\UTILS` in
+  `PATH$`.
+- `HDIR [d:][path] [-1..-9] [-l] [-n] [-e] [-d] [-s] [-t] [-a] [-c] [-?]` is a utility,
+  `HDIR.COM`, for the command line. It lists a directory as a grid in colors, after HotDIR
+  (`github.com/jakebullet70/HotDir`, Unlicense).
+  - A path that names a directory lists every name in it. Any other path is a directory and a
+    pattern: `DOCS\*.TXT`.
+  - Directories come first, then files, each sorted by name, case aside. `-e` sorts by
+    extension, `-d` by date and time, `-s` by size, `-n` by name. A tie sorts by name.
+  - `-1` to `-9` set the columns, 2 by default. `-l` runs the names across each row. `-t`
+    shows the dates. `-a` skips hidden and system names. `-c` clears the screen first.
+    Switches may share one `-`: `-2le`.
+  - Directories are purple, hidden and system names red, and each file takes the color of its
+    extension's group. The last row gives the counts and the drive's free space and size.
+  - It stops at each full screen; Esc or Ctrl+C there ends it. At most 256 names are listed.
+  - When handle 1 is not the console (`ioctl` subfunction 0 lacks `$02`), the output is
+    plain: no colors, no stops, no clear, and the lines drawn with `-`, `|` and `+`.
 - `WHERE name [SILENT]` prints the path of the program the shell runs for `name`:
   `C:\DOS\HEAD.COM`. It is for the command line and scripts.
   - The look-up is the shell's. A name with an extension is looked for as typed, any other
@@ -1091,6 +1117,7 @@ Folders:
 | `lib/` | the UXCBASIC library: `DOS.UXI`, `HEAP.UXI`, `KEYS.UXI`, `CONS.UXI` and `STR.UXI` |
 | `src/scom/` | the commandlets and `SCOM.UXI` |
 | `src/dos/` | the DOS utilities and their text files |
+| `src/utils/` | the utilities, a folder each, for the card's `\UTILS` |
 | `tools/` | `api.py`, the generator, `build.py`, `tests.py` |
 | `tools/cc65/` | `ca65.exe`, `ld65.exe` and the cc65 licence |
 | `tests/` | test programs and their expected output |
@@ -1099,7 +1126,8 @@ Folders:
 
 - `build.py` runs ca65 and ld65 from `tools/cc65/bin` only, never from `PATH`.
 - `build.py` assembles the ROM, compiles each `src/bas/NAME.UXB` to `build/bas/NAME.COM` with
-  `tools/uxb.py`, and puts the COM files in the root of the SD card image. A compile takes under
+  `tools/uxb.py`, and puts `CMDSHELL.COM` in the root of the SD card image and the others in
+  `\TEST`. A compile takes under
   0.1 s.
 - `uxb.py` compiles with pyuxc for its default target, 6502DOS. A source compiles again when its
   COM file is older than the source, than `UXCBASIC/tpl/UXDOS/UXC.TPL.BIN`, or than a
@@ -1109,8 +1137,13 @@ Folders:
 - `tools/mksd.py` writes an SD card image from a folder: an MBR, one partition of type `$0C` at
   sector 2048, and FAT32. A name that is 8.3 goes in as its 8.3 name in capitals. Any other
   name, up to 255 characters, goes in as a long name as typed, with an 8.3 alias `BASE~N.EXT`.
-  `build.py` makes `build/SD.IMG` from the folder `sd`, 4 MB with 1 sector per cluster: 6016
-  clusters, 3008 KB.
+  `build.py` makes `build/SD.IMG`, 4 MB with 1 sector per cluster: 6016 clusters, 3008 KB.
+- The card holds the folder `sd`, the build outputs, and the folder `card`, which wins a name
+  they share. The `src/bas` programs but `CMDSHELL.COM`, and the entries of `tests/sd`, go in
+  the folder `\TEST`. `build/SD.SUM` lists each path and its SHA-1.
+- Before it writes the card, `build.py` copies into `card` each file and folder that the X16
+  added to `build/SD.IMG` or changed since `SD.SUM`, and deletes from `card` each one the X16
+  deleted. `card` is gitignored. A build file deleted on the X16 comes back at the next build.
 - `tools/fatcheck.py IMAGE` checks a card image: the FATs are equal, no cluster is lost or in
   two chains, and each file's chain fits its size. Each run of long-name entries must count
   down from the entry with bit 6 to 1, hold one checksum, type 0 and cluster 0, and end at the
@@ -1247,7 +1280,7 @@ Each step boots and shows something, and each has a test.
    7i. The commandlets of section 8, one a part: 7i1 `EXIST`, 7i2 `DISKFREE`, 7i3 `DISKINFO`,
        7i4 `WHERE`, 7i5 `HELP`, 7i6 `DATE`, `TIME` and `UPTIME` on the clock calls. `MEM`
        comes with step 10. The DOS utilities `VIEW`, `TREE`, `MORE`, `HEAD`, `TAIL`,
-       `GREP` and `XCOPY` follow, one a part.
+       `GREP`, `XCOPY` and `HELPBAS`, and the utility `HDIR`, follow, one a part.
 8. `SYSINIT.COM` with `CONFIG.SYS` and `DEVICE=`. Until then the ROM runs `C:\CMDSHELL.COM`
    itself (section 8).
 9. Layer 1 moves to UXCBASIC, one part at a time, as the compiler features land. The parts that

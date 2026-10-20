@@ -191,3 +191,24 @@ XCOPY source [target] [-s] [-e] [-p] [-l] [-y] (Command line only)
   Esc at a question stops the copy.
   XCOPY C:\DOCS C:\BAK -s
   XCOPY DOCS\*.TXT BAK -sp
+:HELPBAS
+HELPBAS [topic]                 (Command line only)
+  Prints the help on the MSBASIC keyword topic, from C:\DOS\HELPBAS.HLP.
+  With no topic it lists the topics. Small letters are the same as capitals.
+  HELPBAS PRINT
+  HELPBAS str$
+:HDIR
+HDIR [d:][path] [-1..-9] [-l] [-n -e -d -s] [-t] [-a] [-c] (Command line only)
+  Lists the directories and files of path, or of the current directory,
+  as a grid in colors. A path such as DOCS\*.TXT lists the names that match.
+  Directories come first. Names sort by name, case aside.
+  -e sorts by extension, -d by date, -s by size, -n by name.
+  -1 to -9 set the number of columns, 2 when left out.
+  -l runs the names across each row. -t shows the dates.
+  -a skips hidden and system names. -c clears the screen first.
+  -? lists the switches. Switches may share one -: -2le.
+  The listing stops at each full screen. Esc or Ctrl+C there ends it.
+  Output to a file or to NUL has no colors and no stops.
+  HDIR is in C:\UTILS.
+  HDIR C:\DOCS -1t
+  HDIR *.COM -s
