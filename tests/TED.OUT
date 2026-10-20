@@ -4,6 +4,13 @@ For the Commander X16
 C>PATH$ = "C:\DOS"
 C>TED
 Required parameter missing
+C>TED MY FILE.TXT
+Too many parameters
+C>TED "MY NOTES.TXT"
+[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[30;47m MY NOTES.TXT  Ln 1  Col 1  New file[KF1 Help[0m[0m[2JTED - The Tiny Editor... Bye!
+C>
+C>TYPE "MY NOTES.TXT"
+hi
 C>TED NOSUCH.TXT
 [K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[30;47m NOSUCH.TXT  Ln 1  Col 1  New file[KF1 Help[0m[0m[2JTED - The Tiny Editor... Bye!
 C>
