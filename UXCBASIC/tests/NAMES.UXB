@@ -1,9 +1,0 @@
-' names: upper and lower case, _, digits, the same base with each mark
-DIM N AS UBYTE, NW AS UWORD
-VAR my_count_2 AS UWORD
-n = 7
-NW = 700
-MY_COUNT_2 = $BEEF
-print n; " "; nW; " "; My_Count_2
-LABEL_1:
-END

@@ -1,8 +1,0 @@
-PRINT "GOTO"
-GOTO START
-BACK:
-PRINT "BACK"
-END
-  start :
-PRINT "START"
-goto back

@@ -1,2 +1,0 @@
-PRINT "LASTEND"
-END

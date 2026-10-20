@@ -1,3 +1,0 @@
-DIM A$ * 5
-SYS $FFD2
-SYS A$

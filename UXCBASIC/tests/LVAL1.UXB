@@ -1,5 +1,0 @@
-' LVAL1 -- LVAL reads a number in 32 bits
-DIM L AS LONG, U AS ULONG
-U = LVAL("3000000000")
-L = LVAL("-1234567")
-PRINT U; L; LVAL("123456") + 1

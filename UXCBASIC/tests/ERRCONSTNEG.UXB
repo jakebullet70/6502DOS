@@ -1,2 +1,0 @@
-' a CONST below 0 needs a signed type
-CONST N AS UBYTE = -1

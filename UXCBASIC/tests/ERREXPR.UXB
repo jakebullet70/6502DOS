@@ -1,2 +1,0 @@
-DIM A AS UWORD, B AS UWORD
-A = (B + 1

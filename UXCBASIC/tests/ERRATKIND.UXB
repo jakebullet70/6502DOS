@@ -1,1 +1,0 @@
-DIM B(4) AS UBYTE AT $0400

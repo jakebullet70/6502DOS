@@ -1,2 +1,0 @@
-DIM Z AS UWORD
-Z = 7 MOD (3 - 3)

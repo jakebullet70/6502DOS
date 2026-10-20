@@ -1,5 +1,0 @@
-' KEEPOPEN -- a #KEEP without its #ENDKEEP is an error at its line
-#KEEP
-SUB INSIDE()
-  PRINT "INSIDE"
-ENDSUB

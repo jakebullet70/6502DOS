@@ -1,4 +1,0 @@
-DIM X AS UWORD
-SUB F()
-ENDSUB
-X = F()

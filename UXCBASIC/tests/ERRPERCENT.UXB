@@ -1,2 +1,0 @@
-' % is not a mark: a WORD is declared AS UWORD
-DIM A%

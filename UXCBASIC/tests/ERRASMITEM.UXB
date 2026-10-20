@@ -1,2 +1,0 @@
-DIM N AS UBYTE
-ASM $A9, N

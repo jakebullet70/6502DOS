@@ -1,3 +1,0 @@
-PRINT 1
-DIM A AS BYTE, _
-    A AS UWORD

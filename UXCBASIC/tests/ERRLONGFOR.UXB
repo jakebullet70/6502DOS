@@ -1,4 +1,0 @@
-' a FOR counter is a BYTE or a WORD
-DIM L AS LONG
-FOR L = 1 TO 10
-NEXT L

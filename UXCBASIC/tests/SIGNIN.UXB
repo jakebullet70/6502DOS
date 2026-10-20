@@ -1,5 +1,0 @@
-' SIGNIN -- INPUT into signed variables reads a minus sign
-DIM B AS BYTE, W AS INT
-INPUT B
-INPUT W
-PRINT B; W; B + W

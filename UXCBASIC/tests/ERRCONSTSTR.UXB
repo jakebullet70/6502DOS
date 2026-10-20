@@ -1,2 +1,0 @@
-DIM A$ * 4
-CONST B$ = "X" + A$

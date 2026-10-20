@@ -1,3 +1,0 @@
-' POSSCREEN -- POS(2) and POS(3) read the screen's rows and columns
-PRINT POS(2); POS(3)
-PRINT POS(3) - POS(2)

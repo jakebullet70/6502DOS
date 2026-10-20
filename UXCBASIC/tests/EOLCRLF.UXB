@@ -1,5 +1,0 @@
-' CR LF line ends
-DIM A AS UWORD
-A = 1234
-PRINT "CRLF "; A
-END

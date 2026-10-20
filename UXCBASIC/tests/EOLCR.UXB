@@ -1,1 +1,0 @@
-' CR line ends, as TURBO writes themDIM A AS UWORDA = 4321PRINT "CR "; AEND

@@ -1,2 +1,0 @@
-DIM B(10) AS UBYTE
-B(10) = 1
