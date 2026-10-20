@@ -91,6 +91,35 @@ NAME? AGE? [T] 0
 C>PRINT "Q" | INPUT N$ TO Q.TXT
 C>LIST Q.TXT
 ? 
+C>MD TMP
+C>TEMP$ = "C:\TMP"
+C>PRINT 1 | FILES C:\TMP
+.                 <DIR>
+..                <DIR>
+PIPE1.$$$             3
+     3 File(s)
+C>TEMP$ = "C:\TMP\"
+C>PRINT "T" | ASK | FILES C:\TMP
+.                 <DIR>
+..                <DIR>
+PIPE1.$$$             3
+PIPE2.$$$            19
+     4 File(s)
+C>FILES C:\TMP
+.                 <DIR>
+..                <DIR>
+     2 File(s)
+C>TEMP$ = "C:\NONE"
+C>PRINT 1 | ASK
+Path not found
+C>X$ = "C:\0123456789012345678901234567890123456789"
+C>TEMP$ = X$ + X$ + X$
+C>PRINT 1 | ASK
+Path not found
+C>TEMP$ = ""
+C>RD TMP
+C>PRINT "B" | ASK
+NAME? AGE? [B] 0 
 C>VERSION
 UXDOS16 V0.1.0
 C>END
