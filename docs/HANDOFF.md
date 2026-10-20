@@ -2521,6 +2521,47 @@
        - Docs owed, added: PLAN's RAM table (`$0400-$05FF` free, `$0600` no sector buffer,
          bank 0 `$AB00`), PLAN line 377 (the kernel's sector buffer), section 6 (who fills
          the block request), the DPB and SFT fields if PLAN lists them.
+   - MSBASIC in ROM (planned 2026-10-20), after F7b. Steps M0 to M5; each asm step asks first.
+     - Facts:
+       - The `sim` build is 12068 bytes. It goes in ROM bank 2, `$C000-$FFFF`; the ROM image
+         grows from 32 KB to 48 KB.
+       - The `sim` zero page runs from `$00` to about `$DA`, plus `$F0-$FA`: about 165
+         bytes. `CHRGET` is at `$C3`. `TXTPTR` sits inside `CHRGET` and 19 places read
+         `(TXTPTR),y`, so it must stay in zero page.
+       - A program owns `$22-$7F`, 94 bytes. The kernel owns `$80-$FF`; `$DB-$FF` is unused.
+       - `exec` saves a parent's `r0` to `$7F` and its pages from `$0700` to `PSP_TOP`.
+         It does not save `$0200-$05FF`. BASIC's RAM data goes at `$0801`, before the
+         program text, so it survives a child.
+       - The console obeys ANSI.SYS sequences, so `CLS`, `LOCATE`, `COLOR` and `TEXTAT` work
+         as in the sim.
+     - M0, the zero page audit, no code: every MSBASIC zero page byte, its users, and
+       whether it needs zero page (indirect use or speed). A layout in `$22-$7F`, with the
+       rest moved to the RAM data at `$0801`. The user picks the layout.
+     - M1, a `uxdos` target in `MSBASIC/` (`defines_uxdos.s`, `uxdos.cfg`):
+       - the M0 layout;
+       - `K_OPEN`, `K_CLOSE`, `K_READ`, `K_WRITE` on the API through the gate entries at
+         `$0340`, with `OPEN` modes as in 6d;
+       - `ISCNTC` on `con_break` in `BREAK_CATCH`, `K_JIFFY` on the clock, `POS(1)` on
+         `con_cursor`, and the VERA primitives on the hardware;
+       - bank 2's IRQ entry at `$FFA0` and its vectors at `$FFFA`, as in `bank1.s`.
+
+       `make verify` and `make test` must still pass. The target is not in the ROM yet.
+     - M2, bank 2 in the ROM:
+       - `build.py` builds the `uxdos` target and links it as bank 2.
+       - `BASIC.COM`, a stub of a few bytes, selects ROM bank 2 and calls the cold start. Its
+         `RTS` is `exit`.
+       - A statement ends BASIC and returns to the shell.
+       - Test `BASBOOT`: the shell runs `BASIC`, `PRINT 1+1`, then back to the shell.
+     - M3, files: `OPEN`, `CLOSE`, `PRINT#`, `INPUT#`, `GET#` on the SD card. `LOAD` and
+       `SAVE` of program text. One test.
+     - M4, `tests.py` runs MSBASIC's `tests/*.bas` on the ROM against their `.out`.
+     - M5, docs: PLAN sections 2, 3 and 11, `HELP.TXT`, `MSBASIC/CLAUDE.md` and
+       `MSBASIC/docs/changes.md`.
+     - Open questions for the user:
+       - the zero page layout (M0);
+       - the start: the `BASIC.COM` stub, or a ROM program entry in `exec`;
+       - the name of the statement that ends BASIC: `SYSTEM` (GW-BASIC) or `BYE`;
+       - whether the `uxdos` target may use 65C02 opcodes; `MSBASIC/CLAUDE.md` sets NMOS only.
    - To do: find what the 492 bytes of 7i2b cost in `DISKFREE.CBI` (1861 to 2353 bytes), with
      pyuxc's link map, and cut them. Ideas: read `P2$` once, drop `FREE_TEXT` and pass the
      `MID$` straight to `SYS_STRINGS_SET`, reuse `DRIVE_NAME` for the text (11 bytes of RAM).
