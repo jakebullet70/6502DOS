@@ -2617,9 +2617,11 @@
        - The start is a stub, `MSBASIC.COM`.
        - `EXIT` ends BASIC and returns to the shell. `END` ends the program and returns to
          BASIC's prompt, as now.
-     - Proposed for `INPUTBUFFER`, waits on the user: page `$08`, after the stub and the 66 bytes
-       of RAM data, 81 bytes, with the 5 bytes `INPUTBUFFER-5` to `-1` in front; the program
-       text starts at `$0901`.
+       - `INPUTBUFFER` is on page `$08`, after the stub and the 66 bytes of RAM data, 81 bytes,
+         with the 5 bytes `INPUTBUFFER-5` to `-1` in front. The program text starts at `$0901`.
+       - The `uxdos` target may use 65C02 opcodes. The `sim` target and `make verify` stay
+         NMOS.
+     - Why page `$08` for `INPUTBUFFER`:
        - `$0200` fails: it is `CON_LINE` and the monitor's line, `exec` does not save it, and
          `INPUTBUFFER-5` to `-1` land in `$01FB-$01FF`.
        - The buffer must not cross a page (`INPUTBUFFERX,x`). No program text or string may share
@@ -2648,9 +2650,6 @@
      - M4, `tests.py` runs MSBASIC's `tests/*.bas` on the ROM against their `.out`.
      - M5, docs: PLAN sections 2, 3 and 11, `HELP.TXT`, `MSBASIC/CLAUDE.md` and
        `MSBASIC/docs/changes.md`.
-     - Open questions for the user:
-       - where `INPUTBUFFER` goes (above);
-       - whether the `uxdos` target may use 65C02 opcodes; `MSBASIC/CLAUDE.md` sets NMOS only.
    - Rename (2026-10-20, the user): `UXDOS16` is `6502DOS` in every tracked file but `attic/`,
      and in the memory notes. The ROM is `build/6502DOS.ROM`, with `.MAP` and `.LBL`; pyuxc's
      target is `"6502dos"`; `UXCBASIC/tests.py`'s `UXDOS16_REPO` is `DOS_REPO`. The names
@@ -2659,6 +2658,9 @@
        baseline. Tests: `BOOT` ok 0.5 s, `SHBOOT` 0.5, `DISK` 0.5, `CMDLETS` 1.6, `TARGET`
        0.4, UXCBASIC `ARRAY1` 0.5. 50 goldens changed in the banner only.
      - Steps since the full suite: 1.
+   - Decisions recorded (2026-10-20), docs only, no test: `INPUTBUFFER` on page `$08`, 65C02
+     for the `uxdos` target. Doc edits go in one commit per batch. Steps since the full
+     suite: 2.
    - To do: find what the 492 bytes of 7i2b cost in `DISKFREE.CBI` (1861 to 2353 bytes), with
      pyuxc's link map, and cut them. Ideas: read `P2$` once, drop `FREE_TEXT` and pass the
      `MID$` straight to `SYS_STRINGS_SET`, reuse `DRIVE_NAME` for the text (11 bytes of RAM).

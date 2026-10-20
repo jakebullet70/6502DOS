@@ -119,6 +119,10 @@ is the order of `sim`.
 The other 66 bytes go to the RAM data at `$0801`: the 71 bytes of the second table less
 `CURLIN`, `VALTYP` and `EOLPNTR`.
 
+`INPUTBUFFER` is on page `$08`, after the stub and the RAM data: 81 bytes, with the 5 bytes
+`INPUTBUFFER-5` to `-1` in front. It must not cross a page, and no program text or string may
+share its page. The program text starts at `$0901`.
+
 Cost: about 328 instructions take the absolute form, so the ROM grows by about 328 bytes. Each
 run of one costs 1 cycle more; a `zp,x` that becomes `abs,x` costs nothing more unless it
 crosses a page.

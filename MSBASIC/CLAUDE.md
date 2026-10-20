@@ -14,7 +14,8 @@ orders of the 6502DOS `CLAUDE.md` apply here. All paths below are relative to `M
 - Run `make verify` after a change to a shared source; `cbmbasic1` and `cbmbasic2` must match.
 
 - `m6502.asm` is frozen history. Do not edit it. Work goes into `src/` (ca65).
-- CPU is NMOS 6502 only. No 65C02 opcodes. See `docs/asm/6502-notes.md`.
+- CPU is NMOS 6502 only, with no 65C02 opcodes, in every target but `uxdos`. The `uxdos`
+  target, for the 6502DOS ROM, may use 65C02 opcodes. See `docs/asm/6502-notes.md`.
 - `m6502.asm` is about 50k tokens. Never read it whole; grep, then read line ranges.
 - Use `git mv` / `git rm` for tracked files.
 - Log every change to `src/` (what and why) in `docs/changes.md`, in the same commit.
