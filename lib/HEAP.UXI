@@ -12,9 +12,10 @@ NAMESPACE HEAP
   CONST RAM_BANK AS UWORD = $0000, PSP_HEAP AS UWORD = $0701
   CONST VARBANK AS UBYTE = 21, SYS_STRINGS_BASE AS UWORD = $A00C
   ' System descriptors 0 to 8 are the slots P1$ to P9$, 9 is PATH$, 10 is PROMPT$, 11 is
-  ' EDITOR$ and 12 holds the shell's BIND aliases (PLAN section 8).
+  ' EDITOR$, 12 holds the shell's BIND aliases (PLAN section 8) and 13 is TEMP$.
   CONST PATH_STRING AS UWORD = $A01E, PROMPT_STRING AS UWORD = $A020
   CONST EDITOR_STRING AS UWORD = $A022, BIND_STRING AS UWORD = $A024
+  CONST TEMP_STRING AS UWORD = $A026
 
   ' Takes a string of LENGTH bytes for the descriptor at DESCRIPTOR, its length byte set.
   ' Returns the address of the length byte in the heap's bank, 0 on an error.

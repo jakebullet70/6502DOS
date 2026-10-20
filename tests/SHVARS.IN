@@ -62,6 +62,8 @@ PROMPT$ = "[$N$Q$L$B$$$X]$_$P$g"
 PROMPT$ = ""
 SETSYS EDITOR$ = "ED" + "IT2"
 SETSYS PROMPT$="X16>"
+TEMP$ = "C:\" + "TMP"
+PRINT TEMP$
 SETSYS
 SETSYS CURDIR$ = "C:\"
 SETSYS A$ = "X"

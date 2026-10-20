@@ -62,11 +62,12 @@ DIM ALIAS_END AS UBYTE
 ' else 0. REDIRECTED is 1 for TO and APPEND, 0 for FROM.
 DIM SAVED_HANDLE AS UWORD, REDIRECTED AS UBYTE
 ' The pipe. PIPE_TEXT is the line after the first |. PIPE_PATH is the pipe file the last
-' statement wrote, C:\PIPE1.$$$ or C:\PIPE2.$$$, and PIPE_NUMBER its digit, 1 or 2; 0 when the
+' statement wrote, PIPE1.$$$ or PIPE2.$$$ in the directory of TEMP$, or in the root of the
+' current drive when TEMP$ is empty. PIPE_DIGIT is the address of its digit, and PIPE_NUMBER the digit, 1 or 2; 0 when the
 ' line has no |. While handle 1 goes to a pipe file, PIPE_OUTPUT is the handle that keeps what
 ' it was; PIPE_INPUT likewise for handle 0; else 0.
-DIM PIPE_TEXT AS STRING * 128, PIPE_PATH AS STRING * 12
-DIM PIPE_OUTPUT AS UWORD, PIPE_INPUT AS UWORD, PIPE_NUMBER AS UBYTE
+DIM PIPE_TEXT AS STRING * 128, PIPE_PATH AS STRING * 128
+DIM PIPE_OUTPUT AS UWORD, PIPE_INPUT AS UWORD, PIPE_DIGIT AS UWORD, PIPE_NUMBER AS UBYTE
 
 ' The script is the file at the full path SCRIPT_PATH. SCRIPT_HIGH:SCRIPT_LOW is the 32-bit
 ' position of the next line. The read-ahead is the first BUFFER_COUNT bytes of COPY_BUFFER, and
@@ -108,7 +109,7 @@ DIM COMPLETE_START AS UBYTE, COMPLETE_COMMAND AS UBYTE, COMPLETE_INDEX AS UBYTE
 ' The last HISTORY_SIZE lines typed at the prompt are VARBANK's system strings HISTORY_FIRST
 ' up, a ring. HISTORY_NEXT is the slot in the ring, from 0, the next line goes to.
 ' HISTORY_BACK is the count of lines Up went back, 0 for the line typed.
-CONST HISTORY_FIRST AS UBYTE = 13, HISTORY_SIZE AS UBYTE = 8
+CONST HISTORY_FIRST AS UBYTE = 14, HISTORY_SIZE AS UBYTE = 8
 ' Up and Down as CON_EDIT gives them, KEYS.KEY_UP and KEYS.KEY_DOWN. Trap: KEYS.UXI takes the
 ' shell past the compiler's 1008 names.
 CONST KEY_UP AS UWORD = $4800, KEY_DOWN AS UWORD = $5000
@@ -188,12 +189,13 @@ SUB READ_NAME()
 END SUB
 
 ' The kind of the name in NAME_TEXT: KIND_NUMBER for A to Z, KIND_STRING for A$ to Z$,
-' P1$ to P9$, PATH$, PROMPT$ and EDITOR$. A number's first character, less 65, is its index.
+' P1$ to P9$, PATH$, PROMPT$, EDITOR$ and TEMP$. A number's first character, less 65, is its
+' index.
 FUNCT NAME_KIND() AS UBYTE
   DIM CODE AS UBYTE
   IF LEN(NAME_TEXT) = 1 THEN RETURN KIND_NUMBER
   SELECT CASE NAME_TEXT
-    CASE "PATH$", "PROMPT$", "EDITOR$"
+    CASE "PATH$", "PROMPT$", "EDITOR$", "TEMP$"
       RETURN KIND_STRING
   END SELECT
   IF LEN(NAME_TEXT) = 2 AND ContentsAt(@NAME_TEXT + 3) = 36 THEN RETURN KIND_STRING
@@ -205,9 +207,13 @@ FUNCT NAME_KIND() AS UBYTE
 END FUNCT
 
 ' The address of the descriptor of the string variable in NAME_TEXT. P1$ to P9$ are VARBANK's
-' system strings 0 to 8, PATH$ is 9, PROMPT$ 10 and EDITOR$ 11, so they outlive a program.
+' system strings 0 to 8, PATH$ is 9, PROMPT$ 10, EDITOR$ 11 and TEMP$ 13, so they outlive a
+' program.
 FUNCT DESCRIPTOR_OF() AS UWORD
-  IF LEN(NAME_TEXT) = 5 THEN RETURN HEAP.PATH_STRING
+  IF LEN(NAME_TEXT) = 5
+    IF ASC(NAME_TEXT) = 80 THEN RETURN HEAP.PATH_STRING
+    RETURN HEAP.TEMP_STRING
+  ENDIF
   IF LEN(NAME_TEXT) = 7
     IF ASC(NAME_TEXT) = 80 THEN RETURN HEAP.PROMPT_STRING
     RETURN HEAP.EDITOR_STRING
@@ -604,7 +610,7 @@ SUB PRINT_SYSTEM(DESCRIPTOR AS UWORD)
 END SUB
 
 ' SETSYS alone prints each system variable as NAME=value, one a line. SETSYS name = expression
-' sets PATH$, PROMPT$ or EDITOR$.
+' sets PATH$, PROMPT$, EDITOR$ or TEMP$.
 SUB DO_SETSYS()
   SKIP_SPACES()
   IF CURRENT_CHAR() = 0
@@ -616,6 +622,8 @@ SUB DO_SETSYS()
     PRINT_SYSTEM(HEAP.PROMPT_STRING)
     PRINT "EDITOR$=";
     PRINT_SYSTEM(HEAP.EDITOR_STRING)
+    PRINT "TEMP$=";
+    PRINT_SYSTEM(HEAP.TEMP_STRING)
     RETURN
   ENDIF
   READ_NAME()
@@ -1454,8 +1462,22 @@ SUB START_PIPE()
     RETURN
   ENDIF
   PIPE_TEXT = STRING_RESULT
+  IF PIPE_NUMBER = 0
+    ' The first pipe of the line names both pipe files. TEMP$ and "\PIPE1.$$$" fit in 128.
+    HEAP.STR_READ(HEAP.TEMP_STRING)
+    IF LEN(DOS.CALL_TEXT) > 118
+      REPORT_DOS(DOS.ERR_NO_PATH)
+      RETURN
+    ENDIF
+    PIPE_PATH = DOS.CALL_TEXT
+    IF IS_SEPARATOR(ContentsAt(@PIPE_PATH + 1 + LEN(PIPE_PATH))) = 0
+      PIPE_PATH = PIPE_PATH + "\"
+    ENDIF
+    PIPE_PATH = PIPE_PATH + "PIPE1.$$$"
+    PIPE_DIGIT = @PIPE_PATH + LEN(PIPE_PATH) - 3
+  ENDIF
   PIPE_NUMBER = (PIPE_NUMBER AND 1) + 1
-  ContentsAt(@PIPE_PATH + 9) = 48 + PIPE_NUMBER
+  ContentsAt(PIPE_DIGIT) = 48 + PIPE_NUMBER
   FILE = DOS.CREATE_FILE(PIPE_PATH, 0)
   REPORT_DOS(DOS.ERROR)
   IF FAILED THEN RETURN
@@ -1485,7 +1507,7 @@ SUB RUN_PIPE()
   ' Deletes pipe file 2, then pipe file 1. Either may be missing.
   PIPE_NUMBER = 2
   DO WHILE PIPE_NUMBER
-    ContentsAt(@PIPE_PATH + 9) = 48 + PIPE_NUMBER
+    ContentsAt(PIPE_DIGIT) = 48 + PIPE_NUMBER
     DOS.DELETE(PIPE_PATH)
     PIPE_NUMBER = PIPE_NUMBER - 1
   LOOP
@@ -1854,7 +1876,6 @@ END SUB
 
 DOS.STOP_KEY(DOS.STOP.CATCH)
 RUNNING = 1
-PIPE_PATH = "C:\PIPE1.$$$"
 PROGRAM_PATH = "C:\STARTUP.CMD"
 IF IS_FILE() THEN START_SCRIPT()
 DO WHILE RUNNING

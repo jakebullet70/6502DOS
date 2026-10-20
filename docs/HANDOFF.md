@@ -2442,8 +2442,8 @@
        - Steps since the full suite: 4.
        - Docs owed, added: PLAN §5 (a name over 32 shows as its alias; chdir refuses a path over
          254); NOTICE on the `read_dirent` change.
-     - Done, F6b (2026-10-20), not committed. Build 1534 ms, the ROM and 3 programs, the new
-       baseline:
+     - Done, F6b (2026-10-20), committed ee6fa0f, goldens e7431de. Build 1534 ms, the ROM and
+       3 programs, the new baseline:
        - `tools/fatcheck.py` checks each run of long-name entries: the orders count down from
          the entry with bit 6 to 1, each entry holds the run's checksum, type 0 and cluster 0,
          and the run ends at the 8.3 entry whose checksum it holds. A run cut by a deleted entry,
@@ -2469,6 +2469,32 @@
          `CMDLETS` and `DIRS` (free space), `FILES` (the size of CMDSHELL.COM).
        - Steps since the full suite: 5.
        - Docs owed, added: PLAN on fatcheck's long-name checks; TREE and XCOPY path room.
+     - Done, F6c (2026-10-20), not committed. Builds 3022 ms (HEAP.UXI changed, 17 programs
+       compiled), then 1312 ms, the ROM and the shell, the new baseline:
+       - `TEMP$` is a shell system variable, VARBANK system string 13, `HEAP.TEMP_STRING`
+         ($A026). The shell's history ring moved from strings 13 to 20 to 14 to 21.
+         `NAME_KIND`, `DESCRIPTOR_OF` (`PATH$` and `TEMP$` both have 5 characters: P picks
+         `PATH$`) and `SETSYS`, which lists `TEMP$=` last, know it.
+       - The first `|` of a line names both pipe files: `TEMP$`, a `\` unless it ends in `\`,
+         `/` or `:`, then `PIPE1.$$$`. An empty `TEMP$` puts them in the root of the current
+         drive, as MS-DOS 2.0 does; before, they were in `C:\`. A `TEMP$` over 118 characters
+         gives Path not found. `PIPE_PATH` is `STRING * 128`, and `PIPE_DIGIT` holds the
+         address of its digit.
+       - Bytes: CMDSHELL.COM 21491 to 21759 (+268). The pipe-path block is 177 of it. Building
+         the path in `PIPE_PATH`, with no `C:\` default, saved 47 bytes over a first form in
+         `STRING_RESULT`.
+       - Tests: `SHREDIR` ok 1.6 s (new lines: `TEMP$` with and without the `\`, a pipe of 3
+         parts, the files gone after, a missing directory and a 129-character `TEMP$` give
+         Path not found), `SHVARS` 0.6 (sets and prints `TEMP$`), `FILES` 0.5 (the size),
+         `HEAD` 1.2, `MORE` 0.9, `SHELL` 0.5, `SHFILES` 0.8, `SHIF` 0.6, `SHRUN` 0.9, `TAIL`
+         1.3, `GREP` 1.9. `GREP` failed once on its first run and passed 10 times after; the
+         failing output was not kept. Golden files changed: `SHREDIR`, `SHVARS`, `FILES`.
+       - `fatcheck.py` lists about 108 lost clusters on every test card: they are the free part
+         of the program block that `tests.py` reserves with `mksd.make(reserve=256)`, which the
+         FAT marks as used. Not a problem.
+       - Steps since the full suite: 6.
+       - Docs owed, added: PLAN section 8 on `TEMP$` (the system variables, `SETSYS`, the pipe
+         files at line 773), HEAP.UXI's slot list in PLAN at line 213, HELP.TXT.
    - To do: find what the 492 bytes of 7i2b cost in `DISKFREE.CBI` (1861 to 2353 bytes), with
      pyuxc's link map, and cut them. Ideas: read `P2$` once, drop `FREE_TEXT` and pass the
      `MID$` straight to `SYS_STRINGS_SET`, reuse `DRIVE_NAME` for the text (11 bytes of RAM).
