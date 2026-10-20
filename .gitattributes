@@ -3,6 +3,7 @@
 
 # MSBASIC reads program files with CR LF line ends.
 tests/sd/*.BAS text eol=crlf
+src/dos/HELPBAS.HLP text eol=crlf
 
 # GitHub folds the test goldens in commit and PR views.
 tests/*.OUT linguist-generated=true

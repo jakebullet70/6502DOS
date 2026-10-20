@@ -2733,6 +2733,29 @@
        `tools/cc65/bin`.
      - Steps since the full suite: 5.
      - Next: M3, files. `LOAD` and `SAVE` can open their file as `DOS_BOOT` does.
+   - BASIC help (2026-10-20), the user`s request, in steps: (1) `HELPBAS.COM` and
+     `HELPBAS.HLP`; (2) `HELP [topic]` in MSBASIC, direct mode only, reading the same file.
+     - Step 1 done. `src/dos/HELPBAS.UXB`, `HELP.UXB` with the path `C:\DOS\HELPBAS.HLP`; the
+       topic list starts a new line before a name that would pass column 79. 1769 bytes.
+     - `src/dos/HELPBAS.HLP`: 91 topics, one for each keyword of the 6502dos target, plus
+       `LABELS` and `ST`, in A to Z order; 8791 bytes. No topics for `LOAD` and `SAVE` (stubs)
+       or `USR`. Lines of 80 characters at most. CR LF line ends (`.gitattributes`), because
+       MSBASIC's `K_READ` drops LF; UXC `LINPUT` takes CR LF.
+     - Facts checked in the source: PRINT`s comma zones are 14 columns (no `CONFIG_CBM_ALL`);
+       `GET`, `GET#`, `INPUT` and `DEF` give ?ILLEGAL DIRECT; `CLEAR` closes the files; `FRE`
+       over 32767 is negative.
+     - Test `HELPBAS`, in `SHELL_ROM_TESTS`: `PATH$ = "C:\DOS"`, `HELPBAS`, `HELPBAS print`,
+       `HELPBAS str$`, `HELPBAS NOSUCH`, `VER`. The boot shell has no `PATH$`. ok 1.5 s.
+     - Goldens changed: `CMDLETS` and `DIRS` (free space), `TREE` (also `HELLO.BAS` and
+       `MSBASIC.COM` of M2, which had not updated it). `CMDLETS` ok 1.6 s, `DIRS` 1.1, `TREE`
+       1.4, `BASBOOT` 0.5, `BASRUN` 0.5. Build 1340 ms, the new baseline.
+     - Docs owed to the batch: a `HELP.TXT` topic `HELPBAS`, PLAN`s utilities list.
+     - Steps since the full suite: 6.
+     - Step 2, the plan, asm: `HELP [topic]`, `CONFIG_HELP`, 6502dos only. In a program it
+       gives an error. The topic is tokenized (`HELP PRINT` holds the PRINT token), so a
+       token is spelled out from the keyword table before the compare. It opens
+       `C:\DOS\HELPBAS.HLP` with `K_OPEN`, reads lines with `K_READ` to CR, and prints the
+       topic`s lines, or the list with no topic. `HELPBAS.HLP` gets a topic `HELP`.
    - To do: find what the 492 bytes of 7i2b cost in `DISKFREE.CBI` (1861 to 2353 bytes), with
      pyuxc's link map, and cut them. Ideas: read `P2$` once, drop `FREE_TEXT` and pass the
      `MID$` straight to `SYS_STRINGS_SET`, reuse `DRIVE_NAME` for the text (11 bytes of RAM).
