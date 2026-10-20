@@ -21,7 +21,7 @@ Bad command or file name
 C>TO*
 Bad command or file name
 C>MKDIR BIN
-C>COPY ARGS.COM BIN\TOOL.CBIN
+C>COPY ARGS.COM BIN\TOOL.SCOM
      1 File(s) copied
 C>TOOL 1
 Bad command or file name
@@ -37,7 +37,7 @@ TAIL [ 3]
 C>C:\BIN\TOOL 4
 HELLO FROM UXCBASIC
 TAIL [ 4]
-C>BIN\TOOL.CBIN 5
+C>BIN\TOOL.SCOM 5
 HELLO FROM UXCBASIC
 TAIL [ 5]
 C>SLOTKID A B 3 4 5 6 7 8 9 10

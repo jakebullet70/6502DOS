@@ -91,10 +91,10 @@ ROOT
  |      README.TXT
  |      
  +- DOS
- |      DATE.CBIN
- |      DISKFREE.CBIN
- |      DISKINFO.CBIN
- |      EXIST.CBIN
+ |      DATE.SCOM
+ |      DISKFREE.SCOM
+ |      DISKINFO.SCOM
+ |      EXIST.SCOM
  |      GREP.COM
  |      HEAD.COM
  |      HELP.COM
@@ -103,11 +103,11 @@ ROOT
  |      TAIL.COM
  |      TED.COM
  |      TED.HLP
- |      TIME.CBIN
+ |      TIME.SCOM
  |      TREE.COM
- |      UPTIME.CBIN
+ |      UPTIME.SCOM
  |      VIEW.COM
- |      WHERE.CBIN
+ |      WHERE.SCOM
  |      XCOPY.COM
  |      
  +- MANY
