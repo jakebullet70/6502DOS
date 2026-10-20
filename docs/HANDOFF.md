@@ -2551,6 +2551,18 @@
        - Tests: `WHERE` ok 1.3 s, `TREE` 1.4, `SHRUN` 0.8, `CMDLETS` 1.6. Goldens changed:
          `WHERE`, `TREE`, `SHRUN`.
        - Steps since the full suite: 2.
+   - Spaces in names (2026-10-20, the user). The shell splits arguments at spaces, so
+     `TED MY FILE.TXT` edited `MY`. A quoted argument keeps its spaces. Three steps:
+     - Done, S1: `TED` prints Too many parameters and gives exit code 1 for a second
+       argument, as `MORE` does. `TED.IN` adds `TED MY FILE.TXT` and a save to
+       `"MY NOTES.TXT"`, read back with `TYPE`.
+       - `TED.COM` 10748 to 10819 bytes, +71; no ROM change.
+       - Build 1013 ms, the new baseline. `TED` ok 1.2 s; golden changed.
+       - Steps since the full suite: 3.
+     - S2: Tab completion wraps a completed name that has a space in quotes, as cmd.exe
+       does. CMDSHELL only, no asm. Estimate 60 to 100 bytes.
+     - S3: `HELP.TXT`, the shell topic: a quoted argument keeps its spaces. Fold into the
+       owed doc batch above.
    - MSBASIC in ROM (planned 2026-10-20), after F7b. Steps M0 to M5; each asm step asks first.
      - Facts:
        - The `sim` build is 12068 bytes. It goes in ROM bank 2, `$C000-$FFFF`; the ROM image
