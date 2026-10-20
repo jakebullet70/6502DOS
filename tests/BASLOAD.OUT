@@ -51,7 +51,8 @@ LIST
 OK
 HELP SAVE
 SAVE "name"
-  Writes the program to the file as LIST shows it. Ends a program.
+  Writes the program to the file as LIST shows it, with no space before a
+  line number. A file of that name is replaced. Ends a program.
   SAVE "HELLO.BAS"
 
 OK
@@ -70,10 +71,60 @@ ROM A FILE"
 20 FOR I=1 TO 3:P
 
 OK
+NEW
+
+OK
+10 PRINT "NEW TEXT"
+SAVE "T.BAS"
+
+OK
+NAME "T.BAS" AS "U.BAS"
+
+OK
+NAME "U.BAS" AS "HELLO.BAS"
+
+?FILE EXISTS ERROR
+OK
+NAME "NOSUCH.BAS" AS "V.BAS"
+
+?FILE NOT FOUND ERROR
+OK
+LOAD "T.BAS"
+
+?FILE NOT FOUND ERROR
+OK
+LOAD "U.BAS"
+
+OK
+LIST
+
+ 10 PRINT "NEW TEXT"
+OK
+KILL "U.BAS"
+
+OK
+KILL "U.BAS"
+
+?FILE NOT FOUND ERROR
+OK
+HELP NAME
+NAME "old" AS "new"
+  Renames a file or a directory, or moves a file to another directory of the
+  same drive. A new name that exists gives ?FILE EXISTS ERROR.
+  NAME "OLD.BAS" AS "NEW.BAS"
+
+OK
+HELP KILL
+KILL "name"
+  Deletes the file. Close it first.
+  KILL "OLD.BAS"
+
+OK
 QUIT
-C>TYPE T.BAS
-10 PRINT "SAVED"
-20 FOR I=1 TO 2:PRINT I;:NEXT
+C>TYPE HELLO.BAS
+10 PRINT "HELLO FROM A FILE"
+20 FOR I=1 TO 3:PRINT I;:NEXT
+30 PRINT
 C>VER
 6502DOS V0.1.0
 C>
