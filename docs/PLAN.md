@@ -268,7 +268,8 @@ Calls, with the MS-DOS 2.0 function each matches:
 | `findfirst`, `findnext` | 4Eh, 4Fh | list the names that match a wildcard pattern |
 | `mkdir`, `rmdir`, `chdir`, `getcwd` | 39h, 3Ah, 3Bh, 47h | directories |
 | `getdrive`, `setdrive`, `diskfree` | 19h, 0Eh, 36h | the current drive and its free space |
-| `con_line` | 0Ah | reads a line from the console with editing |
+| `con_line` | 0Ah | reads a line from the console with editing; Tab does nothing |
+| `con_edit` | none; 0Ah with a template | edits the line kept in the buffer, and ends on Enter, Tab or an extended key |
 | `con_status` | 0Bh | whether a key is waiting |
 | `con_out`, `con_in` | 02h, 08h | write a character; wait for a key, with no echo |
 | `con_cursor` | none; BIOS 10h, 02h and 03h | get or set the cursor's row and column; a get also gives the screen's rows and columns |
@@ -653,6 +654,8 @@ Short names:
 - A file argument is a string expression when it starts with a quote, a string variable or
   `CURDIR$`: `FILES "*.CMD"`, `LIST F$`. Any other word is text up to a space:
   `LIST STARTUP.CMD`, and `MKDIR A` makes the directory `A`.
+- A quoted argument keeps its spaces: `MKDIR "Z DIR"`. A quote with no closing quote runs to
+  the end of the line.
 - An option starts with `-`: `FILES -W`. A `/` is always a path separator.
 - `CURDIR$` is the current drive and directory: `C:\DOCS`, and `C:\` at the root.
 
@@ -971,6 +974,35 @@ Short names:
     prints `Required parameter missing`, a `[` with no `]` prints `Invalid parameter`,
     another switch prints `Invalid switch`, and a third name prints `Too many parameters`.
     A file that does not open prints its error message. Each gives exit code 2.
+- `XCOPY source [target] [-s] [-e] [-p] [-l] [-y]` is a DOS utility, `XCOPY.COM`, for the
+  command line. It copies the files of a directory, and with `-s` the directories below it.
+  - A source that names a directory copies every file in it. Any other source is a directory
+    and a pattern: `DOCS\*.TXT`. With no directory the pattern is looked for in the current
+    directory. With `-s` the pattern is used at every level.
+  - The target is a directory, the current directory when none is given. The target and each
+    missing directory above it are made. Each file keeps its name.
+  - `-s` copies each directory below the source that holds a file to copy, as a directory of
+    the same name below the target. `-e` also makes the directories with no file to copy, and
+    takes `-s` with it. `-l` prints the files it would copy, and copies and makes nothing.
+    Switches may share one `-`: `-sy`.
+  - `-p` asks `path (Y/N)?` before each file; N skips the file. Without `-y` a target file
+    that exists asks `Overwrite path (Y/N/A)?`, and A overwrites the rest with no question.
+    Esc at a question stops the copy. Ctrl+C ends it with exit code 0, as any program.
+  - Hidden and system files and directories are skipped. A copy is not read-only, and is
+    dated when it is made.
+  - Each file prints its path as it is copied. The end prints `N File(s) copied`, or with
+    `-l` `N File(s)`.
+  - The source and the target are made full paths with `chdir` and `getcwd`. A target that
+    is the source prints `File cannot be copied onto itself`, and `-s` into the source prints
+    `Cannot copy a directory into itself`. The directories made for the target are then
+    removed.
+  - A directory 32 levels down, or one whose paths would pass 255 characters, prints `Path
+    too long` and the path, and is not copied.
+  - Trap: a target file is checked with `open`. `DOS.EXISTS` would end the search.
+  - The exit code is 0 when the files are copied, 1 when no file matches (`File not found`),
+    and 2 on Esc at a question. A missing parameter, a bad switch, a third name, a path not
+    found, a copy into itself and `Insufficient disk space` give 4. A read or write error
+    prints its error message and gives 5.
 - `WHERE name [SILENT]` prints the path of the program the shell runs for `name`:
   `C:\DOS\HEAD.COM`. It is for the command line and scripts.
   - The look-up is the shell's. A name with an extension is looked for as typed, any other
@@ -992,6 +1024,22 @@ Short names:
     stays empty.
   - The exit code is 0 when the name exists, 1 when it does not, and 2 with no name. The shell
     does not read the exit code.
+
+Tab completion:
+
+- At the prompt Tab completes the last word of the line: the word after the last space outside
+  quotes. A quote at its start is not part of the name.
+- The matches come in this order. For a first word with no directory part and no dot, the
+  statement names that start with it, in any case. Then the files and directories that match
+  the word and `*`, with `.*` added when its name part has no dot; a directory has a `\` after
+  it, and a name that starts with `.` is left out. Then, for a first word, the `.COM` and
+  `.CMD` files that match in each directory of `PATH$`, shown without the extension.
+- Each Tab puts the next match in place of the word, and Shift+Tab the one before. After the
+  last comes the first. A word with no match stays as it is.
+- A line that Tab did not leave starts again from its first match.
+- A match with a space goes in quotes. A directory's closing quote is left off, so a name can
+  follow it: `CD Z` and Tab gives `CD "Z DIR\`.
+- A word that ends in a quote finds no match.
 
 Command history:
 
@@ -1198,8 +1246,8 @@ Each step boots and shows something, and each has a test.
    7h. `LOCATE`, `BEEP`, `WAIT`, `PAUSE`, `COLOR`.
    7i. The commandlets of section 8, one a part: 7i1 `EXIST`, 7i2 `DISKFREE`, 7i3 `DISKINFO`,
        7i4 `WHERE`, 7i5 `HELP`, 7i6 `DATE`, `TIME` and `UPTIME` on the clock calls. `MEM`
-       comes with step 10. The DOS utilities `VIEW`, `TREE`, `MORE`, `HEAD`, `TAIL` and
-       `GREP` follow, one a part.
+       comes with step 10. The DOS utilities `VIEW`, `TREE`, `MORE`, `HEAD`, `TAIL`,
+       `GREP` and `XCOPY` follow, one a part.
 8. `SYSINIT.COM` with `CONFIG.SYS` and `DEVICE=`. Until then the ROM runs `C:\CMDSHELL.COM`
    itself (section 8).
 9. Layer 1 moves to UXCBASIC, one part at a time, as the compiler features land. The parts that

@@ -2539,9 +2539,7 @@
        - Tests: `CMDLETS` failed on the `HELP` list (`SETSYS` added), as expected; updated, ok
          1.5 s. Golden changed: `CMDLETS`.
        - Steps since the full suite: 1.
-       - Docs still owed, from before the F steps: `HELP.TXT` and PLAN §8 on the shell's Tab
-         completion and Up and Down; PLAN §4 rows for `con_line` and `con_edit`; the
-         `HELP.TXT` topic `XCOPY` (Command line only) and PLAN §8 and §11 on `XCOPY`.
+       - Docs still owed, from before the F steps: written in S3, below.
      - Done, SCOM (2026-10-20, the user): commandlets are `.SCOM`, scriptable COM files, not
        `.CBIN`. The 8.3 alias ends in `.SCO`. `src/cbin/` is `src/scom/`, `CBIN.UXI` is
        `SCOM.UXI`. Changed: the shell's and `WHERE`'s search order, `build.py` (`SCOM`,
@@ -2570,8 +2568,18 @@
        - Build 1234 ms, the new baseline. `SHTAB` ok 0.6 s, `FILES` ok 0.4 s; both
          goldens changed (`FILES` the shell size only).
        - Steps since the full suite: 4.
-     - S3: `HELP.TXT`, the shell topic: a quoted argument keeps its spaces. Fold into the
-       owed doc batch above.
+     - Done, S3 (2026-10-20), with the doc batch owed from before the F steps. No docs are
+       owed.
+       - `HELP.TXT`: new topic `PROMPT` after `COLORS` (Tab, Shift+Tab, Up and Down, quotes,
+         the tail drops them); new topic `XCOPY` (Command line only) after `GREP`.
+       - PLAN §4: the `con_line` row (Tab does nothing) and a `con_edit` row. §8: Arguments
+         (a quoted argument keeps its spaces), `XCOPY` after `GREP`, Tab completion before
+         Command history. §11 step 7i: `XCOPY` follows `GREP`.
+       - Build 743 ms, the new baseline. `CMDLETS` failed on the `HELP` list (`PROMPT`,
+         `XCOPY` added), as expected; updated, ok 1.8 s. Golden changed: `CMDLETS`.
+       - Steps since the full suite: 5.
+       - Gap found, by reading the code, not tested: `FIND_MATCH` looks for `*.COM` and
+         `*.CMD` on `PATH$`, not `*.SCOM`, so a commandlet's name does not complete.
    - MSBASIC in ROM (planned 2026-10-20), after F7b. Steps M0 to M5; each asm step asks first.
      - Facts:
        - The `sim` build is 12068 bytes. It goes in ROM bank 2, `$C000-$FFFF`; the ROM image

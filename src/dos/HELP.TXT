@@ -126,6 +126,17 @@ The color names, for COLOR and in any number:
   RED      2    BLUE     6    LIGHTRED 10    LIGHTBLUE  14
   CYAN     3    YELLOW   7    DARKGRAY 11    LIGHTGRAY  15
   PRINT LIGHTGRAY * 16 + WHITE
+:PROMPT
+The keys and the quotes at the prompt:
+  Tab completes the last word: a file or a directory, or, as the first word,
+  a statement or a .COM or .CMD program on PATH$. Each Tab gives the next
+  match, and Shift+Tab the one before.
+  Up brings back the line before, and Down the line after. The last 8 lines
+  are kept.
+  A name with a space goes in quotes. Tab puts a match with a space in quotes.
+  COPY HELLO.TXT "MY FILE.TXT"
+  A program gets "MY FILE.TXT" whole in P1$ to P9$. Its command tail drops
+  the quotes.
 :VIEW
 VIEW name                       (Command line only)
   Shows the text file name a page at a time.
@@ -169,3 +180,14 @@ GREP [-i] [-n] [-v] [-c] pattern [file] (Command line only)
   -v writes the lines that do not match. -c writes only the count.
   GREP -n "^Line 0[1-3]" DOCS\LONG.TXT
   LIST DOCS\LONG.TXT | GREP -c "x.*z"
+:XCOPY
+XCOPY source [target] [-s] [-e] [-p] [-l] [-y] (Command line only)
+  Copies the files of directory source, or the files that match a pattern,
+  to directory target, or to the current directory. A missing target is made.
+  -s copies the directories below too. -e copies the empty ones as well.
+  -p asks before each file. -l lists the files and copies nothing.
+  -y overwrites a file with no question. Without -y a file that exists asks
+  Overwrite path (Y/N/A)? A overwrites the rest.
+  Esc at a question stops the copy.
+  XCOPY C:\DOCS C:\BAK -s
+  XCOPY DOCS\*.TXT BAK -sp
