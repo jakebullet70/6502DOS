@@ -2657,7 +2657,7 @@
      `uxdos` (the MSBASIC target, `tpl/UXDOS`) stay. Same length, so no size changed.
      - Build 4.26 s, every program recompiled (the `lib` files changed): the full-build
        baseline. Tests: `BOOT` ok 0.5 s, `SHBOOT` 0.5, `DISK` 0.5, `CMDLETS` 1.6, `TARGET`
-       0.4, UXCBASIC `ARRAY1` 0.5. 53 goldens changed in the banner only.
+       0.4, UXCBASIC `ARRAY1` 0.5. 50 goldens changed in the banner only.
      - Steps since the full suite: 1.
    - To do: find what the 492 bytes of 7i2b cost in `DISKFREE.CBI` (1861 to 2353 bytes), with
      pyuxc's link map, and cut them. Ideas: read `P2$` once, drop `FREE_TEXT` and pass the
