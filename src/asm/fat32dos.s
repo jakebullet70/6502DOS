@@ -326,6 +326,8 @@ api_chdir:
         jsr dir_change
         bcs @drop
 @set:
+        jsr cwd_build           ; getcwd must be able to return the path
+        bcs @drop
         lda fat32_cwd
         ora fat32_cwd+1
         ora fat32_cwd+2
@@ -477,10 +479,8 @@ api_diskfree:
 @bank:
         jmp lib_bank
 
-; api_getcwd: getcwd, call 19. Builds the path from the end of lib_path back, a \ and a name for
-; each directory from the current one up to the root, then puts the length where the first \ is
-; and copies the path to r0. lib_len holds the index of the path's first \, 0 while the path is
-; empty. Selects RAM bank 0 while it runs and keeps the caller's bank in saved_bank.
+; api_getcwd: getcwd, call 19. Copies the path cwd_build makes to r0. Selects RAM bank 0 while
+; it runs and keeps the caller's bank in saved_bank.
 api_getcwd:
         jsr drive_enter
         bcs @bank
@@ -493,6 +493,35 @@ api_getcwd:
         jsr fat32_set_context
         bcc @fault
         jsr cwd_set
+        jsr cwd_build
+        bcs @drop
+        ldy #0
+@copy:
+        lda lib_path,x
+        phx
+        ldx saved_bank
+        stx RAM_BANK
+        sta (r0),y
+        stz RAM_BANK
+        plx
+        iny
+        inx
+        bne @copy
+        sec
+        jmp lib_done
+@bank:
+        jmp lib_bank
+@fault:
+        jmp lib_drop_errno
+@drop:
+        jmp lib_drop
+
+; cwd_build: builds the path of the library's current directory at the end of lib_path, a \
+; and a name for each directory from the current one up to the root, with the length where the
+; first \ is. Uses context lib_context. Returns X = the index of the length, or carry set and
+; A = the error, ERR_NO_PATH when the path is over 254 characters. lib_len holds the index of
+; the path's first \, 0 while the path is empty. Changes Y.
+cwd_build:
         jsr fat32_open_tree
         stz lib_len
 @level:
@@ -535,26 +564,14 @@ api_getcwd:
         txa
         eor #$FF                ; the length: 255 - the index
         sta lib_path,x
-        ldy #0
-@copy:
-        lda lib_path,x
-        phx
-        ldx saved_bank
-        stx RAM_BANK
-        sta (r0),y
-        stz RAM_BANK
-        plx
-        iny
-        inx
-        bne @copy
-        sec
-        jmp lib_done
-@bank:
-        jmp lib_bank
+        clc
+        rts
 @fault:
-        jmp lib_drop_errno
+        jmp lib_errno_set
 @long:
-        jmp lib_no_path
+        lda #ERR_NO_PATH
+        sec
+        rts
 
 ; lib_enter: selects RAM bank 0 and keeps the caller's bank in saved_bank, takes the path at r0
 ; with path_start, takes the context lib_context, makes the path's directory the library's
@@ -1051,8 +1068,8 @@ path_copy:
         sec
         rts
 
-; name_check: returns carry set when the name part of lib_path is blank, only dots, or holds *
-; or ?. Changes A and X.
+; name_check: returns carry set when the name part of lib_path is blank, only dots, over
+; NAME_MAX characters, or holds * or ?. Changes A and X.
 name_check:
         bit lib_wild
         bmi @bad
@@ -1063,7 +1080,14 @@ name_check:
         beq @bad
         cmp #'.'
         beq @char
+@end:
+        inx
+        lda lib_path,x
+        bne @end
+        txa                     ; the length: the end - lib_slash - 1
         clc
+        sbc lib_slash
+        cmp #NAME_MAX + 1       ; carry set over NAME_MAX
         rts
 @bad:
         sec

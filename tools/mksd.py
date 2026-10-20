@@ -6,8 +6,8 @@
 The image has an MBR with one partition of type $0C at sector 2048. The partition holds a FAT32
 file system with 512-byte sectors, 32 reserved sectors and 2 FATs. Every file and folder in
 FOLDER goes in; names that start with a dot are left out. A name that is 8.3 goes in as its 8.3
-name in upper case. Any other name, up to 32 characters, goes in as a long name, as typed, with
-an 8.3 alias BASE~N.EXT. Each FILE goes in the root directory too. Each file's clusters follow
+name in upper case. Any other name, up to 255 characters, goes in as a long name, as typed,
+with an 8.3 alias BASE~N.EXT; UXDOS16 shows a long name over 32 characters as its alias. Each FILE goes in the root directory too. Each file's clusters follow
 each other. The times are the files' modification times, or noon of --date. Exit status 1 when
 a name is too long or holds a character a long name cannot, or the files do not fit.
 
@@ -25,7 +25,7 @@ PARTITION_START = 2048
 RESERVED = 32
 FATS = 2
 NAME_CHARACTERS = set("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!#$%&'()-@^_`{}~")
-LONG_NAME_MAX = 32
+LONG_NAME_MAX = 255
 LONG_NAME_BANNED = set('\\/:*?"<>|')
 LONG_NAME_CHARACTERS = 13           # the characters of one long-name entry
 ATTR_LONG_NAME = 0x0F

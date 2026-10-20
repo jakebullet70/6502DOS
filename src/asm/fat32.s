@@ -10,7 +10,8 @@
 ; as its short name; find_dirent takes . and .. in the root as the root, and fails on the root in
 ; a search for files only, so fat32_walk_tree calls find_dir; cluster_count is the cluster past
 ; the last, from the sectors of the partition, so find_free_cluster stops at the end of the
-; volume. Left out: the 65816 routines fat32_read_long and fat32_write_long, and their MVN
+; volume; read_dirent gives the short name of an entry whose long name is over 32 characters.
+; Left out: the 65816 routines fat32_read_long and fat32_write_long, and their MVN
 ; trampoline.
 ; fat32glue.s holds the routines and variables the library imports.
 ;
@@ -1851,6 +1852,9 @@ read_dirent:
 	dec lfn_index
 	bne @decode_lfn_loop
 @name_done2:
+	; X: the length, or the length + 1 after a 0 (39 holds no 0, 33 does)
+	cpx #34
+	bcs @is_short	; a long name over 32 characters reads as its short name
 	bra @name_done ; yes, we need to zero terminate!
 
 @is_short:

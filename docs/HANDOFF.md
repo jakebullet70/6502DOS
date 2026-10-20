@@ -2384,7 +2384,7 @@
        - Steps since the full suite: 2.
        - Docs owed, added: PLAN on rmdir of a read-only directory, the dots-only name, diskfree
          from FS info; NOTICE on the two upstream fixes.
-     - Done, F5 (2026-10-20), not committed. Build 731 ms, ROM only, the new baseline:
+     - Done, F5 (2026-10-20), committed 9730384. Build 731 ms, ROM only, the new baseline:
        - `api_chdir` and `api_getcwd` live in `fat32dos.s`, bank 1, on the library. fat.s lost
          them and the code only they used: the directory search, the cluster chain, `path_walk`,
          `dir_enter`, `drive_ready`, `lba_add`, and the zero page `search_attr` and `ptr`. It
@@ -2417,6 +2417,31 @@
        - Steps since the full suite: 3.
        - Docs owed, added: PLAN on `.` and `..` in the root and long names from getcwd; NOTICE
          on the `find_dirent` change.
+     - F6 split (2026-10-20), the user's answers: a long name over 32 characters made on a PC
+       reads as its 8.3 alias everywhere; the shell's pipe files go to the directory in a
+       `TEMP$` variable, `PIPE_PATH` 128. F6a the limits in the ROM; F6b `fatcheck.py` LFN
+       checks and new tests (a PC name over 32 in `tests/sd`, goldens in their own commit);
+       F6c the shell's `TEMP$` pipe directory.
+     - Done, F6a (2026-10-20), not committed. Build 965 ms, ROM only, the new baseline:
+       - `name_check` refuses a name part over `NAME_MAX` (32) characters: 3 on create, mkdir
+         and the new name of rename.
+       - `cwd_build`, split out of `api_getcwd`, builds the path in `lib_path`; `api_chdir`
+         calls it before it sets `DPB_CWD`, so a directory whose path is over 254 characters
+         gives 3 and getcwd always fits. A chdir now walks the tree up to the root.
+       - Upstream change in `read_dirent`: a long name over 32 characters reads as the entry's
+         short name, so find, open, chdir, getcwd and delete use the alias; delete still marks
+         the long-name entries (`lfn_count`).
+       - `tools/mksd.py`: long names up to 255 characters, as a PC writes them.
+       - Cost: bank 1 B1CODE +35 bytes (end $E7A0, 6143 free). Bank 0, RAM, zero page: none.
+       - Tests: `CWD` ok 0.7 s, `DIRS` 1.2, `DOSAPI` 0.8, `SHFILES` 0.8. No golden changed. A
+         scratch test (deleted), with a 39-character `.txt` in `tests/sd/DOCS`: `FILES DOCS`
+         shows `THISNA~1.TXT`, `LIST` by the alias works, by the long name gives 2; a 32-character
+         MD and COPY work, 33 gives 3 on MD, COPY and REN; 7 levels of 32 characters, the 8th
+         CD gives 3; fatcheck clean.
+       - For F6c: the shell's `CURDIR$` is cut at 128 characters.
+       - Steps since the full suite: 4.
+       - Docs owed, added: PLAN §5 (a name over 32 shows as its alias; chdir refuses a path over
+         254); NOTICE on the `read_dirent` change.
    - To do: find what the 492 bytes of 7i2b cost in `DISKFREE.CBI` (1861 to 2353 bytes), with
      pyuxc's link map, and cut them. Ideas: read `P2$` once, drop `FREE_TEXT` and pass the
      `MID$` straight to `SYS_STRINGS_SET`, reuse `DRIVE_NAME` for the text (11 bytes of RAM).
