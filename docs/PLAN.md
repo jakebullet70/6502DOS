@@ -95,22 +95,23 @@ The UXCBASIC library is the folder `lib/`. Each file holds one namespace of the 
 | `$80–$FF` | the kernel |
 | `$0100–$01FF` | 6502 stack |
 | `$0200–$02FF` | the monitor's input line at `$0200`, its output line at `$0280` |
-| `$0300–$030B` | `jsrfar`, and the IRQ, BRK and NMI vectors: still to place |
+| `$0300–$030B` | free |
 | `$030C–$030F` | the A, X, Y and P bytes of UXCBASIC's `SYS` |
 | `$0310–$033F` | the gate code |
 | `$0340–$03FF` | the call entries, 3 bytes each: room for 64 calls |
-| `$0400–$05FF` | the kernel's sector buffer |
-| `$0600–$06F7` | kernel variables: the drive table, the sector buffer's sector, the SD driver's state |
+| `$0400–$05FF` | free |
+| `$0600–$06F7` | kernel variables: the drive table, and the state of the console, the SD driver, `exec` and the string heaps |
 | `$06F8–$06FF` | the request of a block driver's input command (section 6) |
 | `$0700–$07FF` | the PSP of the running program (section 7) |
 | `$0801–$9EFF` | the program |
 | `$9F00–$9FFF` | I/O: VIAs, VERA, YM2151 |
-| `$A000–$BFFF` bank 0 | kernel tables: the system file table at `$A000`, the keyboard queue at `$A800–$A80A`, the bank owner and next-bank tables |
+| `$A000–$BFFF` bank 0 | kernel tables: the system file table at `$A000`, the FAT32 library's variables at `$A100–$A7FF`, the keyboard queue at `$A800–$A80A`, the library's sector buffer at `$A900–$AAFF`, `rename`'s new path at `$AB00–$ABFF`; later the bank owner and next-bank tables |
 | `$A000–$BFFF` banks 1 to 20 | `exec`'s save banks: 5 for each of 4 levels |
 | `$A000–$BFFF` bank 21 | VARBANK, the shared string heap (String heaps, below) |
 | `$A000–$BFFF` banks 22 and up | the environment, and banks handed out by the allocator |
 | `$C000–$FFFF` ROM bank 0 | kernel core and the vectors. `$FFCF` and `$FFD2` jump to `con_in` and `con_out`, and `$FFF6–$FFF9` hold `MIST` (section 10) |
-| `$C000–$FFFF` ROM banks 1 and up | drivers, the monitor, and later `CMDSHELL` |
+| `$C000–$FFFF` ROM bank 1 | the FAT32 library, the kernel's file calls on it, and its glue to the SD driver |
+| `$C000–$FFFF` ROM banks 2 and up | not in the image yet |
 
 VRAM:
 
@@ -121,14 +122,22 @@ VRAM:
 | `$1FA00–$1FBFF` | the palette |
 
 - Trap: code in ROM that writes `$01` fetches its next instruction from the new bank. Every
-  change of ROM bank goes through the gate in `$0300`.
+  change of ROM bank goes through the gate at `$0310`.
+- `FARCALL target` (`src/asm/far.inc`) calls a routine in another ROM bank: 6 bytes a call,
+  about 140 cycles. A, X, Y and carry pass both ways. Each bank has its own `jsrfar`, which
+  ends in the gate's tail: `jsrfar` in bank 0, `jsrfar1` in bank 1.
+- Trap: an interrupt's vector pull selects ROM bank 0, but `$01` reads the interrupted bank
+  until code writes it. Each bank holds the same IRQ entry and exit at `$FFA0`: the entry
+  saves A and the bank and selects bank 0, the exit selects the saved bank and returns. A BRK
+  drops the bank and goes to the monitor in bank 0.
 - Trap: UXCBASIC's `SYS` loads A, X, Y and P from `$030C–$030F` and stores them back. The gate
   and the vectors must not use those four bytes.
 - Trap: `$01` reads back as noise until code writes it. Reset writes 0 to it before the gate
   saves it.
 - The system file table has 8 entries of 32 bytes. An entry holds the number of handles that
-  refer to it, the access mode and the driver's address. A file's entry also holds its drive,
-  its first cluster, its size, its position, and the cluster that holds the position.
+  refer to it, the access mode and the driver's address. A file's entry also holds its context
+  in the FAT32 library, its position and its size. The library has 8 contexts, one for each
+  entry.
 
 ### Banked RAM
 
@@ -211,8 +220,9 @@ only; numbers stay at fixed addresses in the program.
 - `PSP_HEAP`, byte `$01` of the PSP, holds the bank of the running program's heap. Boot and
   `exec` set it to VARBANK.
 - VARBANK's system descriptors 0 to 8 are the slots `P1$` to `P9$`, 9 is `PATH$`, 10 is
-  `PROMPT$`, 11 is `EDITOR$`, and 12 holds the shell's `BIND` aliases (section 8). Their
-  addresses are constants in `lib/HEAP.UXI`: descriptor n is at `$A00C + 2n`.
+  `PROMPT$`, 11 is `EDITOR$`, 12 holds the shell's `BIND` aliases, 13 is `TEMP$`, and 14 to 21
+  hold the shell's command history (section 8). Their addresses are constants in
+  `lib/HEAP.UXI`: descriptor n is at `$A00C + 2n`.
 - `HEAP.UXI`'s `SYS_STRINGS_GET(slot)` reads system descriptor `slot`, 0 to 31, and
   `SYS_STRINGS_SET(slot, text)` sets it. Each sets `PSP_HEAP` to VARBANK for the call and
   restores it.
@@ -304,21 +314,39 @@ Errors use MS-DOS 2.0's numbers:
   directory, as in MS-DOS.
 - The kernel takes `\` (`$5C` in CP437) and `/` (`$2F`) as path separators. A path the kernel
   gives back, as from `getcwd`, uses `\`.
-- Wildcards `*` and `?` work in `findfirst`, `DIR`, `DEL` and `COPY`. `*` fills the rest of
-  the name or the extension with `?`, so `*` matches names with no extension and `*.*` matches
-  every name, as in MS-DOS.
-- A name is 8.3: up to 8 characters, a dot, and up to 3. The kernel turns a path to upper case.
-- Long names: a name will be up to 32 characters, and a path up to 255, the most its length
-  byte holds. FAT32 keeps a long name in entries of 13 characters, so 32 characters take 3
-  entries. The find buffer's name field holds 32 characters. The kernel reads 8.3 names only.
+- Wildcards `*` and `?` work in `findfirst`, `DIR`, `DEL` and `COPY`, by Windows rules. `*`
+  matches any run of characters, dots too, and `?` one character. A pattern that ends in `.`
+  or `.*` also matches a name with no dot. `*` matches every name, and `*.` the names with no
+  dot.
+- A wildcard in a directory part of a path gives error 3. A pattern over 32 characters gives
+  error 2.
+- A name is up to 32 characters, and a path up to 255, the most its length byte holds. FAT32
+  keeps a long name in entries of 13 characters, so 32 characters take 3 entries. The find
+  buffer's name field holds 32 characters.
+- A name keeps the case it was made with. A look-up takes `A` to `Z` and `a` to `z` as the
+  same.
+- Every name also has an 8.3 alias, which works wherever the name does. A name the kernel
+  makes that fits 8.3 is its own alias, in capitals. Any other gets an alias of hex digits
+  and `~`.
+- A name over 32 characters, made on another system, shows as its alias in every call.
+- Create, mkdir and the new name of rename give error 3 for a name part over 32 characters,
+  a blank name, a name of dots only, or a name with `*` or `?`. Delete and the old name of
+  rename give error 2 for the last three.
+- chdir gives error 3 for a directory whose path would pass 254 characters, so getcwd always
+  fits.
+- rmdir of a read-only directory gives error 5. rename of a directory into another directory
+  gives error 5.
 - Each unit of a block driver gets the next drive letter from `C:`. The SD card is `C:`, and
-  `C:` is the current drive at boot. There are 4 drive letters, `A:` to `D:`.
+  `C:` is the current drive at boot. There are 4 drive letters, `A:` to `D:`. The FAT32
+  library serves one volume, `C:`.
 - A path with no drive is on the current drive. A path that starts with a separator starts at
   the root directory, any other at the drive's current directory.
-- Each drive keeps the first cluster of its current directory. `getcwd` finds the names through
-  the `..` entries, so no path text is kept.
+- Each drive's DPB keeps the first cluster of its current directory, 0 for the root. `getcwd`
+  finds the names through the `..` entries up to the root, long names included, so no path
+  text is kept.
 - `.` and `..` are the entries a FAT directory holds. The root directory has none; there both
-  name the root, as in Unix.
+  name the root, as in Unix, in every call. A search for files finds neither, so `open` of
+  `..` in the root gives error 2.
 - The system file table in bank 0 holds every open file. Each program's PSP holds its own table
   of 20 handles, each the number of a system file table entry.
 - Handles 0, 1 and 2 are stdin, stdout and stderr. A child gets copies of its parent's handles, so
@@ -365,17 +393,22 @@ Drivers follow MS-DOS 2.0's device drivers.
 - `NUL` is the head of the chain. A driver loaded by `DEVICE=` in `CONFIG.SYS` joins the chain
   after it, so it replaces a built-in driver of the same name.
 - A block driver only reads and writes 512-byte sectors. The kernel holds the FAT code, as
-  MS-DOS does. Each unit of a block driver gets the next drive letter.
-- A block driver has `DEV_CHAR` clear and holds its number of units in the name field. Its input
-  command takes a request at `$06F8`: the unit, the number of sectors, the buffer, and the first
-  sector in 4 bytes. It returns carry set and A = the error on a fault.
-- At boot the kernel mounts each unit: it reads the partition table, takes the first partition
-  of type `$0B` or `$0C`, and reads its FAT32 boot sector. A unit without one gives error 21,
-  drive not ready.
-- The kernel mounts at boot only. Media check and build BPB are not used yet, so a card changed
-  after boot is not seen.
-- The kernel's sector buffer at `$0400` keeps the last sector read, and a read of the same
-  sector does not reach the driver.
+  MS-DOS does: x16-rom's FAT32 library, in ROM bank 1. Each unit of a block driver gets the
+  next drive letter.
+- A block driver has `DEV_CHAR` clear and holds its number of units in the name field. Its
+  input and output commands take a request at `$06F8`: the unit, the number of sectors, the
+  buffer, and the first sector in 4 bytes. They return carry set and A = the error on a fault.
+- The library's glue, `src/asm/fat32glue.s`, fills the request for each sector the library
+  reads or writes: unit 0, one sector, the library's sector buffer. It calls the SD card
+  driver's input and output by `FARCALL`.
+- The library mounts `C:` when a call first takes a context: it reads the partition table,
+  takes the first partition of type `$0B` or `$0C`, and reads its FAT32 boot sector. The
+  volume needs 2 FATs. A drive with no card or no FAT32 gives error 21, drive not ready, at
+  that call.
+- Media check and build BPB are not used yet, so a card changed after the mount is not seen.
+- The library's sector buffer at `$A900` in RAM bank 0 keeps the last sector read, and a read
+  of the same sector does not reach the driver.
+- `diskfree` takes the free clusters from the FAT32 FS information sector, so it reads no FAT.
 - The SD card driver is ported from x16-rom. It reads one unit over VERA's SPI port, at the slow
   speed of 1 byte a loop. Without a card its input gives error 21.
 - The console font is CP437, ported from x16-rom.
@@ -570,14 +603,15 @@ Short names:
 - `PRINT` takes expressions separated by `;`. A `;` at the end keeps the line.
 - Errors print on a line of their own and stop the statement: `Syntax error`, `Type mismatch`,
   `Division by zero`, and `Bad command or file name` for an unknown name.
-- The system variables are `CURDIR$`, `PATH$`, `PROMPT$` and `EDITOR$`. `CURDIR$` is read only.
-  The other three are VARBANK system descriptors 9 to 11 (section 3), so they outlast a program.
+- The system variables are `CURDIR$`, `PATH$`, `PROMPT$`, `EDITOR$` and `TEMP$`. `CURDIR$` is
+  read only. `PATH$`, `PROMPT$` and `EDITOR$` are VARBANK system descriptors 9 to 11, and
+  `TEMP$` is 13 (section 3), so they outlast a program.
 - `PATH$ = "C:\BIN"` sets a system variable, as `SETSYS PATH$ = "C:\BIN"` does.
 - `SETSYS name = expression` takes a name of 5 characters or more, then `=`, and sets it as an
   assignment does. `SETSYS CURDIR$ = ...`, `SETSYS A$ = ...` and `SETSYS PROMPT$` are syntax
   errors.
-- `SETSYS` alone prints `PATH$=`, `CURDIR$=`, `PROMPT$=` and `EDITOR$=`, each with its value, one
-  a line.
+- `SETSYS` alone prints `PATH$=`, `CURDIR$=`, `PROMPT$=`, `EDITOR$=` and `TEMP$=`, each with
+  its value, one a line.
 - `PATH$` holds directories separated by `;`.
 - The prompt prints `PROMPT$`. When `PROMPT$` is empty it prints the current drive and `>`:
   `C>`.
@@ -651,8 +685,7 @@ Short names:
   all of them.
 - A name not found prints `Bad command or file name`.
 - A `.CBIN` file is a commandlet. Its format is a `.COM` file's (section 7).
-- Trap: the kernel keeps 3 characters of an extension, so `NAME.CBIN` is `NAME.CBI` on the
-  disk. A look-up of `NAME.CBIN` finds `NAME.CBI`. mksd rejects an extension of 4 characters.
+- `NAME.CBIN` is a long name on the card, with an 8.3 alias that ends in `.CBI`.
 - A `.CBIN` or `.COM` program runs as a child with `exec`. The script goes on when the child ends.
   An `exec` error prints the kernel's message for it.
 - The words after the name are file arguments (Arguments, above). The shell sets `P1$` to `P9$`
@@ -770,8 +803,12 @@ Short names:
 - An alias whose command has its own `TO` ends the first one, which leaves that file empty.
 - A pipe, `A | B`, runs `A` with its output into a pipe file, then `B` with its input from that
   file. The end of the file gives `B` an empty line.
-- A chain, `A | B | C`, takes the pipe files `C:\PIPE1.$$$` and `C:\PIPE2.$$$` in turn. The
-  shell deletes both when the line ends.
+- A chain, `A | B | C`, takes the pipe files `PIPE1.$$$` and `PIPE2.$$$` in turn. The shell
+  deletes both when the line ends.
+- The pipe files go in the directory `TEMP$` names: `TEMP$ = "C:\TMP"` gives `C:\TMP\PIPE1.$$$`.
+  A `\` goes between unless `TEMP$` ends in `\`, `/` or `:`. An empty `TEMP$` puts them in the
+  root of the current drive, as MS-DOS 2.0 does.
+- A `TEMP$` over 118 characters, or a missing directory, gives `Path not found`.
 - A `|` in quotes is text: `PRINT "A|B"` prints `A|B`.
 - A comment line is not read for `|`, `TO`, `APPEND` or `FROM`.
 - Each part of a pipe may have its own `TO`, `APPEND` or `FROM`.
@@ -788,7 +825,7 @@ Short names:
 - `HELP` is a DOS utility, `HELP.COM`, not a commandlet.
 - Both lie in the card's folder `\DOS`. `PATH$` is empty at boot, so the shell finds them only
   after `PATH$ = "C:\DOS"`.
-- The build compiles each `src/cbin/NAME.UXB` to `build/DOS/NAME.CBI`, and each
+- The build compiles each `src/cbin/NAME.UXB` to `build/DOS/NAME.CBIN`, and each
   `src/dos/NAME.UXB` to `build/DOS/NAME.COM`. It copies each `src/dos/NAME.TXT` to `build/DOS`.
 - `src/cbin/CBIN.UXI` is included by each commandlet, after `DOS.UXI` and `HEAP.UXI`. It gives
   the constants `SLOT_P1` to `SLOT_P9`, the system string numbers 0 to 8 of `P1$` to `P9$`,
@@ -801,7 +838,7 @@ Short names:
     capitals, prints nothing. It is `P1$` with no `d:`, else `P2$`.
   - A drive that is not a letter, or that the kernel does not know, prints `Invalid drive`, sets
     `P1$` to empty, and gives exit code 1. The exit code is 0 otherwise.
-  - The kernel's `diskfree` reads the whole FAT, so a large card takes a while.
+  - The kernel's `diskfree` reads the free count of the FS information sector (section 6).
 - `DISKINFO [d:] [SILENT]` prints the size of a drive, as `CHKDSK` does:
 
   ```
@@ -873,8 +910,8 @@ Short names:
   - `-F` adds the names of each directory's files under its line, then a line of bars.
   - `.` and `..` are skipped. Hidden and system names are listed.
   - A start with no directories prints `No sub-directories exist`.
-  - A directory 32 levels down, or one whose path would pass 250 characters, is listed but
-    not entered. The `F` may be small.
+  - A directory 32 levels down, or one whose path passes 217 characters, is listed but not
+    entered. The `F` may be small.
   - A drive that is not a letter, or that the kernel does not know, prints `Invalid drive`. A
     path that is not a directory prints `Invalid path`. A switch other than `-F` prints
     `Invalid switch`, and a second path prints `Too many parameters`. Each gives exit code 1.
@@ -956,13 +993,20 @@ Short names:
   - The exit code is 0 when the name exists, 1 when it does not, and 2 with no name. The shell
     does not read the exit code.
 
-To do: a command history.
+Command history:
+
+- The shell keeps the last 8 lines typed at the prompt, in VARBANK system descriptors 14 to
+  21 (section 3). Up brings back the line before, and Down the line after. Down past the
+  newest gives an empty line.
+- An empty line, or a repeat of the newest, is not kept.
 
 ## 9. Reuse
 
 - x16-rom is BSD-2. These parts are ported from it as drivers or kernel code, with their copyright
   headers:
-  - SD card over SPI, and FAT32
+  - SD card over SPI, and FAT32. The FAT32 library is `fat32/` at master `fbe32a6`:
+    `src/asm/fat32.s`, `fat32_match.s`, `fat32_lib.inc` and `fat32_regs.inc`. Each file's
+    header lists its changes.
   - SMC over I2C, the keyboard and the mouse
   - the RTC
   - the VERA console and the charset
@@ -1013,9 +1057,19 @@ Folders:
   COM file is older than the source, than `UXCBASIC/tpl/UXDOS/UXC.TPL.BIN`, or than a
   file the source includes, or than a file of pyuxc. `#INCLUDE` looks in the source's folder,
   then `lib/`.
+- `src/asm/rom.cfg` links ROM banks 0 and 1, so `build/UXDOS16.ROM` is 32768 bytes.
 - `tools/mksd.py` writes an SD card image from a folder: an MBR, one partition of type `$0C` at
-  sector 2048, and FAT32 with the files' 8.3 names. `build.py` makes `build/SD.IMG` from the
-  folder `sd`, 4 MB with 1 sector per cluster: 6016 clusters, 3008 KB.
+  sector 2048, and FAT32. A name that is 8.3 goes in as its 8.3 name in capitals. Any other
+  name, up to 255 characters, goes in as a long name as typed, with an 8.3 alias `BASE~N.EXT`.
+  `build.py` makes `build/SD.IMG` from the folder `sd`, 4 MB with 1 sector per cluster: 6016
+  clusters, 3008 KB.
+- `tools/fatcheck.py IMAGE` checks a card image: the FATs are equal, no cluster is lost or in
+  two chains, and each file's chain fits its size. Each run of long-name entries must count
+  down from the entry with bit 6 to 1, hold one checksum, type 0 and cluster 0, and end at the
+  8.3 entry whose checksum it holds. A run cut by a deleted entry, another run or the end of
+  the directory is reported as an orphan.
+- Trap: `fatcheck.py` lists about 108 lost clusters on each test card. They are the program
+  block that `tests.py` reserves, which the FAT marks as used.
 - The emulator runs `x16emu -rom build/UXDOS16.ROM -sdcard build/SD.IMG`.
 - `build.py` copies the ROM to `build/TEST.ROM` with the byte `boot_shell` 0, found through the
   label file. `TEST.ROM` boots to the monitor, `UXDOS16.ROM` to the shell (section 8).
@@ -1202,9 +1256,8 @@ run on UXDOS16.
 - Whether `exec` takes its 5 save banks from the bank allocator at each level, in place of the
   fixed banks 1 to 20 (section 7). The depth is then bound by free RAM, not by 4 levels. It
   needs step 10.
-- Which ROM bank holds which part.
+- Which ROM bank holds which part past banks 0 and 1.
 - Whether `A:` and `B:` stay free, or go to IEC drives.
-- When long names come, and how a name longer than 32 characters shows: its 8.3 name is one way.
 - FAT12 and FAT16: the kernel reads FAT32 only.
 - Whether an API string pointer points at UXCBASIC's max byte or at its length byte.
   `tpl/R-FILE.ASM` passes the max byte, with the length at offset 1.
@@ -1220,6 +1273,6 @@ run on UXDOS16.
 - The 65C816: not in the first version.
 - What `xms_move` does when the source and the destination overlap.
 - How a program reads the bank list of a block, for a UXCBASIC array that spans banks.
-- String heaps (section 3): which of VARBANK's system descriptors 13 to 31 go to which use;
+- String heaps (section 3): which of VARBANK's system descriptors 22 to 31 go to which use;
   whether `str_free` of the last block lowers the bump pointer, so a temporary string costs no
   GC; how UXCBASIC's strings use a heap.

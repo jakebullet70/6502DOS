@@ -12,6 +12,10 @@ Third-party code in the ROM, from x16-rom, github.com/X16Community/x16-rom, unde
   Copyright (c) 2015, Dieter Hauer. (C)2015-2022 Dieter Hauer, Michael Steil, Joe Burks.
 - src/asm/sdcard.s, the SD card over SPI, from fat32/sdcard.s.
   Copyright (C) 2020 Frank van den Hoef. Copyright 2020 Frank van den Hoef, Michael Steil.
+- src/asm/fat32.s, fat32_match.s, fat32_lib.inc and fat32_regs.inc, the FAT32 library, from
+  fat32/fat32.s, match.s, lib.inc and regs.inc at master fbe32a6. They are changed; each
+  file's header lists the changes.
+  Copyright (C) 2020 Frank van den Hoef. Copyright (C) 2020 Michael Steil.
 
   Redistribution and use in source and binary forms, with or without
   modification, are permitted provided that the following conditions are met:

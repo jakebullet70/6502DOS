@@ -104,6 +104,15 @@ VERSION   or   VER              (Command line or Script)
   VERSION
 :VER
 VER is short for VERSION. See HELP VERSION.
+:SETSYS
+SETSYS [name = value]           (Command line or Script)
+  Sets a system variable. With nothing after it, lists them.
+  The system variables are PATH$, PROMPT$, EDITOR$ and TEMP$. They outlast a
+  program. CURDIR$ is the current directory, read only.
+  PATH$ holds the directories searched for a program, separated by ;.
+  TEMP$ is the directory of the pipe files. Empty puts them in the root.
+  SETSYS TEMP$ = "C:\TMP"
+  PATH$ = "C:\DOS"
 :COLOR
 COLOR foreground, background    (Command line or Script)
   Sets the color of the text printed after it. Each value is 0 to 15.

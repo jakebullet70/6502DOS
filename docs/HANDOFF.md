@@ -2521,6 +2521,27 @@
        - Docs owed, added: PLAN's RAM table (`$0400-$05FF` free, `$0600` no sector buffer,
          bank 0 `$AB00`), PLAN line 377 (the kernel's sector buffer), section 6 (who fills
          the block request), the DPB and SFT fields if PLAN lists them.
+     - Done, F7b (2026-10-20), the doc batch of F1 to F7a. Build 726 ms, the new baseline; the
+       ROM is byte-identical:
+       - PLAN §3: `$0300-$030B` and `$0400-$05FF` free, `$0600` kernel variables, RAM bank 0's
+         FAT32 areas, ROM bank 1, `FARCALL` and `jsrfar`, the vector-pull trap, the SFT holds
+         the context, system descriptors 13 `TEMP$` and 14 to 21 the history. §5: Windows
+         wildcards, 32-character names, case kept, the 8.3 alias, a name over 32 as its alias,
+         the `name_check` errors, chdir's 254, rmdir and rename's 5, one volume `C:`, `.` and
+         `..` in the root. §6: the library in bank 1, the glue fills the block request, the
+         mount on the first call, the sector buffer at `$A900`, diskfree from FS info. §8:
+         `TEMP$`, `SETSYS`, the pipe files, `.CBIN` as a long name, DISKFREE, TREE's 217, the
+         command history. §9: the FAT32 port. §10: `rom.cfg`, `mksd.py` long names,
+         `fatcheck.py` and its lost-cluster trap. §13: two items settled.
+       - NOTICE: the four FAT32 files. `mem.inc`: the `GATE_PAGE` comment, "color". Long
+         comment lines rewrapped in `fat32.s` and `mksd.py`.
+       - `HELP.TXT`: new topic `SETSYS` (Command line or Script), with `TEMP$`.
+       - Tests: `CMDLETS` failed on the `HELP` list (`SETSYS` added), as expected; updated, ok
+         1.5 s. Golden changed: `CMDLETS`.
+       - Steps since the full suite: 1.
+       - Docs still owed, from before the F steps: `HELP.TXT` and PLAN §8 on the shell's Tab
+         completion and Up and Down; PLAN §4 rows for `con_line` and `con_edit`; the
+         `HELP.TXT` topic `XCOPY` (Command line only) and PLAN §8 and §11 on `XCOPY`.
    - MSBASIC in ROM (planned 2026-10-20), after F7b. Steps M0 to M5; each asm step asks first.
      - Facts:
        - The `sim` build is 12068 bytes. It goes in ROM bank 2, `$C000-$FFFF`; the ROM image

@@ -26,7 +26,7 @@ KERNEL_ZP     = $80             ; $80-$FF: the kernel
 STACK         = $0100
 MONITOR_LINE  = $0200           ; the monitor's input line: maximum, length, text
 MONITOR_OUT   = $0280           ; the monitor's output line, and its byte list for E and F
-GATE_PAGE     = $0300           ; the syscall gate, jsrfar, the IRQ, BRK and NMI vectors
+GATE_PAGE     = $0300           ; $0300-$030B free, then SYS_A to SYS_P, the gate, the call entries
 ; Trap: UXCBASIC's SYS loads A, X, Y and P from these four bytes and stores them back.
 ; The gate and the vectors must not use them.
 SYS_A         = $030C
@@ -136,7 +136,7 @@ DRIVES        = 4               ; A: to D:
 FIRST_DRIVE   = 2               ; C:, the drive of the first block unit
 ; The fields of a drive's DPB, in kernel.s
 DPB_DRIVER    = 0               ; the block driver header, 2 bytes; 0 when the drive does not exist
-DPB_CWD       = 2               ; the first cluster of the current directory, 4 bytes; 0 for the root
+DPB_CWD       = 2               ; the current directory's first cluster, 4 bytes; 0 for the root
 DPB_SIZE      = 8
 
 ; VIA 1
@@ -166,7 +166,7 @@ VERA_SPI_DATA = $9F3E
 VERA_SPI_CTRL = $9F3F           ; bit 0 selects the SD card, bit 1 the slow clock, bit 7 busy
 
 ; VRAM
-SCREEN_MAP    = $10000          ; layer 1 text: 64 rows of 128 cells, a character and a colour
+SCREEN_MAP    = $10000          ; layer 1 text: 64 rows of 128 cells, a character and a color
 CHARSET       = $1F000          ; the font: 256 glyphs of 8 bytes
 PALETTE       = $1FA00          ; palette entry 0
 

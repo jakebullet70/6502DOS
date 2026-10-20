@@ -4,15 +4,15 @@
 ; Changed: the code is in segment B1CODE and the variables in FATBSS; fat32_lib.inc and
 ; fat32_regs.inc replace lib.inc and regs.inc; the long branches are written out; krn_ptr1 and
 ; bank_save are imported at the top, so each use is zero page; fat32_cwd, fat32_free_clusters,
-; fat32_root, fat32_sectors_per_cluster and fat32_cluster_count are exported; fat32_tell_dir and fat32_seek_dir are added; fat32_create takes the attributes in
-; A; fat32_close sets the archive bit of a file written; fat32_write loops to fat32_write_again,
-; past the stream flag, as fat32_read does; create_shortname gives a name that fits 8.3 that name
-; as its short name; find_dirent takes . and .. in the root as the root, and fails on the root in
-; a search for files only, so fat32_walk_tree calls find_dir; cluster_count is the cluster past
-; the last, from the sectors of the partition, so find_free_cluster stops at the end of the
-; volume; read_dirent gives the short name of an entry whose long name is over 32 characters.
-; Left out: the 65816 routines fat32_read_long and fat32_write_long, and their MVN
-; trampoline.
+; fat32_root, fat32_sectors_per_cluster and fat32_cluster_count are exported; fat32_tell_dir and
+; fat32_seek_dir are added; fat32_create takes the attributes in A; fat32_close sets the archive
+; bit of a file written; fat32_write loops to fat32_write_again, past the stream flag, as
+; fat32_read does; create_shortname gives a name that fits 8.3 that name as its short name;
+; find_dirent takes . and .. in the root as the root, and fails on the root in a search for files
+; only, so fat32_walk_tree calls find_dir; cluster_count is the cluster past the last, from the
+; sectors of the partition, so find_free_cluster stops at the end of the volume; read_dirent gives
+; the short name of an entry whose long name is over 32 characters. Left out: the 65816 routines
+; fat32_read_long and fat32_write_long, and their MVN trampoline.
 ; fat32glue.s holds the routines and variables the library imports.
 ;
 ; Original header:
