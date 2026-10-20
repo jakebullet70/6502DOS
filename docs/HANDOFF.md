@@ -2496,7 +2496,7 @@
        - Docs owed, added: PLAN section 8 on `TEMP$` (the system variables, `SETSYS`, the pipe
          files at line 773), HEAP.UXI's slot list in PLAN at line 213, HELP.TXT.
      - F7 split (2026-10-20): F7a deletes `fat.s`; F7b is the doc batch.
-     - Done, F7a (2026-10-20). Build 786 ms, ROM only, the new baseline:
+     - Done, F7a (2026-10-20), committed 253276d, goldens f32e071. Build 786 ms, ROM only, the new baseline:
        - `src/asm/fat.s` is gone. `kernel.s` holds the drive table (`drives_init`,
          `drives_add`), `api_getdrive`, `api_setdrive`, `api_seek` and `path_device`, which
          replaces `path_last` and `component`: the last part of the path after `\`, `/` or `:`,
