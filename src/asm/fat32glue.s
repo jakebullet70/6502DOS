@@ -63,8 +63,10 @@ sector_failed:
         clc
         rts
 
-; blk_request: the request of one sector between sector_lba and sector_buffer. Changes A and X.
+; blk_request: the request of one sector between sector_lba and sector_buffer, unit 0. Changes A
+; and X.
 blk_request:
+        stz BLK_UNIT
         ldx #3
 @lba:
         lda sector_lba,x

@@ -5,9 +5,9 @@
 ; on a fault. The gate calls api_findfirst, api_findnext, api_delete, api_rename, api_mkdir,
 ; api_rmdir, api_chdir, api_getcwd and api_diskfree here.
 ;
-; The library has one volume: drive C:. Its current directory is set from the drive's DPB at
-; each call, with cluster 0 for the root, so fat.s keeps the current directories. fat.s and the
-; library each keep a sector buffer: a write through the library empties fat.s's, by buf_drive.
+; The library has one volume: drive C:. It mounts the volume when a call first takes a context.
+; Its current directory is set from the drive's DPB at each call, so the DPBs keep the current
+; directories.
 
 .setcpu "65C02"
 
@@ -24,8 +24,9 @@
 .import fat32_open_dir, fat32_read_dirent_filtered, fat32_tell_dir, fat32_seek_dir
 .import fat32_open_tree, fat32_walk_tree
 .import fat32_cwd, fat32_size, fat32_dirent, fat32_errno, fat32_readonly, skip_mask, sector_lba
-.import DPB, current_drive, create_attr, buf_drive
-.importzp saved_bank, cluster, file_size
+.import fat32_root, fat32_sectors_per_cluster, fat32_cluster_count
+.import DPB, current_drive, create_attr
+.importzp saved_bank, file_context, file_size
 
 ; The search state of a find buffer, before FIND_ATTR.
 FIND_PATTERN  = 0               ; the name part of findfirst's path, ended by 0
@@ -49,8 +50,7 @@ lib_gap:      .res 4            ; lib_write: the bytes from the end of the file 
 lib_dir       = lib_gap         ; api_rename, api_rmdir: a directory's cluster
 lib_new_dpb:  .res 1            ; api_rename: the DPB offset of the new path's drive
 lib_find      = lib_path        ; findfirst, findnext: the find buffer, built here
-; Trap: lib_new is fat.s's sector buffer. api_rename empties that buffer after it, by lib_close.
-lib_new       = SECTOR_BUFFER   ; api_rename: the new path, as lib_path
+lib_new       = RENAME_PATH     ; api_rename: the new path, as lib_path
 fat32_dir_pos = lib_find + FIND_POS
 
 .segment "B1CODE"
@@ -218,8 +218,8 @@ api_mkdir:
 ; lib_open: opens the file of the path at r0 with access A: 0 read, 1 write, 2 read and write.
 ; With carry set it creates the file with the attributes create_attr, or empties it when it
 ; exists. A path with no drive is on the current drive. Returns carry clear, A = the context,
-; file_size the size, and cluster to cluster+7 the SFT state of the file: the context, then 7
-; zeros. Access 1 or 2 on a read-only file gives ERR_ACCESS. Selects RAM bank 0 while it runs
+; and file_context to file_size the SFT state of the file: the context, the position 0 and the
+; size. Access 1 or 2 on a read-only file gives ERR_ACCESS. Selects RAM bank 0 while it runs
 ; and keeps the caller's bank in saved_bank. Changes X and Y.
 lib_open:
         php
@@ -254,19 +254,17 @@ lib_open:
         sec                     ; empty a file that exists
         jsr fat32_create
         bcc lib_drop_errno
-        jsr buf_forget
 @opened:
         jsr fat32_get_size
         ldx #3
 @size:
         lda fat32_size,x
         sta file_size,x
-        stz cluster,x
-        stz cluster+4,x
+        stz file_context+1,x    ; the position
         dex
         bpl @size
         lda lib_context
-        sta cluster
+        sta file_context
         clc
         jmp lib_bank
 
@@ -328,25 +326,15 @@ api_chdir:
 @set:
         jsr cwd_build           ; getcwd must be able to return the path
         bcs @drop
-        lda fat32_cwd
-        ora fat32_cwd+1
-        ora fat32_cwd+2
-        ora fat32_cwd+3
-        cmp #1                  ; carry clear at the root, cluster 0
-        lda lib_dpb
-        ora #3
-        tax
-        ldy #3
+        ldx lib_dpb
+        ldy #0
 @byte:
-        lda DPB + DPB_ROOT,x
-        bcc @put
         lda fat32_cwd,y
-@put:
         sta DPB + DPB_CWD,x
-        dex
-        dey
-        bpl @byte
-        sec
+        inx
+        iny
+        cpy #4                  ; carry set at the end
+        bne @byte
         jmp lib_done
 @bank:
         jmp lib_bank
@@ -453,28 +441,25 @@ api_diskfree:
         sta r1,x                ; r1 and r2
         dex
         bpl @free
-        ldx lib_dpb
-        lda DPB + DPB_CMASK,x   ; the sectors per cluster * 2 - 1
-        lsr
-        inc
+        lda fat32_sectors_per_cluster
         sta r0
         stz r0+1
         stz r3
         lda #>512
         sta r3+1
-        lda DPB + DPB_LIMIT,x   ; r4 and r5: the clusters from cluster 2
+        lda fat32_cluster_count ; r4 and r5: the clusters from cluster 2
         sec
         sbc #2
         sta r4
-        lda DPB + DPB_LIMIT+1,x
+        ldx #1
+@clusters:
+        lda fat32_cluster_count,x
         sbc #0
-        sta r4+1
-        lda DPB + DPB_LIMIT+2,x
-        sbc #0
-        sta r5
-        lda DPB + DPB_LIMIT+3,x
-        sbc #0
-        sta r5+1
+        sta r4,x
+        inx
+        txa
+        eor #4                  ; keeps carry
+        bne @clusters
         clc
 @bank:
         jmp lib_bank
@@ -631,16 +616,16 @@ lib_enter:
         rts
 
 ; cwd_set: makes the current directory of drive lib_dpb the library's, with cluster 0 for the
-; root, as a .. entry holds it. Changes A, X and Y.
+; root, as a .. entry holds it. The volume must be mounted. Changes A, X and Y.
 cwd_set:
         lda lib_dpb
-        ora #3
+        ora #DPB_CWD + 3
         tax
         ldy #3
 @root:
-        lda DPB + DPB_CWD,x
+        lda DPB,x
         sta fat32_cwd,y
-        cmp DPB + DPB_ROOT,x
+        cmp fat32_root,y
         bne @copy
         dex
         dey
@@ -650,7 +635,7 @@ cwd_set:
         dex
         dey
         bmi @done
-        lda DPB + DPB_CWD,x
+        lda DPB,x
         sta fat32_cwd,y
         bra @copy
 @done:
@@ -739,7 +724,6 @@ lib_close:
         jsr fat32_set_context
         bcc @free
         jsr fat32_close
-        jsr buf_forget
 @free:
         php
         lda lib_context
@@ -755,7 +739,7 @@ lib_close:
 ; $A000-$BFFF. Changes X and Y.
 lib_io:
         sty lib_entry
-        lda SFT + SFT_CLUSTER,y
+        lda SFT + SFT_CONTEXT,y
         dex
         bne @write
         jsr lib_read
@@ -867,13 +851,6 @@ lib_write:
         cpx #4
         bne @size
         clc
-        ; fall through
-
-; buf_forget: empties fat.s's sector buffer, which may hold a sector the library wrote. Keeps
-; carry. Changes A.
-buf_forget:
-        lda #$FF
-        sta buf_drive
         rts
 
 ; find_search: finds the next entry of the directory open in lib_context whose name matches
@@ -990,31 +967,25 @@ drive_enter:
         ; fall through
 
 ; drive_check: sets lib_dpb to the DPB offset of drive X, 0 for A:. Returns carry set and A =
-; the error when the drive does not exist or is not ready. Changes A and X.
+; ERR_BAD_DRIVE when the drive does not exist. A drive with no file system gives its error when
+; the call takes a context. Changes A and X.
 drive_check:
         cpx #DRIVES
         bcs @bad_drive
         txa
         asl
         asl
-        asl
-        asl
-        asl                     ; DPB_SIZE 32; carry clear
+        asl                     ; DPB_SIZE 8; carry clear
         sta lib_dpb
         tax
         lda DPB + DPB_DRIVER+1,x
         beq @bad_drive
-        lda DPB + DPB_SHIFT,x
-        bmi @not_ready
         rts
 @bad_drive:
         lda #ERR_BAD_DRIVE
         sec
         rts
-@not_ready:
-        lda #ERR_NOT_READY
-        sec
-        rts
+        .assert DPB_SIZE = 8, error, "drive_check multiplies by 8"
 
 ; path_char: returns character Y of the path at r0, in RAM bank saved_bank. Changes A.
 path_char:

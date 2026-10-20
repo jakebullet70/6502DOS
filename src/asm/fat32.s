@@ -3,8 +3,8 @@
 ; Ported from x16-rom, fat32/fat32.s, github.com/X16Community/x16-rom, master fbe32a6.
 ; Changed: the code is in segment B1CODE and the variables in FATBSS; fat32_lib.inc and
 ; fat32_regs.inc replace lib.inc and regs.inc; the long branches are written out; krn_ptr1 and
-; bank_save are imported at the top, so each use is zero page; fat32_cwd and fat32_free_clusters
-; are exported; fat32_tell_dir and fat32_seek_dir are added; fat32_create takes the attributes in
+; bank_save are imported at the top, so each use is zero page; fat32_cwd, fat32_free_clusters,
+; fat32_root, fat32_sectors_per_cluster and fat32_cluster_count are exported; fat32_tell_dir and fat32_seek_dir are added; fat32_create takes the attributes in
 ; A; fat32_close sets the archive bit of a file written; fat32_write loops to fat32_write_again,
 ; past the stream flag, as fat32_read does; create_shortname gives a name that fits 8.3 that name
 ; as its short name; find_dirent takes . and .. in the root as the root, and fails on the root in
@@ -231,6 +231,11 @@ fat32_cwd = cur_volume + fs::cwd_cluster
 ; fat32_free_clusters: the volume's free clusters, from the FS info sector.
 fat32_free_clusters = cur_volume + fs::free_clusters
 .export fat32_free_clusters
+; fat32_root, fat32_sectors_per_cluster, fat32_cluster_count: the mounted volume's layout.
+fat32_root = cur_volume + fs::rootdir_cluster
+fat32_sectors_per_cluster = cur_volume + fs::sectors_per_cluster
+fat32_cluster_count = cur_volume + fs::cluster_count
+.export fat32_root, fat32_sectors_per_cluster, fat32_cluster_count
 .export fat32_tell_dir
 .export fat32_seek_dir
 

@@ -1,10 +1,12 @@
-; The kernel: the driver chain, the system file table, the handles, and the calls on handles.
-; fat.s holds the drives and the file system; fat32dos.s, in ROM bank 1, opens a file for
-; reading through the FAT32 library.
+; The kernel: the driver chain, the drives, the system file table, the handles, and the calls
+; on handles. fat32dos.s, in ROM bank 1, does the calls on files and directories through the
+; FAT32 library.
 ;
 ; A handle is an index into PSP_HANDLES, which holds an SFT entry number. The SFT is in RAM
-; bank 0. A device's SFT entry holds the address of its driver header; a file's holds its drive
-; and its position.
+; bank 0. A device's SFT entry holds the address of its driver header; a file's holds its
+; context in the library and its position.
+;
+; A drive's DPB holds its block driver and the first cluster of its current directory.
 
 .setcpu "65C02"
 
@@ -15,12 +17,12 @@
 .export kernel_init, to_upper
 .export api_create, api_open, api_close, api_read, api_write, api_version, api_ticks, api_errmsg
 .export drv_call, bank0, bank_restore, io_start, io_step, io_done, handles_inherit, handles_close
-.export sft_find, api_dup, api_dup2, api_ioctl
-.exportzp driver, io_ptr, io_left, saved_bank
+.export sft_find, api_dup, api_dup2, api_ioctl, api_seek, api_getdrive, api_setdrive
+.export DPB, current_drive, create_attr
+.exportzp driver, io_ptr, io_left, saved_bank, file_context, file_size
 .import con_init, api_con_status, CHRIN, CHROUT, errmsg_table, sd_driver
-.import drives_init, drives_add, path_last
-.import create_attr, jsrfar, lib_init, lib_open, lib_io, lib_close
-.importzp ticks, fcb_name, cluster, dpb
+.import jsrfar, lib_init, lib_open, lib_io, lib_seek, lib_close
+.importzp ticks
 
 .segment "KERNELZP" : zeropage
 
@@ -32,13 +34,25 @@ io_ptr:       .res 2            ; the buffer of a driver input or output
 io_left:      .res 2            ; the bytes still to move
 io_slot:      .res 1            ; the driver command of a read or a write
 open_handle:  .res 1
+; lib_open's result, the SFT state of the file: keep the order of SFT_CONTEXT to SFT_FILE_SIZE.
+file_context: .res 1
+file_pos:     .res 4
+file_size:    .res 4
+        .assert SFT_POS - SFT_CONTEXT = file_pos - file_context && SFT_STATE = file_size + 4 - file_context, error, "the SFT state follows the zero page order"
 
 .segment "KERNELRAM"
 
+DPB:          .res DRIVES * DPB_SIZE
+current_drive: .res 1
+next_dpb:     .res 1            ; drives_add: the DPB of the next drive letter
+create_attr:  .res 1            ; api_create: the attributes, for lib_open
+device_name:  .res 8            ; open_common: the name of the path's last part, padded with spaces
 io_refused:   .res 1            ; the access mode that refuses a read or a write
 open_access:  .res 1
 open_flags:   .res 1            ; SFT_FLAGS of the entry api_open fills
 open_create:  .res 1            ; bit 7 set for create
+seek_from:    .res 1            ; api_seek: A
+seek_entry:   .res 1            ; api_seek: the SFT entry
 
 .segment "CODE"
 
@@ -93,6 +107,68 @@ kernel_init:
         sta SFT + SFT_DRIVER+1
         rts
         .assert SFT_COUNT * SFT_SIZE = 256, error, "kernel_init and api_open step Y over a page"
+
+; drives_init: clears the drive table. Changes A and X.
+drives_init:
+        ldx #DRIVES * DPB_SIZE - 1
+@clear:
+        stz DPB,x
+        dex
+        bpl @clear
+        lda #FIRST_DRIVE
+        sta current_drive
+        lda #FIRST_DRIVE * DPB_SIZE
+        sta next_dpb
+        rts
+        .assert DRIVES * DPB_SIZE <= 128, error, "drives_init counts X down with BPL"
+
+; drives_add: gives each unit of the block driver at driver the next drive letter. Changes A,
+; X and Y.
+drives_add:
+        ldy #DRV_NAME
+        lda (driver),y          ; the number of units
+        beq @done
+        tay
+        ldx next_dpb
+@unit:
+        cpx #DRIVES * DPB_SIZE
+        bcs @done
+        lda driver
+        sta DPB + DPB_DRIVER,x
+        lda driver+1
+        sta DPB + DPB_DRIVER+1,x
+        txa
+        adc #DPB_SIZE           ; carry clear
+        tax
+        stx next_dpb
+        dey
+        bne @unit
+@done:
+        rts
+
+api_getdrive:
+        lda current_drive
+        clc
+        rts
+
+api_setdrive:
+        cmp #DRIVES
+        bcs @bad
+        tay
+        asl
+        asl
+        asl                     ; DPB_SIZE 8; carry clear
+        tax
+        lda DPB + DPB_DRIVER+1,x
+        beq @bad
+        sty current_drive
+        lda #DRIVES
+        rts
+@bad:
+        lda #ERR_BAD_DRIVE
+        sec
+        rts
+        .assert DPB_SIZE = 8, error, "api_setdrive multiplies by 8"
 
 ; chain_first: points driver at the first driver. Changes A.
 chain_first:
@@ -181,6 +257,46 @@ to_upper:
 @done:
         rts
 
+; path_device: puts the last part of the path at r0, after the last \, / or :, in device_name:
+; up to 8 characters before a dot, upper case, padded with spaces. Changes A, X and Y.
+path_device:
+        lda (r0)                ; the length
+        tay
+        beq @found
+@back:
+        lda (r0),y
+        cmp #'\'
+        beq @found
+        cmp #'/'
+        beq @found
+        cmp #':'
+        beq @found
+        dey
+        bne @back
+@found:                         ; Y: the index before the last part
+        ldx #0
+@char:
+        tya
+        cmp (r0)                ; carry set at the end of the path
+        bcs @pad
+        iny
+        lda (r0),y
+        cmp #'.'
+        beq @pad
+        jsr to_upper
+        sta device_name,x
+        inx
+        cpx #8
+        bne @char
+        rts
+@pad:
+        lda #' '
+        sta device_name,x
+        inx
+        cpx #8
+        bne @pad
+        rts
+
 api_create:
         and #$FF ^ ATTR_DIR     ; mkdir makes directories
         sta create_attr
@@ -198,7 +314,7 @@ api_open:
 open_common:
         sta open_access
         ror open_create
-        jsr path_last           ; a device name works with any drive, directory or extension
+        jsr path_device         ; a device name works with any drive, directory or extension
         jsr chain_first
 @driver:
         ldy #DRV_ATTR
@@ -208,7 +324,7 @@ open_common:
         ldx #7
 @compare:
         lda (driver),y
-        cmp fcb_name,x
+        cmp device_name,x
         bne @next
         dey
         dex
@@ -221,7 +337,7 @@ open_common:
         lda open_create
         asl                     ; carry set: create
         lda open_access
-        FARCALL lib_open        ; the state of the file in cluster
+        FARCALL lib_open        ; the state of the file from file_context
         bcs @done
         lda #SFT_LIB
 @found:
@@ -247,7 +363,7 @@ open_common:
         bne @done
         pha
         jsr bank0
-        lda cluster
+        lda file_context
         FARCALL lib_close
         jsr bank_restore
         pla
@@ -268,8 +384,8 @@ open_common:
         phy
         ldx #0
 @state:                         ; a file's state: from lib_open
-        lda cluster,x
-        sta SFT + SFT_CLUSTER,y
+        lda file_context,x
+        sta SFT + SFT_CONTEXT,y
         iny
         inx
         cpx #SFT_STATE
@@ -391,7 +507,7 @@ api_close:
         bmi @device
         lda SFT + SFT_REFS,y
         bne @device             ; another handle refers to the file
-        lda SFT + SFT_CLUSTER,y
+        lda SFT + SFT_CONTEXT,y
         phx
         FARCALL lib_close
         plx
@@ -401,6 +517,63 @@ api_close:
         jmp bank_restore
 @done:
         rts
+
+; api_seek: moves handle X by the signed offset in r0 and r1 from the start (A = 0), the
+; position (1) or the end (2). Returns r0 and r1 = the new position. A position may pass the
+; end; a read there gives 0 bytes. A device stays at 0.
+api_seek:
+        cmp #3
+        bcc @from
+        lda #ERR_BAD_FUNCTION
+@fail:
+        rts
+@device:
+        stz r0
+        stz r0+1
+        stz r1
+        stz r1+1
+        clc
+        jmp bank_restore
+@from:
+        sta seek_from
+        jsr sft_find            ; bank 0
+        bcs @fail
+        lda SFT + SFT_FLAGS,y
+        bmi @device
+        sty seek_entry
+        ldx seek_from
+        beq @set
+        tya
+        ora seek_base-1,x
+        tay
+        clc                     ; r0 and r1 += the position or the size
+        ldx #0
+@add:
+        lda SFT,y
+        adc r0,x
+        sta r0,x
+        iny
+        inx
+        txa
+        eor #4                  ; keeps carry
+        bne @add
+@set:
+        ldy seek_entry
+        ldx #0
+@store:
+        lda r0,x
+        sta SFT + SFT_POS,y
+        iny
+        inx
+        cpx #4
+        bne @store
+        ldy seek_entry
+        lda SFT + SFT_CONTEXT,y
+        FARCALL lib_seek
+        bra bank_return
+
+seek_base:
+        .byte SFT_POS, SFT_FILE_SIZE
 
 ; bank_return: selects the caller's bank and returns A and carry.
 bank_return:

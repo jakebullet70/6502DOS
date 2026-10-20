@@ -2469,8 +2469,8 @@
          `CMDLETS` and `DIRS` (free space), `FILES` (the size of CMDSHELL.COM).
        - Steps since the full suite: 5.
        - Docs owed, added: PLAN on fatcheck's long-name checks; TREE and XCOPY path room.
-     - Done, F6c (2026-10-20), not committed. Builds 3022 ms (HEAP.UXI changed, 17 programs
-       compiled), then 1312 ms, the ROM and the shell, the new baseline:
+     - Done, F6c (2026-10-20), committed bfb262e, goldens 787e021. Builds 3022 ms (HEAP.UXI
+       changed, 17 programs compiled), then 1312 ms, the ROM and the shell, the new baseline:
        - `TEMP$` is a shell system variable, VARBANK system string 13, `HEAP.TEMP_STRING`
          ($A026). The shell's history ring moved from strings 13 to 20 to 14 to 21.
          `NAME_KIND`, `DESCRIPTOR_OF` (`PATH$` and `TEMP$` both have 5 characters: P picks
@@ -2495,6 +2495,32 @@
        - Steps since the full suite: 6.
        - Docs owed, added: PLAN section 8 on `TEMP$` (the system variables, `SETSYS`, the pipe
          files at line 773), HEAP.UXI's slot list in PLAN at line 213, HELP.TXT.
+     - F7 split (2026-10-20): F7a deletes `fat.s`; F7b is the doc batch.
+     - Done, F7a (2026-10-20). Build 786 ms, ROM only, the new baseline:
+       - `src/asm/fat.s` is gone. `kernel.s` holds the drive table (`drives_init`,
+         `drives_add`), `api_getdrive`, `api_setdrive`, `api_seek` and `path_device`, which
+         replaces `path_last` and `component`: the last part of the path after `\`, `/` or `:`,
+         up to 8 characters before a dot, for the device names.
+       - The library mounts the volume when a call first takes a context; fat.s's `mount`,
+         `read_sector` and its sector buffer are gone. A drive with no file system gives its
+         error at that point (no media or no FS: Not ready), not at `drive_check`.
+       - DPB: `DPB_DRIVER` (2) and `DPB_CWD` (4, 0 for the root), `DPB_SIZE` 8. `cwd_set` maps
+         the volume's root cluster to 0 with `fat32_root`. diskfree takes the sectors per
+         cluster and the clusters from the library (`fat32_sectors_per_cluster`,
+         `fat32_cluster_count`, exported from `fat32.s` with `fat32_root`).
+       - SFT: `SFT_CONTEXT` 5, `SFT_POS` 6, `SFT_FILE_SIZE` 10, `SFT_STATE` 9. The zero page
+         `file_context`, `file_pos`, `file_size` (kernel.s) take lib_open's result.
+       - RAM: `$0400-$05FF` is free. api_rename's new path is `RENAME_PATH`, `$AB00-$ABFF` in RAM
+         bank 0. The glue's `blk_request` sets `BLK_UNIT` to 0.
+       - Cost: bank 0 CODE -583 bytes (end $D80C); bank 1 B1CODE -53 (end $E76B); KERNELZP -30
+         (ends $DA); KERNELRAM -98 ($0600-$0648).
+       - Tests: `BOOT` ok 0.5 s, `SHBOOT` 0.5, `DISK` 0.5 (golden: X after setdrive, $40 to
+         $10, a leftover), `SEEK` 0.4, `CWD` 0.5, `DOSAPI` 0.7. Full suite (step 7), 38.6 s: 50
+         ok, the slowest 1.8 s.
+       - Steps since the full suite: 0.
+       - Docs owed, added: PLAN's RAM table (`$0400-$05FF` free, `$0600` no sector buffer,
+         bank 0 `$AB00`), PLAN line 377 (the kernel's sector buffer), section 6 (who fills
+         the block request), the DPB and SFT fields if PLAN lists them.
    - To do: find what the 492 bytes of 7i2b cost in `DISKFREE.CBI` (1861 to 2353 bytes), with
      pyuxc's link map, and cut them. Ideas: read `P2$` once, drop `FREE_TEXT` and pass the
      `MID$` straight to `SYS_STRINGS_SET`, reuse `DRIVE_NAME` for the text (11 bytes of RAM).
