@@ -11,20 +11,31 @@ INNER             <DIR>
      3 File(s)
 C>XCOPY MANY\SUB.DIR NEW\TREE -s
 C:\MANY\SUB.DIR\INNER\DEEP.TXT
-     1 File(s) copied
+C:\MANY\SUB.DIR\INNER\NOTESF~1.TXT
+C:\MANY\SUB.DIR\INNER\Twenty-six characters.text
+C:\MANY\SUB.DIR\INNER\ADIREC~1\IN.TXT
+     4 File(s) copied
 C>TREE NEW -F
 
 \NEW
  +- TREE
      +- INNER
-            DEEP.TXT
-            
+         |  DEEP.TXT
+         |  NOTESF~1.TXT
+         |  Twenty-six characters.text
+         |  
+         +- ADIREC~1
+                IN.TXT
+                
 C>XCOPY MANY\*.ZZZ BAK -s
 File not found
      0 File(s) copied
 C>XCOPY MANY\SUB.DIR -sl
 C:\MANY\SUB.DIR\INNER\DEEP.TXT
-     1 File(s)
+C:\MANY\SUB.DIR\INNER\NOTESF~1.TXT
+C:\MANY\SUB.DIR\INNER\Twenty-six characters.text
+C:\MANY\SUB.DIR\INNER\ADIREC~1\IN.TXT
+     4 File(s)
 C>MKDIR E1
 C>MKDIR E1\E2
 C>MKDIR E1\E2\E3

@@ -10,6 +10,7 @@ ROOT
  +- MANY
  |   +- SUB.DIR
  |       +- INNER
+ |           +- ADIREC~1
  +- SCRIPTS
 C>TREE C:\MANY -F
 
@@ -50,8 +51,13 @@ C>TREE C:\MANY -F
  |  
  +- SUB.DIR
      +- INNER
-            DEEP.TXT
-            
+         |  DEEP.TXT
+         |  NOTESF~1.TXT
+         |  Twenty-six characters.text
+         |  
+         +- ADIREC~1
+                IN.TXT
+                
 C>CD MANY
 C>TREE .. -f
 
@@ -141,8 +147,13 @@ ROOT
  |   |  
  |   +- SUB.DIR
  |       +- INNER
- |              DEEP.TXT
- |              
+ |           |  DEEP.TXT
+ |           |  NOTESF~1.TXT
+ |           |  Twenty-six characters.text
+ |           |  
+ |           +- ADIREC~1
+ |                  IN.TXT
+ |                  
  +- SCRIPTS
         BIG.CMD
         BOOT.CMD
@@ -170,6 +181,7 @@ C>TREE SUB.DIR
 
 \MANY\SUB.DIR
  +- INNER
+     +- ADIREC~1
 C>CD \
 C>TREE C:\DOCS
 
@@ -183,6 +195,7 @@ ROOT
  +- MANY
  |   +- SUB.DIR
  |       +- INNER
+ |           +- ADIREC~1
  +- SCRIPTS
 C>TREE Q:
 Invalid drive
