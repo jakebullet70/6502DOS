@@ -46,7 +46,11 @@ NAMESPACE DOS
   CONST ACCESS_READ AS UBYTE = 0, ACCESS_WRITE AS UBYTE = 1, ACCESS_READWRITE AS UBYTE = 2
   CONST ATTR_READ_ONLY AS UBYTE = $01, ATTR_HIDDEN AS UBYTE = $02, ATTR_SYSTEM AS UBYTE = $04
   CONST ATTR_LABEL AS UBYTE = $08, ATTR_DIRECTORY AS UBYTE = $10, ATTR_ARCHIVE AS UBYTE = $20
-  CONST DRIVE_C AS UBYTE = 2, IOCTL_IN_STATUS AS UBYTE = 6
+  CONST DRIVE_C AS UBYTE = 2, IOCTL_INFO AS UBYTE = 0, IOCTL_IN_STATUS AS UBYTE = 6
+
+  ' IOCTL_INFO's bits. A file gives 0.
+  CONST DEVICE_CHAR AS UBYTE = $80, DEVICE_CLOCK AS UBYTE = $08, DEVICE_NUL AS UBYTE = $04
+  CONST DEVICE_STDOUT AS UBYTE = $02, DEVICE_STDIN AS UBYTE = $01
 
   ' COPY's error when the target took fewer bytes than it was given. It is not a DOS 2.0
   ' error number, so ERRMSG gives "" for it.
@@ -169,7 +173,8 @@ NAMESPACE DOS
     POSITION_HIGH = R1
   END SUB
 
-  ' Makes ioctl request SUBFUNCTION of HANDLE, and returns its data. IOCTL_IN_STATUS gives
+  ' Makes ioctl request SUBFUNCTION of HANDLE, and returns its data. IOCTL_INFO gives the
+  ' DEVICE_ bits of a device, 0 for a file. IOCTL_IN_STATUS gives
   ' $FF when a read of HANDLE would give a byte, else 0: a file gives 0 at its end, CON $FF
   ' when a key waits, NUL 0.
   FUNCT IOCTL(HANDLE AS UWORD, SUBFUNCTION AS UBYTE) AS UWORD

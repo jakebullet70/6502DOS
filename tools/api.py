@@ -90,10 +90,12 @@ CALLS = [
               ("r1", "date, to set")],
          out=[("r0", "time"), ("r1", "date")],
          errors=[1, 6]),
-    call(10, "ioctl", 0x44, ("The subfunctions are those of MS-DOS 2.0 function 44h. Only "
-          "subfunction 6, input status, is written: r0 = $FF when a read would give a byte, else 0. "
-          "A file gives 0 at or past its end. A device asks its driver: `CON` gives $FF when a key "
-          "waits, `NUL` gives 0. Any other subfunction gives error 1."),
+    call(10, "ioctl", 0x44, ("The subfunctions are those of MS-DOS 2.0 function 44h. Two are "
+          "written. Subfunction 0, device info: r0 = the driver's DEV_ bits for a device, 0 for a "
+          "file. `CON` gives $83, `NUL` $84. Subfunction 6, input status: r0 = $FF when a read "
+          "would give a byte, else 0. A file gives 0 at or past its end. A device asks its "
+          "driver: `CON` gives $FF when a key waits, `NUL` gives 0. Any other subfunction gives "
+          "error 1."),
          in_=[("X", "handle"), ("A", "subfunction")],
          out=[("r0", "data")],
          errors=[1, 6],

@@ -668,9 +668,23 @@ api_ticks:
         clc
         rts
 
-; api_ioctl has subfunction 6 only, input status: r0 = $FF when a read would give a byte,
-; else 0. A file gives 0 at or past its end; a device asks its driver.
+; api_ioctl has two subfunctions. 0, device info: r0 = the DEV_ bits of a device's driver, 0
+; for a file. 6, input status: r0 = $FF when a read would give a byte, else 0. A file gives 0
+; at or past its end; a device asks its driver.
 api_ioctl:
+        tay                     ; subfunction 0
+        bne @input
+        jsr sft_find
+        bcs @done
+        ldx SFT + SFT_FLAGS,y   ; SFT_DEVICE for a device
+        jsr sft_driver
+        lda #0
+        cpx #SFT_DEVICE
+        bne @status
+        ldy #DRV_ATTR
+        lda (driver),y
+        bra @status
+@input:
         cmp #6
         bne bad_function
         jsr sft_find
