@@ -3008,8 +3008,11 @@
           since 8a795f5: LIST prints no space before a line number). Steps since the full
           suite: 0.
         - No test runs boot's re-run of the shell: no shell command ends the shell.
-        - Doc batch owes: PLAN lines 109-110 (the memory map), 188 (VARBANK bank 11), 495
-          (the nesting), 1338 (section 13).
+        - Done, the doc batch (2026-10-21). PLAN section 3: the memory map (save banks 1 to
+          10, VARBANK bank 11, banks 12 and up free) and VARBANK; section 7: the packed save,
+          boot's `PSP_TOP`, the nesting rule; section 13: the allocator question names banks 1
+          to 10. Items 2 to 5 stay here until agreed. No docs are owed. No build, no test.
+          Steps since the full suite: 1.
      2. PLAN step 10: a kernel allocator, GPC `BANKMGR` style (lowest free bank, free, count)
         with an owner byte per bank in a 256-byte table in bank 0 (`$AC00`), so `exit` frees a
         program's banks. Owner = a unique PSP id, so `keep` needs no re-tag. `exec` takes its
@@ -3022,7 +3025,7 @@
         can replace a ROM built-in. `CONFIG.SYS` `SHELL=` loads a disk shell instead.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
-     PLAN sections 3, 7, 11 and 13 take these at the next doc batch.
+     PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
    - To do: find what the 492 bytes of 7i2b cost in `DISKFREE.CBI` (1861 to 2353 bytes), with
      pyuxc's link map, and cut them. Ideas: read `P2$` once, drop `FREE_TEXT` and pass the
      `MID$` straight to `SYS_STRINGS_SET`, reuse `DRIVE_NAME` for the text (11 bytes of RAM).

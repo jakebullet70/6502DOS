@@ -106,9 +106,9 @@ The UXCBASIC library is the folder `lib/`. Each file holds one namespace of the 
 | `$0801–$9EFF` | the program |
 | `$9F00–$9FFF` | I/O: VIAs, VERA, YM2151 |
 | `$A000–$BFFF` bank 0 | kernel tables: the system file table at `$A000`, the FAT32 library's variables at `$A100–$A7FF`, the keyboard queue at `$A800–$A80A`, the library's sector buffer at `$A900–$AAFF`, `rename`'s new path at `$AB00–$ABFF`; later the bank owner and next-bank tables |
-| `$A000–$BFFF` banks 1 to 20 | `exec`'s save banks: 5 for each of 4 levels |
-| `$A000–$BFFF` bank 21 | VARBANK, the shared string heap (String heaps, below) |
-| `$A000–$BFFF` banks 22 and up | the environment, and banks handed out by the allocator |
+| `$A000–$BFFF` banks 1 to 10 | `exec`'s save banks: each save follows the one before it (section 7) |
+| `$A000–$BFFF` bank 11 | VARBANK, the shared string heap (String heaps, below) |
+| `$A000–$BFFF` banks 12 and up | the environment, and banks handed out by the allocator |
 | `$C000–$FFFF` ROM bank 0 | kernel core and the vectors. `$FFCF` and `$FFD2` jump to `con_in` and `con_out`, and `$FFF6–$FFF9` hold `MIST` (section 10) |
 | `$C000–$FFFF` ROM bank 1 | the FAT32 library, the kernel's file calls on it, and its glue to the SD driver |
 | `$C000–$FFFF` ROM banks 2 and up | not in the image yet |
@@ -185,7 +185,7 @@ A string heap is one RAM bank of strings with garbage collection, in `src/asm/st
 calls are `str_alloc`, `str_free`, `str_gc` and `str_heap` (section 4). Heaps hold strings
 only; numbers stay at fixed addresses in the program.
 
-- VARBANK, bank 21, is the shared heap: the system's, and every program's at its start. A
+- VARBANK, bank 11, is the shared heap: the system's, and every program's at its start. A
   program should take a bank of its own with `str_heap`. VARBANK is the first bank after
   `exec`'s save banks, fixed until `bank_alloc` exists.
 - A heap's bank starts with a header:
@@ -479,9 +479,13 @@ Drivers follow MS-DOS 2.0's device drivers.
     characters.
   - Still to add: the disk error handler in force when the program started, and the bank of
     the environment.
-- `exec` copies the parent's pages from the PSP up to `PSP_TOP`, then `r0` to `$7F`, to 5 RAM
-  banks. Boot and `exec` set `PSP_TOP` to the page of `$9EFF`; a UXCBASIC program sets
-  its own at start-up (section 12). `exec` copies no page past `$9EFF`, whatever `PSP_TOP` holds.
+- `exec` copies the parent's pages from the PSP up to `PSP_TOP`, then a page of `r0` to `$7F`,
+  to RAM banks 1 to 10, right after the save of the program that ran the parent.
+  `save_bank` and `save_page` in the kernel's zero page hold where each level's save starts.
+  `exec` sets a child's `PSP_TOP` to the page of `$9EFF`; a UXCBASIC program sets its own at
+  start-up (section 12). `exec` copies no page past `$9EFF`, whatever `PSP_TOP` holds.
+- Boot sets `PSP_TOP` to the PSP's page before it runs the shell, so that save is 2 pages.
+  The monitor's `PSP_TOP` is the page of `$9EFF`.
   It builds the child's PSP in place: copies of the parent's handles, each counted once more in its
   system file table entry, and the command tail. The child starts with the parent's RAM bank.
   `exec` sets the child's `PSP_HEAP` to VARBANK and its floor there to the bump pointer.
@@ -492,8 +496,9 @@ Drivers follow MS-DOS 2.0's device drivers.
   part.
 - Trap: a program that writes RAM above its `PSP_TOP` page, by `POKE` or `ContentsAt`, loses it
   across an `exec`.
-- Up to 4 programs run one inside another, each level with its own 5 save banks. A fifth `exec`
-  gives error 8.
+- Up to 4 programs run one inside another, while their saves fit in banks 1 to 10. A save that
+  does not fit gives error 8, and so does a fifth `exec`. Two saves of the whole program area
+  fit: 306 of the 320 pages.
 - The ROM monitor is the top level: `RUN path [tail]` runs a program from it.
 - `keep` ends a program but leaves its banks allocated, with its IRQ hook in place: a TSR.
 - Every RAM bank records the PSP that owns it. `exit` frees the banks of the program that ends.
@@ -1334,9 +1339,9 @@ run on 6502DOS.
 ## 13. Still to decide
 
 - The rest of the PSP: the handlers, the environment's bank.
-- Whether `exec` takes its 5 save banks from the bank allocator at each level, in place of the
-  fixed banks 1 to 20 (section 7). The depth is then bound by free RAM, not by 4 levels. It
-  needs step 10.
+- Whether `exec` takes its save banks from the bank allocator, only as many as `PSP_TOP` needs,
+  in place of the fixed banks 1 to 10 (section 7). The depth is then bound by free RAM, not by
+  4 levels. It needs step 10.
 - Which ROM bank holds which part past banks 0 and 1.
 - Whether `A:` and `B:` stay free, or go to IEC drives.
 - FAT12 and FAT16: the kernel reads FAT32 only.
