@@ -831,6 +831,7 @@ LC5A9:
 .ifndef KBD
         jsr     CRDO
 .endif
+LIST_LINE:              ; 6502dos SAVE enters here for its first line, Y = 1
         iny
         lda     (LOWTRX),y
         tax

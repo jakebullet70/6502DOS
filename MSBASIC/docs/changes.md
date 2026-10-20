@@ -861,3 +861,28 @@ are allowed in this target only.
   one, takes 1.2 s.
 - `cbmbasic1`, `cbmbasic2` and `sim` are byte for byte as before. Bank 2 holds 12266 bytes, and
   4118 bytes are free.
+
+## LOAD and SAVE in the 6502dos target (+114 bytes)
+
+- `LOAD "name"` and `SAVE "name"` replace the `rts` stubs of `defines_6502dos.s`. They are in
+  `6502dos_extra.s`. Programs are saved as text, as LIST shows them, with CR LF line ends.
+- `HIO_GETNAME`, new in `handle_io.s`, evaluates a string into `HIO_NAME`. `OPEN`, `LOAD` and
+  `SAVE` share it. It adds 4 bytes to `sim`.
+- `LOAD` opens the file as logical file 0, does a NEW (`SCRTCH`, which reaches `CLEARC`), and
+  jumps to the main loop, which reads the file's lines as typed ones. `MSBASIC NAME.BAS` does
+  the same through `DOS_LOAD`. The handle waits in `DOS_ROW` while NEW frees every entry. A
+  missing file gives ?FILE NOT FOUND ERROR before the NEW, so the program stays.
+- `DOS_LOADRUN`, 1 byte of `IORAM`, holds `CURLIN+1` at the LOAD. At the end of the file, `INLIN`
+  gives the OK prompt if it is $FF (direct mode). Otherwise it gives the line RUN, so a LOAD in
+  a program loads the next program and runs it. `MSBASIC NAME.BAS` sets it to the name's length.
+- `SAVE` opens the file for writing, sends the output to it, and enters LIST at the new label
+  `LIST_LINE` in `program.s`, after LIST's CRDO, so the file has no blank first line. As LIST,
+  it ends at `RESTART`, so SAVE ends a program. It points the vector `GOSTROUT` at `SAVE_END`,
+  so RESTART's OK runs `SAVE_END` first: it ends the last line, closes the file, gives the
+  output back to the console, and sets `GOSTROUT` back to `STROUT`. A Ctrl+C break reaches
+  `SAVE_END` too, after `BREAK` goes into the file.
+- `SAVE` writes each line number with LIST's leading space. A line that LIST makes longer than
+  80 characters, such as one with `?` for PRINT, is cut at 80 by LOAD.
+- `HELPBAS.HLP` has topics `LOAD` and `SAVE`.
+- `cbmbasic1` and `cbmbasic2` are byte for byte as before. Bank 2 holds 12380 bytes, and 4004
+  bytes are free.

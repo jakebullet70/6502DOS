@@ -67,7 +67,3 @@ RAMSTART2        := $0900 ; a 0 byte, then the program text at $0901
 ; console handles
 K_STDIN          := 0
 K_STDOUT         := 1
-
-SAVE:
-LOAD:
-        rts

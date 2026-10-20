@@ -15,6 +15,8 @@ DOS_POLL:	.res 1		; ISCNTC looks for Ctrl+C when this counts to 0
 DOS_ROW:	.res 1		; TEXTAT: the cursor and the color to restore
 DOS_COLUMN:	.res 1
 DOS_COLOR:	.res 1		; COLOR: the background
+DOS_LOADRUN:	.res 1		; logical file 0 ends with OK if $FF, else with RUN
+DOS_FILE	:= DOS_ROW	; LOAD and SAVE: the handle
 
 .segment "EXTRA"
 
@@ -415,10 +417,9 @@ HELP_NONE:
 .endif
 
 ; ----------------------------------------------------------------------------
-; The end of the cold start. MSBASIC NAME.BAS opens NAME.BAS, the first word
-; of the command tail, as logical file 0, BASIC's input; INLIN reads its lines
-; as typed ones and gives the line RUN after them. A missing file is ?FILE NOT
-; FOUND ERROR. Without a name, or after the error, the OK prompt follows.
+; The end of the cold start. MSBASIC NAME.BAS loads NAME.BAS, the first word
+; of the command tail, as DOS_LOAD does, and runs it. Without a name the OK
+; prompt follows.
 ; ----------------------------------------------------------------------------
 DOS_BOOT:
         ldx     #0
@@ -439,23 +440,87 @@ DOS_BOOT:
         bcc     @copy
 @end:
         sty     HIO_NAMELEN
-        tya
-        beq     @none
+        tya				; the length, not $FF: RUN
+        bne     DOS_LOAD
+        jmp     RESTART
+
+; ----------------------------------------------------------------------------
+; "LOAD" STATEMENT: LOAD "name" does a NEW, then reads the file's lines as
+; typed ones, then gives the OK prompt. In a program, RUN follows instead.
+; ----------------------------------------------------------------------------
+LOAD:
+        jsr     HIO_GETNAME
+        lda     CURLIN+1		; $FF in direct mode
+; Opens the file named at HIO_NAMELEN as logical file 0, BASIC's input
+; (entry 0), and does a NEW. INLIN reads its lines; at the end it gives the
+; OK prompt if A was $FF, else the line RUN. A missing file is ?FILE NOT
+; FOUND ERROR, and the program stays.
+DOS_LOAD:
+        sta     DOS_LOADRUN
         lda     #0			; read
         jsr     K_OPEN
-        bcs     @notfound
-        sta     HIO_HND			; entry 0, logical file 0: HIO_INIT
-        stz     HIO_MODE		; freed every entry
+        bcs     DOS_NOTFOUND
+        sta     DOS_FILE		; NEW resets the stack
+        jsr     SCRTCH			; and frees every entry
+        lda     DOS_FILE
+        sta     HIO_HND
+        stz     HIO_MODE
         stz     HIO_EOF
         stz     HIO_IN
         ldx     #0
         jsr     HIO_AHEAD
         jmp     L2351			; no OK before the file's lines
-@none:
-        jmp     RESTART
-@notfound:
+DOS_NOTFOUND:
         ldx     #HIO_ERR_NOTFOUND
         jmp     HIO_ERROR
+
+; ----------------------------------------------------------------------------
+; "SAVE" STATEMENT: SAVE "name" writes the program to the file as LIST shows
+; it, with CR LF line ends, and makes the file or empties it. As LIST, it ends
+; a program. RESTART prints OK through GOSTROUT, which SAVE points at
+; SAVE_END, so the file closes after the last line or after a Ctrl+C break.
+; ----------------------------------------------------------------------------
+SAVE:
+        jsr     HIO_GETNAME
+        lda     #1			; write
+        jsr     K_OPEN
+        bcs     DOS_NOTFOUND
+        sta     HIO_OUT
+        sta     DOS_FILE
+        lda     #<SAVE_END
+        sta     GOSTROUT+1
+        lda     #>SAVE_END
+        sta     GOSTROUT+2
+        lda     TXTTAB
+        ldy     TXTTAB+1
+        sta     LOWTRX
+        sty     LOWTRX+1
+        lda     #$FF			; to the last line
+        sta     LINNUM
+        sta     LINNUM+1
+        pla				; LIST ends at RESTART, not NEWSTT
+        pla
+        ldy     #1
+        lda     (LOWTRX),y
+        jne     LIST_LINE		; no CRDO before the first line
+        jmp     RESTART
+
+; RESTART's GOSTROUT after SAVE: ends the last line, closes the file, gives
+; the output back to the console, then prints A/Y as STROUT does.
+SAVE_END:
+        pha
+        phy
+        jsr     CRDO
+        ldx     DOS_FILE
+        jsr     K_CLOSE
+        jsr     IO_CLRCH
+        lda     #<STROUT
+        sta     GOSTROUT+1
+        lda     #>STROUT
+        sta     GOSTROUT+2
+        ply
+        pla
+        jmp     STROUT
 
 DOS_RUN:
         .byte   "RUN",0

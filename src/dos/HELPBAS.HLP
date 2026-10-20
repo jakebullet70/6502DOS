@@ -185,6 +185,11 @@ LEN(a$)
 LIST [first][-[last]]
   Lists the program, or the lines from first to last.
   LIST 100-200
+:LOAD
+LOAD "name"
+  Deletes the program, then reads the program text of the file, as if typed.
+  In a program, RUN follows. A missing file keeps the program.
+  LOAD "HELLO.BAS"
 :LOCATE
 LOCATE x,y
   Moves the cursor to column x, row y. 0,0 is the top left.
@@ -281,6 +286,10 @@ RPT$(code,n)
 :RUN
 RUN [line or label]
   Clears the variables and runs the program, from the start or from line.
+:SAVE
+SAVE "name"
+  Writes the program to the file as LIST shows it. Ends a program.
+  SAVE "HELLO.BAS"
 :SCREEN
 SCREEN mode
   Does nothing. The screen stays 80 by 30 text.

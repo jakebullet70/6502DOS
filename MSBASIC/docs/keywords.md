@@ -120,6 +120,10 @@ to the shell with exit code n, 0 to 255, or 0.
 in a program it gives ?SYNTAX ERROR. It prints the topic from `C:\DOS\HELPBAS.HLP`, or with no
 topic the topic names.
 
+`LOAD "name"` and `SAVE "name"` (114 bytes, no flag) work in the `6502dos` target only. SAVE
+writes the program as text, as LIST shows it; LOAD does a NEW and reads the lines back. A LOAD
+in a program runs the program it loads. SAVE ends a program, as LIST does.
+
 ## Internals (no keywords)
 
 | Feature | Flag | Bytes |

@@ -247,19 +247,11 @@ IO_CLALL:
         jmp     IO_CLRCH
 
 ; ----------------------------------------------------------------------------
-; "OPEN" STATEMENT: OPEN lf,"name"[,mode]
+; Evaluates a string into HIO_NAME, NUL-terminated (on 6502DOS also with its
+; length at HIO_NAMELEN). A name over HIO_NAMEMAX is ?STRING TOO LONG ERROR.
+; Returns N set. For OPEN, and LOAD and SAVE of 6502dos_extra.s.
 ; ----------------------------------------------------------------------------
-OPEN:
-        jsr     GETBYT
-        txa
-        beq     @iq
-        sta     HIO_NEWLF
-        jsr     HIO_FIND
-        bpl     @isopen
-        lda     #0
-        jsr     HIO_FIND
-        bmi     @toomany
-        jsr     CHKCOM
+HIO_GETNAME:
         jsr     FRMEVL
         jsr     FRESTR		; A = length, INDEX = text
         cmp     #HIO_NAMEMAX+1
@@ -277,6 +269,26 @@ OPEN:
 @next:
         dey
         bpl     @copy
+        rts
+@long:
+        ldx     #ERR_STRLONG
+        jmp     ERROR
+
+; ----------------------------------------------------------------------------
+; "OPEN" STATEMENT: OPEN lf,"name"[,mode]
+; ----------------------------------------------------------------------------
+OPEN:
+        jsr     GETBYT
+        txa
+        beq     @iq
+        sta     HIO_NEWLF
+        jsr     HIO_FIND
+        bpl     @isopen
+        lda     #0
+        jsr     HIO_FIND
+        bmi     @toomany
+        jsr     CHKCOM
+        jsr     HIO_GETNAME
         lda     #0
         sta     HIO_NEWMODE
         jsr     CHRGOT
@@ -307,9 +319,6 @@ OPEN:
         rts
 @iq:
         jmp     IQERR
-@long:
-        ldx     #ERR_STRLONG
-        jmp     ERROR
 @isopen:
         ldx     #HIO_ERR_OPEN
         .byte   $2C

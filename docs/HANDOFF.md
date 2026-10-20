@@ -2776,11 +2776,26 @@
        card root, which M2 had not run: `DOSAPI` and `FILES` list them; `SHTAB` now completes
        `LIST HEL` to `HELLO.BAS`. Goldens updated, then ok: `DOSAPI` 0.7 s, `FILES` 0.4, `SHTAB`
        0.7.
-     - Steps since the full suite: 0.
-     - Docs owed to the batch: a `HELP.TXT` topic `HELPBAS`, PLAN's utilities list, `HELP`
-       in `MSBASIC/CLAUDE.md`.
-     - Next, step 3, the user's request: `LOAD` and `SAVE` of program text (M3's part), and
-       their topics in `HELPBAS.HLP`. `LOAD` and `SAVE` are `rts` stubs in `defines_6502dos.s`.
+     - Step 3 done (2026-10-20): `LOAD "name"` and `SAVE "name"` of program text, in
+       `6502dos_extra.s`; the details are in `MSBASIC/docs/changes.md`. +114 bytes, 1 byte of
+       RAM (`DOS_LOADRUN`). Bank 2: 12380 bytes used, 4004 free. `sim` +4 bytes, from
+       `HIO_GETNAME`, which `OPEN`, `LOAD` and `SAVE` share.
+     - LOAD does a NEW, then reads the file as `MSBASIC NAME.BAS` does (both through `DOS_LOAD`),
+       then OK; in a program it runs the loaded program. A missing file keeps the program.
+     - SAVE drives LIST from the new label `LIST_LINE` (no blank first line) and points
+       `GOSTROUT` at `SAVE_END`, which closes the file at RESTART's OK. It ends a program.
+     - `HELPBAS.HLP`: topics `LOAD` and `SAVE`, 94 topics, 9287 bytes.
+     - Test `BASLOAD`, new, in `SHELL_ROM_TESTS`: SAVE, NEW, LOAD, LIST, RUN, a missing file, a
+       LOAD in a program (chains to `HELLO.BAS`), `HELP SAVE`, then `TYPE T.BAS` in the shell.
+     - Tests: `BASLOAD` ok 0.7 s, `BASBOOT` 0.5, `BASRUN` 0.5, `BASHELP` 1.6, `HELPBAS` 1.4,
+       `CMDLETS` 1.5, `DIRS` 1.1, `TREE` 1.5, `DISK` 0.4, `FILES` 0.5. Goldens changed:
+       `BASHELP` and `HELPBAS` (the list has LOAD and SAVE). MSBASIC `make all verify` ok
+       (1127 ms), `make test` 31/31 (1019 ms). ROM build 966 ms, the new baseline.
+     - Steps since the full suite: 1.
+     - Docs owed to the batch: a `HELP.TXT` topic `HELPBAS`, PLAN's utilities list, `HELP`,
+       `LOAD` and `SAVE` in `MSBASIC/CLAUDE.md`.
+     - Next: the user's choice. Ideas: a buffered `K_READ` (HELP and LOAD read a byte per API
+       call); SAVE without the line number's leading space.
    - To do: find what the 492 bytes of 7i2b cost in `DISKFREE.CBI` (1861 to 2353 bytes), with
      pyuxc's link map, and cut them. Ideas: read `P2$` once, drop `FREE_TEXT` and pass the
      `MID$` straight to `SYS_STRINGS_SET`, reuse `DRIVE_NAME` for the text (11 bytes of RAM).
