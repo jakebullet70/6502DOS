@@ -23,14 +23,15 @@
 ; UXCBASIC/pyuxc/uxc_lex.py, con_out in tools/api.py, and tests/ANSI.S.
 ; Keys come from the keyboard queue in RAM bank 0, then from the SMC keycode register in a US
 ; layout. An extended key, an arrow, Home, End, PgUp, PgDn, Insert, Delete or F1 to F10, gives
-; two characters, as in MS-DOS: 0, then its IBM PC scan code.
+; two characters, as in MS-DOS: 0, then its IBM PC scan code. In the queue, KBD_EXTENDED then a
+; scan code is an extended key.
 
 .setcpu "65C02"
 
 .include "mem.inc"
 .include "api.inc"
 
-.export con_init, api_con_line, api_con_edit, api_con_status, api_con_out, api_con_in, api_con_cursor
+.export con_init, api_con_line, api_con_edit, api_con_screen, api_con_status, api_con_out, api_con_in, api_con_cursor
 .export api_con_getkey
 .export api_con_colour, api_con_break
 .export CHRIN, CHROUT
@@ -58,6 +59,9 @@ KEY_F1        = $70             ; F1 to F10 are keycodes KEY_F1 to KEY_F1 + 9
 SCAN_F1       = $3B             ; F1 to F10 are scan codes SCAN_F1 to SCAN_F1 + 9
 SCAN_ALT_1    = $78             ; Alt+1 to Alt+= are scan codes SCAN_ALT_1 to SCAN_ALT_1 + 11
 EXTENDED      = $80             ; in kbd_special_chars: the low 7 bits are a scan code
+KBD_EXTENDED  = $E0             ; in KBD_QUEUE: the scan code of an extended key comes next, as the
+                                ; IBM PC BIOS gives the grey keys; x16emu -bas pastes \XE0\X48 as Up.
+                                ; Trap: -bas ends the paste at \X00, so 0 cannot be the prefix
 ANSI_ESC      = 1               ; ansi_state after Esc
 ANSI_CSI      = 2               ; ansi_state after Esc [
 ANSI_PARAMS   = 4               ; the parameters kept; more add into the last
@@ -74,7 +78,7 @@ con_blink:    .res 1            ; the low byte of ticks at the last blink
 kbd_mods:     .res 1            ; MOD_ bits
 pointer:      .res 2            ; con_init: the font; api_con_line: the buffer
 con_limit:    .res 1            ; api_con_line: the buffer offset of the last character, then the end key
-con_end_key:  .res 1            ; api_con_line: $09 when Tab ends the line, else $0D
+con_end_key:  .res 1            ; api_con_line: $09 when Tab ends the line, $FF in api_con_screen, else $0D
 con_after_cr: .res 1            ; 1 when the last byte written was CR
 con_colour:   .res 1            ; the colour of new cells: background high nibble, foreground low
 ansi_state:   .res 1            ; 0, ANSI_ESC after Esc, ANSI_CSI after Esc [
@@ -85,6 +89,9 @@ con_default:  .res 1            ; the colour Esc[0m sets: the one api_con_colour
 con_broke:    .res 1            ; 1 when Ctrl+C came in BREAK_CATCH since api_con_break's last get
 ansi_count:   .res 1            ; the index of the parameter being read
 ansi_params:  .res ANSI_PARAMS  ; the parameters, each modulo 256
+scr_row:      .res 1            ; api_con_screen: the row and column the line started at
+scr_col:      .res 1
+scr_insert:   .res 1            ; api_con_screen: bit 7 set in insert mode
 
 .segment "CODE"
 
@@ -451,7 +458,7 @@ cursor_flip:
         rts
 
 ; con_in: waits for a key and returns its character in A. The cursor blinks while it waits.
-; Changes X and Y.
+; In api_con_screen a Ctrl+C that con_status caught returns 0 with con_scan 0. Changes X and Y.
 con_in:
         jsr cursor_flip
         lda ticks
@@ -459,6 +466,11 @@ con_in:
 @wait:
         jsr con_status
         bne @key
+        bit con_end_key
+        bpl @blink
+        lda con_broke
+        bne @key
+@blink:
         lda ticks
         sec
         sbc con_blink
@@ -493,17 +505,20 @@ con_status:
         stz RAM_BANK
         lda KBD_COUNT
         beq @smc
-        dec KBD_COUNT
-        lda KBD_QUEUE
-        pha
-        ldy #0
-@shift:
-        lda KBD_QUEUE+1,y
-        sta KBD_QUEUE,y
-        iny
-        cpy #KBD_QUEUE_SIZE - 1
-        bne @shift
-        pla
+        ldy KBD_QUEUE
+        cpy #KBD_EXTENDED
+        bne @plain
+        cmp #2                  ; the scan code of an extended key follows
+        lda #0
+        bcc @queued             ; the scan code is not in yet
+        jsr kbd_pop
+        jsr kbd_pop
+        sta con_scan
+        lda #0
+        bra @queued
+@plain:
+        jsr kbd_pop
+@queued:
         stx RAM_BANK
         plp
         bra @key
@@ -530,6 +545,21 @@ con_status:
         lda #0                  ; no character
         rts
         .assert BREAK_OFF = 0 && BREAK_END = 1 && BREAK_CATCH = 2, error, "con_status counts the modes with dex"
+
+; kbd_pop: takes the oldest character of KBD_QUEUE into A, with RAM bank 0 set. Changes Y.
+kbd_pop:
+        dec KBD_COUNT
+        lda KBD_QUEUE
+        pha
+        ldy #0
+@shift:
+        lda KBD_QUEUE+1,y
+        sta KBD_QUEUE,y
+        iny
+        cpy #KBD_QUEUE_SIZE - 1
+        bne @shift
+        pla
+        rts
 
 ; api_con_break: with carry set returns PSP_BREAK in A and con_broke in X, and clears con_broke.
 ; With carry clear sets PSP_BREAK to A, a BREAK_ mode, else returns ERR_BAD_DATA.
@@ -642,14 +672,8 @@ con_read:
         lda (r0)                ; the most characters, CR included
         sta con_limit
         inc con_limit           ; the offset of the last CR
-        ldx #0
-        jsr sft_find
-        bcs @keys               ; handle 0 closed
-        ldx SFT + SFT_FLAGS,y   ; bit 7 set for a device
-        jsr bank_restore
-        txa
+        jsr con_file
         bpl @file
-@keys:
         ldy #1
         lda (r0),y
         tax                     ; X = the kept characters left to show
@@ -763,6 +787,385 @@ con_read:
         sta r0+1
         lda #$0D
         bra @tab
+
+; con_file: returns N clear when handle 0 is a file, N set when it is a device or closed. Changes
+; A, X and Y.
+con_file:
+        ldx #0
+        jsr sft_find
+        bcs @closed
+        ldx SFT + SFT_FLAGS,y   ; bit 7 set for a device
+        jsr bank_restore
+        txa
+        rts
+@closed:
+        lda #$FF
+        rts
+
+; api_con_screen: r0 = the buffer, as api_con_line takes it. When handle 0 is a file, it is
+; api_con_line. From the keys it is the full-screen editor of GW-BASIC. The cursor moves over the
+; whole screen, and Enter returns the text of its row, without the blanks at the end. On the row
+; the call started at, the text starts at the column it started at, past a prompt; on any other
+; row at column 0. A Ctrl+C caught in BREAK_CATCH ends the line with no text. A line is one row:
+; typing in the last column stays there. Returns A = $0D and carry clear.
+; Trap: only typed characters, Backspace and the end of the line go through CHROUT; -echo shows
+; nothing of the other edits.
+api_con_screen:
+        jsr con_file
+        bmi @screen
+        jmp api_con_line
+@screen:
+        lda #$FF                ; con_in returns on a caught Ctrl+C
+        sta con_end_key
+        lda (r0)
+        inc
+        sta con_limit           ; the offset of the last CR
+        lda con_row
+        sta scr_row
+        lda con_col
+        sta scr_col
+        stz scr_insert
+@key:
+        jsr CHRIN               ; A = the character, X = the scan code of an extended key
+        stz con_key
+        cmp #' '
+        bcs @text
+        cmp #$0D
+        beq @enter
+        tay
+        bne @control
+        txa
+        beq @broke              ; neither: a caught Ctrl+C
+@control:                       ; A = a control character or a scan code
+        ldy #scr_keys_end - scr_keys - 1
+@find:
+        cmp scr_keys,y
+        beq @found
+        dey
+        bpl @find
+        bra @key
+@found:
+        cpy #SCR_KEEP_INSERT
+        bcc @keep
+        stz scr_insert          ; a cursor move ends insert mode
+@keep:
+        tya
+        asl
+        tax
+        jsr @run
+        bra @key
+@run:
+        jmp (scr_jumps,x)
+@text:
+        bit scr_insert
+        bpl @over
+        pha
+        ldy con_col
+        jsr scr_open
+        pla
+@over:
+        ldy con_col
+        cpy #COLUMNS - 1
+        beq @last
+        jsr CHROUT              ; shows it and moves on
+        bra @key
+@last:
+        pha
+        ldx con_row
+        jsr point
+        pla
+        sta VERA_DATA0
+        lda con_colour
+        sta VERA_DATA0
+        bra @key
+@broke:
+        stz pointer+1           ; no text
+        bra @copied
+@enter:
+        jsr scr_start           ; A = the first column
+        sta pointer
+        jsr scr_end             ; Y = the column after the text
+        tya
+        sec
+        sbc pointer
+        bcs @length
+        lda #0                  ; the row is blank from the first column
+@length:
+        ldx con_limit
+        dex
+        dex                     ; X = the most characters
+        stx pointer+1
+        cmp pointer+1
+        bcs @copy
+        sta pointer+1           ; the count
+@copy:
+        ldx con_row
+        ldy pointer
+        jsr point
+        lda #$20 | ^SCREEN_MAP  ; increment 2: the characters only
+        sta VERA_ADDR_H
+        ldy #2
+        ldx pointer+1
+        beq @copied
+@char:
+        lda VERA_DATA0
+        sta (r0),y
+        iny
+        dex
+        bne @char
+@copied:
+        lda pointer+1
+        ldy #1
+        sta (r0),y
+        tay
+        iny
+        iny
+        lda #$0D
+        sta (r0),y
+        jsr CHROUT              ; the cursor to the next row
+        lda #$0A
+        jsr CHROUT
+        stz con_end_key         ; con_in checks it
+        lda #$0D
+        clc
+        rts
+
+; The editor's keys. scr_jumps holds a routine for each, in the same order. The first
+; SCR_KEEP_INSERT keep insert mode on. Each routine may change A, X and Y.
+SCR_KEEP_INSERT = 4
+.segment "RODATA"
+scr_keys:
+        .byte $52, $53, $08, $09                ; Ins, Del, Backspace, Tab
+        .byte $1B, $48, $50, $4B, $4D           ; Esc, Up, Down, Left, Right
+        .byte $47, $4F, $77, $75, $73, $74      ; Home, End, Ctrl+Home, Ctrl+End, Ctrl+Left, Ctrl+Right
+scr_keys_end:
+scr_jumps:
+        .word scr_ins, scr_del, scr_back, scr_tab
+        .word scr_esc, scr_up, scr_down, scr_left, scr_right
+        .word scr_home, scr_end_key, scr_clear, scr_erase, scr_word_left, scr_word_right
+        .assert * - scr_jumps = 2 * (scr_keys_end - scr_keys), error, "scr_jumps needs a routine a key"
+.segment "CODE"
+
+scr_ins:
+        lda scr_insert
+        eor #$80
+        sta scr_insert
+        rts
+
+scr_del:
+        ldy con_col
+        bra scr_close
+
+scr_back:                       ; not past the first column
+        jsr scr_start
+        cmp con_col
+        bcs scr_done
+        lda #$08
+        jsr CHROUT              ; the cursor one left
+        ldy con_col
+        ; fall through
+
+; scr_close: moves the cells of the cursor's row right of column Y one left, and blanks the last
+; column. Changes A, X and Y.
+scr_close:
+        lda #1                  ; ADDRSEL: port 1 writes
+        sta VERA_CTRL
+        ldx con_row
+        jsr point
+        stz VERA_CTRL
+        iny
+        jsr point
+@cell:
+        cpy #COLUMNS
+        beq @last
+        lda VERA_DATA0
+        sta VERA_DATA1
+        lda VERA_DATA0
+        sta VERA_DATA1
+        iny
+        bra @cell
+@last:
+        lda #' '
+        sta VERA_DATA1
+        lda con_colour
+        sta VERA_DATA1
+        rts
+
+
+scr_tab:                        ; to the next column of 8; insert mode opens blanks
+        bit scr_insert
+        bpl @move
+        ldy con_col
+        jsr scr_open
+@move:
+        jsr scr_right
+        bcs scr_done            ; the last column
+        lda con_col
+        and #7
+        bne scr_tab
+        rts
+
+scr_esc:                        ; blanks the row from the first column
+        jsr scr_start
+        sta con_col
+        ; fall through
+scr_erase:                      ; blanks from the cursor to the end of the row: Esc[K
+        ldx #ANSI_CSI
+        lda #'K'
+        jmp ansi
+
+scr_up:
+        lda con_row
+        beq scr_done
+        dec con_row
+        rts
+
+scr_down:
+        lda con_row
+        cmp #ROWS - 1
+        beq scr_done
+        inc con_row
+        rts
+
+scr_left:
+        lda con_col
+        beq scr_done
+        dec con_col
+        rts
+
+; scr_right: the cursor one right. Returns carry set in the last column.
+scr_right:
+        lda con_col
+        cmp #COLUMNS - 1
+        bcs scr_done
+        inc con_col
+scr_done:
+        rts
+
+scr_home:
+        stz con_row
+        stz con_col
+        rts
+
+scr_end_key:                    ; after the text, or the last column
+        jsr scr_end
+        cpy #COLUMNS
+        bcc @column
+        dey
+@column:
+        sty con_col
+        rts
+
+scr_clear:                      ; the screen, and the line starts at the top
+        stz scr_row
+        stz scr_col
+        jmp clear
+
+scr_word_left:                  ; to the start of the word on the left, or column 0
+        ldy con_col
+@blank:
+        dey
+        bmi @start
+        jsr scr_cell
+        cmp #' '
+        beq @blank
+@word:
+        dey
+        bmi @start
+        jsr scr_cell
+        cmp #' '
+        bne @word
+@start:
+        iny
+        sty con_col
+        rts
+
+scr_word_right:                 ; to the start of the next word, or the last column
+        ldy con_col
+@word:
+        jsr scr_cell
+        cmp #' '
+        beq @blank
+        iny
+        cpy #COLUMNS
+        bcc @word
+        bra @last
+@blank:
+        jsr scr_cell
+        cmp #' '
+        bne @column
+        iny
+        cpy #COLUMNS
+        bcc @blank
+@last:
+        ldy #COLUMNS - 1
+@column:
+        sty con_col
+        rts
+
+; scr_start: returns in A the first column of the cursor's row: scr_col on the row the line
+; started at, else 0. Changes X.
+scr_start:
+        lda #0
+        ldx con_row
+        cpx scr_row
+        bne @done
+        lda scr_col
+@done:
+        rts
+
+; scr_end: returns in Y the column after the last character but a blank of the cursor's row, 0
+; when the row is blank. Changes A and X.
+scr_end:
+        ldx con_row
+        ldy #COLUMNS - 1
+        jsr point
+        lda #$28 | ^SCREEN_MAP  ; increment 2, down: the characters right to left
+        sta VERA_ADDR_H
+@back:
+        lda VERA_DATA0
+        cmp #' '
+        bne @found
+        dey
+        bpl @back
+@found:
+        iny
+        rts
+
+; scr_cell: returns in A the character of the cursor's row at column Y. Changes X.
+scr_cell:
+        ldx con_row
+        jsr point
+        lda VERA_DATA0
+        rts
+
+; scr_open: moves the cells of the cursor's row from column Y one right, dropping the last, and
+; blanks column Y. Changes A, X, Y and pointer.
+; Trap: port 0 reads one byte ahead of port 1, so it fetches each byte before port 1 writes it.
+scr_open:
+        lda #' '
+        sta pointer             ; pointer and pointer+1: the cell to write next
+        lda con_colour
+        sta pointer+1
+        lda #1                  ; ADDRSEL: port 1 writes
+        sta VERA_CTRL
+        ldx con_row
+        jsr point
+        stz VERA_CTRL
+        jsr point
+@cell:
+        lda VERA_DATA0
+        ldx pointer
+        stx VERA_DATA1
+        sta pointer
+        lda VERA_DATA0
+        ldx pointer+1
+        stx VERA_DATA1
+        sta pointer+1
+        iny
+        cpy #COLUMNS
+        bne @cell
+        rts
 
 ; kbd_get: reads one keycode from the SMC. Returns its character in A, or 0 when there is
 ; none or the key gives no character. For an extended key returns 0 and sets con_scan to its

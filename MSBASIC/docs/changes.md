@@ -947,3 +947,13 @@ are allowed in this target only.
 - `token.s`: `FILES` follows `NAME`, in the `6502dos` target only. 7 bytes.
 - `cbmbasic1`, `cbmbasic2` and `sim` are byte for byte as before. Bank 2 holds 12884 bytes, and
   3500 bytes are free. `IORAM` is 736 bytes of 768.
+
+## The full-screen editor in the 6502dos target (+0 bytes)
+
+- `inline.s`: a console line comes from the ROM's `con_screen`, the full-screen editor of
+  GW-BASIC, in place of `con_line`. The arrows move the cursor over the whole screen, and Enter
+  sends the row the cursor is on, so a line that `LIST` shows is changed by moving up to it,
+  editing it and pressing Enter. `INPUT` gets its row from past the prompt. A Ctrl+C in the line
+  ends it with no text; a running program then breaks, as before.
+- The buffer, the break check and the file path are as before. 0 bytes.
+- `cbmbasic1`, `cbmbasic2` and `sim` are byte for byte as before.

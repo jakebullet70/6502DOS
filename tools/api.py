@@ -327,6 +327,18 @@ CALLS = [
               ("X", "scan code, 0 for Enter and Tab"),
               ("Y", "modifiers: $01 Shift, $04 Caps Lock on, $40 Alt, $80 Ctrl")],
          written=True),
+    call(50, "con_screen", None, ("Reads a line from the console with the full-screen editor, "
+          "into a buffer as `con_line` fills it. The cursor moves over the whole screen, and Enter "
+          "returns the text of the cursor's row without the blanks at its end: from the column "
+          "the call started at on the row it started at, from column 0 on any other row. A line "
+          "is one row. The keys: the arrows; Ctrl+Left and Ctrl+Right a word; Home the top left "
+          "corner; End after the row's text; Ctrl+Home clears the screen; Ctrl+End blanks to the "
+          "end of the row; Esc blanks the row; Ins turns insert mode on or off, and a cursor move "
+          "turns it off; Del and Backspace delete; Tab moves to the next column of 8, and in "
+          "insert mode opens blanks. A Ctrl+C in break mode 2 ends the line with no text. When "
+          "handle 0 is a file, the call is `con_line`."),
+         in_=[("r0", "buffer")],
+         written=True),
 ]
 
 # The break modes of con_break: (number, name). The name becomes BREAK_NAME in asm.

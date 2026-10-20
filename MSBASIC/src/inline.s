@@ -44,9 +44,9 @@ L0C32:
   .endif
 
   .ifdef DOS6502
-; 6502DOS: from the console, con_line reads and edits the line, with echo,
-; into INPUTBUFFER-2: the most characters at -2, the length at -1, then the
-; text and a CR. con_line ends the line on the screen, so no CRDO follows.
+; 6502DOS: from the console, con_screen reads the line with the full-screen
+; editor into INPUTBUFFER-2: the most characters at -2, the length at -1, then
+; the text and a CR. con_screen ends the line on the screen, so no CRDO follows.
 ; A Ctrl+C typed in the line breaks a running program; in direct mode it
 ; does nothing. From a file, the loop below reads the line.
         lda     HIO_IN
@@ -57,7 +57,7 @@ L0C32:
         sta     r0
         lda     #>(INPUTBUFFER-2)
         sta     r0+1
-        jsr     API_CON_LINE
+        jsr     API_CON_SCREEN
         sec
         jsr     API_CON_BREAK		; X = the break flag, now clear
         dex

@@ -19,7 +19,8 @@ tools/build.py. Each test gets a new copy of the image.
 A test can type keys into the monitor with x16emu -bas:
 - tests/NAME.S, a program assembled with ca65 to run at $1000, typed in with E commands;
 - or RUN NAME.COM, when tests/NAME.UXB exists: it compiles to NAME.COM on the test card;
-- then tests/NAME.IN, each line ended by CR.
+- then tests/NAME.IN, each line ended by CR. \XE0 then a scan code types an extended key:
+  \XE0\X48 is Up.
 
 NAMEs pick tests; with none, every test runs. --update runs each test for 2 s and writes
 NAME.OUT from what it printed: read the .OUT before you keep it. Build first
@@ -43,7 +44,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EMU = r"C:\8bitProgramming\x16emu\x16emu.exe"
 ROM = os.path.join(ROOT, "build", "TEST.ROM")
 SHELL_ROM = os.path.join(ROOT, "build", "6502DOS.ROM")
-SHELL_ROM_TESTS = ("SHBOOT", "BASBOOT", "BASRUN", "HELPBAS", "BASHELP", "BASLOAD")   # these boot 6502DOS.ROM, into the shell
+SHELL_ROM_TESTS = ("SHBOOT", "BASBOOT", "BASRUN", "HELPBAS", "BASHELP", "BASLOAD", "BASEDIT")   # these boot 6502DOS.ROM, into the shell
 TESTS = os.path.join(ROOT, "tests")
 OBJ = os.path.join(ROOT, "build", "tests")
 KEYS = os.path.join(OBJ, "keys.txt")

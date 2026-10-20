@@ -68,6 +68,7 @@ Conventions:
 | `con_break` | 47 | `$03CD` | 33h | `carry` set: get, clear: set<br>`A` mode, to set: 0 to 2 | `A` mode<br>`X` flag: 1 when Ctrl+C came in mode 2 since the last get, else 0 | 13 | yes |
 | `con_getkey` | 48 | `$03D0` | none | `carry` clear: wait, set: return at once | `A` character, 0 for an extended key or none<br>`X` scan code, 0 for a plain key or none<br>`Y` modifiers: $01 Shift, $04 Caps Lock on, $40 Alt, $80 Ctrl | none | yes |
 | `con_edit` | 49 | `$03D3` | none | `r0` buffer | `A` the key that ended the line: $0D Enter, $09 Tab, 0 an extended key<br>`X` scan code, 0 for Enter and Tab<br>`Y` modifiers: $01 Shift, $04 Caps Lock on, $40 Alt, $80 Ctrl | none | yes |
+| `con_screen` | 50 | `$03D6` | none | `r0` buffer | none | none | yes |
 
 ## What each call does
 
@@ -121,6 +122,7 @@ Conventions:
 - `con_break`: Gets the break mode and the break flag with carry set, sets the mode with carry clear. The mode says what Ctrl+C from the console does: 0 nothing, it is the character $03; 1 prints ^C and ends the program with exit code 0, and `exitcode` then gives X = 1; 2 drops the key and sets the flag. A get clears the flag. `exec` starts each program in mode 1. The console sees Ctrl+C only while a program asks it for a key.
 - `con_getkey`: Reads a key in one call, extended or not, with carry clear waiting for it with the cursor blinking, with carry set returning at once. A plain key gives its character in A and 0 in X. An extended key gives 0 in A and its scan code in X, the codes of `con_in`. No key gives 0 in both. Y gives the modifiers, as `con_status` gives them in X.
 - `con_edit`: Edits a line from the console, as `con_line` reads one, from the text in the buffer: byte 1 holds its length, 0 for none, and the text follows it. The call shows the text first. Enter, Tab or an extended key ends the line. Tab and the extended key are not echoed, and leave the cursor after the text. The registers come back as `con_getkey` gives them.
+- `con_screen`: Reads a line from the console with the full-screen editor, into a buffer as `con_line` fills it. The cursor moves over the whole screen, and Enter returns the text of the cursor's row without the blanks at its end: from the column the call started at on the row it started at, from column 0 on any other row. A line is one row. The keys: the arrows; Ctrl+Left and Ctrl+Right a word; Home the top left corner; End after the row's text; Ctrl+Home clears the screen; Ctrl+End blanks to the end of the row; Esc blanks the row; Ins turns insert mode on or off, and a cursor move turns it off; Del and Backspace delete; Tab moves to the next column of 8, and in insert mode opens blanks. A Ctrl+C in break mode 2 ends the line with no text. When handle 0 is a file, the call is `con_line`.
 
 ## Errors
 
