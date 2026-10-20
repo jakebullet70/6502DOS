@@ -1,6 +1,6 @@
 # Working in this repo
 
-UXDOS16 is a replacement ROM operating system for the Commander X16, modelled on MS-DOS 2.0. The
+6502DOS is a replacement ROM operating system for the Commander X16, modelled on MS-DOS 2.0. The
 base is ca65 asm, and the rest is UXCBASIC. The design and the order of work are in
 `docs/PLAN.md`. The current state is in `docs/HANDOFF.md`; read it first.
 
@@ -67,7 +67,7 @@ hour, a checklist of what else to change, and a signpost in a long routine.
 ## X16 facts
 
 - `$0372` holds the stock KERNAL's charset number in bits 0 to 5, and bit 6 is set in ISO mode.
-  It reads 2 at boot. No KERNAL call returns it. UXDOS16 does not use it. Only UXCBASIC's stock
+  It reads 2 at boot. No KERNAL call returns it. 6502DOS does not use it. Only UXCBASIC's stock
   table does: `S_INIT` keeps it in `ZP_MODE`, and `S_EXIT` restores the charset from it.
 
 ## Reply style

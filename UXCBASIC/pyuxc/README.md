@@ -1,7 +1,7 @@
 # pyuxc
 
 pyuxc is the UXCBASIC compiler, in Python. It compiles a `.UXB` source into a PRG that calls
-the UXDOS16 API. It is a port of the GPC UXC in `attic/gpc/src/` of the repo root, and keeps
+the 6502DOS API. It is a port of the GPC UXC in `attic/gpc/src/` of the repo root, and keeps
 its passes and its data layout.
 
 Paths below are from `UXCBASIC/`, except where they name the repo root.
@@ -70,7 +70,7 @@ result, screen = pyuxc.compile_file("HELLO.UXB", ["lib"], "build", keep_subs=Fal
                                     keep_vars=False)
 ```
 
-`compile_file(source, include_folders=(), out_folder=None, target="uxdos16", keep_subs=False,
+`compile_file(source, include_folders=(), out_folder=None, target="6502dos", keep_subs=False,
 keep_vars=False)` returns the result line and the list of screen lines. Each call starts from
 a fresh state. The folder `pyuxc/` must be on `sys.path`.
 
@@ -78,10 +78,10 @@ a fresh state. The folder `pyuxc/` must be on `sys.path`.
 
 | `target` | Table | Used by |
 |---|---|---|
-| `"uxdos16"` | `tpl/UXDOS/UXC.TPL.BIN` | the command line, `tests.py`, the repo's `tools/uxb.py` |
+| `"6502dos"` | `tpl/UXDOS/UXC.TPL.BIN` | the command line, `tests.py`, the repo's `tools/uxb.py` |
 | `"stock"` | `tpl/UXC.TPL.BIN` | `attic/gpc/pyuxc/compare.py` only |
 
-The stock ROM is not supported. The command line has no target option. For `"uxdos16"` only:
+The stock ROM is not supported. The command line has no target option. For `"6502dos"` only:
 
 - The startup code stores the page of the program's end in `PSP_TOP` (`$0702`), by `T_TOP`.
 - `OPEN` passes the mode as one letter, with no `@:` prefix.

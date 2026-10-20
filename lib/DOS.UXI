@@ -1,4 +1,4 @@
-' DOS.UXI: the UXDOS16 API (docs/API.md) through the call entries at $0340.
+' DOS.UXI: the 6502DOS API (docs/API.md) through the call entries at $0340.
 '
 ' Each call sets DOS.ERROR: 0 when it succeeds, else a DOS 2.0 error number.
 ' A call not yet written in the kernel gives error 1.

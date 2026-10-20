@@ -3,9 +3,9 @@
 ## What UXCBASIC is
 
 UXCBASIC is a small compiled BASIC for the system programs and utilities of
-UXDOS16. UXDOS16 is a replacement ROM operating system for the Commander X16,
+6502DOS. 6502DOS is a replacement ROM operating system for the Commander X16,
 modelled on MS-DOS 2.0. pyuxc, the compiler, runs on the PC. It turns one source
-file into a 65C02 program that calls the UXDOS16 API.
+file into a 65C02 program that calls the 6502DOS API.
 
 See [[Using this help]], [[Types]] and [[Compiling]].
 
@@ -431,7 +431,7 @@ The functions:
   last count. A count past the length of s gives all of s: LEFT$("HELLO", 9) is
   "HELLO", and RIGHT$("HELLO", 3) is "LLO". Both are reserved words.
 - STR.name is the same function as name: STR.MID$ is MID$. STR.UXI in the
-  UXDOS16 library binds them in NAMESPACE STR.
+  6502DOS library binds them in NAMESPACE STR.
 - INSTR(s, find, start) is the position of the first find in s at or after
   position start, a UBYTE. It is 0 when there is none, or when find is empty.
   Without start, the search starts at 1, and 0 is the same as 1.
@@ -1038,7 +1038,7 @@ See [[Namespaces]].
 
 ## Files
 
-OPEN opens a file or a device by its UXDOS16 path and returns a handle. PRINT #
+OPEN opens a file or a device by its 6502DOS path and returns a handle. PRINT #
 writes to the handle, INPUT # and LINPUT # read from it, and CLOSE closes it.
 READ and WRITE move bytes between the handle and memory.
 
@@ -1053,12 +1053,12 @@ PRINT #F, "SCORE"; 120
 CLOSE F
 ```
 
-When the program ends, UXDOS16 closes every handle it left open.
+When the program ends, 6502DOS closes every handle it left open.
 
 ### OPEN
 
 F = OPEN(name$, mode) returns a handle, a UWORD. The name is a literal or any
-string expression. It is a UXDOS16 path, such as C:\DATA\LOG.TXT, or a device
+string expression. It is a 6502DOS path, such as C:\DATA\LOG.TXT, or a device
 name, such as CON. A path with no drive is on the current drive. The mode is one
 of three names, written as the argument itself:
 
@@ -1070,12 +1070,12 @@ of three names, written as the argument itself:
 
 Any other mode stops the compile with MODE MUST BE O.READ, O.WRITE OR O.APPEND.
 
-OPEN returns NOFILE when UXDOS16 cannot open or make the file: the file is
+OPEN returns NOFILE when 6502DOS cannot open or make the file: the file is
 missing for O.READ, a directory of the path is missing, the file is read-only
 for O.WRITE or O.APPEND, or no open-file entry is free. NOFILE is a built-in
 constant, 65535.
 
-- UXDOS16 has 8 open-file entries in all, and the console takes one. Files
+- 6502DOS has 8 open-file entries in all, and the console takes one. Files
   that a parent program holds open take entries too.
 - PRINT # and WRITE to a handle opened with O.READ write nothing.
 - O.APPEND on a file that is there gives a handle that only writes. READ from
@@ -1161,7 +1161,7 @@ CLOSE F
   characters of S$.
 - READ or WRITE on a handle that is not open, NOFILE included, stops the
   program with ?FILE NOT OPEN ERROR AT $xxxx.
-- PRINT #, INPUT # and LINPUT # make a UXDOS16 call for each character. READ
+- PRINT #, INPUT # and LINPUT # make a 6502DOS call for each character. READ
   and WRITE make one call for the whole block.
 
 See [[Arrays]] and [[Strings]] for @name.
@@ -1365,27 +1365,27 @@ See [[Strings]], [[Subroutines]].
 
 ## Targets
 
-pyuxc, the compiler on the PC, makes a program for UXDOS16. The program calls
-the UXDOS16 API in place of the KERNAL, and does not run on the stock X16 ROM.
+pyuxc, the compiler on the PC, makes a program for 6502DOS. The program calls
+the 6502DOS API in place of the KERNAL, and does not run on the stock X16 ROM.
 
 ```
 python pyuxc/pyuxc.py HELLO.UXB
 ```
 
-On UXDOS16:
+On 6502DOS:
 
-- A handle is a UXDOS16 handle. Handles 0, 1 and 2 are standard input,
+- A handle is a 6502DOS handle. Handles 0, 1 and 2 are standard input,
   output and error. PRINT #1 writes to standard output, and READ and INPUT #
   read handle 0.
 - PRINT writes to standard output. PRINT and PRINT # end a line with CR LF.
-- INPUT and LINPUT read a line of up to 80 characters with UXDOS16's line
+- INPUT and LINPUT read a line of up to 80 characters with 6502DOS's line
   editor.
 - The screen stays in CP437. The start and the end do not change the
   character set.
 - END returns to the program that ran this one, with the exit code after END,
   or 0. A run-time error returns 0.
-- At its start the program gives UXDOS16 the page where its variables end.
-  When it runs another program, UXDOS16 saves its RAM only up to that page.
+- At its start the program gives 6502DOS the page where its variables end.
+  When it runs another program, 6502DOS saves its RAM only up to that page.
   RAM above it, written with POKE or ContentsAt, is lost then.
 
 See [[Files]], [[INPUT and LINPUT]], [[END]].

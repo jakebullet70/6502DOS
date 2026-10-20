@@ -2,7 +2,7 @@
 
 Microsoft BASIC for 6502 (1978 source, `m6502.asm`, DEC MACRO-10 syntax). Goal: build, run and
 test it with ca65, then extend it for new hardware with a new Unix-style KERNAL. The standing
-orders of the UXDOS16 `CLAUDE.md` apply here. All paths below are relative to `MSBASIC/`.
+orders of the 6502DOS `CLAUDE.md` apply here. All paths below are relative to `MSBASIC/`.
 
 ## Rules
 

@@ -12,17 +12,17 @@ Paths are from `UXCBASIC/`. A path marked "repo" is from the repo root.
 | Path | What it is |
 |---|---|
 | `pyuxc/` | The compiler, in Python. `pyuxc/README.md` is its reference. |
-| `tpl/` | The templates. `tpl/MKTPL.PY` assembles them with repo `tools/64tass`. `tpl/UXDOS/UXC.TPL.BIN` is the UXDOS16 table. |
+| `tpl/` | The templates. `tpl/MKTPL.PY` assembles them with repo `tools/64tass`. `tpl/UXDOS/UXC.TPL.BIN` is the 6502DOS table. |
 | `help/` | `UXC-HELP.md`, and `MKHELP.PY`, which writes the pages to `help/HELP-TXT/` |
-| `tests/`, `tests.py` | 175 tests. They compile into repo `build/uxctests/` and run on repo `build/UXDOS16.ROM`. Repo `RUNUXCTESTS.BAT` runs `tests.py`. |
+| `tests/`, `tests.py` | 175 tests. They compile into repo `build/uxctests/` and run on repo `build/6502DOS.ROM`. Repo `RUNUXCTESTS.BAT` runs `tests.py`. |
 | `tests/STRINGS.UXI` | The include of STRLR and STRNS: `NAMESPACE STR`, the user's `InStrRev`, and the user's notes as `//` lines |
 | `samples/` | Sample programs. `MKHELP.PY` gives each a row under EXAMPLE PROGRAMS. |
 | repo `lib/` | The library: `DOS.UXI`, `HEAP.UXI`, `KEYS.UXI`, `CONS.UXI` and `STR.UXI`, each one namespace of its own name |
-| repo `src/bas/`, `src/scom/`, `src/dos/` | UXDOS16's UXCBASIC programs. Repo `tools/build.py` compiles them with repo `tools/uxb.py`, whose `#INCLUDE` looks in the source's folder, then repo `lib/`. |
+| repo `src/bas/`, `src/scom/`, `src/dos/` | 6502DOS's UXCBASIC programs. Repo `tools/build.py` compiles them with repo `tools/uxb.py`, whose `#INCLUDE` looks in the source's folder, then repo `lib/`. |
 | repo `tools/build.py` | Also runs `tpl/MKTPL.PY` when a template is newer than `tpl/UXDOS/UXC.TPL.BIN` |
 | repo `attic/gpc/` | The frozen GPC UXC, with `pyuxc/compare.py`, `pyuxc/golden.py`, `golden/` and `cases/`. Its `README.md` lists the rest. Nothing uses it. |
 
-The stock ROM is not supported. pyuxc compiles for UXDOS16 and has no target option.
+The stock ROM is not supported. pyuxc compiles for 6502DOS and has no target option.
 
 ## State
 
@@ -65,9 +65,9 @@ The stock ROM is not supported. pyuxc compiles for UXDOS16 and has no target opt
 - Proposed, not approved: DIM in the first pass. The first pass declares each DIM, so a BIND
   to a variable and a use before the DIM work on any line; the second pass only emits the
   storage.
-- For UXDOS16, in plan section 5: ROM-able output, a `SUB` entered by register (`SUB ... REGS`,
+- For 6502DOS, in plan section 5: ROM-able output, a `SUB` entered by register (`SUB ... REGS`,
   the registers at `$030C`-`$030F`), `CALL AT` and variables in banked RAM. The plan's item
-  "ROM-able output" gives UXDOS16's order. UXDOS16's own order is in repo `docs/PLAN.md`
+  "ROM-able output" gives 6502DOS's order. 6502DOS's own order is in repo `docs/PLAN.md`
   section 12.
 - Not scheduled, in plan section 5: a compile report, `FRE`, `FILE.SEEK`, `FLOAT` (step 4 of
   "More types"), and the RAM bank manager. The bank manager is decided: built in, asm
@@ -90,7 +90,7 @@ The stock ROM is not supported. pyuxc compiles for UXDOS16 and has no target opt
   Inserting a template moves the id of every record after it.
 - `RUNDIV0.OUT`, `RUNSUB.OUT` and `RUNRECSUB.OUT` hold code addresses, which move when the
   start code changes.
-- A test that calls UXDOS16 directly calls `con_out` at `$03B8` and uses `$9E00`-`$9E11` for
+- A test that calls 6502DOS directly calls `con_out` at `$03B8` and uses `$9E00`-`$9E11` for
   its data.
 - Limits in `pyuxc/uxc_defs.py`: `K_SY_MAX` 1008 names in `K_SYM_BANKS` 4 banks, which the
   hidden call records and temps count toward; `K_FX_MAX` 4096 fixups; `K_CN_SIZE` 2,048

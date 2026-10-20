@@ -1,4 +1,4 @@
-' HEAP.UXI: the string heap calls of the UXDOS16 API (docs/API.md), in namespace HEAP.
+' HEAP.UXI: the string heap calls of the 6502DOS API (docs/API.md), in namespace HEAP.
 ' Include DOS.UXI first.
 '
 ' A descriptor is a word that holds the address of a string's length byte in the heap's

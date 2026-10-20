@@ -1,10 +1,10 @@
-# UXDOS16 — design
+# 6502DOS — design
 
 Draft 3, 2026-10-14. `docs/HANDOFF.md` gives what is built. Section 13 lists what is still open.
 
 ## 1. Goal
 
-- UXDOS16 is a replacement ROM operating system for the Commander X16, on the 65C02.
+- 6502DOS is a replacement ROM operating system for the Commander X16, on the 65C02.
 - MS-DOS 2.0 is the model for its ideas: file handles, a device driver chain, a per-program
   header block, a command shell, `CONFIG.SYS`, a start-up script and scripts. The shell's
   language is BASIC (section 8).
@@ -13,7 +13,7 @@ Draft 3, 2026-10-14. `docs/HANDOFF.md` gives what is built. Section 13 lists wha
 - Everything above the base is written in UXCBASIC.
 - No code comes from MS-DOS, FreeDOS. MS-DOS 2.0 is x86 code, so only its design
   carries over.
-- UXDOS16 is under the MIT licence, in `LICENSE`. Code ported from x16-rom keeps its BSD-2
+- 6502DOS is under the MIT licence, in `LICENSE`. Code ported from x16-rom keeps its BSD-2
   licence (section 9).
 
 Where to read MS-DOS 2.0: `github.com/microsoft/MS-DOS`, folder `v2.0`, MIT licence.
@@ -70,8 +70,8 @@ The UXCBASIC library is the folder `lib/`. Each file holds one namespace of the 
 | `lib/CONS.UXI` | `CONS` | the escape sequences the console obeys, as string constants with plain names (`CONS.CSI$`, `CONS.REVERSE$`, `CONS.RED$`, `CONS.ON_WHITE$`, `CONS.CLEAR_EOL$`); `BIND`s of `PRINT`, `INPUT`, `LINPUT`, `POS`, and `NEWLINE` for `PRINT`; `LOCATE`, `PRINT_AT`, `PRINT_BOOL`, `SCREEN_ROWS`, `SCREEN_COLS` |
 | `lib/STR.UXI` | `STR` | a `BIND` of each string built-in; `INSTR_REV` |
 
-- Every UXCBASIC program in UXDOS16 calls the API through `DOS.UXI`. Each call goes to the
-  UXDOS16 jump table through `SYS`.
+- Every UXCBASIC program in 6502DOS calls the API through `DOS.UXI`. Each call goes to the
+  6502DOS jump table through `SYS`.
 - `tools/genapi.py` writes the `API_` constants of `DOS.UXI`, one for each call's entry,
   between two marker lines. The rest of the file is written by hand.
 - `DOS.STOP_KEY(mode)` sets the mode of the STOP key, Ctrl+C, with call 47. The modes are the
@@ -246,7 +246,7 @@ only; numbers stay at fixed addresses in the program.
   `JSR $0340 + 3n`. Every entry is `JSR` to the gate. The gate finds `n` from its return address,
   selects ROM bank 0, reads the call's routine and ROM bank from `api_table`, calls the routine
   and restores the caller's ROM bank. A program never writes `$01`.
-- MS-DOS has one entry, `INT 21h`, with the function number in `AH`. UXDOS16 has one jump table
+- MS-DOS has one entry, `INT 21h`, with the function number in `AH`. 6502DOS has one jump table
   entry for each call instead.
 - Arguments go in A, X, Y and `r0–r15`. A call keeps `r0–r15`, except its outputs.
 - On error the call returns with carry set and the error number in A. On success carry is clear.
@@ -368,7 +368,7 @@ Drivers follow MS-DOS 2.0's device drivers.
   | 5 | 8 | a character device's name, padded with spaces, or a block device's number of units |
   | 13 | 2 each | the vectors |
 - MS-DOS calls a driver through a strategy entry and an interrupt entry with a request packet.
-  UXDOS16 calls a vector from the table instead, with the arguments in registers.
+  6502DOS calls a vector from the table instead, with the arguments in registers.
 - Vector slot `n` is MS-DOS 2.0's driver command `n`:
 
   | Slot | Command |
@@ -1101,11 +1101,11 @@ Folders:
 - `build.py` assembles the ROM, compiles each `src/bas/NAME.UXB` to `build/bas/NAME.COM` with
   `tools/uxb.py`, and puts the COM files in the root of the SD card image. A compile takes under
   0.1 s.
-- `uxb.py` compiles with pyuxc for its default target, UXDOS16. A source compiles again when its
+- `uxb.py` compiles with pyuxc for its default target, 6502DOS. A source compiles again when its
   COM file is older than the source, than `UXCBASIC/tpl/UXDOS/UXC.TPL.BIN`, or than a
   file the source includes, or than a file of pyuxc. `#INCLUDE` looks in the source's folder,
   then `lib/`.
-- `src/asm/rom.cfg` links ROM banks 0 and 1, so `build/UXDOS16.ROM` is 32768 bytes.
+- `src/asm/rom.cfg` links ROM banks 0 and 1, so `build/6502DOS.ROM` is 32768 bytes.
 - `tools/mksd.py` writes an SD card image from a folder: an MBR, one partition of type `$0C` at
   sector 2048, and FAT32. A name that is 8.3 goes in as its 8.3 name in capitals. Any other
   name, up to 255 characters, goes in as a long name as typed, with an 8.3 alias `BASE~N.EXT`.
@@ -1118,12 +1118,12 @@ Folders:
   the directory is reported as an orphan.
 - Trap: `fatcheck.py` lists about 108 lost clusters on each test card. They are the program
   block that `tests.py` reserves, which the FAT marks as used.
-- The emulator runs `x16emu -rom build/UXDOS16.ROM -sdcard build/SD.IMG`.
+- The emulator runs `x16emu -rom build/6502DOS.ROM -sdcard build/SD.IMG`.
 - `build.py` copies the ROM to `build/TEST.ROM` with the byte `boot_shell` 0, found through the
-  label file. `TEST.ROM` boots to the monitor, `UXDOS16.ROM` to the shell (section 8).
+  label file. `TEST.ROM` boots to the monitor, `6502DOS.ROM` to the shell (section 8).
 - `tests.py` boots `TEST.ROM`, except for the tests in its list `SHELL_ROM_TESTS`, which boot
-  `UXDOS16.ROM`.
-- The emulator's host file system needs the stock KERNAL. UXDOS16 reads files only from the SD
+  `6502DOS.ROM`.
+- The emulator's host file system needs the stock KERNAL. 6502DOS reads files only from the SD
   card image.
 - `tests.py` boots a test ROM headless and compares what it prints with a golden file, as in
   UXCBASIC.
@@ -1171,15 +1171,15 @@ Each step boots and shows something, and each has a test.
    secondary addresses, command channel, status lines, `@0:NAME,S,W` names or `$` listings.
    6a. `lib/DOS.UXI`: each call goes to the jump table at `$0340` through `SYS`, with
        its arguments in A, X, Y and `r0–r15`. Calls not written give error 1. `DOSAPI` runs on
-       UXDOS16 against `tests/sd`.
+       6502DOS against `tests/sd`.
    6b. The kernel's file calls, each with a test: the current directory of each drive with `.`
        and `..` (`chdir`, `getcwd`); `seek`; FAT32 write (`write` to a file, `create`); `delete`,
        `rename`, `mkdir`, `rmdir`, `diskfree`; `dup`, `dup2`; `ioctl` input status (MS-DOS 44h
        subfunction 6), which UXCBASIC's `EOF` uses.
    6c. The stock harness goes: the stock `DOS.UXI`, the stock tests, the stock branch of
        `tools/tests.py`, and the folder choice in `tools/uxb.py`.
-   6d. A UXDOS16 target in pyuxc (UXCBASIC plan section 5).
-       - pyuxc compiles for UXDOS16. The stock ROM is not supported; `compile_file`'s
+   6d. A 6502DOS target in pyuxc (UXCBASIC plan section 5).
+       - pyuxc compiles for 6502DOS. The stock ROM is not supported; `compile_file`'s
          `target` is `"stock"` in UXCBASIC's `compare.py` only.
        - `tpl/MKTPL.PY` builds a second table, `tpl/UXDOS/UXC.TPL.BIN`, with `tpl/UXDOS/SYS.ASM`
          and `tpl/UXDOS/R-FILE.ASM`. Its record ids are the stock table's.
@@ -1197,7 +1197,7 @@ Each step boots and shows something, and each has a test.
        `tests/KERNAL.*`, and `CHROUT`, `CHRIN`, `GETIN`, `PLOT`, `screen_set_charset` and the
        `$0372` byte. In their place:
 
-       | KERNAL | UXDOS16 call | MS-DOS |
+       | KERNAL | 6502DOS call | MS-DOS |
        |---|---|---|
        | `CHROUT` | `con_out`: writes the character in A | 02h |
        | `CHRIN` | `con_in`: waits for a key, returns it in A, no echo | 08h |
@@ -1251,13 +1251,13 @@ Each step boots and shows something, and each has a test.
 8. `SYSINIT.COM` with `CONFIG.SYS` and `DEVICE=`. Until then the ROM runs `C:\CMDSHELL.COM`
    itself (section 8).
 9. Layer 1 moves to UXCBASIC, one part at a time, as the compiler features land. The parts that
-   need nothing new (section 2) are written as `.UXI` libraries first and tested on UXDOS16.
+   need nothing new (section 2) are written as `.UXI` libraries first and tested on 6502DOS.
 10. Extended memory blocks: `xms_alloc`, `xms_free`, `xms_move`, with `bank_alloc` on top of
     them, and `MEM` shows the free banks. It needs step 5 and can run at any time after it.
 
 ## 12. What UXCBASIC needs
 
-Steps 0 to 8 need nothing new from UXCBASIC but the UXDOS16 target of step 6d. A program reads its command tail at `$0780` with
+Steps 0 to 8 need nothing new from UXCBASIC but the 6502DOS target of step 6d. A program reads its command tail at `$0780` with
 `PEEK`. Section 2 lists which parts need which feature. Step 9 needs these features. They are in
 the UXCBASIC plan, section 5, in this order:
 
@@ -1286,17 +1286,17 @@ the UXCBASIC plan, section 5, in this order:
 `LONG` and records are the features being written in UXCBASIC now.
 
 Layer 1 does not need arrays that span RAM banks, in the UXCBASIC plan section 5. Programs use
-them for data larger than 8 KB, and on UXDOS16 their banks come from one extended memory block
+them for data larger than 8 KB, and on 6502DOS their banks come from one extended memory block
 (section 3).
 
-pyuxc compiles for UXDOS16 (step 6d). The stock ROM is not supported. UXCBASIC's tests run on
-the UXDOS16 ROM. A program's start-up stores the page of the end of its variables in `PSP_TOP`
+pyuxc compiles for 6502DOS (step 6d). The stock ROM is not supported. UXCBASIC's tests run on
+the 6502DOS ROM. A program's start-up stores the page of the end of its variables in `PSP_TOP`
 (section 7), with the template `T_TOP`: 5 bytes.
 
 The UXCBASIC compiler is pyuxc, in Python, and programs are compiled on the PC and copied to the
-SD card image. The GPC BASIC compiler is frozen. The compiler runs on UXDOS16 only once UXCBASIC
+SD card image. The GPC BASIC compiler is frozen. The compiler runs on 6502DOS only once UXCBASIC
 is self-hosted. UXCEDIT is GPC BASIC, and the GPC runtime needs the stock KERNAL, so it does not
-run on UXDOS16.
+run on 6502DOS.
 
 ## 13. Still to decide
 
@@ -1316,7 +1316,7 @@ run on UXDOS16.
     environment (section 7).
   - The exit code `END` gives.
   - How a script reads the exit code of the program it ran.
-- An editor that runs on UXDOS16.
+- An editor that runs on 6502DOS.
 - Graphics, sound and loadable drivers: not before step 5 works.
 - The 65C816: not in the first version.
 - What `xms_move` does when the source and the destination overlap.

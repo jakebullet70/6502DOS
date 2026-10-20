@@ -697,21 +697,21 @@ you need to trace a past decision.
 The GPC UXC is frozen from 2026-10-14: no speed work, no new features. `pyuxc/` holds its
 Python port. `pyuxc/README.md` has the plan, the port steps and the status.
 Port steps 1 to 12 are done: every corpus source with a GPC golden matches it, and `tests.py`
-compiles with pyuxc. Part 2 is done: UXDOS16's `tools/uxb.py` compiles with pyuxc too. Part 3
+compiles with pyuxc. Part 2 is done: 6502DOS's `tools/uxb.py` compiles with pyuxc too. Part 3
 is next: data in banked RAM, code in banked RAM, and string arrays.
-The stock ROM is not supported (user, 2026-10-15). pyuxc compiles for UXDOS16 and has no
+The stock ROM is not supported (user, 2026-10-15). pyuxc compiles for 6502DOS and has no
 `--target`. `compare.py` alone compiles for stock, against the GPC UXC's golden output, until the
-port ends. `tpl/MKTPL.PY` builds both tables; the UXDOS16 one is `tpl/UXDOS/UXC.TPL.BIN`, from
+port ends. `tpl/MKTPL.PY` builds both tables; the 6502DOS one is `tpl/UXDOS/UXC.TPL.BIN`, from
 `tpl/UXDOS/SYS.ASM` and `tpl/UXDOS/R-FILE.ASM`.
-`tests.py` runs on the UXDOS16 ROM (`C:\dev\CmdrX16\UXDOS16\build\UXDOS16.ROM`), whose prompt
+`tests.py` runs on the 6502DOS ROM (`C:\dev\CmdrX16\6502DOS\build\6502DOS.ROM`), whose prompt
 is `>>`: 175 tests. The last full run, after POS(2) and POS(3) (2026-10-17), was 174 ok in
 43 s. `compare.py`: 566 MATCH, 5 RESULT and 31 NO GOLDEN of 602, 1.7 s; the two new RESULTs,
 `EXERRPOS` and `EXERRPOSVAR`, are expected, since POS takes 0 to 3 now;
 a NO GOLDEN source is newer than the GPC reference. `FILEINERR` read handle 0, which is standard input on
-UXDOS16; its source moved to `pyuxc/cases`, and `tests/FILEINCLOSED` reads handle 9.
+6502DOS; its source moved to `pyuxc/cases`, and `tests/FILEINCLOSED` reads handle 9.
 `tests/CHAIN.NEXT` is gone.
 `ASM1`, `ASM2`, `DIMAT`, `SYS1`, `EXPR2`, `POINTER` and `RECORD2` called the KERNAL's `$FFD2` or
-wrote UXDOS16's sector buffer or kernel variables. They moved to `pyuxc/cases`, where they match
+wrote 6502DOS's sector buffer or kernel variables. They moved to `pyuxc/cases`, where they match
 the GPC output. Their copies in `tests/` are `ASMBYTES`, `ASMOPS`, `DIMADDR`, `SYSREGS`,
 `EXPRPEEK`, `POINTERS` and `RECSTR`: they call `con_out` at `$03B8`, and use `$9E00–$9E11` in
 place of `$0400–$0411` and `$0600–$0601`. `ZP_MODE` (`$27`) is in the stock table only.
@@ -729,9 +729,9 @@ hidden variable; any other string is an error. `K_NS_SEL` is 4, and DO, FOR and 
 5, 6 and 7. SELECT and ENDSELECT are reserved. Tests: SELECT, ERRSELSTR, ERRSELOPEN, ERRSELEND,
 ERRSELELSE. Help topic `SELECT CASE` (`MKHELP.PY` 0.13 s, 34 topics) and plan section 1 have it.
 No jump out (2026-10-16): a body before `ELSEIF`, `ELSE` or a `CASE` that ends in `RETURN`,
-`GOTO`, `EXIT`, `CONTINUE` or `END` has no `JMP` to the end, for the UXDOS16 table only. The
+`GOTO`, `EXIT`, `CONTINUE` or `END` has no `JMP` to the end, for the 6502DOS table only. The
 pyuxc README, "Differences from GPC UXC", has the rule. Test `JUMPOUT` (0.7 s): 644 to 620
-bytes; UXDOS16's shell 15291 to 15285. Every other test PRG is unchanged; `compare.py` 571
+bytes; 6502DOS's shell 15291 to 15285. Every other test PRG is unchanged; `compare.py` 571
 MATCH, 16 NO GOLDEN, 1.4 s. Help topics `IF` and `SELECT CASE` (`MKHELP.PY` 0.12 s, 34
 topics) and plan section 1, under IF, have it.
 Removing unused code, pyuxc only (user, 2026-10-16). The user's choices:
@@ -762,7 +762,7 @@ S1 (2026-10-16): `pyuxc/uxc_dead.py`, `dd_strip`, first in `lk_link`.
 - String literals only dead SUBs use stay in the PRG.
 - Test `DEADSUB` (0.5 s): 652 to 555 bytes. SUB1, SUBFWD, SUBNEST, FUNC1, LOCALPOOL,
   INCLUDE, STRNS, STRLR, JUMPOUT and SELECT pass, 0.5 s each.
-- UXDOS16: `EXIST.CBI` 3239 to 1594 bytes (28 SUBs), `CMDSHELL.COM` 17936 to 17708. Its
+- 6502DOS: `EXIST.CBI` 3239 to 1594 bytes (28 SUBs), `CMDSHELL.COM` 17936 to 17708. Its
   goldens FILES, DIRS and DISK changed by those sizes; its shell tests pass.
 
 S2 (2026-10-16): `#KEEP`, in `uxc_dead.py` (`dd_keep_line`, `dd_keep_name`, `dd_open`).
@@ -794,13 +794,13 @@ S3 (2026-10-16): unused global variables, in `uxc_dead.py` (`dv_log`, `dv_strip`
 - Not done: a variable only written is kept; locals in a live SUB are kept.
 - Test `DEADVAR` (0.6 s): 469 to 461 bytes, 5 VARS 78 BYTES. DEADSUB and RECORD1 pass, 0.5 s
   each. `compare.py` 569 MATCH, STRLR and STRNS RESULT as before, 21 NO GOLDEN, 1.6 s.
-- UXDOS16, not rebuilt: `CMDSHELL.COM` 17708 to 17696, `EXIST.CBI` 1594 to 1578. Its goldens
+- 6502DOS, not rebuilt: `CMDSHELL.COM` 17708 to 17696, `EXIST.CBI` 1594 to 1578. Its goldens
   FILES, DIRS and DISK need `--update` at the next build.
-`T_TOP`, record 252 of both tables, stores the page of the BSS end in UXDOS16's `PSP_TOP`
+`T_TOP`, record 252 of both tables, stores the page of the BSS end in 6502DOS's `PSP_TOP`
 (`$0702`), so `exec` saves the program's RAM only up to it. `lk_link` emits it after `sb_pools`,
-for UXDOS16 only; a program grows 5 bytes, 6 when it had no other startup work. The help topic
+for 6502DOS only; a program grows 5 bytes, 6 when it had no other startup work. The help topic
 Targets has it. The GPC compiler's `TPL.COUNT` check fails against the new table.
-`K_SYM_BANKS` is 4 and `K_SY_MAX` 1008 in `pyuxc/uxc_defs.py`, for UXDOS16's shell.
+`K_SYM_BANKS` is 4 and `K_SY_MAX` 1008 in `pyuxc/uxc_defs.py`, for 6502DOS's shell.
 A variable that GPC reads before it sets it needs a 0 default in `uxc_state.dim()`; a
 `CRASH` with `AttributeError` in `compare.py` is that.
 String `CONST`s, pyuxc only (user, 2026-10-17; plan section 5, step 1 of 3):
@@ -942,7 +942,7 @@ topic ASM has the instructions; UXC.HELP is rebuilt.
   Steps since the last full suite: 5 (SELECT CASE, LEFT$ and RIGHT$, dead SUBs S1, S2, S3). The suite runs every 10th step.
 - `POS(0)` gives the cursor column and `POS(1)` the row, as a BYTE, by T_POSCOL and T_POSROW
   inline. `POS(2)` gives the screen's rows and `POS(3)` its columns, by T_POSROWS and T_POSCOLS,
-  from r0L and r0H of UXDOS16's `con_cursor`. `POS(0) = v` and `POS(1) = v` are SM.POS, by
+  from r0L and r0H of 6502DOS's `con_cursor`. `POS(0) = v` and `POS(1) = v` are SM.POS, by
   R_POSSETCOL and R_POSSETROW. pyuxc's `ex_pos_axis(last, message)` takes a number from 0 to
   last: 3 for a read, 1 for a write. Test `POSSCREEN`.
 - Templates: 259 records. An F_REC fixup holds a record id in one byte, so a record that `#rec`
@@ -1077,7 +1077,7 @@ The user's decisions:
 - The types: `BYTE` −128..127 and `UBYTE` 0..255; `WORD` or `INT` −32768..32767, and `UWORD`
   or `UINT` 0..65535; `LONG` signed 32 bits and `ULONG` unsigned 32 bits.
 - All the steps in a row. The user approved the asm for the signed runtime and for LONG.
-- The fixup table is raised for UXDOS16's COMMAND: K.FX.MAX 4096 in K.FIX.BANKS 4 (was
+- The fixup table is raised for 6502DOS's COMMAND: K.FX.MAX 4096 in K.FIX.BANKS 4 (was
   2048 in 2). Done, no test of its own.
 
 **T1, done:** the `%` mark is gone (LX.WORD.END stops with `% IS NOT A MARK: USE AS UWORD`).
@@ -1219,11 +1219,11 @@ built. In short:
       loaded), all ok.
 - The help and plan were updated by the doc-style agent; it ran help/MKHELP.PY.
 
-UXDOS16 (`C:\dev\CmdrX16\UXDOS16`) needs ROM-able output, a register-entry `SUB`, `LONG`,
-`CALL AT` and banked variables; plan section 5 holds each, with the order. UXDOS16 wanted an unsigned
+6502DOS (`C:\dev\CmdrX16\6502DOS`) needs ROM-able output, a register-entry `SUB`, `LONG`,
+`CALL AT` and banked variables; plan section 5 holds each, with the order. 6502DOS wanted an unsigned
 `LONG`; that is now `ULONG` (user, 2026-10-13). `SUB ... REGS` keeps the registers at `$030C`–`$030F`,
-the bytes `SYS` uses; the program names them, `REG.A` or `REG_A`. UXDOS16 PLAN section 12 lists
-its own order and says the features are not in our plan; that is UXDOS16's to update.
+the bytes `SYS` uses; the program names them, `REG.A` or `REG_A`. 6502DOS PLAN section 12 lists
+its own order and says the features are not in our plan; that is 6502DOS's to update.
 
 **Later, in this order** (user, 2026-10-11). The user approved asm for this step; ask again
 only for asm outside it.

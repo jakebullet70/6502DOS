@@ -5,7 +5,7 @@
 
 FILE.UXB compiles to NAME.PRG, NAME the source's name in capitals, in the -o folder (default:
 the source's folder). #INCLUDE looks in the source's folder, then in each -I folder in order.
-The program calls the UXDOS16 API, with the template table tpl/UXDOS/UXC.TPL.BIN.
+The program calls the 6502DOS API, with the template table tpl/UXDOS/UXC.TPL.BIN.
 The compiler's screen output is printed, then the result line:
 
     OK,<prg>,<bytes>[,REMOVED <n> SUBS <m> BYTES][,REMOVED <n> VARS <m> BYTES]
@@ -48,10 +48,10 @@ def object_name(source):
 
 # The template table folder of each target. The stock ROM is not supported: only
 # attic/gpc/pyuxc/compare.py compiles for stock, to match the GPC UXC's output byte for byte.
-TARGETS = {"uxdos16": os.path.join(uxc_tpl.DIR, "UXDOS"), "stock": uxc_tpl.DIR}
+TARGETS = {"6502dos": os.path.join(uxc_tpl.DIR, "UXDOS"), "stock": uxc_tpl.DIR}
 
 
-def compile_file(source, include_folders=(), out_folder=None, target="uxdos16",
+def compile_file(source, include_folders=(), out_folder=None, target="6502dos",
                  keep_subs=False, keep_vars=False):
     """Compile source for target, a key of TARGETS. keep_subs keeps the SUBs nothing calls,
     keep_vars the variables nothing names. Return (result line, screen lines). NotPorted

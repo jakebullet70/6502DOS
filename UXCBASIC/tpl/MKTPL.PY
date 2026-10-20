@@ -1,4 +1,4 @@
-"""Build UXC.TPL.BIN, the template table, with 64tass: one for the stock ROM, one for UXDOS16.
+"""Build UXC.TPL.BIN, the template table, with 64tass: one for the stock ROM, one for 6502DOS.
 
     python UXCBASIC/tpl/MKTPL.PY    assemble, check every record, write the ids, print the table
 
@@ -8,9 +8,9 @@ Writes, beside this script, the stock ROM's table (64tass -D UXDOS=0):
     UXC.TPL.IDS     one line per record: NAME = id
     UXC.TPL.BL      the same ids as BASLOAD #DEFINEs, for the compiler: T_LDW_C is T.LDW.C.ID
 
-and in tpl/UXDOS the UXDOS16 table (64tass -D UXDOS=1): UXC.TPL.BIN and UXC.TPL.LST. Its records
+and in tpl/UXDOS the 6502DOS table (64tass -D UXDOS=1): UXC.TPL.BIN and UXC.TPL.LST. Its records
 must have the ids of the stock table; MKTPL stops when they do not. 64tass is
-tools/64tass/64tass.exe of the UXDOS16 folder, or the file in TASS.
+tools/64tass/64tass.exe of the 6502DOS folder, or the file in TASS.
 """
 
 import os
@@ -107,11 +107,11 @@ def build():
     uxdos_records, uxdos_ids, uxdos_size = table(1, os.path.join(UXDOS_DIR, "UXC.TPL.BIN"),
                                                  os.path.join(UXDOS_DIR, "UXC.TPL.LST"))
     if uxdos_ids != ids:
-        moved = ["%d: %s, UXDOS16 %s" % (i, a, b) for i, (a, b) in enumerate(zip(ids, uxdos_ids))
+        moved = ["%d: %s, 6502DOS %s" % (i, a, b) for i, (a, b) in enumerate(zip(ids, uxdos_ids))
                  if a != b]
-        sys.exit("MKTPL: the UXDOS16 table's ids differ (%d and %d records)\n  %s"
+        sys.exit("MKTPL: the 6502DOS table's ids differ (%d and %d records)\n  %s"
                  % (len(ids), len(uxdos_ids), "\n  ".join(moved)))
-    print("MKTPL: UXDOS16 table, %d records, %d bytes" % (len(uxdos_records), uxdos_size))
+    print("MKTPL: 6502DOS table, %d records, %d bytes" % (len(uxdos_records), uxdos_size))
     return records, {n: i for i, n in enumerate(ids)}
 
 

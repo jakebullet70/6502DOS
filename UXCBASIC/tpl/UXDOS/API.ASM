@@ -1,4 +1,4 @@
-; API.ASM -- the UXDOS16 calls the UXDOS16 table uses. UXDOS16's docs/API.md lists them all.
+; API.ASM -- the 6502DOS calls the 6502DOS table uses. 6502DOS's docs/API.md lists them all.
 ;
 ; A call is a JSR to its entry. Carry set on return: an error, its number in A. A call changes
 ; A, X, Y and the flags, and keeps r0-r15 except the registers it lists as out. A path is a

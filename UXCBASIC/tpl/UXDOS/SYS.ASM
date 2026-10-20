@@ -1,5 +1,5 @@
-; SYS.ASM for UXDOS16 -- the system table of the UXDOS16 target. Each record reaches UXDOS16
-; through its API (API.ASM). The records are tpl/SYS.ASM's, in the same order. The UXDOS16
+; SYS.ASM for 6502DOS -- the system table of the 6502DOS target. Each record reaches 6502DOS
+; through its API (API.ASM). The records are tpl/SYS.ASM's, in the same order. The 6502DOS
 ; R-FILE.ASM uses handles and links none of the KERNAL file records, so those are a bare RTS.
 
 ; Write A to the output handle: STDOUT, or the handle R_FILE.chkout chose. Keeps A, X and Y.
@@ -125,7 +125,7 @@ S_LKUPLA .block
         #endtpl
         .endblock
 
-; Startup: UXDOS16 keeps the screen in CP437, so there is nothing to set.
+; Startup: 6502DOS keeps the screen in CP437, so there is nothing to set.
 S_INIT  .block
         #tpl
         rts

@@ -7,13 +7,13 @@ The image has an MBR with one partition of type $0C at sector 2048. The partitio
 file system with 512-byte sectors, 32 reserved sectors and 2 FATs. Every file and folder in
 FOLDER goes in; names that start with a dot are left out. A name that is 8.3 goes in as its 8.3
 name in upper case. Any other name, up to 255 characters, goes in as a long name, as typed,
-with an 8.3 alias BASE~N.EXT; UXDOS16 shows a long name over 32 characters as its alias. Each
+with an 8.3 alias BASE~N.EXT; 6502DOS shows a long name over 32 characters as its alias. Each
 FILE goes in the root directory too. Each file's clusters follow each other. The times are the
 files' modification times, or noon of --date. Exit status 1 when a name is too long or holds a
 character a long name cannot, or the files do not fit.
 
 The defaults, 1 sector per cluster and 6016 clusters, make a 4 MB image, the size of the X16's
-standard card. UXDOS16 reads it, but other systems take it for FAT16: FAT32 needs 65525 clusters.
+standard card. 6502DOS reads it, but other systems take it for FAT16: FAT32 needs 65525 clusters.
 """
 
 import datetime
@@ -216,11 +216,11 @@ def make(folder, image, sectors_per_cluster=1, clusters=6016, date=None, extra=(
 
         boot = bytearray(SECTOR)
         boot[0:3] = b"\xEB\x58\x90"
-        boot[3:11] = b"UXDOS16 "
+        boot[3:11] = b"6502DOS "
         struct.pack_into("<HBHBHHBHHHII", boot, 11, SECTOR, sectors_per_cluster, RESERVED,
                          FATS, 0, 0, 0xF8, 0, 32, 64, PARTITION_START, total)
         struct.pack_into("<IHHIHH", boot, 36, fat_sectors, 0, 0, 2, 1, 6)
-        struct.pack_into("<BBBI11s8s", boot, 64, 0x80, 0, 0x29, 0x16161616, b"UXDOS16    ",
+        struct.pack_into("<BBBI11s8s", boot, 64, 0x80, 0, 0x29, 0x16161616, b"6502DOS    ",
                          b"FAT32   ")
         boot[510:512] = b"\x55\xAA"
         info = bytearray(SECTOR)

@@ -1,4 +1,4 @@
-' CMDSHELL.UXB -- the UXDOS16 shell, a small BASIC (PLAN section 8). Reads a line at the prompt
+' CMDSHELL.UXB -- the 6502DOS shell, a small BASIC (PLAN section 8). Reads a line at the prompt
 ' and runs its statement: name = expression, PRINT, INPUT, CLS, LOCATE, BEEP, WAIT, PAUSE,
 ' VERSION, SETSYS, BIND, END, the file statements FILES, LIST, COPY, DELETE, RENAME, MKDIR,
 ' RMDIR, CHDIR or CD, RUN, IF and ENDIF, and
@@ -1637,7 +1637,7 @@ SUB RUN_LINE()
         DO_BIND()
       CASE "VERSION", "VER"
         EXPECT_END()
-        IF FAILED = 0 THEN PRINT "UXDOS16 V"; DOS.VERSION()
+        IF FAILED = 0 THEN PRINT "6502DOS V"; DOS.VERSION()
       CASE "END"
         EXPECT_END()
         IF FAILED THEN RETURN

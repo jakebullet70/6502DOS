@@ -205,7 +205,7 @@ def sm_unreached():
     ended in a jump in that block, so the body it ends needs no jump out. The stock table
     keeps the jump, so that compare.py matches the GPC UXC."""
     g.sm_skip = 0
-    if g.target == "uxdos16" and g.sm_previous_jump == g.ct_i + 1:
+    if g.target == "6502dos" and g.sm_previous_jump == g.ct_i + 1:
         g.sm_skip = 1
 
 

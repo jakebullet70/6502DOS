@@ -1,4 +1,4 @@
-; UXDOS16 memory map, PLAN section 3, and the I/O registers in use.
+; 6502DOS memory map, PLAN section 3, and the I/O registers in use.
 
 ; Zero page
 RAM_BANK      = $00             ; selects the RAM bank at $A000-$BFFF

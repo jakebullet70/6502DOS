@@ -2,7 +2,7 @@ r"""Compile UXCBASIC sources with pyuxc, UXCBASIC's compiler in Python.
 
 pyuxc lives in UXCBASIC/pyuxc. A compile writes NAME.PRG to build/uxc, and the program is
 copied from there to where the caller asked, as NAME.COM. #INCLUDE looks in the source's folder
-first, then lib, the folder of the libraries. pyuxc compiles for UXDOS16, with the template table
+first, then lib, the folder of the libraries. pyuxc compiles for 6502DOS, with the template table
 UXCBASIC/tpl/UXDOS/UXC.TPL.BIN.
 """
 

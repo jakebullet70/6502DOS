@@ -1,8 +1,8 @@
-"""Run the UXDOS16 tests: boot build/TEST.ROM headless and compare what it prints.
+"""Run the 6502DOS tests: boot build/TEST.ROM headless and compare what it prints.
 
     python tools/tests.py [NAME ...] [--update]
 
-build/TEST.ROM boots to the monitor. The tests in SHELL_ROM_TESTS boot build/UXDOS16.ROM, which
+build/TEST.ROM boots to the monitor. The tests in SHELL_ROM_TESTS boot build/6502DOS.ROM, which
 runs C:\\CMDSHELL.COM at boot.
 
 Each test is an expected output tests/NAME.OUT. A test boots the ROM in x16emu with -echo raw
@@ -42,8 +42,8 @@ import uxb  # noqa: E402
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EMU = r"C:\8bitProgramming\x16emu\x16emu.exe"
 ROM = os.path.join(ROOT, "build", "TEST.ROM")
-SHELL_ROM = os.path.join(ROOT, "build", "UXDOS16.ROM")
-SHELL_ROM_TESTS = ("SHBOOT",)   # these boot UXDOS16.ROM, into the shell
+SHELL_ROM = os.path.join(ROOT, "build", "6502DOS.ROM")
+SHELL_ROM_TESTS = ("SHBOOT",)   # these boot 6502DOS.ROM, into the shell
 TESTS = os.path.join(ROOT, "tests")
 OBJ = os.path.join(ROOT, "build", "tests")
 KEYS = os.path.join(OBJ, "keys.txt")

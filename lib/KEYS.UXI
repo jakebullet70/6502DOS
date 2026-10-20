@@ -1,4 +1,4 @@
-' KEYS.UXI: the codes the UXDOS16 console gives for keys, and the modifier bits.
+' KEYS.UXI: the codes the 6502DOS console gives for keys, and the modifier bits.
 '
 ' GETEXTKEY() and WAITKEY() give a key as one UWORD: a plain key gives its character, 1 to 255,
 ' and an extended key gives its IBM PC BIOS scan code * 256. GETEXTKEY() gives 0 when no key

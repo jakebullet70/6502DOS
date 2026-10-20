@@ -1,4 +1,4 @@
-; UXDOS16 ROM bank 1: jsrfar1, the IRQ entry and the vectors of the bank.
+; 6502DOS ROM bank 1: jsrfar1, the IRQ entry and the vectors of the bank.
 
 .setcpu "65C02"
 

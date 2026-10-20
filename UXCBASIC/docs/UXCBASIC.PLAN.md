@@ -203,7 +203,7 @@ the error.
   `THEN` is optional at the end of the line. The one-line form `IF c THEN statement` has no
   `ELSE`, and a block statement after `THEN` is an error. `IF c THEN GOTO`, `EXIT` or
   `CONTINUE` (and `IF c GOTO label`) compile to one branch to the target.
-  - No jump out (pyuxc, UXDOS16 table only). A body before `ELSEIF`, `ELSE` or a `CASE` that
+  - No jump out (pyuxc, 6502DOS table only). A body before `ELSEIF`, `ELSE` or a `CASE` that
     ends in `RETURN`, `GOTO`, `EXIT`, `CONTINUE` or `END` has no `JMP` to the end. A statement
     after `IF c THEN` does not count.
 - **SELECT CASE** (pyuxc only). The selector is a number or a string. A `CASE` holds tests
@@ -356,7 +356,7 @@ python pyuxc/pyuxc.py FILE.UXB [-I FOLDER]... [-o FOLDER] [--result FILE] [--kee
 Every other option comes from `#DEFINE UXC.*` lines in the source.
 
 **Templates.**
-- Code templates and runtime routines are 65C02 source in `tpl/`. `tpl/UXDOS/` holds the UXDOS16
+- Code templates and runtime routines are 65C02 source in `tpl/`. `tpl/UXDOS/` holds the 6502DOS
   versions of `API.ASM`, `R-FILE.ASM` and `SYS.ASM`. `tpl/MKTPL.PY` assembles them with 64tass
   into two tables: `tpl/UXDOS/UXC.TPL.BIN`, which pyuxc loads, and `tpl/UXC.TPL.BIN`, for the
   stock ROM, which only `attic/gpc/pyuxc/compare.py` uses. The records of both tables must have
@@ -366,7 +366,7 @@ Every other option comes from `#DEFINE UXC.*` lines in the source.
 - There are three kinds of record, all in one table:
   - `T_` templates, copied inline for each use.
   - `R_` runtime routines, placed once at the end of the program.
-  - `S_` system table entries. The UXDOS16 table's, in `tpl/UXDOS/SYS.ASM`, call the UXDOS16
+  - `S_` system table entries. The 6502DOS table's, in `tpl/UXDOS/SYS.ASM`, call the 6502DOS
     API.
 - A record's id is its place in the table. `tpl/UXC.TPL.IDS` lists them.
 - The file is a header (`"UXT"`, version, count, index offset), the records, then an index of
@@ -439,7 +439,7 @@ module to its GPC source.
 `NAME.UXB` and its expected output `NAME.OUT`, with `NAME.IN` for typed input.
 - pyuxc compiles the source into `build/uxctests` of the repo root, with `#INCLUDE` looking in
   `tests/`.
-- A source that compiles runs headless on `build/UXDOS16.ROM` in x16emu: the program is
+- A source that compiles runs headless on `build/6502DOS.ROM` in x16emu: the program is
   `TEST.COM` on a new SD card image, and `RUN TEST.COM` is typed at the prompt. The lines of
   `NAME.IN` are typed after it. What the program printed, up to the prompt, is compared with
   `NAME.OUT`.
@@ -718,7 +718,7 @@ To do, not designed yet:
   so every program can return to BASIC. Still to decide: whether `@` of a zero-page variable
   is allowed, whether arrays and strings may go there, and how this shares `$50–$7F` with
   `ASM` and `POKE`. `DIM ... AT ZP` takes only `$50–$7F`. The runtime uses `$22–$4F`, and the
-  UXDOS16 kernel uses `$80–$FF`.
+  6502DOS kernel uses `$80–$FF`.
 - **Split WORD arrays, as in Prog8** (user, 2026-10-09). Prog8's `splitarrays` keeps a
   `WORD` array as two byte arrays, the low bytes then the high bytes. The index is used as it
   is, with no doubling, so an element is read with `LDA lo,Y` and `LDA hi,Y`. Such an array
@@ -933,7 +933,7 @@ To do, not designed yet:
   - `DIM R AS ITEM` makes a record. `DIM STOCK(20) AS ITEM` makes an array of 20. A record
     variable has no mark.
   - `DIM PSP AS PSPREC AT $0700` places a record at a fixed address, as `DIM ... AT` does for
-    a variable (NM.AT, flag `K.SY.FIXED`). Its fields are fixed addresses. UXDOS16's PSP, system
+    a variable (NM.AT, flag `K.SY.FIXED`). Its fields are fixed addresses. 6502DOS's PSP, system
     file table entry and FAT directory entry are records at fixed addresses.
   - A 32-bit field, such as a FAT file size, is a `LONG` or `ULONG` field.
   - A field goes wherever a variable of its type goes: in an expression, left of `=`, in
@@ -1405,10 +1405,10 @@ To do, not designed yet:
       bank. GPC refuses `BANK` inside `GP.BANKED` for the same reason.
     - GPC has only the statement `BANK n`, and its `PEEK` selects and restores the bank around
       each access. `STASH.INC.BL` reads the old bank with a `GP.ASM` block, `LDA $00`.
-  - UXDOS16 has its own bank allocator. It records the program that owns each bank and frees a
+  - 6502DOS has its own bank allocator. It records the program that owns each bank and frees a
     program's banks when the program exits. The built-in manager must not fight it. The
-    `BANK.*` names come in two versions: one for the stock ROM, and one that calls the UXDOS16
-    allocator, as UXDOS16's `DOS.UXI` does. Settle the two versions before the manager is built.
+    `BANK.*` names come in two versions: one for the stock ROM, and one that calls the 6502DOS
+    allocator, as 6502DOS's `DOS.UXI` does. Settle the two versions before the manager is built.
   - Still to decide: the raw names; which banks a compiled program reserves besides bank 0;
     whether the startup code runs `INIT` or the first call does; and whether `SPACE` is in the
     first version.
@@ -1427,21 +1427,21 @@ To do, not designed yet:
     into `UXC.TPL.BIN`. Each template needs its own fixup list.
   - It serves a CP/M-65 target, whose programs load at an address the system chooses. It also
     serves drivers and resident programs loaded anywhere in memory.
-  - UXDOS16 uses it for its relocatable program format.
+  - 6502DOS uses it for its relocatable program format.
   - Still to decide: the table format, CP/M-65's or our own; whether the runtime zero page moves
     too; whether `ASM` blocks with absolute addresses inside the program are allowed in
     relocatable output; and the directive that selects it.
-- **ROM-able output** (user, 2026-10-13; for UXDOS16). `UXC.DATA $xxxx` puts the variables at a
+- **ROM-able output** (user, 2026-10-13; for 6502DOS). `UXC.DATA $xxxx` puts the variables at a
   RAM address apart from the code. The output is raw, with no load address. The startup code
   copies the start values to RAM.
 
   - Code in ROM cannot be written, so nothing in the code may be a variable.
   - It covers the raw output and the separate variable address left open under "Code for a set
     memory address, as in Prog8".
-  - UXDOS16 layer 1 runs from ROM in this form.
-  - UXDOS16 wants its features in this order: records with `AT`, `LONG`, variables in banked
+  - 6502DOS layer 1 runs from ROM in this form.
+  - 6502DOS wants its features in this order: records with `AT`, `LONG`, variables in banked
     RAM, `CALL AT`, the `SUB` entered by register, then ROM-able output.
-- **A `SUB` entered by register** (user, 2026-10-13; for UXDOS16). `SUB KOPEN() REGS` is
+- **A `SUB` entered by register** (user, 2026-10-13; for 6502DOS). `SUB KOPEN() REGS` is
   entered by `JSR`. On entry it stores A, X, Y and P at `$030C`–`$030F`, the bytes `SYS` uses,
   and on exit it loads them back. A program names the bytes with `DIM ... AT`: `REG.A` in a
   namespace `REG`, or `REG_A` as the `SYS` example has it. `RETURN ERROR n` sets the carry and
@@ -1456,9 +1456,9 @@ To do, not designed yet:
   END SUB
   ```
 
-- **Calling a `SUB` by address** (user, 2026-10-13; for UXDOS16). `CALL AT P` calls the `SUB`
+- **Calling a `SUB` by address** (user, 2026-10-13; for 6502DOS). `CALL AT P` calls the `SUB`
   at the address in `P`, where `P = AddrOf(KOPEN)`. Driver vector tables need it.
-- **Variables in banked RAM** (user, 2026-10-13; for UXDOS16). `DIM SFT(15) AT $A000 BANK 0`
+- **Variables in banked RAM** (user, 2026-10-13; for 6502DOS). `DIM SFT(15) AT $A000 BANK 0`
   puts a table in a RAM bank. Each use of it selects the bank.
 - **Arrays that span RAM banks** (user, 2026-10-14). An array larger than 8 KB lives in banked
   RAM, and the program indexes it as one array. The compiler finds the bank and the address of
@@ -1467,8 +1467,8 @@ To do, not designed yet:
     times the element size. The bank is entry `offset >> 13` of the list, and the address is
     `$A000 + (offset AND $1FFF)`.
   - The banks need not be contiguous. On the stock ROM they come from the RAM bank manager. On
-    UXDOS16 they come from one extended memory block, whose chain of banks gives the list
-    (UXDOS16 PLAN section 3).
+    6502DOS they come from one extended memory block, whose chain of banks gives the list
+    (6502DOS PLAN section 3).
   - Each access selects the element's bank and restores the bank before it.
   - It extends "Variables in banked RAM".
   - The compiler's rewrite in UXCBASIC can hold its symbol table and code buffer in such
@@ -1477,25 +1477,25 @@ To do, not designed yet:
   - Still to decide: the syntax; element sizes that do not divide 8192; whether an array of
     more than 65535 elements takes a `ULONG` index; whether the list is filled at startup or by
     the program.
-- **A UXDOS16 target** (user, 2026-10-13; for UXDOS16). Done in pyuxc. The compiler emits a
-  program that calls the UXDOS16 API through its jump table at `$0340` in place of the KERNAL.
-  - The stock ROM is not supported (user, 2026-10-15). pyuxc compiles for UXDOS16 and has no
+- **A 6502DOS target** (user, 2026-10-13; for 6502DOS). Done in pyuxc. The compiler emits a
+  program that calls the 6502DOS API through its jump table at `$0340` in place of the KERNAL.
+  - The stock ROM is not supported (user, 2026-10-15). pyuxc compiles for 6502DOS and has no
     target option. `compile_file`'s `target` argument is `"stock"` only in
     `attic/gpc/pyuxc/compare.py`, which matches pyuxc to the GPC UXC's output until the port
     ends. The stock table and the stock templates go then.
-  - `tests.py` runs each test on the UXDOS16 ROM: `TEST.COM` on a new SD card image, `RUN
+  - `tests.py` runs each test on the 6502DOS ROM: `TEST.COM` on a new SD card image, `RUN
     TEST.COM` typed at the monitor. The line editor echoes the keys of `NAME.IN`. Output to a
     file is not in the output.
   - `tpl/MKTPL.PY` builds a table for each target: `tpl/UXC.TPL.BIN` with `-D UXDOS=0`, and
-    `tpl/UXDOS/UXC.TPL.BIN` with `-D UXDOS=1`. The UXDOS16 table takes `SYS.ASM` and
+    `tpl/UXDOS/UXC.TPL.BIN` with `-D UXDOS=1`. The 6502DOS table takes `SYS.ASM` and
     `R-FILE.ASM` from `tpl/UXDOS`, and `R-PRINT.ASM` and `R-STRING.ASM` test `UXDOS`. Both
     tables hold the same records in the same order; MKTPL stops when the ids differ.
-  - The UXDOS16 `R-FILE.ASM` uses handles. `OPEN`'s name ends with the mode's letter, R, W or
+  - The 6502DOS `R-FILE.ASM` uses handles. `OPEN`'s name ends with the mode's letter, R, W or
     A, in place of `,S,R`, `@:` and `,S,W`, or `,S,A`.
   - `PRINT` sends a whole string with one `write` call. A line ends with CR LF.
   - The GPC UXC has the stock target only.
-- **An exit code on `END`** (user, 2026-10-15; for UXDOS16; done 2026-10-15: SM.END in
-  `pyuxc/uxc_stmt.py`, T_ENDCODE in `tpl/T-CORE.ASM`; test ERRENDSTR, and UXDOS16's test
+- **An exit code on `END`** (user, 2026-10-15; for 6502DOS; done 2026-10-15: SM.END in
+  `pyuxc/uxc_stmt.py`, T_ENDCODE in `tpl/T-CORE.ASM`; test ERRENDSTR, and 6502DOS's test
   ENDCODE). `END [code]` takes an optional BYTE expression. `END` alone is `END 0`.
 
   ```
@@ -1514,8 +1514,8 @@ To do, not designed yet:
   - A run-time error exits with code 0 (user, 2026-10-15).
   - To do after the port: a final `END` is followed by the program's own `JMP S_EXIT`, 3 bytes
     that never run.
-- **String `CONST`s** (user, 2026-10-17; for UXDOS16; pyuxc only). Step 1 of 3, then
-  UXDOS16's VIEW uses them. QuickBASIC's form: a `$` mark or `AS STRING`.
+- **String `CONST`s** (user, 2026-10-17; for 6502DOS; pyuxc only). Step 1 of 3, then
+  6502DOS's VIEW uses them. QuickBASIC's form: a `$` mark or `AS STRING`.
 
   ```
   CONST ESC$ = CHR$(27)

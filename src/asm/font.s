@@ -1,7 +1,7 @@
 ; The CP437 font: 256 glyphs of 8 by 8 pixels, 8 bytes each, from character 0 up.
 ;
 ; Ported from x16-rom, charset/ascii-cp437.s, github.com/X16Community/x16-rom. The glyph data
-; is unchanged. The header and the segment are UXDOS16's.
+; is unchanged. The header and the segment are 6502DOS's.
 ; x16-rom's LICENSE.md puts the code it does not list under the 2-clause BSD licence. This
 ; file is not listed. Its author in x16-rom's history is Tom Wilson, 2024.
 ;

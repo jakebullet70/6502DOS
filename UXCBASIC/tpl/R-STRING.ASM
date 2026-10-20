@@ -402,7 +402,7 @@ skip    #rec jsr, S_CHRIN       ; drop the rest of the line
         cmp #13
         bne skip
 cr
-        .if UXDOS == 0              ; on UXDOS16, con_line has moved the cursor to the next line
+        .if UXDOS == 0              ; on 6502DOS, con_line has moved the cursor to the next line
         #rec jsr, S_CHROUT      ; the editor leaves the cursor on the line typed
         .endif
         bra done

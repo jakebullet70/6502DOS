@@ -1,4 +1,4 @@
-' CONS.UXI: the ANSI escape sequences the UXDOS16 console obeys, as string constants.
+' CONS.UXI: the ANSI escape sequences the 6502DOS console obeys, as string constants.
 '
 ' PRINT CONS.RED$; CONS.ON_WHITE$; "Error"; CONS.NORMAL$ prints Error in red on white.
 ' A sequence with a number starts with CSI$: PRINT CONS.CSI$; "5;10H"; moves the cursor to

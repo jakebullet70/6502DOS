@@ -1,6 +1,6 @@
 ; R-PRINT.ASM -- the runtime routines for PRINT.
 
-; Print the string at A/Y: [max][len][data]. On UXDOS16, one write to the output handle.
+; Print the string at A/Y: [max][len][data]. On 6502DOS, one write to the output handle.
 R_PRSTR .block
         #tpl
         sta ZP_PTR
@@ -83,7 +83,7 @@ tens_hi .byte >10000, >1000, >100, >10
         #endtpl
         .endblock
 
-; End the line: CR, and LF after it on UXDOS16.
+; End the line: CR, and LF after it on 6502DOS.
 R_PRNL  .block
         #tpl
         lda #13

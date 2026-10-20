@@ -4,8 +4,8 @@
 ; A record's id is its place in this file, so add new records at the end of a file, and
 ; rebuild the compiler after any change here.
 ;
-; UXDOS is 0 for the stock ROM's table, tpl/UXC.TPL.BIN, and 1 for the UXDOS16 table,
-; tpl/UXDOS/UXC.TPL.BIN. The UXDOS16 table takes SYS.ASM and R-FILE.ASM from tpl/UXDOS. Both
+; UXDOS is 0 for the stock ROM's table, tpl/UXC.TPL.BIN, and 1 for the 6502DOS table,
+; tpl/UXDOS/UXC.TPL.BIN. The 6502DOS table takes SYS.ASM and R-FILE.ASM from tpl/UXDOS. Both
 ; tables hold the same records in the same order, so a record has one id in both.
 
         .cpu "65c02"
@@ -43,8 +43,8 @@
         .endif
         .include "T-RECORD.ASM"
 
-; At startup, for UXDOS16 only: the high byte of S0, the end of the program, into PSP_TOP, byte 2
-; of the PSP. exec saves the program's pages up to that one. pyuxc emits it only for UXDOS16.
+; At startup, for 6502DOS only: the high byte of S0, the end of the program, into PSP_TOP, byte 2
+; of the PSP. exec saves the program's pages up to that one. pyuxc emits it only for 6502DOS.
 T_TOP   .block
         #tpl
         #hi lda, S0
@@ -55,7 +55,7 @@ T_TOP   .block
 ; An F_REC fixup holds a record id in one byte, so a record that #rec names needs an id below 256.
 ; Ids 256 and up go to records that no #rec names, here.
 
-; A = the screen's rows. POS(2) uses it. UXDOS16's con_cursor returns them in r0L.
+; A = the screen's rows. POS(2) uses it. 6502DOS's con_cursor returns them in r0L.
 T_POSROWS .block
         #tpl
         phx
@@ -66,7 +66,7 @@ T_POSROWS .block
         #endtpl
         .endblock
 
-; A = the screen's columns. POS(3) uses it. UXDOS16's con_cursor returns them in r0H.
+; A = the screen's columns. POS(3) uses it. 6502DOS's con_cursor returns them in r0H.
 T_POSCOLS .block
         #tpl
         phx

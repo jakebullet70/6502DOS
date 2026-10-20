@@ -1,4 +1,4 @@
-; UXDOS16 ROM bank 0: reset, the IRQ, the boot banner and the boot shell.
+; 6502DOS ROM bank 0: reset, the IRQ, the boot banner and the boot shell.
 
 .setcpu "65C02"
 
@@ -104,7 +104,7 @@ nmi:
         jmp irq_exit
 
 banner:
-        .byte "UXDOS16 V", VERSION_TEXT, $0D, $0A
+        .byte "6502DOS V", VERSION_TEXT, $0D, $0A
         .byte "For the Commander X16", $0D, $0A
 banner_end:
         .byte 0

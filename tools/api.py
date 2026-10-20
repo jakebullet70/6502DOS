@@ -1,4 +1,4 @@
-"""The UXDOS16 API: every call and every error number. PLAN section 4.
+"""The 6502DOS API: every call and every error number. PLAN section 4.
 
 tools/genapi.py reads this file and writes build/gen/api.inc, build/gen/api.s and
 docs/API.md. Edit this file, never those.

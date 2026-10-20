@@ -1,7 +1,7 @@
 # Working in UXCBASIC
 
-UXCBASIC is the native-code BASIC compiler of UXDOS16. pyuxc, in Python, is the compiler; it
-compiles for the UXDOS16 API only. The standing orders of the UXDOS16 `CLAUDE.md` apply here.
+UXCBASIC is the native-code BASIC compiler of 6502DOS. pyuxc, in Python, is the compiler; it
+compiles for the 6502DOS API only. The standing orders of the 6502DOS `CLAUDE.md` apply here.
 
 The design and the to-do list are in `docs/UXCBASIC.PLAN.md`. The compiler's state is in
 `docs/HANDOFF.md`. `docs/HISTORY.md` holds the old notes; read it only to trace a past decision.
@@ -15,7 +15,7 @@ uses it.
 | Path | What it is |
 |---|---|
 | `pyuxc/` | The compiler. `pyuxc.py` is the command line; `README.md` maps each module to its GPC source. |
-| `tpl/` | The runtime templates in 64tass asm; `tpl/UXDOS/` holds the UXDOS16 versions of `API.ASM`, `R-FILE.ASM` and `SYS.ASM`. |
+| `tpl/` | The runtime templates in 64tass asm; `tpl/UXDOS/` holds the 6502DOS versions of `API.ASM`, `R-FILE.ASM` and `SYS.ASM`. |
 | `help/` | `UXC-HELP.md` and `MKHELP.PY` |
 | `tests/` | Each test is `NAME.UXB` and `NAME.OUT`, with `NAME.IN` for typed input. |
 | `samples/` | Sample programs |
@@ -23,18 +23,18 @@ uses it.
 
 ## Tools
 
-Run each from the UXDOS16 folder.
+Run each from the 6502DOS folder.
 
 | Command | What it does |
 |---|---|
-| `UXCBASIC/tests.py NAME` | Compiles one test with pyuxc, runs it on `build/UXDOS16.ROM` in the emulator, and compares it with `tests/NAME.OUT`. Build the ROM first. |
+| `UXCBASIC/tests.py NAME` | Compiles one test with pyuxc, runs it on `build/6502DOS.ROM` in the emulator, and compares it with `tests/NAME.OUT`. Build the ROM first. |
 | `UXCBASIC/tests.py` | Runs the whole suite. `RUNUXCTESTS.BAT` wraps it. |
 | `UXCBASIC/pyuxc/pyuxc.py FILE.UXB` | Compiles one source. |
 | `UXCBASIC/tpl/MKTPL.PY` | Assembles `tpl/*.ASM` into the template tables with `tools/64tass`. `tools/build.py` runs it when a template is newer than `tpl/UXDOS/UXC.TPL.BIN`. |
 | `UXCBASIC/help/MKHELP.PY` | Builds the help pages in `help/HELP-TXT/` from `help/UXC-HELP.md`. |
 
 The tables `tpl/UXC.TPL.BIN`, `tpl/UXC.TPL.IDS` and `tpl/UXDOS/UXC.TPL.BIN` are kept in the repo.
-pyuxc reads the ids from `tpl/UXC.TPL.IDS` and the UXDOS16 table from `tpl/UXDOS/UXC.TPL.BIN`.
+pyuxc reads the ids from `tpl/UXC.TPL.IDS` and the 6502DOS table from `tpl/UXDOS/UXC.TPL.BIN`.
 The records of both tables must have the same ids; MKTPL stops when they do not.
 
 A test takes up to 1.1 s; past 5 s is a failure to investigate at once.

@@ -1,11 +1,11 @@
-r"""Build the UXDOS16 ROM image.
+r"""Build the 6502DOS ROM image.
 
     python tools/build.py
 
 Runs tools/genapi.py, assembles every src/asm/*.s and build/gen/*.s with ca65, links them
-with src/asm/rom.cfg into build/UXDOS16.ROM, ROM banks 0 and 1, and copies LICENSE and NOTICE
+with src/asm/rom.cfg into build/6502DOS.ROM, ROM banks 0 and 1, and copies LICENSE and NOTICE
 beside it. ca65 and ld65 come from tools/cc65/bin only. Includes are found in src/asm and build/gen. The map is
-build/UXDOS16.MAP, the label file build/UXDOS16.LBL, and each listing build/obj/NAME.LST.
+build/6502DOS.MAP, the label file build/6502DOS.LBL, and each listing build/obj/NAME.LST.
 build/TEST.ROM is the same image with boot_shell cleared: it boots to the monitor, not the shell.
 
 UXCBASIC/tpl/MKTPL.PY rebuilds the template tables when a UXCBASIC/tpl or UXCBASIC/tpl/UXDOS
@@ -41,9 +41,9 @@ ASM = os.path.join(ROOT, "src", "asm")
 BUILD = os.path.join(ROOT, "build")
 OBJ = os.path.join(BUILD, "obj")
 GEN = os.path.join(BUILD, "gen")
-ROM = os.path.join(BUILD, "UXDOS16.ROM")
+ROM = os.path.join(BUILD, "6502DOS.ROM")
 TEST_ROM = os.path.join(BUILD, "TEST.ROM")
-LABELS = os.path.join(BUILD, "UXDOS16.LBL")
+LABELS = os.path.join(BUILD, "6502DOS.LBL")
 BANK0_START = 0xC000
 SD_FOLDER = os.path.join(ROOT, "sd")
 TEST_SD_FOLDER = os.path.join(ROOT, "tests", "sd")
@@ -64,7 +64,7 @@ def run(command):
 
 
 def make_templates():
-    """Run MKTPL.PY when a template source is newer than the UXDOS16 table. Print its last line,
+    """Run MKTPL.PY when a template source is newer than the 6502DOS table. Print its last line,
     or all of its output when it failed."""
     sources = (glob.glob(os.path.join(TEMPLATES, "*.ASM"))
                + glob.glob(os.path.join(TEMPLATES, "UXDOS", "*.ASM")))
@@ -106,7 +106,7 @@ def compile_scom():
 
 
 def make_test_rom():
-    """Copy build/UXDOS16.ROM to build/TEST.ROM with boot_shell cleared, so it boots to the monitor."""
+    """Copy build/6502DOS.ROM to build/TEST.ROM with boot_shell cleared, so it boots to the monitor."""
     with open(LABELS, encoding="utf-8") as labels:
         address = next(int(line.split()[1], 16) for line in labels
                        if line.split()[2] == ".boot_shell")
@@ -133,7 +133,7 @@ def main():
              "-l", os.path.join(OBJ, name + ".LST"), source])
         objects.append(obj)
     run([LD65, "-C", os.path.join(ASM, "rom.cfg"), "-o", ROM,
-         "-m", os.path.join(BUILD, "UXDOS16.MAP"), "-Ln", LABELS]
+         "-m", os.path.join(BUILD, "6502DOS.MAP"), "-Ln", LABELS]
         + objects)
     make_test_rom()
     make_templates()

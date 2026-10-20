@@ -162,14 +162,14 @@
     tail (r1 points at the banner's 0). When the shell ends, `boot.s` runs it again. When
     `exec` fails, such as with no `C:\CMDSHELL.COM`, the ROM goes to the monitor and prints
     nothing. A BRK still goes to the monitor. This stands in for `SYSINIT.COM` (PLAN step 8).
-    - The byte `boot_shell` (exported, `$C09C` now) is 1 in `build/UXDOS16.ROM`. `build.py`
+    - The byte `boot_shell` (exported, `$C09C` now) is 1 in `build/6502DOS.ROM`. `build.py`
       copies the ROM to `build/TEST.ROM` with `boot_shell` 0, found through the label file;
       `TEST.ROM` boots to the monitor. `tests.py` boots `TEST.ROM`, except for the tests in
-      `SHELL_ROM_TESTS`, which boot `UXDOS16.ROM`. No golden file changed.
+      `SHELL_ROM_TESTS`, which boot `6502DOS.ROM`. No golden file changed.
     - Trap: ca65 takes no string in an `=` constant; `SHELL_PATH` is a `.define`.
     - ROM +43 bytes: 26 of code, the flag, and the 16-byte path. `boot.o` CODE 173 bytes. ROM
       bank 0: 5536 bytes free below `$FFCF`. RAM: 0.
-    - UXCBASIC's `tests.py` boots `UXDOS16.ROM`; its card has no `CMDSHELL.COM`, so it gets the
+    - UXCBASIC's `tests.py` boots `6502DOS.ROM`; its card has no `CMDSHELL.COM`, so it gets the
       monitor. UXCBASIC `ARRAY1` ok 0.5 s.
     - New test `SHBOOT`: `VER`, `END`, `VER`; the second `C>` is the shell run again. Build
       548 ms, the new baseline. `BOOT` ok 0.5 s, `SHBOOT` ok 0.4 s, `SHELL` ok 0.4 s.
@@ -419,7 +419,7 @@
 - ca65 and ld65 V2.19 (Git e11fb5c) are in `tools/cc65/bin`, with the zlib licence in
   `tools/cc65/LICENSE`.
 - Step 0 is done:
-  - `src/asm/rom.cfg` links ROM bank 0, 16384 bytes, to `build/UXDOS16.ROM`.
+  - `src/asm/rom.cfg` links ROM bank 0, 16384 bytes, to `build/6502DOS.ROM`.
   - `tools/build.py` builds it. `tools/tests.py` runs the tests in `tests/`.
   - The test output channel is `-echo raw`, in PLAN §10.
 - Step 1 is done, for the user to review:
@@ -668,7 +668,7 @@
   - `api_ioctl`: any subfunction but 6 gives 1. A file gives r0 = 0 at or past its size, else
     `$FF` (`sft_end`, `handle_end` after its `sft_find`). A device calls driver command 6,
     `DRV_INPUT_STATUS`: `CON` is `api_con_status`, `NUL` is `nul_status`, which gives 0. MS-DOS's
-    `NUL` reports ready; UXDOS16's gives 0 so that `EOF` is true at once.
+    `NUL` reports ready; 6502DOS's gives 0 so that `EOF` is true at once.
   - `open_common` and `handles_inherit` use `handle_free` and `sft_share`; `handle_io` and
     `api_ioctl` use `sft_driver`.
   - `DOS.UXI`: `IOCTL(HANDLE, SUBFUNCTION)`, `DUP(HANDLE)`, `DUP2(HANDLE, SECOND)`, and the
@@ -699,23 +699,23 @@
   - PLAN sections 2, 10 and 11 name the one `DOS.UXI`.
 - Build after 6c: 0.50 s, with `ARGS`, `ASK` and `SHOW` recompiled.
 - Tests after 6c, one at a time: `DOSAPI` ok 0.6 s, `DUP` 0.4, `KERNAL` 0.5, `FILES` 0.4.
-- Step 6d is done: pyuxc has a UXDOS16 target (PLAN section 11, 6d).
-  - The stock ROM is not supported (user, 2026-10-15). pyuxc compiles for UXDOS16 and has no
+- Step 6d is done: pyuxc has a 6502DOS target (PLAN section 11, 6d).
+  - The stock ROM is not supported (user, 2026-10-15). pyuxc compiles for 6502DOS and has no
     `--target`. `compile_file`'s `target` is `"stock"` in UXCBASIC's `pyuxc/compare.py` only,
     against the GPC golden output, until the port ends.
-  - UXCBASIC's `tests.py` runs on `build/UXDOS16.ROM` here: `TEST.COM` on a new SD card image,
+  - UXCBASIC's `tests.py` runs on `build/6502DOS.ROM` here: `TEST.COM` on a new SD card image,
     `RUN TEST.COM` typed at the monitor, the output up to the prompt. 155 tests ok, 36 s, the
     slowest 0.6 s. A tests run there needs the ROM built here first. Ten goldens changed: the line
     editor echoes typed keys, file output is no longer in the echo, `FILEBERR`'s error address.
     `FILEINERR` read handle 0, standard input here: its source moved to `pyuxc/cases`, and
     `FILEINCLOSED` reads handle 9. `compare.py` counts a source with no GPC golden as NO GOLDEN.
   - `UXCBASIC/tpl/MKTPL.PY` assembles `UXC.TPL.ASM` twice: `-D UXDOS=0` to
-    `tpl/UXC.TPL.BIN`, `-D UXDOS=1` to `tpl/UXDOS/UXC.TPL.BIN`. The UXDOS16 table takes
+    `tpl/UXC.TPL.BIN`, `-D UXDOS=1` to `tpl/UXDOS/UXC.TPL.BIN`. The 6502DOS table takes
     `tpl/UXDOS/SYS.ASM`, `tpl/UXDOS/R-FILE.ASM` and `tpl/UXDOS/API.ASM` (the call addresses).
     `R-PRINT.ASM` (`R_PRSTR`, `R_PRNL`) and `R-STRING.ASM` (`R_INPUT`'s CR echo) test `UXDOS`.
     Both tables have 251 records with the same ids; MKTPL stops when they differ. The stock
     table is byte for byte the one before; `compare.py`: 572 of 572 match.
-  - On UXDOS16: `S_CHROUT` writes one byte to the output handle, `STDOUT` or the handle of
+  - On 6502DOS: `S_CHROUT` writes one byte to the output handle, `STDOUT` or the handle of
     `PRINT #`; `R_PRSTR` sends a string with one `write`; a line ends with CR LF; `S_CHRIN`
     reads a line with `con_line` into its own 83-byte buffer; `S_PLOT` is `con_cursor`;
     `S_GETIN` is `con_status` then `con_in`; `S_INIT` is an RTS; `S_EXIT` calls `exit` with
@@ -827,7 +827,7 @@
   1 NO GOLDEN.
 - Step 6e part 5 is done (2026-10-15), and with it step 6e: `ZP_MODE` (`$27`) in UXCBASIC's
   `tpl/ZP.ASM` is defined only when `UXDOS == 0`. The stock table's `S_INIT` and `S_EXIT` use
-  it; the UXDOS16 table does not, so `$27` is free there. `MKTPL.PY` 0.28 s; both tables are byte
+  it; the 6502DOS table does not, so `$27` is free there. `MKTPL.PY` 0.28 s; both tables are byte
   for byte the same as before, so no test ran.
 - Docs step done (2026-10-15); no docs are owed:
   - UXCBASIC `help/UXC-HELP.md`: a new topic `END`, linked from Control and Targets; the Targets
@@ -848,7 +848,7 @@
   compile time: 0 ROM bytes, 0 cycles. A variable's code is still its low byte. New test
   `ERRENDRANGE` in UXCBASIC's `tests/`. `tests/com/ENDCHILD.UXB` here says `END 253`, not
   `END -3`.
-- Full suite (2026-10-15), after the `END` range step: UXDOS16 15 ok, 8.1 s, slowest `ASK`
+- Full suite (2026-10-15), after the `END` range step: 6502DOS 15 ok, 8.1 s, slowest `ASK`
   0.9 s; UXCBASIC 157 ok, 37 s, slowest `EXPR1` 0.6 s. `compare.py`: 571 MATCH, 10 NO GOLDEN
   of 581, 1.6 s.
 - The shell is a small BASIC (user, 2026-10-15). The design is in PLAN section 8, from the
@@ -1115,7 +1115,7 @@
     `$E9AD`, 5665 bytes free before `KERNALJUMPS`.
   - UXCBASIC: a new template `T_TOP` at the end of `tpl/UXC.TPL.ASM` (`#hi lda, S0` /
     `sta $0702`), record 252 in both tables. `lk_link` emits it after `sb_pools` for the
-    UXDOS16 target only, with S0 = the BSS end (`lk_bss + bs_n`): its high byte is the page
+    6502DOS target only, with S0 = the BSS end (`lk_bss + bs_n`): its high byte is the page
     of the last byte, or one page more when the end is page-aligned. The stock output and
     the goldens are unchanged. A program grows 5 bytes, 6 when it had no startup work (the
     `BIT` turns back into `JSR`, plus `RTS`). The GPC compiler's `TPL.COUNT` check now fails
@@ -1280,7 +1280,7 @@
     in the two-word ends. Its HANDOFF owes nothing for it.
 - No jump out, in pyuxc (2026-10-16). A body before `ELSEIF`, `ELSE` or a `CASE` (of `SELECT
   CASE` or `ON CASE`) that ends in `RETURN`, `GOTO`, `EXIT`, `CONTINUE` or `END` has no `JMP`
-  to the end. A statement after `IF c THEN` does not count. The UXDOS16 table only, so
+  to the end. A statement after `IF c THEN` does not count. The 6502DOS table only, so
   `compare.py` still matches GPC: 571 MATCH, 16 NO GOLDEN, 1.4 s. The pyuxc README,
   "Differences from GPC UXC", has the rule; UXCBASIC's HANDOFF has the rest.
   - The shell: 15291 to 15285 bytes. UXCBASIC test `JUMPOUT` ok 0.7 s, 644 to 620 bytes. Every
@@ -1576,7 +1576,7 @@
 ## Run
 
 - `python tools/build.py`, then `python tools/tests.py`. `BUILD.BAT` runs `build.py`.
-- In a window: `C:\8bitProgramming\x16emu\x16emu.exe -rom build\UXDOS16.ROM -sdcard build\SD.IMG`,
+- In a window: `C:\8bitProgramming\x16emu\x16emu.exe -rom build\6502DOS.ROM -sdcard build\SD.IMG`,
   or `RUN.BAT`, which adds `-scale 2 -noemucmdkeys`. With `-noemucmdkeys`, Ctrl and Alt keys
   reach the X16, and the emulator's Ctrl hotkeys (reset, paste, fullscreen) are off.
   The ROM boots to the shell. `-rom build\TEST.ROM` boots to the monitor; there try `DIR`,
@@ -1609,7 +1609,7 @@
      extended key `S_GETIN` reads both bytes, returns 0 and keeps the scan code. `SCANKEY()`
      gives that scan code, 0 after a plain key or no key. `KEYMODS()` gives the modifiers held
      now: 1 Shift, 4 Caps Lock, 64 Alt, 128 Ctrl. The `GETKEY` help says PETSCII; fix it to
-     the UXDOS16 codes.
+     the 6502DOS codes.
    - Then a `DOS.UXI` key reader on `API_IN`. VIEW did not wait for it (the user, 2026-10-17).
    - `VIEW file`, a DOS utility in `src/dos`, command line only, not for scripts (the user,
      2026-10-17). Agreed so far: 29 rows of text and a footer of one row with the keys;
@@ -1673,12 +1673,12 @@
         ok 0.4 s, `VIEW` ok 0.9 s. Build 1.29 s, the new baseline. The feature is complete; the
         docs batch is owed: `api.py`/API.md `con_cursor`, the UXC-HELP POS topic, PLAN.
    - Library refactor, agreed with the user on 2026-10-17. The compiler repo keeps the language;
-     every `.UXI` library lives in UXDOS16. The repos stay apart. Each file holds one
+     every `.UXI` library lives in 6502DOS. The repos stay apart. Each file holds one
      namespace of the same name. BINDs that rename built-ins stay and grow: the coming editor
      lists a namespace's members after `STR.`, so every built-in of a kind gets a BIND in its
      namespace. Constants and BINDs cost 0 bytes; dead-code stripping drops uncalled FUNCTIONs.
      `VIEW.COM` (6422 bytes) checks that. No asm. Steps, one at a time:
-     1. A new `lib/` folder in UXDOS16. Move `DOS.UXI`, `HEAP.UXI`, `CONS.UXI` and `KEYS.UXI`
+     1. A new `lib/` folder in 6502DOS. Move `DOS.UXI`, `HEAP.UXI`, `CONS.UXI` and `KEYS.UXI`
         from `src/bas` into it. Point `uxb.py`'s include folder (`LIBRARY_FOLDER`) and
         `build.py` at it.
         Step 1 done: `lib/` holds the four files; `uxb.py` `LIBRARY_FOLDER` is `lib`; `build.py`
@@ -1741,7 +1741,7 @@
         7th step: 34 tests, 0 failed, 18.3 s. `STR` takes 11 of a program's 64 BINDs.
      6. The user, 2026-10-17: the working ideas of UXCBASIC's `lib/DISK_FILEIO.UXI` (`EXISTS`,
         `SIZE`, `COPY`) move into `DOS.UXI` as `DOS` functions, and `DISK_FILEIO.UXI` is deleted.
-        Step 6 done in UXDOS16: `DOS.UXI` ends with a section of whole-file routines built on
+        Step 6 done in 6502DOS: `DOS.UXI` ends with a section of whole-file routines built on
         the calls. `FUNCT EXISTS(PATH) AS UBYTE` gives 1 when a file or directory matches,
         through `FINDFIRST`. `FUNCT SIZE(PATH) AS ULONG` gives a file's size, through
         `FINDFIRST`; a directory gives error 2. Both end a search in progress and set the
@@ -1758,14 +1758,14 @@
         UXCBASIC's HANDOFF line 274 and `UXCBASIC.PLAN.md` line 1328 still name the file; the
         docs batch fixes them.
      7. UXCBASIC: delete `lib/`; move `STRINGS.UXI` into `tests/` for `STRLR` and `STRNS`; the
-        UXC-HELP topic at about line 405 points to the UXDOS16 library.
+        UXC-HELP topic at about line 405 points to the 6502DOS library.
         Step 7 done: `lib/` is gone. `STRINGS.UXI` is `tests/STRINGS.UXI`. `lib/CONSOLE.UXI`,
         which no source included, is deleted. `tests.py`, `pyuxc/compare.py` and
         `pyuxc/golden.py` no longer search `lib/`. `build.py` no longer copies `lib/` onto
-        `disk/`. The Strings topic of UXC-HELP says `STR.UXI` in the UXDOS16 library binds the
+        `disk/`. The Strings topic of UXC-HELP says `STR.UXI` in the 6502DOS library binds the
         built-ins in `NAMESPACE STR`; `MKHELP.PY` rebuilt the pages, 0.17 s. `disk/CONSOLE.UXI`,
         `disk/STRINGS.UXI` and `disk/STRINGS2.UXI` stay; `disk/STR-TEST.UXB` includes
-        `STRINGS2.UXI`. No asm, no UXDOS16 build. Tests in UXCBASIC: `STRLR` ok 0.7 s, `STRNS`
+        `STRINGS2.UXI`. No asm, no 6502DOS build. Tests in UXCBASIC: `STRLR` ok 0.7 s, `STRNS`
         ok 0.5 s.
      8. `genapi.py` writes the `API_*` constants that `DOS.UXI` now holds by hand.
         Step 8 done: `genapi.py` writes one `API_` CONST for each call in `api.py`, 47, into
@@ -1808,7 +1808,7 @@
         - Fixed in the docs step after break (2026-10-18), by the doc-style agent, each
           example compiled: UXC-HELP "What UXCBASIC is", "Using this help" (no X16 viewer
           here), "Compiling" (was "Compiling from UXCEDIT", now pyuxc's command line and
-          result line), "Including files", "Files" and its four sections (UXDOS16 paths and
+          result line), "Including files", "Files" and its four sections (6502DOS paths and
           handles, 8 SFT entries, two `handle_io` traps); `UXCBASIC.PLAN.md` section 3 (the
           pyuxc layout, `tests.py`, `RUNUXCTESTS.BAT`).
         - Still stale: `UXCBASIC.PLAN.md` lines 3 to 6 and 13 (UXC.PRG, UXCEDIT, "Unix-style
@@ -2151,7 +2151,7 @@
        mkdir, rmdir, free space); F5 chdir and getcwd; F6 the 32/255 limits, LFN in `mksd.py`
        and `fatcheck.py`, new tests, the shell's 12-character pipe path; F7 delete `fat.s`,
        docs. Each step runs the tests of the code it touches.
-     - Done, F1 (2026-10-19): `rom.cfg` links banks 0 and 1; `build/UXDOS16.ROM` is 32768
+     - Done, F1 (2026-10-19): `rom.cfg` links banks 0 and 1; `build/6502DOS.ROM` is 32768
        bytes. `src/asm/far.inc` holds `FARCALL target [, entry]` (6 bytes a call), `JSRFAR`
        and the IRQ entry and exit. `jsrfar` (bank 0, `gate.s`) and `jsrfar1` (bank 1,
        `bank1.s`) read the 3 bytes after the JSR, push the caller's bank and end in the gate's
@@ -2612,7 +2612,22 @@
          form, about +328 bytes of ROM and 1 cycle each.
        - Traps found: `REASON` relies on zero page wrap in the `TEMP1` block; `INPUTBUFFER` at
          `$0200` is the monitor's line, and `exec` does not save it.
-       - Waits on the user: the layout, and where `INPUTBUFFER` goes.
+       - The user took the proposed layout (2026-10-20).
+     - Decided by the user (2026-10-20):
+       - The start is a stub, `MSBASIC.COM`.
+       - `EXIT` ends BASIC and returns to the shell. `END` ends the program and returns to
+         BASIC's prompt, as now.
+     - Proposed for `INPUTBUFFER`, waits on the user: page `$08`, after the stub and the 66 bytes
+       of RAM data, 81 bytes, with the 5 bytes `INPUTBUFFER-5` to `-1` in front; the program
+       text starts at `$0901`.
+       - `$0200` fails: it is `CON_LINE` and the monitor's line, `exec` does not save it, and
+         `INPUTBUFFER-5` to `-1` land in `$01FB-$01FF`.
+       - The buffer must not cross a page (`INPUTBUFFERX,x`). No program text or string may share
+         its page: `flow1.s` and `string.s` test `#>INPUTBUFFER` for direct mode.
+       - ROM -10 bytes: the `CONFIG_INPUTBUFFER_0200` code in `program.s` drops out.
+     - Trap for M1: the cold start does `ldx #$FB` and `txs`, and `ldx #STACK_TOP`, `txs` on each
+       error. That throws away the stack of the shell that ran BASIC, and `STACK+STACK_TOP+1`
+       writes over it. The `uxdos` target must take its stack top from the `S` it starts with.
      - M1, a `uxdos` target in `MSBASIC/` (`defines_uxdos.s`, `uxdos.cfg`):
        - the M0 layout;
        - `K_OPEN`, `K_CLOSE`, `K_READ`, `K_WRITE` on the API through the gate entries at
@@ -2624,20 +2639,26 @@
        `make verify` and `make test` must still pass. The target is not in the ROM yet.
      - M2, bank 2 in the ROM:
        - `build.py` builds the `uxdos` target and links it as bank 2.
-       - `BASIC.COM`, a stub of a few bytes, selects ROM bank 2 and calls the cold start. Its
+       - `MSBASIC.COM`, a stub of a few bytes, selects ROM bank 2 and calls the cold start. Its
          `RTS` is `exit`.
-       - A statement ends BASIC and returns to the shell.
-       - Test `BASBOOT`: the shell runs `BASIC`, `PRINT 1+1`, then back to the shell.
+       - `EXIT` ends BASIC and returns to the shell.
+       - Test `BASBOOT`: the shell runs `MSBASIC`, `PRINT 1+1`, `EXIT`, then back to the shell.
      - M3, files: `OPEN`, `CLOSE`, `PRINT#`, `INPUT#`, `GET#` on the SD card. `LOAD` and
        `SAVE` of program text. One test.
      - M4, `tests.py` runs MSBASIC's `tests/*.bas` on the ROM against their `.out`.
      - M5, docs: PLAN sections 2, 3 and 11, `HELP.TXT`, `MSBASIC/CLAUDE.md` and
        `MSBASIC/docs/changes.md`.
      - Open questions for the user:
-       - the zero page layout (M0);
-       - the start: the `BASIC.COM` stub, or a ROM program entry in `exec`;
-       - the name of the statement that ends BASIC: `SYSTEM` (GW-BASIC) or `BYE`;
+       - where `INPUTBUFFER` goes (above);
        - whether the `uxdos` target may use 65C02 opcodes; `MSBASIC/CLAUDE.md` sets NMOS only.
+   - Rename (2026-10-20, the user): `UXDOS16` is `6502DOS` in every tracked file but `attic/`,
+     and in the memory notes. The ROM is `build/6502DOS.ROM`, with `.MAP` and `.LBL`; pyuxc's
+     target is `"6502dos"`; `UXCBASIC/tests.py`'s `UXDOS16_REPO` is `DOS_REPO`. The names
+     `uxdos` (the MSBASIC target, `tpl/UXDOS`) stay. Same length, so no size changed.
+     - Build 4.26 s, every program recompiled (the `lib` files changed): the full-build
+       baseline. Tests: `BOOT` ok 0.5 s, `SHBOOT` 0.5, `DISK` 0.5, `CMDLETS` 1.6, `TARGET`
+       0.4, UXCBASIC `ARRAY1` 0.5. 53 goldens changed in the banner only.
+     - Steps since the full suite: 1.
    - To do: find what the 492 bytes of 7i2b cost in `DISKFREE.CBI` (1861 to 2353 bytes), with
      pyuxc's link map, and cut them. Ideas: read `P2$` once, drop `FREE_TEXT` and pass the
      `MID$` straight to `SYS_STRINGS_SET`, reuse `DRIVE_NAME` for the text (11 bytes of RAM).

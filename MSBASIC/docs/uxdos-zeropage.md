@@ -1,12 +1,12 @@
 # Zero page for the uxdos target
 
-The audit of the `sim` build's zero page, and a layout for the `uxdos` target (UXDOS16 HANDOFF,
+The audit of the `sim` build's zero page, and a layout for the `uxdos` target (6502DOS HANDOFF,
 MSBASIC in ROM, step M0). Counts are of the instructions in `build/sim.lst` that emit a zero page
 operand.
 
 ## The limits
 
-- A UXDOS16 program owns `$22-$7F`: 94 bytes. `$02-$21` are the API registers `r0` to `r15`.
+- A 6502DOS program owns `$22-$7F`: 94 bytes. `$02-$21` are the API registers `r0` to `r15`.
   The kernel owns `$80-$FF`.
 - The `sim` build uses 162 bytes: `$00-$12`, `$5B-$DF` and `$F0-$F9`.
 - `$13-$5A` is unused in `sim`: `INPUTBUFFER` is at `$0200`.
@@ -87,7 +87,7 @@ These bytes are reached only by plain `zp` and `zp,x` instructions, which have a
 - ca65 picks the absolute form for a symbol of `$100` or more. No source forces the zero page
   form with `z:` or `<` on a variable.
 - `STACK_TOP` is `$FA` because `$01FD-$01FF` lie in front of `INPUTBUFFER` at `$0200`. On
-  UXDOS16, `$0200-$02FF` is the monitor's input and output line, and `exec` does not save it.
+  6502DOS, `$0200-$02FF` is the monitor's input and output line, and `exec` does not save it.
 
 ## Layout
 

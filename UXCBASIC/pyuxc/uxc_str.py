@@ -625,7 +625,7 @@ def sg_last_word():
 def sg_open():
     """SG.OPEN. OPEN(name$, mode): the handle, a WORD. The mode is a name, so the whole DOS
     name is known here: name,S,R for O.READ, @:name,S,W for O.WRITE, name,S,A for O.APPEND. On
-    UXDOS16 the name is followed by the mode's letter only: R, W or A. A literal name is joined
+    6502DOS the name is followed by the mode's letter only: R, W or A. A literal name is joined
     at compile time."""
     g.ex_i = g.ex_vn - 1
     if g.ex_vt[g.ex_i] != K_TY_STR:
@@ -647,7 +647,7 @@ def sg_open():
     if g.sg_open_suffix == ",S,W":
         g.sg_open_prefix = "@:"
     reading = g.sg_open_suffix == ",S,R"
-    if g.target == "uxdos16":
+    if g.target == "6502dos":
         g.sg_open_prefix = ""
         g.sg_open_suffix = g.sg_open_suffix[-1]
     uxc_lex.lx_next()

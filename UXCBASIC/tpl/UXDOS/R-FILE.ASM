@@ -1,6 +1,6 @@
-; R-FILE.ASM for UXDOS16 -- the runtime routines for files, through UXDOS16 handles.
+; R-FILE.ASM for 6502DOS -- the runtime routines for files, through 6502DOS handles.
 ;
-; A handle is a UXDOS16 handle. Handles 0-2 are standard input, output and error. The records
+; A handle is a 6502DOS handle. Handles 0-2 are standard input, output and error. The records
 ; and their entries are tpl/R-FILE.ASM's. OPEN passes the name with its mode letter last:
 ; R for O.READ, W for O.WRITE, A for O.APPEND.
 

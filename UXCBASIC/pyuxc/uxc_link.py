@@ -43,7 +43,7 @@ def lk_init_call():
 def lk_link():
     """LK.LINK. The startup work: clear the array space, set the max of each string block,
     then lay out the pools of temps after it and set the max of each temp. The temps are not
-    cleared. For UXDOS16 it also stores the page of the program's end in PSP_TOP. The SUBs
+    cleared. For 6502DOS it also stores the page of the program's end in PSP_TOP. The SUBs
     nothing calls are left out first, then the global variables nothing names, then the string
     literals nothing names."""
     uxc_dead.dd_strip()
@@ -63,7 +63,7 @@ def lk_link():
         emit(T.T_ZERO)
     uxc_str.sg_maxes()
     uxc_sub.sb_pools()
-    if g.target == "uxdos16":
+    if g.target == "6502dos":
         g.sl_s[0] = K_SEC_BSS
         g.sl_v[0] = g.bs_n
         emit(T.T_TOP)

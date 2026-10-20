@@ -1,10 +1,10 @@
-"""Run the UXCBASIC tests: compile each tests/*.UXB with pyuxc, run it on UXDOS16, and compare.
+"""Run the UXCBASIC tests: compile each tests/*.UXB with pyuxc, run it on 6502DOS, and compare.
 
     python tests.py [NAME ...] [--update]
 
 Each test is a source NAME.UXB and its expected output NAME.OUT, both in tests/. pyuxc
-compiles the source into build/uxctests of the UXDOS16 folder, with #INCLUDE looking in tests/. A source that
-compiles runs on the UXDOS16 ROM in x16emu, headless: the program is TEST.COM on a new SD card
+compiles the source into build/uxctests of the 6502DOS folder, with #INCLUDE looking in tests/. A source that
+compiles runs on the 6502DOS ROM in x16emu, headless: the program is TEST.COM on a new SD card
 image, and RUN TEST.COM is typed at the monitor's prompt. When tests/NAME.IN exists, its lines
 are typed after it, each ended by CR; the line editor echoes them. What the program printed, up
 to the monitor's prompt, is compared with NAME.OUT. Output to a file is not in it. A source that does not compile is compared by its result line, so an
@@ -12,8 +12,8 @@ error test's NAME.OUT is one line:
 
     ERROR,<line>,<message>
 
-A run fails when the monitor's prompt is not back within 5 s. The ROM is build/UXDOS16.ROM of
-the UXDOS16 folder, the folder above this one: build it first with tools/build.py.
+A run fails when the monitor's prompt is not back within 5 s. The ROM is build/6502DOS.ROM of
+the 6502DOS folder, the folder above this one: build it first with tools/build.py.
 
 NAMEs pick tests; with none, every test runs. --update writes NAME.OUT from what the test
 gave, for a new test or a change made on purpose: read the .OUT it wrote before you keep
@@ -32,10 +32,10 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 TESTS = os.path.join(HERE, "tests")
 INCLUDE_FOLDERS = [TESTS]
-UXDOS16_REPO = os.path.dirname(HERE)
-DRIVE = os.path.join(UXDOS16_REPO, "build", "uxctests")
+DOS_REPO = os.path.dirname(HERE)
+DRIVE = os.path.join(DOS_REPO, "build", "uxctests")
 EMU = r"C:\8bitProgramming\x16emu\x16emu.exe"
-ROM = os.path.join(UXDOS16_REPO, "build", "UXDOS16.ROM")
+ROM = os.path.join(DOS_REPO, "build", "6502DOS.ROM")
 SD_FOLDER = os.path.join(DRIVE, "sd")
 PROGRAM = os.path.join(DRIVE, "TEST.COM")
 IMAGE = os.path.join(DRIVE, "SD.IMG")
@@ -47,7 +47,7 @@ SETTLE = 0.1
 # x16emu prints these itself: when the ROM has no stock KERNAL symbols, and at -sdcard.
 EMULATOR_LINES = ("Unable to find KERNAL ", "SD card attached.")
 sys.path.insert(0, os.path.join(HERE, "pyuxc"))
-sys.path.insert(0, os.path.join(UXDOS16_REPO, "tools"))
+sys.path.insert(0, os.path.join(DOS_REPO, "tools"))
 
 import mksd  # noqa: E402
 import pyuxc  # noqa: E402
@@ -69,7 +69,7 @@ def program_output(text):
 
 
 def run(typed):
-    """Boot UXDOS16 with build/TEST.COM on the card, run it, and return what it printed, or
+    """Boot 6502DOS with build/TEST.COM on the card, run it, and return what it printed, or
     None when the prompt did not come back within LIMIT seconds. typed is text typed after
     the RUN, one line per CR, or None."""
     os.makedirs(SD_FOLDER, exist_ok=True)

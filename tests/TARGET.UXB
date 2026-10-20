@@ -1,4 +1,4 @@
-' TARGET: pyuxc's UXDOS16 target. Files through handles, line ends, print zones, POS and GETKEY.
+' TARGET: pyuxc's 6502DOS target. Files through handles, line ends, print zones, POS and GETKEY.
 DIM F AS UWORD, N AS UWORD, A AS UWORD, B AS UWORD, L AS STRING * 20, BUFFER(20) AS UBYTE
 
 ' Writing: PRINT # ends a line with CR LF; O.APPEND writes at the end.

@@ -100,7 +100,7 @@ RENAME old new  or  REN old new (Command line or Script)
 REN is short for RENAME. See HELP RENAME.
 :VERSION
 VERSION   or   VER              (Command line or Script)
-  Prints the version of UXDOS16, such as UXDOS16 V0.1.0.
+  Prints the version of 6502DOS, such as 6502DOS V0.1.0.
   VERSION
 :VER
 VER is short for VERSION. See HELP VERSION.

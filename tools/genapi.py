@@ -146,7 +146,7 @@ def registers(pairs):
 
 
 def api_md():
-    lines = ["# UXDOS16 API", "", "<!-- %s -->" % HEADER, "",
+    lines = ["# 6502DOS API", "", "<!-- %s -->" % HEADER, "",
              "Version %d.%d.%d." % api.VERSION, "",
              "Conventions:", ""]
     lines += [line.strip() for line in api.__doc__.split("Conventions for every call:")[1]
