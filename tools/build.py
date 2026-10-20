@@ -16,10 +16,13 @@ build/bas/NAME.COM with tools/uxb.py when the COM file is older than the source,
 includes, than the template table or than pyuxc. Each src/scom/NAME.UXB, a
 commandlet, compiles the same way to build/DOS/NAME.SCOM, a long name on the card. Each
 src/dos/NAME.UXB, a DOS utility, compiles to
-build/DOS/NAME.COM, and each src/dos/NAME.TXT and NAME.HLP is copied to build/DOS.
+build/DOS/NAME.COM, and each src/dos/NAME.TXT and NAME.HLP is copied to build/DOS. Each
+src/utils/FOLDER/NAME.UXB, a utility, compiles to build/UTILS/NAME.COM, and the files of
+src/utils/FOLDER are copied to build/UTILS/SRC/FOLDER.
 
 Then tools/mksd.py makes the SD card image build/SD.IMG from the folder sd, CMDSHELL.COM and
-MSBASIC.COM, the folder build/DOS, which is the card's folder DOS, the card's folder TEST, and
+MSBASIC.COM, the folder build/DOS, which is the card's folder DOS, the folder build/UTILS, which
+is the card's folder UTILS, the card's folder TEST, and
 the folder card, gathered in build/card. TEST holds the other COM files in build/bas and the
 files and folders of the test card's folder tests/sd. A file in card wins a
 name it shares with the others. Before that, each file and folder that the X16 added to the old
@@ -65,6 +68,8 @@ BAS_OUT = os.path.join(BUILD, "bas")
 SCOM = os.path.join(ROOT, "src", "scom")
 SCOM_OUT = os.path.join(BUILD, "DOS")
 UTILITIES = os.path.join(ROOT, "src", "dos")
+UTILS = os.path.join(ROOT, "src", "utils")
+UTILS_OUT = os.path.join(BUILD, "UTILS")
 TEMPLATES = os.path.join(ROOT, "UXCBASIC", "tpl")
 MSBASIC_SRC = os.path.join(ROOT, "MSBASIC", "src")
 BANK_SIZE = 0x4000
@@ -118,6 +123,20 @@ def compile_scom():
     for text in sorted(glob.glob(os.path.join(UTILITIES, "*.TXT")) + glob.glob(os.path.join(UTILITIES, "*.HLP"))):
         shutil.copyfile(text, os.path.join(SCOM_OUT, os.path.basename(text).upper()))
     return SCOM_OUT
+
+
+def compile_utils():
+    """Compile each src/utils/FOLDER/NAME.UXB to build/UTILS/NAME.COM, and copy the files of
+    src/utils/FOLDER to build/UTILS/SRC/FOLDER. Return the folder build/UTILS."""
+    os.makedirs(UTILS_OUT, exist_ok=True)
+    for folder in sorted(glob.glob(os.path.join(UTILS, "*", ""))):
+        folder = os.path.dirname(folder)
+        for source in sorted(glob.glob(os.path.join(folder, "*.UXB"))):
+            name = os.path.splitext(os.path.basename(source))[0].upper() + ".COM"
+            uxb.compile(source, os.path.join(UTILS_OUT, name))
+        shutil.copytree(folder, os.path.join(UTILS_OUT, "SRC", os.path.basename(folder).upper()),
+                        ignore=shutil.ignore_patterns(".*"), dirs_exist_ok=True)
+    return UTILS_OUT
 
 
 def build_basic():
@@ -272,7 +291,7 @@ def main():
                   if not entry.startswith(".")]
     programs = compile_bas()
     shell = [p for p in programs if os.path.basename(p) == "CMDSHELL.COM"]
-    make_card(shell + [basic, compile_scom()],
+    make_card(shell + [basic, compile_scom(), compile_utils()],
               [p for p in programs if p not in shell] + test_files)
     print("built %s, %d bytes, %.2f s" % (os.path.relpath(ROM, ROOT), os.path.getsize(ROM),
                                           time.time() - started))

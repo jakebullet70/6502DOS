@@ -1,0 +1,528 @@
+'=============================================================================================
+' -- HDIR [d:][path][pattern] [-a] [-c] [-l] [-n] [-e] [-d] [-s] [-t] [-1 to -9] [-?]
+' -- lists the names in a directory as a grid in colors, after HotDIR. For the command line,
+' -- not for scripts.
+' -- A path that names a directory lists every name in it. Any other path is a directory and a
+' -- pattern: DOCS\*.TXT lists the names of DOCS that match *.TXT. With no path it lists the
+' -- current directory.
+' -- Directories come first, then files. Both are sorted by name, case aside. -e sorts by
+' -- extension, -d by date and time, -s by size, and -n by name. A tie sorts by name.
+' -- Each cell holds a name, the date with -t or -d, and the size or <DIR>. A name too long for
+' -- its cell keeps its extension and is cut before it with a ~.
+' -- -1 to -9 set the number of columns, 2 when none is given. The names run down each column;
+' -- -l runs them across each row. -c clears the screen first. -a skips hidden and system
+' -- names. Switches may share one -: -2le.
+' -- Directories are purple, hidden and system names red, and files take the color of their
+' -- extension's group in the _TYPES$ lists.
+' -- The listing stops at each full screen until a key is pressed. Esc or Ctrl+C there ends it.
+' -- The last row counts the directories and files and gives the drive's free space and size.
+' -- . and .. are skipped. At most MAX_ENTRIES names are listed.
+' -- Exit codes:
+' --   0  the names are listed, or the listing is stopped at a full screen.
+' --   1  Invalid drive, Invalid path, Invalid switch, Too many parameters, or File not found.
+' --   2  the error message of a read error.
+' --
+' -- From a prompt:
+' --     HDIR C:\DOCS -1t
+' --     HDIR *.COM -s
+'=============================================================================================
+#INCLUDE "DOS.UXI"
+#INCLUDE "HEAP.UXI"
+#INCLUDE "CONS.UXI"
+CONST SLOT_P1 AS UBYTE = 0, SLOT_P9 AS UBYTE = 8
+CONST VERSION$ = "1.0.0"
+CONST BY_NAME AS UBYTE = 0, BY_EXTENSION AS UBYTE = 1, BY_DATE AS UBYTE = 2, BY_SIZE AS UBYTE = 3
+CONST BEFORE AS UBYTE = 0, SAME AS UBYTE = 1, AFTER AS UBYTE = 2
+' CP437 line drawing.
+CONST LINE_ACROSS AS UBYTE = 196, LINE_DOWN AS UBYTE = 179
+CONST JOIN_BELOW AS UBYTE = 194, JOIN_ABOVE AS UBYTE = 193
+CONST ESC AS UBYTE = 27, CTRL_C AS UBYTE = 3
+' A record: the name's length at 0 and its 32 characters from 1, the attributes at RECORD_ATTR,
+' the date and time at RECORD_DATE and RECORD_TIME, the size at RECORD_SIZE low word first,
+' and at RECORD_DOT the position of the extension's dot in the name, 0 with no extension.
+CONST RECORD_ATTR AS UBYTE = 33, RECORD_DATE AS UBYTE = 34, RECORD_TIME AS UBYTE = 36
+CONST RECORD_SIZE AS UBYTE = 38, RECORD_DOT AS UBYTE = 42, RECORD_BYTES AS UBYTE = 43
+CONST MAX_ENTRIES AS UWORD = 256
+' The groups of extensions and their colors. Each list starts and ends with a space.
+CONST PROGRAM_TYPES$ = " .COM .SCOM "
+CONST BATCH_TYPES$ = " .CMD .BAT "
+CONST BINARY_TYPES$ = " .PRG .BIN .ROM .SYS "
+CONST SOURCE_TYPES$ = " .UXB .UXI .BAS .S .ASM .INC .C .H .PY .CFG "
+CONST TEXT_TYPES$ = " .TXT .HLP .MD .DOC .LOG .CSV .INI .HTM "
+CONST MEDIA_TYPES$ = " .PNG .JPG .BMP .PCX .GIF .WAV .ZSM .ZCM .VGM .MID .MOD .PAL .SPR .TIL "
+CONST ARCHIVE_TYPES$ = " .ZIP .IMG .D64 .ARC .LZH .GZ .TAR .7Z "
+
+DIM ARGUMENT AS STRING * 255, START AS STRING * 255, PATTERN AS STRING * 255
+DIM OLD_DIRECTORY AS STRING * 255, DIRECTORY AS STRING * 255, SEARCH AS STRING * 255
+DIM SLOT AS UBYTE, INDEX AS UBYTE, SWITCH AS UBYTE, SEPARATOR AS UBYTE
+DIM DRIVE AS UBYTE, PREFIX AS STRING * 2, DRIVE_LETTER AS STRING * 1
+DIM SORT_BY AS UBYTE, COLUMNS AS UBYTE, ACROSS AS UBYTE, CLEAR_FIRST AS UBYTE
+DIM SHOW_DATES AS UBYTE, SHOW_HELP AS UBYTE, FIND_ATTRIBUTES AS UBYTE
+DIM TABLE(MAX_ENTRIES * RECORD_BYTES) AS UBYTE, ORDER(MAX_ENTRIES) AS UBYTE
+DIM COUNT AS UWORD, MORE_ENTRIES AS UBYTE, ADDRESS AS UWORD, PENDING AS UBYTE
+DIM POSITION AS UWORD, PLACE AS UWORD
+DIM BACKGROUND AS UBYTE, ORIGINAL_COLOR AS UBYTE, BLANKS AS STRING * 80
+DIM GRID_WIDTH AS UBYTE, CELL_WIDTH AS UBYTE, NAME_WIDTH AS UBYTE, DETAIL_WIDTH AS UBYTE
+DIM PAGE_ROWS AS UBYTE, ROWS AS UBYTE, KEY AS UWORD
+DIM ROW_COUNT AS UWORD, FULL_COLUMNS AS UWORD, ROW AS UWORD, COLUMN AS UBYTE
+DIM COLUMN_START AS UWORD, COLUMN_HEIGHT AS UWORD, ENTRY AS UWORD
+DIM FILE_COUNT AS UWORD, DIRECTORY_COUNT AS UWORD
+DIM NAME_TEXT AS STRING * 32, EXTENSION AS STRING * 32, CELL AS STRING * 80
+DIM SPACE_TEXT AS STRING * 80, FREE_KB AS ULONG, TOTAL_KB AS ULONG
+
+' Sets the color of the characters written from now on, on the background HDIR started with.
+SUB USE_COLOR(FOREGROUND AS UBYTE)
+  DOS.SET_COLOR(BACKGROUND OR FOREGROUND)
+END SUB
+
+' Puts back the color HDIR started with, and ends with exit code CODE.
+SUB QUIT(CODE AS UBYTE)
+  DOS.SET_COLOR(ORIGINAL_COLOR)
+  END CODE
+END SUB
+
+SUB FAIL(MESSAGE AS STRING)
+  PRINT MESSAGE
+  QUIT(1)
+END SUB
+
+' The address of record ENTRY.
+FUNCT RECORD(ENTRY AS UWORD) AS UWORD
+  RETURN @TABLE + ENTRY * RECORD_BYTES
+END FUNCT
+
+' Copies the name of the record at RECORD_ADDRESS to NAME_TEXT, and its extension with the dot
+' to EXTENSION.
+SUB LOAD_NAME(RECORD_ADDRESS AS UWORD)
+  DIM DOT AS UBYTE
+  FOR INDEX = 0 TO 32
+    ContentsAt(@NAME_TEXT + 1 + INDEX) = ContentsAt(RECORD_ADDRESS + INDEX)
+  NEXT
+  EXTENSION = ""
+  DOT = ContentsAt(RECORD_ADDRESS + RECORD_DOT)
+  IF DOT <> 0 THEN EXTENSION = MID$(NAME_TEXT, DOT)
+END SUB
+
+' Gives BEFORE, SAME or AFTER for the text of A_LENGTH characters at A against the text of
+' B_LENGTH characters at B, case aside. A text that starts the other sorts first.
+FUNCT COMPARE_TEXT(A AS UWORD, A_LENGTH AS UBYTE, B AS UWORD, B_LENGTH AS UBYTE) AS UBYTE
+  DIM OFFSET AS UBYTE, A_CHARACTER AS UBYTE, B_CHARACTER AS UBYTE
+  OFFSET = 0
+  DO
+    IF OFFSET = A_LENGTH THEN
+      IF OFFSET = B_LENGTH THEN RETURN SAME
+      RETURN BEFORE
+    END IF
+    IF OFFSET = B_LENGTH THEN RETURN AFTER
+    A_CHARACTER = ContentsAt(A + OFFSET)
+    IF A_CHARACTER >= ASC("a") AND A_CHARACTER <= ASC("z") THEN A_CHARACTER = A_CHARACTER - 32
+    B_CHARACTER = ContentsAt(B + OFFSET)
+    IF B_CHARACTER >= ASC("a") AND B_CHARACTER <= ASC("z") THEN B_CHARACTER = B_CHARACTER - 32
+    IF A_CHARACTER < B_CHARACTER THEN RETURN BEFORE
+    IF A_CHARACTER > B_CHARACTER THEN RETURN AFTER
+    OFFSET = OFFSET + 1
+  LOOP
+END FUNCT
+
+' Gives 1 when record A_ENTRY sorts before record B_ENTRY by SORT_BY, else 0.
+FUNCT IS_BEFORE(A_ENTRY AS UWORD, B_ENTRY AS UWORD) AS UBYTE
+  DIM A AS UWORD, B AS UWORD, A_KIND AS UBYTE, B_KIND AS UBYTE, RESULT AS UBYTE
+  DIM A_DOT AS UBYTE, B_DOT AS UBYTE, A_VALUE AS UWORD, B_VALUE AS UWORD
+  A = RECORD(A_ENTRY)
+  B = RECORD(B_ENTRY)
+  A_KIND = ContentsAt(A + RECORD_ATTR) AND DOS.ATTR_DIRECTORY
+  B_KIND = ContentsAt(B + RECORD_ATTR) AND DOS.ATTR_DIRECTORY
+  IF A_KIND <> B_KIND THEN
+    IF A_KIND <> 0 THEN RETURN 1
+    RETURN 0
+  END IF
+  SELECT CASE SORT_BY
+    CASE BY_EXTENSION
+      ' A name with no extension has an empty one, which sorts first.
+      A_DOT = ContentsAt(A + RECORD_DOT)
+      B_DOT = ContentsAt(B + RECORD_DOT)
+      A_KIND = 0
+      B_KIND = 0
+      IF A_DOT <> 0 THEN A_KIND = ContentsAt(A) - A_DOT + 1
+      IF B_DOT <> 0 THEN B_KIND = ContentsAt(B) - B_DOT + 1
+      RESULT = COMPARE_TEXT(A + A_DOT, A_KIND, B + B_DOT, B_KIND)
+      IF RESULT = BEFORE THEN RETURN 1
+      IF RESULT = AFTER THEN RETURN 0
+    CASE BY_DATE
+      A_VALUE = ContentsAtW(A + RECORD_DATE)
+      B_VALUE = ContentsAtW(B + RECORD_DATE)
+      IF A_VALUE = B_VALUE THEN
+        A_VALUE = ContentsAtW(A + RECORD_TIME)
+        B_VALUE = ContentsAtW(B + RECORD_TIME)
+      END IF
+      IF A_VALUE < B_VALUE THEN RETURN 1
+      IF A_VALUE > B_VALUE THEN RETURN 0
+    CASE BY_SIZE
+      A_VALUE = ContentsAtW(A + RECORD_SIZE + 2)
+      B_VALUE = ContentsAtW(B + RECORD_SIZE + 2)
+      IF A_VALUE = B_VALUE THEN
+        A_VALUE = ContentsAtW(A + RECORD_SIZE)
+        B_VALUE = ContentsAtW(B + RECORD_SIZE)
+      END IF
+      IF A_VALUE < B_VALUE THEN RETURN 1
+      IF A_VALUE > B_VALUE THEN RETURN 0
+  END SELECT
+  IF COMPARE_TEXT(A + 1, ContentsAt(A), B + 1, ContentsAt(B)) = BEFORE THEN RETURN 1
+  RETURN 0
+END FUNCT
+
+' N in decimal, with no space before it.
+FUNCT DIGITS$(N AS ULONG)
+  RETURN MID$(STR$(N), 2)
+END FUNCT
+
+' N as two digits, with a 0 before one digit.
+FUNCT TWO_DIGITS$(N AS UBYTE)
+  IF N < 10 THEN RETURN "0" + DIGITS$(N)
+  RETURN DIGITS$(N)
+END FUNCT
+
+' KB kilobytes as a number of up to 5 characters and its unit: 15.1 KB, 2.0 MB.
+FUNCT SCALED$(KB AS ULONG)
+  DIM TENTHS AS ULONG, UNIT AS UBYTE
+  TENTHS = KB * 10
+  UNIT = 1
+  DO WHILE TENTHS >= 10000
+    TENTHS = (KB / 1024) * 10 + ((KB AND 1023) * 10 + 512) / 1024
+    KB = KB / 1024
+    UNIT = UNIT + 1
+  LOOP
+  RETURN DIGITS$(TENTHS / 10) + "." + DIGITS$(TENTHS MOD 10) + MID$(" KB MB GB TB", UNIT * 3 - 2, 3)
+END FUNCT
+
+' The size of the record at RECORD_ADDRESS, 8 characters wide: " 1023 B ", "  15.1 KB".
+FUNCT SIZE_FIELD$(RECORD_ADDRESS AS UWORD)
+  DIM BYTES AS ULONG, TENTHS AS ULONG
+  BYTES = ContentsAtW(RECORD_ADDRESS + RECORD_SIZE + 2)
+  BYTES = (BYTES << 16) OR ContentsAtW(RECORD_ADDRESS + RECORD_SIZE)
+  IF BYTES < 1024 THEN RETURN RIGHT$(BLANKS + DIGITS$(BYTES), 5) + " B "
+  IF BYTES < 1023949 THEN                          ' under 999.95 KB
+    TENTHS = (BYTES * 10 + 512) / 1024
+    RETURN RIGHT$(BLANKS + DIGITS$(TENTHS / 10) + "." + DIGITS$(TENTHS MOD 10), 5) + " KB"
+  END IF
+  RETURN RIGHT$(BLANKS + SCALED$(BYTES / 1024), 8)
+END FUNCT
+
+' The date of the record at RECORD_ADDRESS, 11 characters wide: " 2026-10-20".
+FUNCT DATE_FIELD$(RECORD_ADDRESS AS UWORD)
+  DIM PACKED AS UWORD
+  PACKED = ContentsAtW(RECORD_ADDRESS + RECORD_DATE)
+  RETURN " " + DIGITS$((PACKED >> 9) + 1980) + "-" + TWO_DIGITS$((PACKED >> 5) AND 15) + "-" + TWO_DIGITS$(PACKED AND 31)
+END FUNCT
+
+' The color of a file with the extension EXTENSION.
+FUNCT EXTENSION_COLOR() AS UBYTE
+  DIM KEY_TEXT AS STRING * 34
+  IF EXTENSION = "" THEN RETURN DOS.GRAY
+  KEY_TEXT = " " + UCASE$(EXTENSION) + " "
+  IF INSTR(PROGRAM_TYPES$, KEY_TEXT) THEN RETURN DOS.LIGHTGREEN
+  IF INSTR(BATCH_TYPES$, KEY_TEXT) THEN RETURN DOS.LIGHTRED
+  IF INSTR(BINARY_TYPES$, KEY_TEXT) THEN RETURN DOS.LIGHTBLUE
+  IF INSTR(SOURCE_TYPES$, KEY_TEXT) THEN RETURN DOS.GREEN
+  IF INSTR(TEXT_TYPES$, KEY_TEXT) THEN RETURN DOS.WHITE
+  IF INSTR(MEDIA_TYPES$, KEY_TEXT) THEN RETURN DOS.YELLOW
+  IF INSTR(ARCHIVE_TYPES$, KEY_TEXT) THEN RETURN DOS.ORANGE
+  RETURN DOS.GRAY
+END FUNCT
+
+' Prints a line across the grid, with JOIN where each column's line down meets it.
+SUB PRINT_RULE(JOIN AS UBYTE)
+  DIM RULE AS STRING * 255, OFFSET AS UBYTE
+  RULE = ""
+  FOR OFFSET = 0 TO GRID_WIDTH - 1
+    IF OFFSET MOD CELL_WIDTH = NAME_WIDTH + DETAIL_WIDTH AND OFFSET / CELL_WIDTH < COLUMNS - 1 THEN
+      RULE = RULE + CHR$(JOIN)
+    ELSE
+      RULE = RULE + CHR$(LINE_ACROSS)
+    END IF
+  NEXT
+  USE_COLOR(DOS.CYAN)
+  PRINT RULE
+END SUB
+
+' At a full screen, waits for a key. Esc or Ctrl+C ends HDIR.
+SUB PAUSE()
+  IF ROWS < PAGE_ROWS THEN RETURN
+  USE_COLOR(DOS.GRAY)
+  PRINT "Press a key, Esc to stop";
+  KEY = WAITKEY()
+  POS(0) = 0
+  PRINT CONS.CLEAR_EOL$;
+  IF KEY = ESC OR KEY = CTRL_C THEN QUIT(0)
+  ROWS = 0
+END SUB
+
+SUB SHOW_USAGE()
+  USE_COLOR(DOS.YELLOW)
+  PRINT "HDIR "; VERSION$; " - a HotDIR for 6502DOS - public domain 2026"
+  USE_COLOR(DOS.CYAN)
+  PRINT "Usage: HDIR [d:][path][pattern] [switches]"
+  USE_COLOR(DOS.WHITE)
+  PRINT "  -1 to -9  the number of columns, 2 when none is given"
+  PRINT "  -l        names across each row, not down each column"
+  PRINT "  -n -e     sort by name, by extension"
+  PRINT "  -d -s     sort by date, by size"
+  PRINT "  -t        show each date"
+  PRINT "  -a        skip hidden and system names"
+  PRINT "  -c        clear the screen first"
+  PRINT "Switches may share one -: -2le"
+END SUB
+
+ORIGINAL_COLOR = DOS.GET_COLOR()
+BACKGROUND = ORIGINAL_COLOR AND $F0
+DOS.STOP_KEY(DOS.STOP.OFF)
+COLUMNS = 2
+FIND_ATTRIBUTES = DOS.ATTR_DIRECTORY OR DOS.ATTR_HIDDEN OR DOS.ATTR_SYSTEM
+FOR INDEX = 1 TO 80
+  BLANKS = BLANKS + " "
+NEXT
+
+' ---- the arguments ----
+FOR SLOT = SLOT_P1 TO SLOT_P9
+  ARGUMENT = HEAP.SYS_STRINGS_GET(SLOT)
+  IF ARGUMENT = "" THEN CONTINUE
+  IF ASC(ARGUMENT) = ASC("-") THEN
+    IF LEN(ARGUMENT) = 1 THEN FAIL("Invalid switch")
+    FOR INDEX = 2 TO LEN(ARGUMENT)
+      SWITCH = ASC(MID$(ARGUMENT, INDEX, 1))
+      SELECT CASE SWITCH OR $20
+        CASE ASC("1") TO ASC("9")
+          COLUMNS = SWITCH - ASC("0")
+        CASE ASC("?"), ASC("h")
+          SHOW_HELP = 1
+        CASE ASC("a")
+          FIND_ATTRIBUTES = DOS.ATTR_DIRECTORY
+        CASE ASC("c")
+          CLEAR_FIRST = 1
+        CASE ASC("l")
+          ACROSS = 1
+        CASE ASC("n")
+          SORT_BY = BY_NAME
+        CASE ASC("e")
+          SORT_BY = BY_EXTENSION
+        CASE ASC("d")
+          SORT_BY = BY_DATE
+          SHOW_DATES = 1
+        CASE ASC("s")
+          SORT_BY = BY_SIZE
+        CASE ASC("t")
+          SHOW_DATES = 1
+        CASE ELSE
+          FAIL("Invalid switch")
+      END SELECT
+    NEXT
+  ELSE
+    IF START <> "" THEN FAIL("Too many parameters")
+    START = ARGUMENT
+  END IF
+NEXT
+IF SHOW_HELP THEN
+  SHOW_USAGE()
+  QUIT(0)
+END IF
+
+' ---- the directory and the pattern ----
+IF MID$(START, 2, 1) = ":" THEN
+  ' a to z give 1 to 26. Any other first character gives 0 or wraps past 26.
+  DRIVE = (ASC(START) OR $20) - ASC("a") + 1
+  IF DRIVE = 0 OR DRIVE > 26 THEN FAIL("Invalid drive")
+  START = MID$(START, 3)
+ELSE
+  DRIVE = DOS.GETDRIVE() + 1
+END IF
+DRIVE_LETTER = CHR$(DRIVE + ASC("A") - 1)
+PREFIX = DRIVE_LETTER + ":"
+OLD_DIRECTORY = DOS.GETCWD(DRIVE)
+IF DOS.ERROR <> 0 THEN FAIL("Invalid drive")
+PATTERN = "*.*"
+IF START <> "" THEN
+  ' CHDIR checks the path, and GETCWD gives it from the root with no . or .. in it.
+  DOS.CHDIR(PREFIX + START)
+  IF DOS.ERROR <> 0 THEN
+    ' Not a directory: the part after the last \ is the pattern.
+    SEPARATOR = 0
+    FOR INDEX = 1 TO LEN(START)
+      IF MID$(START, INDEX, 1) = "\" THEN SEPARATOR = INDEX
+    NEXT
+    PATTERN = MID$(START, SEPARATOR + 1)
+    START = LEFT$(START, SEPARATOR)
+    IF SEPARATOR > 1 THEN START = LEFT$(START, SEPARATOR - 1)
+    IF START = "" THEN START = "."
+    DOS.CHDIR(PREFIX + START)
+    IF DOS.ERROR <> 0 THEN FAIL("Invalid path")
+  END IF
+  DIRECTORY = DOS.GETCWD(DRIVE)
+  DOS.CHDIR(PREFIX + "\" + OLD_DIRECTORY)
+ELSE
+  DIRECTORY = OLD_DIRECTORY
+END IF
+SEARCH = PREFIX + "\" + DIRECTORY
+IF DIRECTORY <> "" THEN SEARCH = SEARCH + "\"
+SEARCH = SEARCH + PATTERN
+
+' ---- the names ----
+DOS.FINDFIRST(SEARCH, FIND_ATTRIBUTES)
+DO WHILE DOS.ERROR = 0
+  IF (DOS.FOUND_ATTRIBUTES AND DOS.ATTR_DIRECTORY) = 0 OR ASC(DOS.FOUND_NAME) <> ASC(".") THEN
+    IF COUNT = MAX_ENTRIES THEN
+      MORE_ENTRIES = 1
+      EXIT DO
+    END IF
+    ADDRESS = RECORD(COUNT)
+    FOR INDEX = 0 TO 32
+      ContentsAt(ADDRESS + INDEX) = ContentsAt(@DOS.FOUND_NAME + 1 + INDEX)
+    NEXT
+    ContentsAt(ADDRESS + RECORD_ATTR) = DOS.FOUND_ATTRIBUTES
+    ContentsAtW(ADDRESS + RECORD_DATE) = DOS.FOUND_DATE
+    ContentsAtW(ADDRESS + RECORD_TIME) = DOS.FOUND_TIME
+    ContentsAtW(ADDRESS + RECORD_SIZE) = DOS.FOUND_SIZE_LOW
+    ContentsAtW(ADDRESS + RECORD_SIZE + 2) = DOS.FOUND_SIZE_HIGH
+    ' The last dot after the first character starts the extension. A directory has none.
+    SEPARATOR = 0
+    IF (DOS.FOUND_ATTRIBUTES AND DOS.ATTR_DIRECTORY) = 0 THEN
+      FOR INDEX = 2 TO LEN(DOS.FOUND_NAME)
+        IF MID$(DOS.FOUND_NAME, INDEX, 1) = "." THEN SEPARATOR = INDEX
+      NEXT
+    END IF
+    ContentsAt(ADDRESS + RECORD_DOT) = SEPARATOR
+    ORDER(COUNT) = COUNT
+    COUNT = COUNT + 1
+  END IF
+  DOS.FINDNEXT()
+LOOP
+IF DOS.ERROR <> 0 AND DOS.ERROR <> DOS.ERR_NOT_FOUND AND DOS.ERROR <> DOS.ERR_NO_MORE THEN
+  PRINT DOS.ERRMSG(DOS.ERROR)
+  QUIT(2)
+END IF
+IF COUNT = 0 THEN FAIL("File not found")
+
+' ---- the sort: an insertion sort of ORDER ----
+FOR POSITION = 1 TO COUNT - 1
+  PENDING = ORDER(POSITION)
+  PLACE = POSITION
+  DO WHILE PLACE > 0
+    IF IS_BEFORE(PENDING, ORDER(PLACE - 1)) = 0 THEN EXIT DO
+    ORDER(PLACE) = ORDER(PLACE - 1)
+    PLACE = PLACE - 1
+  LOOP
+  ORDER(PLACE) = PENDING
+NEXT
+
+' ---- the grid ----
+' A cell is the name, the details and a space, then a line down and a space. The last cell's
+' line and space stay blank, and the grid ends a column short of the screen's edge.
+GRID_WIDTH = CONS.SCREEN_COLS() - 1
+PAGE_ROWS = CONS.SCREEN_ROWS() - 1
+CELL_WIDTH = GRID_WIDTH / COLUMNS
+DETAIL_WIDTH = 9
+IF SHOW_DATES THEN DETAIL_WIDTH = 20
+NAME_WIDTH = 1
+IF CELL_WIDTH > DETAIL_WIDTH + 3 THEN NAME_WIDTH = CELL_WIDTH - DETAIL_WIDTH - 2
+ROW_COUNT = (COUNT + COLUMNS - 1) / COLUMNS
+' Down each column, the first FULL_COLUMNS columns hold ROW_COUNT names and the rest one less.
+FULL_COLUMNS = COUNT - COLUMNS * (ROW_COUNT - 1)
+
+IF CLEAR_FIRST THEN PRINT CONS.CLEAR_SCREEN$;
+USE_COLOR(DOS.WHITE)
+PRINT
+PRINT "HDIR "; VERSION$
+USE_COLOR(DOS.CYAN)
+PRINT "Path: "; SEARCH
+PRINT_RULE(JOIN_BELOW)
+ROWS = 4
+FOR ROW = 0 TO ROW_COUNT - 1
+  PAUSE()
+  FOR COLUMN = 0 TO COLUMNS - 1
+    IF ACROSS THEN
+      ENTRY = ROW * COLUMNS + COLUMN
+    ELSE
+      IF COLUMN < FULL_COLUMNS THEN
+        COLUMN_HEIGHT = ROW_COUNT
+        COLUMN_START = COLUMN * ROW_COUNT
+      ELSE
+        COLUMN_HEIGHT = ROW_COUNT - 1
+        COLUMN_START = FULL_COLUMNS * ROW_COUNT + (COLUMN - FULL_COLUMNS) * COLUMN_HEIGHT
+      END IF
+      ENTRY = COUNT
+      IF ROW < COLUMN_HEIGHT THEN ENTRY = COLUMN_START + ROW
+    END IF
+    IF ENTRY >= COUNT THEN
+      ' An empty cell keeps the line down going.
+      PRINT LEFT$(BLANKS, NAME_WIDTH + DETAIL_WIDTH);
+    ELSE
+      ADDRESS = RECORD(ORDER(ENTRY))
+      LOAD_NAME(ADDRESS)
+      IF ContentsAt(ADDRESS + RECORD_ATTR) AND DOS.ATTR_DIRECTORY THEN
+        DIRECTORY_COUNT = DIRECTORY_COUNT + 1
+        USE_COLOR(DOS.PURPLE)
+      ELSE
+        FILE_COUNT = FILE_COUNT + 1
+        USE_COLOR(EXTENSION_COLOR())
+      END IF
+      IF ContentsAt(ADDRESS + RECORD_ATTR) AND (DOS.ATTR_HIDDEN OR DOS.ATTR_SYSTEM) THEN USE_COLOR(DOS.RED)
+      ' A name too long keeps its extension: LONGNAME~.TXT.
+      CELL = NAME_TEXT
+      IF LEN(NAME_TEXT) > NAME_WIDTH THEN
+        CELL = LEFT$(NAME_TEXT, NAME_WIDTH)
+        IF EXTENSION <> "" AND NAME_WIDTH > LEN(EXTENSION) + 1 THEN
+          CELL = LEFT$(NAME_TEXT, NAME_WIDTH - 1 - LEN(EXTENSION)) + "~" + EXTENSION
+        END IF
+      END IF
+      PRINT LEFT$(CELL + BLANKS, NAME_WIDTH);
+      USE_COLOR(DOS.GRAY)
+      IF SHOW_DATES THEN PRINT DATE_FIELD$(ADDRESS);
+      IF ContentsAt(ADDRESS + RECORD_ATTR) AND DOS.ATTR_DIRECTORY THEN
+        PRINT "  <DIR>  ";
+      ELSE
+        PRINT SIZE_FIELD$(ADDRESS); " ";
+      END IF
+    END IF
+    IF COLUMN < COLUMNS - 1 THEN
+      USE_COLOR(DOS.CYAN)
+      PRINT CHR$(LINE_DOWN); " ";
+    END IF
+  NEXT
+  PRINT
+  ROWS = ROWS + 1
+NEXT
+
+' ---- the totals and the free space ----
+PAUSE()
+PRINT_RULE(JOIN_ABOVE)
+USE_COLOR(DOS.CYAN)
+PRINT "Total: ";
+USE_COLOR(DOS.WHITE)
+PRINT DIGITS$(DIRECTORY_COUNT);
+USE_COLOR(DOS.CYAN)
+PRINT " dir(s)   ";
+USE_COLOR(DOS.WHITE)
+PRINT DIGITS$(FILE_COUNT);
+USE_COLOR(DOS.CYAN)
+PRINT " file(s)";
+IF MORE_ENTRIES THEN PRINT ", the first "; DIGITS$(MAX_ENTRIES);
+DOS.DISKFREE(DRIVE)
+IF DOS.ERROR = 0 THEN
+  ' Kilobytes: clusters times sectors a cluster times halves of a kilobyte a sector, over 2.
+  FREE_KB = DOS.FREE_HIGH
+  FREE_KB = (FREE_KB << 16) OR DOS.FREE_LOW
+  FREE_KB = FREE_KB * DOS.CLUSTER_SECTORS * (DOS.SECTOR_BYTES / 512) / 2
+  TOTAL_KB = DOS.TOTAL_HIGH
+  TOTAL_KB = (TOTAL_KB << 16) OR DOS.TOTAL_LOW
+  TOTAL_KB = TOTAL_KB * DOS.CLUSTER_SECTORS * (DOS.SECTOR_BYTES / 512) / 2
+  SPACE_TEXT = "Free " + SCALED$(FREE_KB) + " of " + SCALED$(TOTAL_KB)
+  IF POS(0) + LEN(SPACE_TEXT) < GRID_WIDTH THEN PRINT LEFT$(BLANKS, GRID_WIDTH - POS(0) - LEN(SPACE_TEXT));
+  PRINT "Free ";
+  USE_COLOR(DOS.WHITE)
+  PRINT SCALED$(FREE_KB);
+  USE_COLOR(DOS.CYAN)
+  PRINT " of ";
+  USE_COLOR(DOS.WHITE)
+  PRINT SCALED$(TOTAL_KB);
+END IF
+PRINT
+QUIT(0)

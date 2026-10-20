@@ -11,7 +11,7 @@ print "Disk   ---> Fat32 SD card image"
 print
 print "Loading: BASICShell v0.1.0, setting path and binds"
 print
-PATH$ = "C:\DOS;C:\"
+PATH$ = "C:\DOS;C:\;c:\utils"
 print "Checking disk..."
 diskinfo c:
 

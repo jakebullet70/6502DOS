@@ -14,7 +14,7 @@ tests/sd at the start: 2 sectors per cluster, 1024 clusters, the files dated 202
 root also holds build/bas/NAME.COM, from tools/build.py, tests/com/NAME.S assembled to
 NAME.COM: the load address $0801, then the code from $0801, and tests/com/NAME.UXB and
 tests/NAME.UXB compiled to NAME.COM. Its folder DOS is build/DOS, the commandlets from
-tools/build.py. Each test gets a new copy of the image.
+tools/build.py, and its folder UTILS is build/UTILS. Each test gets a new copy of the image.
 
 A test can type keys into the monitor with x16emu -bas:
 - tests/NAME.S, a program assembled with ca65 to run at $1000, typed in with E commands;
@@ -63,6 +63,7 @@ CC65 = os.path.join(ROOT, "tools", "cc65", "bin")
 COM_FOLDER = os.path.join(TESTS, "com")
 BAS_OUT = os.path.join(ROOT, "build", "bas")
 SCOM_OUT = os.path.join(ROOT, "build", "DOS")
+UTILS_OUT = os.path.join(ROOT, "build", "UTILS")
 PROGRAM_START = 0x1000
 COM_START = 0x0801
 BYTES_PER_LINE = 24             # "E 1000 " and 24 bytes fit the monitor's 79 characters
@@ -231,8 +232,9 @@ def main():
         program = os.path.join(OBJ, os.path.splitext(os.path.basename(source))[0].upper() + ".COM")
         uxb.compile(source, program)
         programs.append(program)
-    if os.path.isdir(SCOM_OUT):
-        programs.append(SCOM_OUT)
+    for folder in (SCOM_OUT, UTILS_OUT):
+        if os.path.isdir(folder):
+            programs.append(folder)
     # The programs go in a block of their own, so the free space and the clusters of the files
     # of tests/sd stay the same when a program changes.
     mksd.make(SD_FOLDER, SD_IMAGE, sectors_per_cluster=2, clusters=1024,
