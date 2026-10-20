@@ -535,7 +535,9 @@ L24DB:
 L24EA:
         sta     INPUTBUFFER-3,y
 .ifdef CONFIG_NO_INPUTBUFFER_ZP
+  .if >(INPUTBUFFER-1) <> >INPUTBUFFER	; TXTPTR+1 is >INPUTBUFFER here
         dec     TXTPTR+1
+  .endif
 .endif
         lda     #<(INPUTBUFFER-1)
         sta     TXTPTR

@@ -49,7 +49,9 @@ orders of the 6502DOS `CLAUDE.md` apply here. All paths below are relative to `M
   `../src/asm` and `../build/gen`. `CONFIG_HOSTED` holds what `sim` and `6502dos` share: no
   start-up prompts, the banner first, lowercase folding (`UPPER`). The long branches that
   `6502dos` needs go through `bne_far`, `beq_far` and `bcs_far` in `macros.s`, so the other
-  binaries do not change. The 6502DOS ROM build does not link the image yet.
+  binaries do not change. `tools/build.py` of the 6502DOS repo links the image as bank 2 of
+  the ROM and assembles `src/6502dos_com.s` to `MSBASIC.COM`, the program that starts it.
+  `MSBASIC NAME.BAS` loads NAME.BAS and runs it; `QUIT [n]` returns to the shell.
 - `Makefile` (run in Git Bash): `make all`, `make <target>`, `make test` (see `tests/`), `make verify` (byte-compare with the
   original ROM dumps; prints only mismatches), `make clean`. Output goes to `build/`.
 - `sim` target (our addition): headless build for sim65. Files `defines_sim.s`, `sim_extra.s`,

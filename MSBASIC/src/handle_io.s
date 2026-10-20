@@ -182,6 +182,7 @@ IO_CHKOUT:
 IO_CLRCH:
         lda     #$FF
         sta     HIO_IN
+IO_CLROUT:
         lda     #K_STDOUT
         sta     HIO_OUT
         rts
@@ -237,6 +238,12 @@ IO_CLALL:
 @next:
         dex
         bpl     @loop
+.ifdef DOS6502
+; A line entered clears: the file of MSBASIC NAME.BAS, logical file 0, is
+; not closed, and stays the input while BASIC reads it.
+        ldx     HIO_IN
+        bpl     IO_CLROUT
+.endif
         jmp     IO_CLRCH
 
 ; ----------------------------------------------------------------------------

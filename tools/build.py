@@ -4,7 +4,9 @@ r"""Build the 6502DOS ROM image.
 
 Runs tools/genapi.py, assembles every src/asm/*.s and build/gen/*.s with ca65, links them
 with src/asm/rom.cfg into build/6502DOS.ROM, ROM banks 0 and 1, and copies LICENSE and NOTICE
-beside it. ca65 and ld65 come from tools/cc65/bin only. Includes are found in src/asm and build/gen. The map is
+beside it. MSBASIC's 6502dos target, MSBASIC/src/msbasic.s with MSBASIC/src/6502dos.cfg, is
+ROM bank 2, appended to the image; its labels are build/MSBASIC.LBL. MSBASIC/src/6502dos_com.s
+assembles to build/bas/MSBASIC.COM, which starts it. ca65 and ld65 come from tools/cc65/bin only. Includes are found in src/asm and build/gen. The map is
 build/6502DOS.MAP, the label file build/6502DOS.LBL, and each listing build/obj/NAME.LST.
 build/TEST.ROM is the same image with boot_shell cleared: it boots to the monitor, not the shell.
 
@@ -54,6 +56,9 @@ SCOM = os.path.join(ROOT, "src", "scom")
 SCOM_OUT = os.path.join(BUILD, "DOS")
 UTILITIES = os.path.join(ROOT, "src", "dos")
 TEMPLATES = os.path.join(ROOT, "UXCBASIC", "tpl")
+MSBASIC_SRC = os.path.join(ROOT, "MSBASIC", "src")
+BANK_SIZE = 0x4000
+PROGRAM_START = 0x0801
 
 
 def run(command):
@@ -105,6 +110,35 @@ def compile_scom():
     return SCOM_OUT
 
 
+def build_basic():
+    """Append MSBASIC's 6502dos target to build/6502DOS.ROM as ROM bank 2, and assemble
+    build/bas/MSBASIC.COM. Return the COM path."""
+    obj = os.path.join(OBJ, "msbasic.o")
+    image = os.path.join(BUILD, "MSBASIC.BIN")
+    run([CA65, "-D", "DOS6502", "-I", MSBASIC_SRC, "-I", ASM, "-I", GEN, "-o", obj,
+         "-l", os.path.join(OBJ, "MSBASIC.LST"), os.path.join(MSBASIC_SRC, "msbasic.s")])
+    run([LD65, "-C", os.path.join(MSBASIC_SRC, "6502dos.cfg"), "-o", image,
+         "-Ln", os.path.join(BUILD, "MSBASIC.LBL"), obj])
+    bank2 = open(image, "rb").read()
+    if os.path.getsize(ROM) != 2 * BANK_SIZE or len(bank2) != BANK_SIZE:
+        sys.exit("build: banks 0, 1 or 2 are not 16 KB each")
+    with open(ROM, "ab") as out:
+        out.write(bank2)
+    obj = os.path.join(OBJ, "msbasic_com.o")
+    stub = os.path.join(OBJ, "MSBASIC_COM.BIN")
+    config = os.path.join(OBJ, "program.cfg")
+    with open(config, "w", encoding="utf-8") as out:
+        out.write("MEMORY { RAM: start = $%04X, size = $0F, file = %%O; }\n"
+                  "SEGMENTS { CODE: load = RAM, type = rw; }\n" % PROGRAM_START)
+    run([CA65, "-I", ASM, "-I", GEN, "-o", obj, os.path.join(MSBASIC_SRC, "6502dos_com.s")])
+    run([LD65, "-C", config, "-o", stub, obj])
+    os.makedirs(BAS_OUT, exist_ok=True)
+    program = os.path.join(BAS_OUT, "MSBASIC.COM")
+    with open(program, "wb") as out:
+        out.write(PROGRAM_START.to_bytes(2, "little") + open(stub, "rb").read())
+    return program
+
+
 def make_test_rom():
     """Copy build/6502DOS.ROM to build/TEST.ROM with boot_shell cleared, so it boots to the monitor."""
     with open(LABELS, encoding="utf-8") as labels:
@@ -135,13 +169,14 @@ def main():
     run([LD65, "-C", os.path.join(ASM, "rom.cfg"), "-o", ROM,
          "-m", os.path.join(BUILD, "6502DOS.MAP"), "-Ln", LABELS]
         + objects)
+    basic = build_basic()
     make_test_rom()
     make_templates()
     for name in ("LICENSE", "NOTICE"):
         shutil.copyfile(os.path.join(ROOT, name), os.path.join(BUILD, name))
     test_files = [os.path.join(TEST_SD_FOLDER, entry) for entry in os.listdir(TEST_SD_FOLDER)
                   if not entry.startswith(".")]
-    mksd.make(SD_FOLDER, SD_IMAGE, extra=compile_bas() + [compile_scom()] + test_files)
+    mksd.make(SD_FOLDER, SD_IMAGE, extra=compile_bas() + [basic, compile_scom()] + test_files)
     print("built %s, %d bytes, %.2f s" % (os.path.relpath(ROM, ROOT), os.path.getsize(ROM),
                                           time.time() - started))
 

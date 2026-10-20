@@ -72,10 +72,34 @@ L0C32:
         ldx     INPUTBUFFER-1		; the length
         stz     POSX
         stz     INPUTBUFFER,x
+INLIN_PTR:
         ldx     #<(INPUTBUFFER-1)
         ldy     #>(INPUTBUFFER-1)
         rts
+; Logical file 0 is the file of MSBASIC NAME.BAS (DOS_BOOT). Its lines end
+; with no CRDO: CURDVC is not 0 while one is read. When it is all read, it is
+; closed, the console takes over, and the line is RUN.
 INLIN_FILE:
+        tax
+        lda     HIO_LF,x
+        bne     INLIN_READ
+        lda     HIO_EOF,x
+        bmi     @end
+        dec     CURDVC
+        jsr     INLIN_READ
+        stz     CURDVC
+        rts
+@end:
+        jsr     HIO_FREE
+        jsr     IO_CLRCH
+        ldx     #3
+@run:
+        lda     DOS_RUN,x
+        sta     INPUTBUFFER,x
+        dex
+        bpl     @run
+        bra     INLIN_PTR
+INLIN_READ:
   .endif
   .ifdef CONFIG_HOSTED
 ; hosted: buffer outside zero page, LINE_MAX characters, BS or DEL deletes

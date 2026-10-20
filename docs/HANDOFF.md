@@ -2643,10 +2643,11 @@
        `make verify` and `make test` must still pass. The target is not in the ROM yet.
      - M2, bank 2 in the ROM:
        - `build.py` builds the `6502dos` target and links it as bank 2.
-       - `MSBASIC.COM`, a stub of a few bytes, selects ROM bank 2 and calls the cold start. Its
-         `RTS` is `exit`.
-       - `EXIT` ends BASIC and returns to the shell.
-       - Test `BASBOOT`: the shell runs `MSBASIC`, `PRINT 1+1`, `EXIT`, then back to the shell.
+       - `MSBASIC.COM`, a stub of a few bytes, clears the screen, selects ROM bank 2 and jumps
+         to the cold start.
+       - `QUIT [n]` ends BASIC and returns to the shell with exit code n.
+       - `MSBASIC NAME.BAS` loads NAME.BAS and runs it.
+       - Tests `BASBOOT` and `BASRUN`.
      - M3, files: `OPEN`, `CLOSE`, `PRINT#`, `INPUT#`, `GET#` on the SD card. `LOAD` and
        `SAVE` of program text. One test.
      - M4, `tests.py` runs MSBASIC's `tests/*.bas` on the ROM against their `.out`.
@@ -2690,14 +2691,48 @@
        The IRQ entry at `$FFA0` matches banks 0 and 1 but the `jmp irq` operand (0; never run).
      - Tests: `cbmbasic1`, `cbmbasic2` and `sim` binaries are byte for byte as before;
        `make verify` matches; `make test` 31/31 ok, 1.7 s. The 6502dos image is not run yet:
-       that needs M2. MSBASIC clean build 945 ms, the new baseline.
+       that needs M2. MSBASIC build 980 ms (`make all` after the docs).
      - Docs: `MSBASIC/docs/6502dos-zeropage.md` (was `uxdos-zeropage.md`) has the real RAM map
        and cost; `MSBASIC/docs/changes.md` has a `6502dos target` section; `MSBASIC/CLAUDE.md`
        lists the target and its files.
      - The 6502DOS API name `con_colour` (`API_CON_COLOUR`) breaks the "color" spelling rule.
        Renaming it is a separate step.
-     - Next: M2. A 65C02 savings pass over the 6502dos code is a later separate step.
-       Steps since the full suite: 3.
+     - A 65C02 savings pass over the 6502dos code is a later separate step.
+   - Done, M2 (2026-10-20), code and docs in one commit, the goldens in the next. The user
+     replaced `EXIT` (to the shell) with `QUIT [n]`, n the exit code, 0 by default; `EXIT [DO]`
+     stays. The user added the screen clear and `MSBASIC NAME.BAS`.
+     - `tools/build.py`: `build_basic()` builds the 6502dos target with the repo's ca65/ld65
+       (`-D DOS6502 -I MSBASIC/src -I src/asm -I build/gen`), to `build/MSBASIC.BIN` and
+       `build/MSBASIC.LBL`, appends it to `6502DOS.ROM` as bank 2 (ROM 49152 bytes; TEST.ROM
+       too), and assembles `MSBASIC/src/6502dos_com.s` to `build/bas/MSBASIC.COM`, 14 bytes
+       (`$0801`, `lda #FF / jsr API_CON_OUT / lda #2 / sta ROM_BANK / jmp ROM`; 12 of the 15
+       code bytes), on the card root.
+     - `tools/cc65/asminc/longbranch.mac`, new, copied from `C:\8bitProgramming\cc65\asminc`:
+       the repo's ca65 found no `.macpack longbranch` without it.
+     - `QUIT`: `CONFIG_QUIT` in `defines_6502dos.s`, the keyword in `token.s` after `COLOR`,
+       the code in `6502dos_extra.s`. 18 bytes with the keyword.
+     - `MSBASIC NAME.BAS`, 118 bytes: `DOS_BOOT` in `6502dos_extra.s` ends the cold start
+       (`init.s` jumps to it). It opens the first word of the command tail as logical file 0,
+       entry 0, and makes it the input, with no OK first. `INLIN` reads a line of logical file 0
+       with `CURDVC` not 0, so no CRDO follows it; at the end of the file it closes it, calls
+       `IO_CLRCH` and returns the line `RUN`. `IO_CLALL`, the clear after each line entered,
+       keeps the input while `HIO_IN` is a file (`IO_CLROUT`, new). A missing file: ?FILE NOT
+       FOUND ERROR, then OK. The file needs CR LF line ends (`K_READ` drops LF);
+       `.gitattributes` gives `tests/sd/*.BAS` CR LF.
+     - Bug fixed, `program.s` end of `PARSE_INPUT_LINE`: `dec TXTPTR+1` is assembled only when
+       `>(INPUTBUFFER-1) <> >INPUTBUFFER`. With INPUTBUFFER at `$0860` it made TXTPTR `$075F`,
+       so every direct statement gave ?SYNTAX ERROR. 6502dos 2 bytes less; others unchanged.
+     - Bank 2: 11955 bytes used, 4429 free (was 11821 / 4563).
+     - Tests, in `SHELL_ROM_TESTS`: `BASBOOT` (`MSBASIC`, `PRINT 1+1`, `QUIT 300` (?ILLEGAL
+       QUANTITY), `QUIT 7`, `VER`, `MSBASIC`, `QUIT`, `VER`) and `BASRUN` (`MSBASIC HELLO.BAS`
+       with `tests/sd/HELLO.BAS`, 3 lines; `LIST`, `QUIT 3`, `MSBASIC NOSUCH.BAS`, `QUIT`,
+       `VER`). The goldens show the FF before each banner. `BASRUN` ok 0.5 s, `BASBOOT` 0.6,
+       `SHBOOT` 0.5. MSBASIC `make all verify` ok, `make test` 31/31, 1.1 s. ROM build 983 ms,
+       the new baseline.
+     - MSBASIC's `Makefile` calls the ca65 and ld65 of `C:\8bitProgramming\cc65\bin`, not
+       `tools/cc65/bin`.
+     - Steps since the full suite: 5.
+     - Next: M3, files. `LOAD` and `SAVE` can open their file as `DOS_BOOT` does.
    - To do: find what the 492 bytes of 7i2b cost in `DISKFREE.CBI` (1861 to 2353 bytes), with
      pyuxc's link map, and cut them. Ideas: read `P2$` once, drop `FREE_TEXT` and pass the
      `MID$` straight to `SYS_STRINGS_SET`, reuse `DRIVE_NAME` for the text (11 bytes of RAM).

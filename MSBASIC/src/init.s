@@ -476,7 +476,11 @@ L4192:
         ldy     #>RESTART
         sta     GORESTART+1
         sty     GORESTART+2
+  .ifdef DOS6502
+        jmp     DOS_BOOT		; MSBASIC NAME.BAS loads NAME.BAS
+  .else
         jmp     (GORESTART+1)
+  .endif
 .endif
 
   .if .def(CONFIG_RAM) || .def(OSI)

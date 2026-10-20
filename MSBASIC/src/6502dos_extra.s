@@ -220,6 +220,67 @@ COLOR:
         jmp     API_CON_COLOUR
 .endif
 
+.ifdef CONFIG_QUIT
+; ----------------------------------------------------------------------------
+; "QUIT" STATEMENT: QUIT [N]. ENDS BASIC AND RETURNS TO THE PROGRAM THAT RAN
+; MSBASIC.COM, WITH THE EXIT CODE N, 0-255, OR 0. exit closes BASIC's files.
+; ----------------------------------------------------------------------------
+QUIT:
+        beq     @zero			; no N
+        jsr     GETBYT			; X = N
+        .byte   $2C			; skip the ldx
+@zero:
+        ldx     #0
+        txa
+        jmp     API_EXIT		; returns only with no parent, to NEWSTT
+.endif
+
+; ----------------------------------------------------------------------------
+; The end of the cold start. MSBASIC NAME.BAS opens NAME.BAS, the first word
+; of the command tail, as logical file 0, BASIC's input; INLIN reads its lines
+; as typed ones and gives the line RUN after them. A missing file is ?FILE NOT
+; FOUND ERROR. Without a name, or after the error, the OK prompt follows.
+; ----------------------------------------------------------------------------
+DOS_BOOT:
+        ldx     #0
+@skip:
+        inx
+        lda     COMMAND_TAIL,x
+        cmp     #' '
+        beq     @skip
+        ldy     #0
+@copy:
+        cmp     #' '+1
+        bcc     @end			; a space or the CR ends the name
+        sta     HIO_NAME,y
+        inx
+        iny
+        lda     COMMAND_TAIL,x
+        cpy     #HIO_NAMEMAX
+        bcc     @copy
+@end:
+        sty     HIO_NAMELEN
+        tya
+        beq     @none
+        lda     #0			; read
+        jsr     K_OPEN
+        bcs     @notfound
+        sta     HIO_HND			; entry 0, logical file 0: HIO_INIT
+        stz     HIO_MODE		; freed every entry
+        stz     HIO_EOF
+        stz     HIO_IN
+        ldx     #0
+        jsr     HIO_AHEAD
+        jmp     L2351			; no OK before the file's lines
+@none:
+        jmp     RESTART
+@notfound:
+        ldx     #HIO_ERR_NOTFOUND
+        jmp     HIO_ERROR
+
+DOS_RUN:
+        .byte   "RUN",0
+
 ; ----------------------------------------------------------------------------
 ; Bank 2's IRQ entry and vectors, as bank1.s has them. An interrupt's vector
 ; pull selects bank 0, so bank 0 runs the entry; this bank runs only the end

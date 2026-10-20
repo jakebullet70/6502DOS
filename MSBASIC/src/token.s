@@ -109,6 +109,9 @@
 		keyword_rts "LOCATE", LOCATE
 		keyword_rts "COLOR", COLOR
 .endif
+.ifdef CONFIG_QUIT
+		keyword_rts "QUIT", QUIT
+.endif
 
 		count_tokens
 

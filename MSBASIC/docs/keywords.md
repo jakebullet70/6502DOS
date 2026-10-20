@@ -113,6 +113,9 @@ built from existing tokens, so they need no table entries.
 
 `CONFIG_FAST_FIN` also makes number parsing faster; `CONFIG_RADIX_LIT` does not build without it.
 
+`QUIT [n]` (`CONFIG_QUIT`, 18 bytes) is in the `6502dos` target only. It ends BASIC and returns
+to the shell with exit code n, 0 to 255, or 0.
+
 ## Internals (no keywords)
 
 | Feature | Flag | Bytes |
@@ -129,6 +132,8 @@ built from existing tokens, so they need no table entries.
 
 File I/O (`OPEN`, `CLOSE`, `PRINT#`, `INPUT#`, `GET#`, `CMD`, `SYS`, `ST`) uses the CBM keywords
 through `handle_io.s`. Its cost is not listed, because the sim build does not assemble without it.
+
+In the `6502dos` target, `MSBASIC NAME.BAS` loads NAME.BAS and runs it: 118 bytes, with no flag.
 
 ## Planned keywords (estimates)
 

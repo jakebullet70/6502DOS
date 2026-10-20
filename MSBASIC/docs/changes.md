@@ -823,3 +823,23 @@ are allowed in this target only.
   `block.s`. The other binaries do not change.
 - `cbmbasic1`, `cbmbasic2` and `sim` are byte for byte as before. Bank 2 holds 11821 bytes, 410
   more than the sim's code, and 4563 bytes are free.
+
+## 6502dos in the 6502DOS ROM (+134 bytes)
+
+- `6502dos_com.s`, new: `MSBASIC.COM`, which `tools/build.py` of the 6502DOS repo assembles to
+  run at `$0801`. It clears the screen with a form feed through `con_out`, selects ROM bank 2
+  and jumps to `$C000`. It must fit in 15 bytes, below the RAM data at `$0810`.
+- `QUIT [n]`, new, `CONFIG_QUIT`, 18 bytes: ends BASIC through `exit` with exit code n, 0 to
+  255, or 0. The keyword follows `COLOR` in `token.s`; the code is in `6502dos_extra.s`.
+- `MSBASIC NAME.BAS` loads NAME.BAS and runs it, 118 bytes. `DOS_BOOT` in `6502dos_extra.s`
+  ends the cold start: it opens the first word of the command tail as logical file 0 and makes
+  it the input, with no OK first. `INLIN` reads a line of logical file 0 with `CURDVC` not 0,
+  so no CRDO follows it. At the end of the file `INLIN` closes it, gives the input back to the
+  console and returns the line `RUN`. `IO_CLALL` in `handle_io.s`, the clear after each line
+  entered, keeps the input while it is a file (`IO_CLROUT`, new). A missing file gives ?FILE
+  NOT FOUND ERROR. The file's lines end with CR LF, because `K_READ` drops LF.
+- `program.s`, `PARSE_INPUT_LINE`: `dec TXTPTR+1` is assembled only when `INPUTBUFFER-1` is on
+  the page before `INPUTBUFFER`. With `INPUTBUFFER` at `$0860` every direct statement gave
+  ?SYNTAX ERROR. 2 bytes less.
+- `cbmbasic1`, `cbmbasic2` and `sim` are byte for byte as before. Bank 2 holds 11955 bytes, and
+  4429 bytes are free.
