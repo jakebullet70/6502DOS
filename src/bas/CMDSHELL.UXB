@@ -1787,14 +1787,25 @@ END FUNCT
 ' Tab at the prompt: puts the next match of the last word of LINE_TEXT in its place, or the one
 ' before with Shift. After the last match comes the first, and before the first the last. A line
 ' that Tab did not leave starts again: Tab gives its first match, Shift+Tab its last. A word
-' with no match stays as it is.
+' with no match stays as it is. The word starts after the last space outside quotes, and a quote
+' at its start is not part of the name. A match with a space goes in quotes; the closing quote of
+' a directory is left off, so that a name can follow it.
 SUB COMPLETE_WORD()
+  DIM CODE AS UBYTE, QUOTED AS UBYTE
   IF COMPLETE_START = 0 OR LINE_TEXT <> COMPLETE_TEXT
-    COMPLETE_START = LEN(LINE_TEXT) + 1
-    DO WHILE COMPLETE_START > 1 AND ContentsAt(@LINE_TEXT + COMPLETE_START) <> 32
-      COMPLETE_START = COMPLETE_START - 1
+    COMPLETE_START = 1
+    QUOTED = 0
+    CURSOR = 1
+    DO
+      CODE = CURRENT_CHAR()
+      IF CODE = 0 THEN EXIT DO
+      CURSOR = CURSOR + 1
+      IF CODE = 34 THEN QUOTED = QUOTED XOR 1
+      IF CODE = 32 AND QUOTED = 0 THEN COMPLETE_START = CURSOR
     LOOP
-    COMPLETE_STEM = MID$(LINE_TEXT, COMPLETE_START)
+    CURSOR = COMPLETE_START
+    IF CURRENT_CHAR() = 34 THEN CURSOR = CURSOR + 1
+    COMPLETE_STEM = MID$(LINE_TEXT, CURSOR)
     COMPLETE_COMMAND = 0
     IF COMPLETE_STEM <> "" AND INSTR(COMPLETE_STEM, ".") = 0
       IF DIRECTORY_LENGTH(COMPLETE_STEM) = 0
@@ -1823,7 +1834,12 @@ SUB COMPLETE_WORD()
     IF FIND_MATCH() = 0 THEN RETURN
   ENDIF
   COMPLETE_INDEX = MATCH_WANTED
-  LINE_TEXT = LEFT$(LEFT$(LINE_TEXT, COMPLETE_START - 1) + LEFT$(COMPLETE_STEM, DIRECTORY_LENGTH(COMPLETE_STEM)) + MATCH_NAME, 127)
+  NAME_TEXT = LEFT$(COMPLETE_STEM, DIRECTORY_LENGTH(COMPLETE_STEM)) + MATCH_NAME
+  IF INSTR(NAME_TEXT, " ")
+    NAME_TEXT = CHR$(34) + NAME_TEXT
+    IF ContentsAt(@NAME_TEXT + 1 + LEN(NAME_TEXT)) <> 92 THEN NAME_TEXT = NAME_TEXT + CHR$(34)
+  ENDIF
+  LINE_TEXT = LEFT$(LEFT$(LINE_TEXT, COMPLETE_START - 1) + NAME_TEXT, 127)
   COMPLETE_TEXT = LINE_TEXT
 END SUB
 

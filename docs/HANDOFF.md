@@ -2559,8 +2559,17 @@
        - `TED.COM` 10748 to 10819 bytes, +71; no ROM change.
        - Build 1013 ms, the new baseline. `TED` ok 1.2 s; golden changed.
        - Steps since the full suite: 3.
-     - S2: Tab completion wraps a completed name that has a space in quotes, as cmd.exe
-       does. CMDSHELL only, no asm. Estimate 60 to 100 bytes.
+     - Done, S2: Tab takes the word after the last space outside quotes, and skips a quote
+       at its start. A match with a space goes in quotes; a directory's closing quote is
+       left off, so a name can follow it: `CD Z` Tab gives `CD "Z DIR\`. `SHTAB.IN` adds
+       `"Q R.TXT"` and `"Z DIR"`.
+       - `CMDSHELL.COM` 21759 to 21966 bytes, +207, over the estimate. Each string
+         assignment costs about 40 bytes. Skipping the quote with `CURSOR` and
+         `CURRENT_CHAR`, in place of `MID$`, saved 98. A closing quote on a word the user
+         typed is not stripped; that would cost 48 more.
+       - Build 1234 ms, the new baseline. `SHTAB` ok 0.6 s, `FILES` ok 0.4 s; both
+         goldens changed (`FILES` the shell size only).
+       - Steps since the full suite: 4.
      - S3: `HELP.TXT`, the shell topic: a quoted argument keeps its spaces. Fold into the
        owed doc batch above.
    - MSBASIC in ROM (planned 2026-10-20), after F7b. Steps M0 to M5; each asm step asks first.
