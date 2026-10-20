@@ -957,3 +957,16 @@ are allowed in this target only.
   ends it with no text; a running program then breaks, as before.
 - The buffer, the break check and the file path are as before. 0 bytes.
 - `cbmbasic1`, `cbmbasic2` and `sim` are byte for byte as before.
+
+## 6502dos: a 65C02 savings pass (saves 31 bytes, 1 byte of RAM)
+
+- `TA_INK` merges the foreground into `DOS_COLOR` with `eor`, `and #$0F`, `eor`: 9 bytes in
+  place of 14, 6 cycles fewer, no `DOS_BYTE`. Its `clc` and `jmp API_CON_COLOUR` are shared
+  with `TA_RESTORE` as `DOS_SETCOLOR`. 7 bytes.
+- `COLOR` keeps the foreground on the stack (`phx`, `plx`), puts the color or the new
+  background in `DOS_COLOR`, and ends in `TA_INK`. 13 bytes.
+- `DOS_R0NAME`, new, sets `r0` to `HIO_NAMELEN` with X and keeps A. `K_OPEN`, `KILL` and
+  `FILES_FIRST` call it; `K_OPEN` no longer reloads the mode. 9 bytes net.
+- `K_JIFFY` keeps the tick on the stack, so `DOS_TICK` goes. 2 bytes, 1 byte of `IORAM`.
+- `cbmbasic1`, `cbmbasic2` and `sim` are byte for byte as before. Bank 2 holds 12853 bytes, and
+  3531 bytes are free. `IORAM` is 735 bytes of 768.

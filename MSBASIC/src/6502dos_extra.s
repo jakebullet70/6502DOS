@@ -10,7 +10,6 @@ DOS_BYTE:	.res 1		; the byte of K_READ and K_WRITE; temporary
 DOS_X:		.res 1		; X in K_READ and K_WRITE; the handle in K_OPEN
 DOS_Y:		.res 1		; Y in K_READ and K_WRITE
 DOS_MODE:	.res 1		; K_OPEN: the mode
-DOS_TICK:	.res 1		; K_JIFFY: the low byte of ticks
 DOS_POLL:	.res 1		; ISCNTC looks for Ctrl+C when this counts to 0
 DOS_ROW:	.res 1		; TEXTAT: the cursor and the color to restore
 DOS_COLUMN:	.res 1
@@ -129,17 +128,21 @@ K_WRITE:
         lda     DOS_BYTE
         rts
 
+; Sets r0 to HIO_NAMELEN, the length-prefixed name. Keeps A and Y.
+DOS_R0NAME:
+        ldx     #<HIO_NAMELEN
+        stx     r0
+        ldx     #>HIO_NAMELEN
+        stx     r0+1
+        rts
+
 ; Name at HIO_NAMELEN, length-prefixed; A = mode: 0 read, 1 write, 2 append.
 ; Returns carry clear and the handle in A, or carry set. Write makes the file
 ; or empties it. Append opens the file for writing at its end, and makes it
 ; when it is missing.
 K_OPEN:
         sta     DOS_MODE
-        lda     #<HIO_NAMELEN
-        sta     r0
-        lda     #>HIO_NAMELEN
-        sta     r0+1
-        lda     DOS_MODE
+        jsr     DOS_R0NAME
         cmp     #1
         beq     @create
         lsr     a			; 0: access 0, read; 2: access 1, write
@@ -185,12 +188,14 @@ K_CLOSE		:= API_CLOSE
 K_JIFFY:
         jsr     API_TICKS
         lda     r0
-        sta     DOS_TICK
+        pha				; the low byte of ticks
 @wait:
         jsr     API_TICKS
-        lda     r0
-        cmp     DOS_TICK
+        pla
+        pha
+        cmp     r0
         beq     @wait
+        pla
         lda     #1
         sta     DOS_POLL
         rts
@@ -236,16 +241,14 @@ TA_KEEP:
         sta     DOS_COLOR
         rts
 
-; TEXTAT: X = the foreground of the text; the background stays.
+; TEXTAT and COLOR: sets the color to DOS_COLOR's background and X's
+; foreground.
 TA_INK:
         txa
+        eor     DOS_COLOR
         and     #$0F
-        sta     DOS_BYTE
-        lda     DOS_COLOR
-        and     #$F0
-        ora     DOS_BYTE
-        clc
-        jmp     API_CON_COLOUR
+        eor     DOS_COLOR		; DOS_COLOR's high bits, X's low bits
+        bra     DOS_SETCOLOR
 
 ; TEXTAT: puts the cursor and the color back.
 TA_RESTORE:
@@ -254,6 +257,7 @@ TA_RESTORE:
         clc
         jsr     API_CON_CURSOR
         lda     DOS_COLOR
+DOS_SETCOLOR:
         clc
         jmp     API_CON_COLOUR
 .endif
@@ -265,12 +269,9 @@ TA_RESTORE:
 ; ----------------------------------------------------------------------------
 COLOR:
         jsr     GETBYT			; X = foreground
-        txa
-        and     #$0F
-        sta     DOS_BYTE
+        phx
         sec
         jsr     API_CON_COLOUR
-        and     #$F0
         sta     DOS_COLOR
         jsr     CHRGOT
         beq     @set
@@ -282,10 +283,8 @@ COLOR:
         asl     a
         sta     DOS_COLOR
 @set:
-        lda     DOS_COLOR
-        ora     DOS_BYTE
-        clc
-        jmp     API_CON_COLOUR
+        plx
+        jmp     TA_INK
 .endif
 
 .ifdef CONFIG_QUIT
@@ -545,10 +544,7 @@ DOS_NOTFOUND:
 ; ----------------------------------------------------------------------------
 KILL:
         jsr     HIO_GETNAME
-        lda     #<HIO_NAMELEN
-        sta     r0
-        lda     #>HIO_NAMELEN
-        sta     r0+1
+        jsr     DOS_R0NAME
         jsr     API_DELETE
         bcs     DOS_NOTFOUND
         rts
@@ -748,10 +744,7 @@ FILES:
 
 ; Starts the search for the pattern at HIO_NAMELEN.
 FILES_FIRST:
-        lda     #<HIO_NAMELEN
-        sta     r0
-        lda     #>HIO_NAMELEN
-        sta     r0+1
+        jsr     DOS_R0NAME
         jsr     FILES_R1
         lda     #ATTR_DIR | ATTR_HIDDEN | ATTR_SYSTEM
         jmp     API_FINDFIRST
