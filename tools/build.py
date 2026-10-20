@@ -19,11 +19,17 @@ src/dos/NAME.UXB, a DOS utility, compiles to
 build/DOS/NAME.COM, and each src/dos/NAME.TXT and NAME.HLP is copied to build/DOS.
 
 Then tools/mksd.py makes the SD card image build/SD.IMG from the folder sd, the COM files in
-build/bas, the folder build/DOS, which is the card's folder DOS, and the files and folders of the
-test card's folder tests/sd. Exit status 1 when a tool or a compile failed or api.py is inconsistent.
+build/bas, the folder build/DOS, which is the card's folder DOS, the files and folders of the
+test card's folder tests/sd, and the folder card, gathered in build/card. A file in card wins a
+name it shares with the others. Before that, each file and folder that the X16 added to the old
+build/SD.IMG or changed goes into card, and each one it deleted leaves card; build/SD.SUM lists
+what the last build wrote. Exit status 1 when a tool or a compile failed, api.py is inconsistent
+or build/SD.IMG is open in x16emu.
 """
 
 import glob
+import hashlib
+import json
 import os
 import shutil
 import subprocess
@@ -50,6 +56,9 @@ BANK0_START = 0xC000
 SD_FOLDER = os.path.join(ROOT, "sd")
 TEST_SD_FOLDER = os.path.join(ROOT, "tests", "sd")
 SD_IMAGE = os.path.join(BUILD, "SD.IMG")
+CARD = os.path.join(ROOT, "card")
+STAGE = os.path.join(BUILD, "card")
+CARD_SUM = os.path.join(BUILD, "SD.SUM")
 BAS = os.path.join(ROOT, "src", "bas")
 BAS_OUT = os.path.join(BUILD, "bas")
 SCOM = os.path.join(ROOT, "src", "scom")
@@ -153,6 +162,87 @@ def make_test_rom():
         out.write(image)
 
 
+def stage_card(sources):
+    """Fill build/card with the folder sd and the files and folders in sources. Return the
+    upper-case paths it holds, joined by "/"."""
+    shutil.rmtree(STAGE, ignore_errors=True)
+    ignore = shutil.ignore_patterns(".*")
+    shutil.copytree(SD_FOLDER, STAGE, ignore=ignore)
+    for source in sources:
+        target = os.path.join(STAGE, os.path.basename(source))
+        if os.path.isdir(source):
+            shutil.copytree(source, target, ignore=ignore, dirs_exist_ok=True)
+        else:
+            shutil.copy2(source, target)
+    held = set()
+    for folder, dirs, files in os.walk(STAGE):
+        for name in dirs + files:
+            held.add(os.path.relpath(os.path.join(folder, name), STAGE).replace("\\", "/").upper())
+    return held
+
+
+def digest(data):
+    return None if data is None else hashlib.sha1(data).hexdigest()
+
+
+def pull_card(staged):
+    """Copy into the folder card each file and folder that the X16 added to build/SD.IMG or
+    changed since the last build, and delete from card each one the X16 deleted.
+
+    build/SD.SUM lists what the last build wrote. Without it, only paths not in staged, the
+    upper-case paths of build/card, are copied, and nothing is deleted."""
+    if not os.path.exists(SD_IMAGE):
+        return
+    try:
+        with open(CARD_SUM, encoding="utf-8") as listing:
+            built = json.load(listing)
+    except FileNotFoundError:
+        built = None
+    found = {}
+    for path, data, when in mksd.read(SD_IMAGE):
+        key = path.upper()
+        found[key] = path
+        if built is None:
+            if key in staged:
+                continue
+        elif key in built and built[key][1] == digest(data):
+            continue
+        target = os.path.join(CARD, *path.split("/"))
+        if data is None:
+            os.makedirs(target, exist_ok=True)
+        else:
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            with open(target, "wb") as out:
+                out.write(data)
+            if when is not None:
+                os.utime(target, (when.timestamp(), when.timestamp()))
+        print("card: kept %s" % path)
+    for key, (path, _) in (built or {}).items():
+        target = os.path.join(CARD, *path.split("/"))
+        if key not in found and os.path.lexists(target):
+            if os.path.isdir(target):
+                shutil.rmtree(target)
+            else:
+                os.remove(target)
+            print("card: deleted %s" % path)
+
+
+def make_card(sources):
+    """Write build/SD.IMG from the folder sd, the files and folders in sources and the folder
+    card, which wins a name they share, after pull_card. Write build/SD.SUM."""
+    staged = stage_card(sources)
+    pull_card(staged)
+    if os.path.isdir(CARD):
+        shutil.copytree(CARD, STAGE, ignore=shutil.ignore_patterns(".*"), dirs_exist_ok=True)
+    try:
+        mksd.make(STAGE, SD_IMAGE)
+    except PermissionError:
+        sys.exit("build: cannot write %s; close x16emu" % os.path.relpath(SD_IMAGE, ROOT))
+    listing = {path.upper(): [path, digest(data)] for path, data, when in mksd.read(SD_IMAGE)}
+    with open(CARD_SUM, "w", encoding="utf-8") as out:
+        json.dump(listing, out, indent=0)
+
+
 def main():
     started = time.time()
     genapi.main()
@@ -176,7 +266,7 @@ def main():
         shutil.copyfile(os.path.join(ROOT, name), os.path.join(BUILD, name))
     test_files = [os.path.join(TEST_SD_FOLDER, entry) for entry in os.listdir(TEST_SD_FOLDER)
                   if not entry.startswith(".")]
-    mksd.make(SD_FOLDER, SD_IMAGE, extra=compile_bas() + [basic, compile_scom()] + test_files)
+    make_card(compile_bas() + [basic, compile_scom()] + test_files)
     print("built %s, %d bytes, %.2f s" % (os.path.relpath(ROM, ROOT), os.path.getsize(ROM),
                                           time.time() - started))
 

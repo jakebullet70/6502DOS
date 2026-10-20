@@ -263,6 +263,90 @@ def make(folder, image, sectors_per_cluster=1, clusters=6016, date=None, extra=(
         out.truncate((PARTITION_START + total) * SECTOR)
 
 
+def read(image):
+    """Return the files and folders of image as a list of (path, data, when).
+
+    path is the names from the root, joined by "/", each the long name when there is one, else
+    the 8.3 name as BASE.EXT. data is the file's bytes, or None for a folder. when is the
+    entry's modification time as a datetime, or None when the entry holds no valid date.
+    """
+    with open(image, "rb") as source:
+        disk = source.read()
+    start = 0
+    for n in range(4):
+        part = disk[446 + 16 * n:462 + 16 * n]
+        if part[4] in (0x0B, 0x0C):
+            start = struct.unpack("<I", part[8:12])[0] * SECTOR
+            break
+    boot = disk[start:start + SECTOR]
+    cluster_sectors = boot[13]
+    reserved, fats = struct.unpack("<HB", boot[14:17])
+    fat_sectors = struct.unpack("<I", boot[36:40])[0]
+    root_first = struct.unpack("<I", boot[44:48])[0]
+    fat_start = start + reserved * SECTOR
+    data_start = fat_start + fats * fat_sectors * SECTOR
+    cluster_bytes = cluster_sectors * SECTOR
+
+    def chain(first, size=None):
+        out = bytearray()
+        cluster = first
+        while 2 <= cluster < 0x0FFFFFF7 and (size is None or len(out) < size):
+            offset = data_start + (cluster - 2) * cluster_bytes
+            out += disk[offset:offset + cluster_bytes]
+            link = fat_start + cluster * 4
+            cluster = struct.unpack("<I", disk[link:link + 4])[0] & 0x0FFFFFFF
+        return bytes(out if size is None else out[:size])
+
+    def stamp(time, date_):
+        try:
+            return datetime.datetime(1980 + (date_ >> 9), date_ >> 5 & 15, date_ & 31,
+                                     time >> 11, time >> 5 & 63, (time & 31) * 2)
+        except ValueError:
+            return None
+
+    found = []
+
+    def walk(first, prefix):
+        raw = chain(first)
+        units = []
+        for offset in range(0, len(raw), 32):
+            e = raw[offset:offset + 32]
+            if e[0] == 0:
+                break
+            if e[0] == 0xE5:
+                units = []
+                continue
+            if e[11] == ATTR_LONG_NAME:
+                part = struct.unpack("<5H", e[1:11]) + struct.unpack("<6H", e[14:26]) \
+                    + struct.unpack("<2H", e[28:32])
+                units = list(part) + ([] if e[0] & 0x40 else units)
+                continue
+            if e[11] & 0x08 or e[:2] in (b". ", b".."):
+                units = []
+                continue
+            if units:
+                units = units[:units.index(0)] if 0 in units else units
+                name = "".join(chr(u) for u in units)
+            else:
+                short = (b"\xE5" + e[1:11] if e[0] == 0x05 else e[:11]).decode("latin-1")
+                name = short[:8].rstrip() + ("." + short[8:].rstrip() if short[8:].strip()
+                                             else "")
+            units = []
+            path = prefix + name
+            high, low = struct.unpack("<H", e[20:22])[0], struct.unpack("<H", e[26:28])[0]
+            first_cluster = high << 16 | low
+            when = stamp(*struct.unpack("<HH", e[22:26]))
+            if e[11] & ATTR_DIR:
+                found.append((path, None, when))
+                walk(first_cluster, path + "/")
+            else:
+                size = struct.unpack("<I", e[28:32])[0]
+                found.append((path, chain(first_cluster, size) if size else b"", when))
+
+    walk(root_first, "")
+    return found
+
+
 def main():
     args = sys.argv[1:]
     options = {"--sectors-per-cluster": 1, "--clusters": 6016, "--date": None}
