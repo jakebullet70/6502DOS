@@ -1,9 +1,0 @@
-MSBASIC
-HELP
-help print
-HELP str$
-HELP tab(
-HELP nosuch
-10 HELP
-RUN
-QUIT

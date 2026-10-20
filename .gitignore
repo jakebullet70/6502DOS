@@ -25,5 +25,9 @@ tests/*.OUT
 UXCBASIC/tests/*.OUT
 MSBASIC/tests/*.out
 
+# The keys a test types stay local and are never committed.
+tests/*.IN
+UXCBASIC/tests/*.IN
+
 # Claude Code per-machine settings.
 .claude/settings.local.json
