@@ -1390,6 +1390,31 @@ On 6502DOS:
 
 See [[Files]], [[INPUT and LINPUT]], [[END]].
 
+## Placing the code and the variables
+
+#ORG address puts the code at the address. #DATA address puts the variables,
+then the array space, at the address, outside the file. A program for ROM
+takes both.
+
+```
+#ORG $C000
+#DATA $0801
+DIM COUNT AS UWORD
+COUNT = COUNT + 1
+```
+
+- With #ORG the file holds the code with no load address.
+- With #DATA the start of the program sets the variables and the array space
+  to 0. Without it the variables are in the file, and the array space follows
+  them.
+- The run-time library's own variables follow the array space.
+- Each holds for the whole source, wherever it stands. A second #ORG stops the
+  compile with #ORG TWICE, a second #DATA with #DATA TWICE.
+- Code past $FFFF stops the compile with PROGRAM TOO BIG. Variables or array
+  space that meet the code stop it with #DATA OVERLAPS THE CODE.
+
+See [[Targets]], [[Compiling]].
+
 ## Options
 
 To be written: the #DEFINE UXC.* lines.

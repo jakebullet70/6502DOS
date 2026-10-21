@@ -3188,7 +3188,17 @@
           `R_FILE` 2 bytes fewer (table 6683), the 6 programs with `OPEN` 2 bytes each. Build
           5136 ms, the new baseline. Tests: `FILEW` ok 0.7 s, `FILEB` 0.5, `FILEERR` 0.5.
           Steps since the full suite: 4.
-          - Left for 3b: audit other routines that change a string in place for a moment.
+        - Done, 3b4 (2026-10-21; the user said go): audit, no code changed. No template in
+          `tpl/` or `tpl/UXDOS/` writes to a source string. Every store through a pointer goes
+          to a destination block (`ZP_DST`, the temp `S0`, a READ buffer), an array element,
+          a record field or POKE's address. `S_CHROUT` and `S_CHRIN` write data records only.
+          3b is done. Steps since the full suite: 4.
+        - Done, the doc batch (2026-10-21; the user said go). UXC-HELP: new topic Placing the
+          code and the variables (`#ORG`, `#DATA`); `MKHELP.PY` 0.24 s, 40 topics. UXCBASIC
+          PLAN: the ROM-able entry is done; the 6502DOS `OPEN` passes the name as it is. PLAN
+          section 3: `BANK_KEPT`, `keep is not written` gone; section 7: the `keep` bullet;
+          section 11 step 6d: `OPEN`; section 12 item 6. No docs are owed. No build, no test.
+          Steps since the full suite: 5.
           - Left for 3c (asm): a UXCBASIC program in ROM bank 3, with the `$FFA0` IRQ entry,
             the `$FFFA` vectors and a COM stub as `MSBASIC.COM` has. 3d: `CMDSHELL.COM` is
             22056 bytes, more than one bank; shrink, split or far calls, to decide.

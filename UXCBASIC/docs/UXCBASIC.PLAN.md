@@ -1431,11 +1431,13 @@ To do, not designed yet:
   - Still to decide: the table format, CP/M-65's or our own; whether the runtime zero page moves
     too; whether `ASM` blocks with absolute addresses inside the program are allowed in
     relocatable output; and the directive that selects it.
-- **ROM-able output** (user, 2026-10-13; for 6502DOS). `UXC.DATA $xxxx` puts the variables at a
-  RAM address apart from the code. The output is raw, with no load address. The startup code
-  copies the start values to RAM.
+- **ROM-able output** (user, 2026-10-13; for 6502DOS). Done in pyuxc. `#ORG address` puts the
+  code at the address, with no load address in the file. `#DATA address` puts the variables,
+  then the array space, at a RAM address outside the file, and the startup clears both. The
+  runtime's data records follow the array space. Help topic: Placing the code and the variables.
 
-  - Code in ROM cannot be written, so nothing in the code may be a variable.
+  - Code in ROM cannot be written, so nothing in the code may be a variable. No runtime
+    template writes its own code or a source string.
   - It covers the raw output and the separate variable address left open under "Code for a set
     memory address, as in Prog8".
   - 6502DOS layer 1 runs from ROM in this form.
@@ -1490,8 +1492,8 @@ To do, not designed yet:
     `tpl/UXDOS/UXC.TPL.BIN` with `-D UXDOS=1`. The 6502DOS table takes `SYS.ASM` and
     `R-FILE.ASM` from `tpl/UXDOS`, and `R-PRINT.ASM` and `R-STRING.ASM` test `UXDOS`. Both
     tables hold the same records in the same order; MKTPL stops when the ids differ.
-  - The 6502DOS `R-FILE.ASM` uses handles. `OPEN`'s name ends with the mode's letter, R, W or
-    A, in place of `,S,R`, `@:` and `,S,W`, or `,S,A`.
+  - The 6502DOS `R-FILE.ASM` uses handles. `OPEN` passes the name as it is, with no mode
+    letter. `R_FILE` has an entry for each mode: `append`, `write` and `read`.
   - `PRINT` sends a whole string with one `write` call. A line ends with CR LF.
   - The GPC UXC has the stock target only.
 - **An exit code on `END`** (user, 2026-10-15; for 6502DOS; done 2026-10-15: SM.END in

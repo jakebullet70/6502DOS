@@ -144,8 +144,9 @@ A program takes banked RAM from the bank allocator, `src/asm/banks.s`, in runs o
 that it selects itself.
 
 - `BANK_OWNER`, `$AC00–$ACFF` in bank 0, holds a byte for each RAM bank: 0 when free, `$FF` for
-  a system bank, else the exec depth of the program that took it plus 1. Bit 7 marks the first
-  bank of a run.
+  a system bank, `$FE` (`BANK_KEPT`) for a bank of a program that ended with `keep`, else the
+  exec depth of the program that took it plus 1. Bit 7 marks the first bank of a run.
+- Nothing frees a `BANK_KEPT` bank. `bank_free` of one gives error 9.
 - The system banks are bank 0, VARBANK and the banks the machine lacks.
 - Reset's `bank_init` finds whether the machine has 64, 128 or 256 banks. Bank 64, then bank
   128, is missing when a byte written to it reads back wrong or lands in bank 0. x16emu has 64
@@ -234,7 +235,7 @@ only; numbers stay at fixed addresses in the program.
   child's floor. A block whose descriptor is a system descriptor stays: that is how a program
   leaves a string for the system.
 - `keep` treats VARBANK as `exit` does: the parent's copy-back overwrites the TSR's descriptors.
-  A TSR's strings go in its own bank, descriptors included. `keep` is not written.
+  A TSR's strings go in its own bank, descriptors included.
 - `PSP_HEAP`, byte `$01` of the PSP, holds the bank of the running program's heap. Boot and
   `exec` set it to VARBANK.
 - VARBANK's system descriptors 0 to 8 are the slots `P1$` to `P9$`, 9 is `PATH$`, 10 is
@@ -522,7 +523,9 @@ Drivers follow MS-DOS 2.0's device drivers.
 - Up to 4 programs run one inside another, `EXEC_LEVELS` in `mem.inc`. No free run for a save
   gives error 8, and so does a fifth `exec`.
 - The ROM monitor is the top level: `RUN path [tail]` runs a program from it.
-- `keep` ends a program but leaves its banks allocated, with its IRQ hook in place: a TSR.
+- `keep`, call 28, ends a program as `exit` does, and `exitcode` then gives X = 3. Its banks
+  go to `BANK_KEPT` (section 3) and stay allocated: a TSR. Its handles close and its VARBANK
+  strings drop. `keep` from the monitor gives error 1. The IRQ hook waits for `setvect`.
 - Every RAM bank records the exec depth of the program that owns it (section 3). `exit` frees
   the banks of the program that ends.
 - The environment is a bank of `NAME=value` strings. A child gets a copy of its parent's.
@@ -1248,9 +1251,9 @@ Each step boots and shows something, and each has a test.
          `target` is `"stock"` in UXCBASIC's `compare.py` only.
        - `tpl/MKTPL.PY` builds a second table, `tpl/UXDOS/UXC.TPL.BIN`, with `tpl/UXDOS/SYS.ASM`
          and `tpl/UXDOS/R-FILE.ASM`. Its record ids are the stock table's.
-       - `OPEN` passes the name with the mode's letter last: R, W or A. It calls `open` with
-         access 0 for `O.READ`, `create` for `O.WRITE`, and `open` with access 1 then `seek` to
-         the end for `O.APPEND`, which creates a missing file. Carry set gives `NOFILE`.
+       - `OPEN` passes the name as it is. It calls `open` with access 0 for `O.READ`, `create`
+         for `O.WRITE`, and `open` with access 1 for `O.APPEND`, then `create` when the file is
+         missing. `O.WRITE` and `O.APPEND` then `seek` to the end. Carry set gives `NOFILE`.
        - `PRINT` sends a string with one `write` to the output handle, 1 or the handle of
          `PRINT #`. A line ends with CR LF. `INPUT` reads with `con_line`. `EOF` calls `ioctl`
          input status. `POS` calls `con_cursor`. `GETKEY` calls `con_status`, then `con_in`.
@@ -1345,8 +1348,10 @@ the UXCBASIC plan, section 5, in this order:
    ```
 
    Such a `SUB` is a valid entry in the jump table.
-6. **ROM-able output.** `UXC.DATA $xxxx` puts the variables at a RAM address apart from the code,
-   with a raw output that has no load address. The start values are copied at boot.
+6. **ROM-able output.** Written in pyuxc. `#ORG address` puts the code at the address, with no
+   load address in the file. `#DATA address` puts the variables and the array space at a RAM
+   address outside the file, and the startup clears them. The runtime's writable bytes are data
+   records after the array space. No runtime template writes its own code or a source string.
 7. **Relocatable output.**
 
 `LONG` and records are the features being written in UXCBASIC now.
