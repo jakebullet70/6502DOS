@@ -3240,7 +3240,7 @@
           `CMDSHELL` is 22046 bytes of code: 390 main, 18967 in 122 SUBs, 1523 startup and
           runtime, 1096 strings. A bank holds 16288 bytes below `$FFA0`. Parts, one a step:
           - 3d1 (done): ON CASE tables as fixups.
-          - 3d2: pyuxc `#ROMBANKS 3, 4` with `#ORG`. The SUBs at the tail, in code order, go
+          - 3d2 (done): pyuxc `#ROMBANKS 3, 4` with `#ORG`. The SUBs at the tail, in code order, go
             to the second bank, as many as the first bank needs. Main code, the startup and
             the strings stay in the first. Each bank holds its own copy of the runtime records
             (CMDSHELL about 1.5 KB more). A call to a SUB in the other bank goes to a veneer
@@ -3277,6 +3277,33 @@
           - `tests/MEMCMD.IN` (local) prints `P2$` too; golden updated (local).
           - Build 1922 ms, the new baseline. Test: `MEMCMD` ok 0.6 s. Docs owed: none.
             Steps since the full suite: 4.
+        - Done, 3d2 (2026-10-21): pyuxc `#ROMBANKS first, second`, with `#ORG` and `#DATA`
+          (else an error). New `uxc_rombank.py`; its docstring has the layout.
+          - The link cuts the SUBs at the tail, in code order, into the second bank, the
+            fewest that let the first bank fit. Each bank's file runs from `#ORG` to `$FFA0`,
+            filled with `$FF`, and ends with `T_FAR` at `K_FAR` (`$FF89`). The second file is
+            `NAME.PR2`; the result line adds `,SECOND NAME.PR2 <bytes>`, and the screen says
+            each bank's bytes used.
+          - New templates, ids at the end: `R_FARVEC` (2 bytes of RAM), `T_FAR` (23 bytes,
+            S0 the other bank), `T_FARCALL` (the 7-byte veneer). New macro `#recind`
+            (`jmp (record)`) in `MACROS.ASM`.
+          - Each bank places only the runtime records its code names; the data records are
+            placed once, for both. A GOTO or jump between the banks stops the link (`JUMP
+            ACROSS ROM BANKS`, `GOTO ACROSS ROM BANKS`).
+          - Bug found: `dd_strip` moved each live SUB's start but not its `K_SY_END`, so the
+            ends were stale once a dead SUB was cut. `dd_records` moves it too. No output
+            change.
+          - Cost: 7 bytes a SUB called across, 23 a bank, 2 of RAM; 3 bytes saved a SUB moved.
+            About 50 cycles a call across. No change without `#ROMBANKS`: the 211 sources
+            compile byte-identical to HEAD.
+          - Checked with a scratch checker (`T_FAR` in both, every veneer, every SUB call):
+            a generated 28-FUNCTION program, one with STRING and LONG FUNCTIONs, one small
+            program, and `CMDSHELL` with `#ORG $C000`, `#DATA $0801`: bank 3 16008 bytes,
+            bank 4 7120; SUBs 104 to 121 moved; 114 calls across, 10 veneers in bank 3 and 56
+            in bank 4. Not yet run: that is 3d3.
+          - Build 4423 ms (every program recompiled, the template table changed), the new
+            baseline. Test: `ROM3` ok 0.6 s. Docs owed: `UXC-HELP.md` (`#ROMBANKS`),
+            `pyuxc/README.md` (the result line). Steps since the full suite: 5.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

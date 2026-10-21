@@ -13,6 +13,7 @@ import os
 
 import uxc_code
 import uxc_dead
+import uxc_rombank
 from uxc_code import cb_add, cb_get, cb_put, emit
 from uxc_defs import K_F_HI, K_F_LO, K_FRAME_BASE, K_SEC_BSS, K_SEC_CODE, K_SEC_CONST, \
     K_SEC_LABEL, K_SEC_REC, K_SEC_STR, K_SEC_TEMP, K_SEC_VAR, K_SK_LABEL, K_TOP
@@ -52,6 +53,8 @@ def lk_link():
     uxc_dead.dd_strip()
     uxc_dead.dv_strip()
     uxc_dead.ds_strip()
+    if g.rb_on != 0:
+        uxc_rombank.rb_ranges()
     g.sy_r = g.lk_init_record
     uxc_sym.sy_get()
     g.sy_val = g.cb_n
@@ -89,10 +92,12 @@ def lk_link():
         g.cb_at = g.lk_init_at
         g.cb_b = 0x2C
         cb_put()
+    if g.rb_on != 0:
+        uxc_rombank.rb_split()
     g.lk_i = 0
     while g.lk_i < g.rt_n:
         uxc_code.rt_place()
-        if g.rt_dn == 0:
+        if g.rt_dn == 0 and (g.rb_on == 0 or g.rb_need[g.rt_id] != 0):
             emit(g.rt_id)
         g.lk_i = g.lk_i + 1
     # The strings, out of their own bank. With #DATA the startup copies them to its address.
@@ -106,6 +111,8 @@ def lk_link():
         g.sy_flags = 1
         uxc_sym.sy_set()
     uxc_code.sp_copy()
+    if g.rb_on != 0:
+        uxc_rombank.rb_end(1)
     # The variables, all 0, in the file or after the strings at #DATA's address.
     g.lk_var = g.lk_org + g.cb_n
     if g.lk_apart != 0:

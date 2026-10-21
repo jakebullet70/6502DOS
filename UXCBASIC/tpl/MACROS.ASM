@@ -137,6 +137,12 @@ recx    .segment op, target, add=0
         \op @w \add, x
         .endsegment
 
+; jmp (<another record> + add): through a word of a data record.
+recind  .segment target, add=0
+        tpl_fix ::= tpl_fix .. [(* + 1 - rec_code, F_REC + \target.rec_id / 256, \target.rec_id % 256)]
+        jmp (\add)
+        .endsegment
+
 ; A data word, the address of a label in this record.
 selfdw  .segment target
         tpl_fix ::= tpl_fix .. [(* - rec_code, F_SELF, 0)]

@@ -6,8 +6,8 @@ that nothing names.
                  records again. Out: g.dd_subs, the SUBs left out, and g.dd_bytes, the bytes
                  of code and runtime records saved. g.dd_keep_subs set keeps every SUB.
     dd_keep_line() a line that starts with #, with the token at the #: #KEEP or #ENDKEEP.
-                   #ORG and #DATA lines are skipped; dd_place_scan read them
-    dd_place_scan() in sb_scan's pass, a line that starts with #: #ORG or #DATA
+                   #ORG, #DATA and #ROMBANKS lines are skipped; dd_place_scan read them
+    dd_place_scan() in sb_scan's pass, a line that starts with #: #ORG, #DATA or #ROMBANKS
     dd_open()      at the end of the source, a #KEEP without its #ENDKEEP is an error
     dv_log()       in g.dv_s, 0 for the variables or 1 for the array space, and g.sb_place:
                    log where a new global variable starts
@@ -27,6 +27,7 @@ A SUB kept has K_SY_LIVE set before the link step.
                     address: g.lk_raw is 1.
     #DATA address   the variables, then the array space, start at the address, outside the
                     file, and the startup clears both: g.lk_apart is 1, g.lk_data the address.
+    #ROMBANKS a, b  the program runs from ROM banks a and b (uxc_rombank).
 Each is allowed once. The first pass reads them, so they hold for the whole source wherever
 they stand.
 
@@ -205,7 +206,8 @@ def dd_fixup_keep():
 
 
 def dd_records():
-    """DD.RECORDS. Move the value of each placed LABEL and live SUB with the code."""
+    """DD.RECORDS. Move the value of each placed LABEL and live SUB with the code, and a live
+    SUB's K_SY_END too, for #ROMBANKS."""
     for g.dd_record in range(1, g.sy_n + 1):
         g.sy_r = g.dd_record
         uxc_sym.sy_get()
@@ -214,6 +216,11 @@ def dd_records():
             dd_shift()
             g.sy_val = g.dd_at
             uxc_sym.sy_set()
+        if g.sy_kind == K_SK_SUB and (g.sy_flags & 1) != 0:
+            g.dd_at = g.ram[g.sy_ad + K_SY_END] + 256 * g.ram[g.sy_ad + K_SY_END + 1]
+            dd_shift()
+            g.ram[g.sy_ad + K_SY_END] = g.dd_at & 255
+            g.ram[g.sy_ad + K_SY_END + 1] = g.dd_at >> 8
     g.dd_at = g.lk_init_at
     dd_shift()
     g.lk_init_at = g.dd_at
@@ -263,9 +270,9 @@ def dd_keep_line():
         g.dd_region_line = 0
         uxc_lex.lx_next()
         return
-    if g.tk_s == "ORG" or g.tk_s == "DATA":
-        uxc_lex.lx_next()
-        uxc_lex.lx_next()
+    if g.tk_s == "ORG" or g.tk_s == "DATA" or g.tk_s == "ROMBANKS":
+        while g.tk_t != K_TT_EOL:
+            uxc_lex.lx_next()
         return
     if g.tk_s != "KEEP":
         er_syntax()
@@ -291,6 +298,9 @@ def dd_place_scan():
     """DD.PLACE.SCAN. #ORG address or #DATA address, with the token at the #. Any other #
     line is left to dd_keep_line."""
     uxc_lex.lx_next()
+    if g.tk_t == K_TT_NAME and g.tk_s == "ROMBANKS":
+        dd_rombanks_scan()
+        return
     if g.tk_t != K_TT_NAME or (g.tk_s != "ORG" and g.tk_s != "DATA"):
         return
     g.dd_place = g.tk_s
@@ -307,6 +317,28 @@ def dd_place_scan():
             er_stop("#DATA TWICE")
         g.lk_apart = 1
         g.lk_data = g.tk_v
+    uxc_lex.lx_next()
+    if g.tk_t != K_TT_EOL:
+        er_syntax()
+
+
+def dd_rombanks_scan():
+    """DD.ROMBANKS.SCAN. #ROMBANKS first, second, with the token at ROMBANKS: g.rb_on is 1, and
+    g.rb_bank holds the two ROM banks (uxc_rombank)."""
+    if g.rb_on != 0:
+        er_stop("#ROMBANKS TWICE")
+    for g.dd_i in range(2):
+        uxc_lex.lx_next()
+        if g.dd_i == 1:
+            if g.tk_t != K_TT_OP or g.tk_k != 44:
+                er_syntax()
+            uxc_lex.lx_next()
+        if g.tk_t != K_TT_NUM or g.tk_v > 255:
+            er_syntax()
+        g.rb_bank[g.dd_i] = g.tk_v
+    if g.rb_bank[0] == g.rb_bank[1]:
+        er_syntax()
+    g.rb_on = 1
     uxc_lex.lx_next()
     if g.tk_t != K_TT_EOL:
         er_syntax()

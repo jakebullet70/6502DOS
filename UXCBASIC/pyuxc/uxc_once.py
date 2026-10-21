@@ -23,6 +23,7 @@ import uxc_lex
 import uxc_link
 import uxc_name
 import uxc_record
+import uxc_rombank
 import uxc_sub
 import uxc_sym
 import uxc_tpl as T
@@ -46,6 +47,8 @@ def start(tpl_folder):
     g.lk_data = 0
     g.lk_strs_n = 0
     g.lk_strs_record = 0
+    g.rb_on = 0
+    g.rb_bank = [0, 0]
     g.vr_n = 0
     g.rt_n = 0
     g.bs_n = 0
@@ -76,10 +79,16 @@ def finish():
     g.lx_no = 0
     uxc_link.lk_link()
     uxc_link.lk_write()
+    if g.rb_on != 0:
+        uxc_rombank.rb_second()
     # The emulator's echo shows the file's bytes too, so start a fresh line.
     put("")
     put(g.ui_obj + " " + str(g.lk_size) + " BYTES")
     g.ui_line = "OK," + g.ui_obj + "," + str(g.lk_size)
+    if g.rb_on != 0:
+        put("ROM BANK " + str(g.rb_bank[0]) + " " + str(g.rb_used_first) + " BYTES, ROM BANK " +
+            str(g.rb_bank[1]) + " " + str(g.rb_used) + " BYTES")
+        g.ui_line = g.ui_line + ",SECOND " + g.rb_obj + " " + str(g.rb_size_second)
     if g.dd_subs > 0:
         g.ui_line = g.ui_line + ",REMOVED " + str(g.dd_subs) + " SUBS " + str(g.dd_bytes) + \
             " BYTES"

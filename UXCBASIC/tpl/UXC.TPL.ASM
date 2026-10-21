@@ -177,5 +177,41 @@ done    plx
         #endtpl
         .endblock
 
+; #ROMBANKS: T_FAR's word, the address of the SUB it calls.
+R_FARVEC .block
+        #data 2, 0
+        .endblock
+
+; #ROMBANKS: the call into the other ROM bank. pyuxc places it at K_FAR in both banks, so that
+; its 23 bytes end at $FFA0, where the IRQ entry starts. S0 is the other bank. A T_FARCALL
+; enters with the SUB's address in A/Y. Keeps X; returns A, Y and C, and N and Z from A.
+; Trap: a write to ROM_BANK goes on at the next address in the other bank, so both copies must
+; lie at one address with one layout.
+T_FAR   .block
+        #tpl
+        #rec sta, R_FARVEC
+        #rec sty, R_FARVEC, 1
+        #lo lda, S0
+        sta $01                 ; ROM_BANK: the other bank's copy goes on at the jsr
+        #self jsr, jump
+        pha
+        #lo lda, S0             ; seen from the bank called, the caller's bank
+        sta $01
+        pla
+        rts
+jump    #recind R_FARVEC
+        #endtpl
+        .endblock
+
+; #ROMBANKS: the veneer of a SUB in the other ROM bank, which a call to it reaches. A/Y = S0, the
+; SUB's address there, then a jump to T_FAR at S1.
+T_FARCALL .block
+        #tpl
+        #lo lda, S0
+        #hi ldy, S0
+        #ab jmp, S1
+        #endtpl
+        .endblock
+
 tpl_count = len(tpl_all)
 index   .word tpl_all
