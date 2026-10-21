@@ -23,8 +23,8 @@ build/DOS/NAME.COM, and each src/dos/NAME.TXT and NAME.HLP is copied to build/DO
 src/utils/FOLDER/NAME.UXB, a utility, compiles to build/UTILS/NAME.COM, and the files of
 src/utils/FOLDER are copied to build/UTILS/SRC/FOLDER.
 
-Then tools/mksd.py makes the SD card image build/SD.IMG from the folder sd, CMDSHELL.COM and
-MSBASIC.COM, the folder build/DOS, which is the card's folder DOS, the folder build/UTILS, which
+Then tools/mksd.py makes the SD card image build/SD.IMG from the folder sd, CMDSHELL.COM,
+ROMSHELL.COM and MSBASIC.COM, the folder build/DOS, which is the card's folder DOS, the folder build/UTILS, which
 is the card's folder UTILS, the card's folder TEST, and
 the folder card, gathered in build/card. TEST holds the other COM files in build/bas and the
 files and folders of the test card's folder tests/sd. A file in card wins a
@@ -332,7 +332,7 @@ def main():
     test_files = [os.path.join(TEST_SD_FOLDER, entry) for entry in os.listdir(TEST_SD_FOLDER)
                   if not entry.startswith(".")]
     programs = compile_bas() + [bank3]
-    shell = [p for p in programs if os.path.basename(p) == "CMDSHELL.COM"]
+    shell = [p for p in programs if os.path.basename(p) in ("CMDSHELL.COM", "ROMSHELL.COM")]
     make_card(shell + [basic, compile_scom(), compile_utils()],
               [p for p in programs if p not in shell] + test_files)
     print("built %s, %d bytes, %.2f s" % (os.path.relpath(ROM, ROOT), os.path.getsize(ROM),
