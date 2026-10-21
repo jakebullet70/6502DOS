@@ -59,8 +59,8 @@ UPTIME [SILENT]                 (Command line or Script)
                  PRINT "Up " + P1$ + " seconds"
 :MEM
 MEM [SILENT]                    (Command line or Script)
-  Tells the free 8 KB RAM banks, such as 53 banks free, 424 KB.
   Tells the free low RAM, the program area: 38655 bytes low RAM free.
+  Tells the free 8 KB RAM banks, such as 53 banks free, 424 KB.
   Sets P1$ to the number of free banks and P2$ to the free low RAM bytes.
   At the prompt: MEM
   In a script:   MEM SILENT

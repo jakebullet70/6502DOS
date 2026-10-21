@@ -1079,10 +1079,14 @@ Short names:
     capitals, prints nothing.
   - A name not found prints `File not found` and gives exit code 1. No name prints
     `Required parameter missing` and gives exit code 2. The exit code is 0 otherwise.
-- `MEM [SILENT]` prints the free 8 KB RAM banks and their kilobytes, such as
-  `53 banks free, 424 KB`. It gets the count from `bank_alloc` with a size of 0 (section 3).
+- `MEM [SILENT]` prints the free low RAM, then the free 8 KB RAM banks and their kilobytes,
+  such as `38655 bytes low RAM free` and `53 banks free, 424 KB`.
+  - The free low RAM is the program area, `$0801-$9EFF`. It is fixed: `exec` gives each
+    program all of it.
+  - It gets the bank count from `bank_alloc` with a size of 0 (section 3).
   - The banks that hold the saves of the programs that ran `MEM` are not free.
-  - It sets `P1$` to the number of free banks. `SILENT`, in capitals, prints nothing.
+  - It sets `P1$` to the number of free banks and `P2$` to the free low RAM bytes.
+    `SILENT`, in capitals, prints nothing.
   - The exit code is 0.
 - `EXIST name` is for scripts. It tells whether a file or a directory `name` exists, and prints
   nothing.

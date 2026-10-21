@@ -1,7 +1,7 @@
 '=============================================================================================
 ' -- Callable Commandlet -----> MEM [SILENT]
-' -- Prints the free 8 KB RAM banks and their kilobytes: 53 banks free, 424 KB.
 ' -- Prints the free low RAM, the program area $0801-$9EFF: 38655 bytes low RAM free.
+' -- Prints the free 8 KB RAM banks and their kilobytes: 53 banks free, 424 KB.
 ' -- Sets P1$ to the number of free banks, 53, and P2$ to the free low RAM bytes, 38655.
 ' -- SILENT, in capitals, prints nothing.
 ' -- The banks that hold the saves of the programs that ran MEM are not free.
@@ -27,7 +27,7 @@ BANKS_TEXT = MID$(STR$(FREE_BANKS), 2)
 HEAP.SYS_STRINGS_SET(SLOT_P1, BANKS_TEXT)
 HEAP.SYS_STRINGS_SET(SLOT_P2, LOW_FREE_TEXT)
 IF SILENT = 0 THEN
-    PRINT BANKS_TEXT; " banks free, "; MID$(STR$(FREE_BANKS * 8), 2); " KB"
     PRINT LOW_FREE_TEXT; " bytes low RAM free"
+    PRINT BANKS_TEXT; " banks free, "; MID$(STR$(FREE_BANKS * 8), 2); " KB"
 END IF
 END 0

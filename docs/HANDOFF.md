@@ -3269,14 +3269,14 @@
           - Tests: `ONCASE` ok 0.7 s, `JUMPOUT` 0.5. No ROM build. Docs owed: none. Steps since
             the full suite: 2.
         - Done, aside before 3d2 (2026-10-21; the user asked for the free low RAM in `MEM`):
-          `MEM` prints a second line, `38655 bytes low RAM free`, and sets `P2$` to `38655`.
-          The value is a constant: `exec` saves the parent, so every program gets all of
-          `$0801–$9EFF`, and `keep` holds banks only. `HELP.TXT`'s `MEM` topic names the line
-          and `P2$`.
+          `MEM` prints `38655 bytes low RAM free` first, then the banks line, and sets `P2$`
+          to `38655`. The value is a constant: `exec` saves the parent, so every program gets
+          all of `$0801–$9EFF`, and `keep` holds banks only. `HELP.TXT`'s `MEM` topic and PLAN
+          section 8's `MEM` entry name the line and `P2$`, in that order.
           - `MEM.SCOM` 1582 bytes, 79 more. ROM: none. No asm.
           - `tests/MEMCMD.IN` (local) prints `P2$` too; golden updated (local).
-          - Build 1587 ms, the new baseline. Test: `MEMCMD` ok 0.6 s. Docs owed: PLAN
-            section 8's `MEM` entry (the second line and `P2$`). Steps since the full suite: 3.
+          - Build 1922 ms, the new baseline. Test: `MEMCMD` ok 0.6 s. Docs owed: none.
+            Steps since the full suite: 4.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
