@@ -40,7 +40,7 @@ The layers follow MS-DOS's split into `IO.SYS`, `MSDOS.SYS` and `COMMAND.COM`.
 |---|---|---|
 | `SYSINIT`, `CMDSHELL`, scripts, the commandlets, `DEBUG` | UXCBASIC | nothing new |
 | Path splitting, drive letters, 8.3 names, wildcard matching | UXCBASIC `.UXI` | nothing new |
-| The bank allocator: the owner and next-bank tables | UXCBASIC `.UXI` | nothing new: `POKE 0, bank`, then `ContentsAt($A000 + n)` |
+| The bank allocator: the owner table | UXCBASIC `.UXI` | nothing new: `POKE 0, bank`, then `ContentsAt($A000 + n)` |
 | Walking the driver chain and calling a vector | UXCBASIC `.UXI` | nothing new: `SYS P%` takes a variable address |
 | FAT32: cluster maths, file sizes, `seek` | UXCBASIC | `LONG`, section 12 item 2 |
 | The system file table in bank 0, and the drive table | UXCBASIC | records, item 1, and `DIM ... AT ... BANK`, item 3 |
@@ -105,10 +105,9 @@ The UXCBASIC library is the folder `lib/`. Each file holds one namespace of the 
 | `$0700–$07FF` | the PSP of the running program (section 7) |
 | `$0801–$9EFF` | the program |
 | `$9F00–$9FFF` | I/O: VIAs, VERA, YM2151 |
-| `$A000–$BFFF` bank 0 | kernel tables: the system file table at `$A000`, the FAT32 library's variables at `$A100–$A7FF`, the keyboard queue at `$A800–$A80A`, the library's sector buffer at `$A900–$AAFF`, `rename`'s new path at `$AB00–$ABFF`; later the bank owner and next-bank tables |
-| `$A000–$BFFF` banks 1 to 10 | `exec`'s save banks: each save follows the one before it (section 7) |
+| `$A000–$BFFF` bank 0 | kernel tables: the system file table at `$A000`, the FAT32 library's variables at `$A100–$A7FF`, the keyboard queue at `$A800–$A80A`, the library's sector buffer at `$A900–$AAFF`, `rename`'s new path at `$AB00–$ABFF`, the bank owner table at `$AC00–$ACFF` (Banked RAM, below) |
 | `$A000–$BFFF` bank 11 | VARBANK, the shared string heap (String heaps, below) |
-| `$A000–$BFFF` banks 12 and up | the environment, and banks handed out by the allocator |
+| `$A000–$BFFF` banks 1 to 10, 12 and up | handed out by `bank_alloc`: `exec`'s saves (section 7) and the programs' banks |
 | `$C000–$FFFF` ROM bank 0 | kernel core and the vectors. `$FFCF` and `$FFD2` jump to `con_in` and `con_out`, and `$FFF6–$FFF9` hold `MIST` (section 10) |
 | `$C000–$FFFF` ROM bank 1 | the FAT32 library, the kernel's file calls on it, and its glue to the SD driver |
 | `$C000–$FFFF` ROM banks 2 and up | not in the image yet |
@@ -141,19 +140,37 @@ VRAM:
 
 ### Banked RAM
 
-A program gets banked RAM in 8 KB banks that it selects itself, or as extended memory blocks
-that it reaches through a copy call. The blocks follow XMS, the interface of MS-DOS's
-`HIMEM.SYS`.
+A program takes banked RAM from the bank allocator, `src/asm/banks.s`, in runs of 8 KB banks
+that it selects itself.
+
+- `BANK_OWNER`, `$AC00–$ACFF` in bank 0, holds a byte for each RAM bank: 0 when free, `$FF` for
+  a system bank, else the exec depth of the program that took it plus 1. Bit 7 marks the first
+  bank of a run.
+- The system banks are bank 0, VARBANK and the banks the machine lacks.
+- Reset's `bank_init` finds whether the machine has 64, 128 or 256 banks. Bank 64, then bank
+  128, is missing when a byte written to it reads back wrong or lands in bank 0. x16emu has 64
+  banks, so 62 are free at boot.
+- `bank_alloc`, call 29, takes a size in banks in A. It hands out the lowest run of that many
+  free banks that follow each other, and gives the run's first bank in A. No such run gives
+  error 8.
+- `bank_alloc` with a size of 0 gives the number of free banks in A and hands out nothing.
+- `bank_free`, call 30, frees the run whose first bank is in A. A bank that is not the first
+  bank of a run of the running program gives error 9.
+- The program selects a bank by writing `$00`.
+- `exit` frees each bank whose owner is the ending program's exec depth plus 1. The scan of 256
+  bytes takes about 4400 cycles.
+- `exec`'s saves are runs from `bank_alloc` (section 7).
+
+Extended memory blocks are not written. A program is to reach them through a copy call. They
+follow XMS, the interface of MS-DOS's `HIMEM.SYS`.
 
 - A block is a chain of banks under one handle. `xms_alloc` takes a size in banks in A and
   gives the handle in A. `xms_free` gives back the block whose handle is in A.
-- `bank_alloc` is `xms_alloc` of one bank. Its handle is the bank number, and the program
-  selects it by writing `$00`.
 - The handle is the number of the block's first bank. Handle 0 means main RAM, where an offset
   is an address. Bank 0 is the kernel's, so no block has handle 0.
-- Bank 0 holds two tables of 256 bytes: the owner of each bank, and the next bank in its chain,
-  0 for the last. Bit 7 of the owner byte marks the first bank of a block. The banks of a block
-  need not be contiguous, so any free bank serves.
+- A second table of 256 bytes in bank 0 holds the next bank in each chain, 0 for the last. The
+  owner byte marks the block's first bank as it marks a run's. The banks of a block need not be
+  contiguous, so any free bank serves.
 - An offset into a block is 21 bits: 256 banks of 8 KB is 2 MB. The bank of offset `n` is
   `n >> 13` steps along the chain from the handle, at address `$A000 + (n AND $1FFF)`.
   `xms_move` keeps the bank and step of its last walk and starts the next walk from there when
@@ -175,7 +192,7 @@ that it reaches through a copy call. The blocks follow XMS, the interface of MS-
 - `xms_alloc` with a size of 0 gives the number of free banks in A and allocates nothing.
 - Errors: `xms_alloc` with too few free banks gives error 8. A handle that is not the first
   bank of a block, or a length that runs past the end of a block, gives error 9.
-- `exit` frees a program's blocks with its other banks. `keep` keeps them.
+- `exit` frees a program's blocks with its other banks.
 - Data that fits in one bank is faster in a bank from `bank_alloc`. A block suits data larger
   than 8 KB read in pieces: a whole file, a RAM disk.
 
@@ -186,8 +203,9 @@ calls are `str_alloc`, `str_free`, `str_gc` and `str_heap` (section 4). Heaps ho
 only; numbers stay at fixed addresses in the program.
 
 - VARBANK, bank 11, is the shared heap: the system's, and every program's at its start. A
-  program should take a bank of its own with `str_heap`. VARBANK is the first bank after
-  `exec`'s save banks, fixed until `bank_alloc` exists.
+  program should take a bank of its own with `str_heap`.
+- `str_heap` takes VARBANK, or a bank of a run the program took from `bank_alloc`. Any other
+  bank gives error 9.
 - A heap's bank starts with a header:
 
   | Address | Size | Field |
@@ -234,7 +252,9 @@ only; numbers stay at fixed addresses in the program.
   selects the bank `str_alloc` gave in A.
 - Trap: x16emu fills banked RAM with random bytes at power-on. A heap's free space holds
   noise.
-- Not written: freeing a program's own heap bank at `exit`, which needs `bank_alloc`.
+- `exit` frees a program's own heap bank with its other banks.
+- Trap: a program that frees its heap's bank with `bank_free` keeps `PSP_HEAP` on that bank
+  until it ends. Call `str_heap` with VARBANK first.
 
 ## 4. The API
 
@@ -278,7 +298,7 @@ Calls, with the MS-DOS 2.0 function each matches:
 | `exec` | 4Bh | runs a program |
 | `exit`, `exitcode` | 4Ch, 4Dh | ends a program with a code; gives the last child's code |
 | `keep` | 31h | ends a program and keeps its banks: a TSR |
-| `bank_alloc`, `bank_free` | 48h, 49h | hand out 8 KB RAM banks |
+| `bank_alloc`, `bank_free` | 48h, 49h | hand out and free runs of 8 KB RAM banks; count the free banks (section 3) |
 | `xms_alloc`, `xms_free`, `xms_move` | none; XMS 09h, 0Ah, 0Bh | extended memory blocks (section 3) |
 | `str_alloc`, `str_free`, `str_gc`, `str_heap` | none | string heaps with garbage collection (section 3) |
 | `getvect`, `setvect` | 35h, 25h | the IRQ hook, the break handler, the disk error handler |
@@ -480,8 +500,11 @@ Drivers follow MS-DOS 2.0's device drivers.
   - Still to add: the disk error handler in force when the program started, and the bank of
     the environment.
 - `exec` copies the parent's pages from the PSP up to `PSP_TOP`, then a page of `r0` to `$7F`,
-  to RAM banks 1 to 10, right after the save of the program that ran the parent.
-  `save_bank` and `save_page` in the kernel's zero page hold where each level's save starts.
+  to a run of banks from `bank_alloc`, from `$A000` of its first bank. The run is
+  (`PSP_TOP` - `$07` + 2 + 31) / 32 banks: a save of the whole program area takes 5, boot's
+  save for the shell 1. `save_bank` in the kernel's zero page holds each level's first bank.
+- The run belongs to the parent, so `exit` of the child does not free it. The parent frees it
+  when the copy back ends.
   `exec` sets a child's `PSP_TOP` to the page of `$9EFF`; a UXCBASIC program sets its own at
   start-up (section 12). `exec` copies no page past `$9EFF`, whatever `PSP_TOP` holds.
 - Boot sets `PSP_TOP` to the PSP's page before it runs the shell, so that save is 2 pages.
@@ -496,12 +519,12 @@ Drivers follow MS-DOS 2.0's device drivers.
   part.
 - Trap: a program that writes RAM above its `PSP_TOP` page, by `POKE` or `ContentsAt`, loses it
   across an `exec`.
-- Up to 4 programs run one inside another, while their saves fit in banks 1 to 10. A save that
-  does not fit gives error 8, and so does a fifth `exec`. Two saves of the whole program area
-  fit: 306 of the 320 pages.
+- Up to 4 programs run one inside another, `EXEC_LEVELS` in `mem.inc`. No free run for a save
+  gives error 8, and so does a fifth `exec`.
 - The ROM monitor is the top level: `RUN path [tail]` runs a program from it.
 - `keep` ends a program but leaves its banks allocated, with its IRQ hook in place: a TSR.
-- Every RAM bank records the PSP that owns it. `exit` frees the banks of the program that ends.
+- Every RAM bank records the exec depth of the program that owns it (section 3). `exit` frees
+  the banks of the program that ends.
 - The environment is a bank of `NAME=value` strings. A child gets a copy of its parent's.
 - The STOP key is Ctrl+C. Call 47 `con_break` sets its mode, which `PSP_BREAK` holds:
 
@@ -1047,7 +1070,11 @@ Short names:
     capitals, prints nothing.
   - A name not found prints `File not found` and gives exit code 1. No name prints
     `Required parameter missing` and gives exit code 2. The exit code is 0 otherwise.
-- `MEM` shows the free banks. It waits for `bank_alloc` (section 11, step 10).
+- `MEM [SILENT]` prints the free 8 KB RAM banks and their kilobytes, such as
+  `53 banks free, 424 KB`. It gets the count from `bank_alloc` with a size of 0 (section 3).
+  - The banks that hold the saves of the programs that ran `MEM` are not free.
+  - It sets `P1$` to the number of free banks. `SILENT`, in capitals, prints nothing.
+  - The exit code is 0.
 - `EXIST name` is for scripts. It tells whether a file or a directory `name` exists, and prints
   nothing.
   - It takes one name with no wildcard. It does not check for a wildcard.
@@ -1290,8 +1317,9 @@ Each step boots and shows something, and each has a test.
    itself (section 8).
 9. Layer 1 moves to UXCBASIC, one part at a time, as the compiler features land. The parts that
    need nothing new (section 2) are written as `.UXI` libraries first and tested on 6502DOS.
-10. Extended memory blocks: `xms_alloc`, `xms_free`, `xms_move`, with `bank_alloc` on top of
-    them, and `MEM` shows the free banks. It needs step 5 and can run at any time after it.
+10. The bank allocator: `bank_alloc` and `bank_free`, `exec`'s saves from it, `str_heap`'s
+    check of the owner, `MEM`, then `keep`. Extended memory blocks, `xms_alloc`, `xms_free` and
+    `xms_move`, follow when a RAM disk or a UXCBASIC array that spans banks needs them.
 
 ## 12. What UXCBASIC needs
 
@@ -1339,9 +1367,6 @@ run on 6502DOS.
 ## 13. Still to decide
 
 - The rest of the PSP: the handlers, the environment's bank.
-- Whether `exec` takes its save banks from the bank allocator, only as many as `PSP_TOP` needs,
-  in place of the fixed banks 1 to 10 (section 7). The depth is then bound by free RAM, not by
-  4 levels. It needs step 10.
 - Which ROM bank holds which part past banks 0 and 1.
 - Whether `A:` and `B:` stay free, or go to IEC drives.
 - FAT12 and FAT16: the kernel reads FAT32 only.

@@ -3087,8 +3087,14 @@
             `CMDLETS`: the topic list gains `MEM`.
           - Builds: 4134 ms (every `.UXB` compiled, the first build with a new `.UXB`), then
             1499 and 1381 ms; 1381 ms is the new baseline. Tests: `MEMCMD` ok 0.5 s, `CMDLETS`
-            1.7. Docs owed: as 2c, plus PLAN section 9's `MEM` entry (no longer waits) and
+            1.7. Docs owed: as 2c, plus PLAN section 8's `MEM` entry (no longer waits) and
             section 11 step 10's `MEM`. Item 2 left: `keep`. Steps since the full suite: 5.
+        - Done, the doc batch (2026-10-21; the user said go). PLAN section 3: the memory map
+          rows, Banked RAM (the owner table, the probe, the run calls, `exit`; XMS blocks marked
+          not written), the `str_heap` rule and its trap; section 4's row for calls 29 and 30;
+          section 7: the save as a run, its size, the parent frees it, the depth; section 8:
+          `MEM`; section 11 step 10; section 13: the allocator question is gone. No docs are
+          owed for item 2. No build, no test. Steps since the full suite: 6.
      3. UXCBASIC ROM-able output (PLAN section 12 item 6), then `CMDSHELL` in ROM banks (it is
         about 19 KB, so two banks). New commands stay `.SCOM` files on disk; a `BIND` alias
         can replace a ROM built-in. `CONFIG.SYS` `SHELL=` loads a disk shell instead.
