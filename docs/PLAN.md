@@ -1400,6 +1400,8 @@ run on 6502DOS.
     environment (section 7).
   - The exit code `END` gives.
   - How a script reads the exit code of the program it ran.
+  - Whether one Markdown reference, `docs/SHELL.md`, holds the shell language, and
+    `tools/build.py` makes the shell topics of `HELP.TXT` from it.
 - An editor that runs on 6502DOS.
 - Graphics, sound and loadable drivers: not before step 5 works.
 - The 65C816: not in the first version.

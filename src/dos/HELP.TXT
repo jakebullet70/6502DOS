@@ -1,9 +1,10 @@
 :HELP
 HELP [topic]
   Prints the help on topic. With no topic it lists the topics.
+  HELP SHELL tells about the shell's statements.
   HELP DISKFREE
-  DISKFREE, DISKINFO, DATE, TIME, UPTIME, MEM and WHERE work at the prompt and in
-  a script.
+  DISKFREE, DISKINFO, DATE, TIME, UPTIME, MEM and WHERE work at the prompt
+  and in a script.
   EXIST is for scripts and prints nothing.
   Each puts its result in P1$ for a script to test.
   SILENT prints nothing, not even an error. An error empties P1$.
@@ -74,6 +75,147 @@ WHERE name [SILENT]             (Command line or Script)
   At the prompt: WHERE HEAD
   In a script:   WHERE HEAD SILENT
                  IF P1$ = "" PRINT "No HEAD"
+:SHELL
+The shell runs a line typed at the prompt, or a line of a script.
+The first word is a statement, an alias or a program. Case does not matter.
+  The statements, each with its topic:
+  BEEP BIND CD CHDIR CLS COLOR COPY DEL DELETE DIR END ENDIF ENDREP FILES
+  GOSUB GOTO IF INPUT LIST LOCATE MD MKDIR ONERROR PAUSE PRINT RD REM REN
+  RENAME REPEAT RETURN RMDIR RUN SETSYS TYPE VER VERSION WAIT
+  name = expression sets a variable. There is no LET.
+  A program is a .SCOM, .COM or .CMD file. See HELP WHERE.
+  See also HELP SCRIPTS, VARIABLES, EXPRESSIONS, REDIRECT and PROMPT.
+:SCRIPTS
+A script is a text file NAME.CMD of shell lines. Typing NAME runs it.
+  The words after NAME go in P1$ to P9$, one each.
+  C:\STARTUP.CMD runs when the shell starts.
+  A line holds up to 127 characters. Lines end in LF or CR LF.
+  An error prints its message and the line, such as in C:\T.CMD line 3,
+  and ends the script. See HELP ONERROR.
+  Ctrl+C asks Terminate CMD job (Y/N)? Y ends the script.
+  A program run from a script goes back to it. A script run from a script
+  ends the first one.
+  A label is a name of 2 characters or more and a colon, on its own line.
+  IF blocks, REPEAT, GOTO and GOSUB work only in a script.
+:VARIABLES
+The variables of the shell:
+  A to Z hold whole numbers. A$ to Z$ hold strings of up to 255 characters.
+  P1$ to P9$ hold the words after a program's name. A command such as
+  DISKFREE puts its results there. Running a program empties them first.
+  PATH$, PROMPT$, EDITOR$ and TEMP$ are the system variables. See HELP SETSYS.
+  CURDIR$ is the current drive and directory. It is read only.
+  name = expression sets a variable.
+  A = 5
+  A$ = CURDIR$ + "\DOCS"
+:EXPRESSIONS
+The numbers and the strings of the shell:
+  A number is whole, from -32768 to 32767. It takes + - * / and brackets.
+  * and / come before + and -. / gives a whole number.
+  A color name such as RED is a number. See HELP COLORS.
+  A string is text in quotes, a string variable or CURDIR$. + joins strings,
+  up to 255 characters. A quote with no closing quote runs to the line end.
+  A file name may be a string, so a variable can hold it: DELETE A$
+  A = (B + 2) * 3
+  A$ = "C:\" + P1$
+:PRINT
+PRINT [item] [; item]...        (Command line or Script)
+  Prints numbers and strings, then a new line. A ; between items adds
+  nothing. A ; at the end keeps the cursor on the line.
+  A number prints with no spaces around it.
+  PRINT "A is "; A
+  PRINT "Name: " + A$;
+:INPUT
+INPUT variable                  (Command line or Script)
+  Prints ? and reads a line into variable. A number variable takes the
+  number the line starts with, or 0.
+  INPUT A$
+  INPUT N
+:IF
+IF condition statement          (Command line or Script)
+IF condition ... ENDIF          (Script only)
+  Runs statement when condition holds. There is no THEN and no ELSE.
+  The condition compares two numbers or two strings with =, <>, <, >, <= or
+  >=. Strings compare by character code, so case counts.
+  A condition alone on its line starts a block up to its ENDIF. When the
+  condition fails, the lines of the block are skipped. Blocks nest.
+  IF A > 9 PRINT "Big"
+  IF P1$ = ""
+    PRINT "Give a name"
+    END
+  ENDIF
+:ENDIF
+ENDIF ends an IF block. See HELP IF.
+:REPEAT
+REPEAT count ... ENDREP         (Script only)
+  Runs the lines up to the ENDREP count times. count is 1 to 255. Below 1
+  the lines are skipped. Loops nest.
+  Up to 16 loops and GOSUBs are open at once. A GOTO out of a loop leaves
+  it open.
+  REPEAT 3
+    PRINT "Hello"
+  ENDREP
+:ENDREP
+ENDREP ends a REPEAT loop. See HELP REPEAT.
+:GOTO
+GOTO label                      (Script only)
+  Goes on at the line after the line label:. The label is looked for from
+  the start of the script. A label not found gives Label not found.
+  IF P1$ = "" GOTO usage
+  PRINT "Name: " + P1$
+  END
+  usage:
+  PRINT "Give a name"
+:GOSUB
+GOSUB label                     (Script only)
+  Goes to label as GOTO does. RETURN goes back to the line after the GOSUB.
+  GOSUBs nest. RETURN with no GOSUB gives RETURN without GOSUB.
+  GOSUB show
+  END
+  show:
+  PRINT "In show"
+  RETURN
+:RETURN
+RETURN ends a GOSUB. See HELP GOSUB.
+:ONERROR
+ONERROR 1   or   ONERROR 0      (Script only)
+  ONERROR 1: after an error the script goes on at the next line.
+  ONERROR 0: an error ends the script. A script starts with ONERROR 0.
+  ONERROR 1
+  DELETE OLD.TXT
+  ONERROR 0
+:END
+END                             (Command line or Script)
+  Ends the script. At the prompt it ends the shell.
+:REM
+REM text   or   ' text   or   // text
+  A comment. The shell skips the rest of the line.
+:RUN
+RUN name [arguments]            (Command line or Script)
+  Runs the program or script name, as typing name does. In a script, the
+  script ends there. name may be a string, so a variable can hold it.
+  RUN A$ DOCS\README.TXT
+:FILES
+FILES [pattern]   or   DIR      (Command line or Script)
+  Lists the names that match pattern, or the current directory. Each name
+  has its size or <DIR>. The count of names comes last.
+  A directory as pattern lists the names in it.
+  FILES
+  DIR DOCS\*.TXT
+:DIR
+DIR is the same as FILES. See HELP FILES.
+:LIST
+LIST name   or   TYPE name      (Command line or Script)
+  Prints the file name.
+  LIST DOCS\README.TXT
+:TYPE
+TYPE is the same as LIST. See HELP LIST.
+:COPY
+COPY source target              (Command line or Script)
+  Copies the file source to target. A target that is a directory takes the
+  file under its own name. A source with * or ? copies each file that
+  matches, and target must be a directory. Prints the count of files.
+  COPY HELLO.TXT HI.TXT
+  COPY DOCS\*.TXT BAK
 :CHDIR
 CHDIR name   or   CD name       (Command line or Script)
   Makes directory name the current directory.
@@ -121,6 +263,14 @@ SETSYS [name = value]           (Command line or Script)
   TEMP$ is the directory of the pipe files. Empty puts them in the root.
   SETSYS TEMP$ = "C:\TMP"
   PATH$ = "C:\DOS"
+:BIND
+BIND [name = command]           (Command line or Script)
+  Makes name run command. The words typed after name follow the command.
+  BIND alone lists the names. An empty command removes name.
+  The commands share 255 characters.
+  BIND H = HELP
+  H IF
+  BIND H =
 :COLOR
 COLOR foreground, background    (Command line or Script)
   Sets the color of the text printed after it. Each value is 0 to 15.
@@ -134,6 +284,25 @@ The color names, for COLOR and in any number:
   RED      2    BLUE     6    LIGHTRED 10    LIGHTBLUE  14
   CYAN     3    YELLOW   7    DARKGRAY 11    LIGHTGRAY  15
   PRINT LIGHTGRAY * 16 + WHITE
+:CLS
+CLS                             (Command line or Script)
+  Clears the screen.
+:BEEP
+BEEP                            (Command line or Script)
+  Prints character 7, the bell.
+:LOCATE
+LOCATE row, column              (Command line or Script)
+  Moves the cursor to row 0 to 29 and column 0 to 79, from the top left.
+  LOCATE 10, 20
+:WAIT
+WAIT seconds                    (Command line or Script)
+  Waits that many seconds. A key does not end the wait. Ctrl+C does.
+  WAIT 2
+:PAUSE
+PAUSE                           (Command line or Script)
+  Waits for a key. Prints nothing.
+  PRINT "Press a key"
+  PAUSE
 :PROMPT
 The keys and the quotes at the prompt:
   Tab completes the last word: a file or a directory, or, as the first word,
@@ -145,6 +314,27 @@ The keys and the quotes at the prompt:
   COPY HELLO.TXT "MY FILE.TXT"
   A program gets "MY FILE.TXT" whole in P1$ to P9$. Its command tail drops
   the quotes.
+  PROMPT$ is the prompt. $P is the current drive and directory, $N the drive,
+  $G >, $L <, $B |, $Q =, $_ a new line and $$ $. Empty shows C>.
+  SETSYS PROMPT$ = "$P$G"
+:REDIRECT
+statement TO file   or   APPEND file   or   FROM file
+statement | statement           (Command line or Script)
+  TO sends the output of statement to file, made new.
+  APPEND adds the output to the end of file, and makes file when missing.
+  FROM reads the input of statement from file.
+  | sends the output of a statement to the input of the next.
+  The pipe files are PIPE1.$$$ and PIPE2.$$$ in TEMP$.
+  TO, APPEND and FROM are words of their own, outside quotes.
+  FILES TO LIST.TXT
+  PRINT "Done" APPEND LOG.TXT
+  LIST DOCS\LONG.TXT | GREP -n x | MORE
+:TO
+TO is a redirect. See HELP REDIRECT.
+:APPEND
+APPEND is a redirect. See HELP REDIRECT.
+:FROM
+FROM is a redirect. See HELP REDIRECT.
 :VIEW
 VIEW name                       (Command line only)
   Shows the text file name a page at a time.

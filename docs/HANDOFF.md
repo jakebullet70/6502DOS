@@ -3410,6 +3410,21 @@
             show in the transcript; the next prompt follows the clear at once, so no key wait
             ran. Golden regenerated, diffed: the topic list loses its trailing CR LF, one
             more `ESC[0m`, the new run. TED ok 1.6 s. Steps since the full suite: 6.
+        - Shell language help (2026-10-21; the user chose topics in `HELP.TXT`, no code):
+          `src/dos/HELP.TXT` gains 32 topics from `CMDSHELL.UXI`: SHELL (the overview and the
+          statement list), SCRIPTS, VARIABLES, EXPRESSIONS, PRINT, INPUT, IF, REPEAT, GOTO,
+          GOSUB, ONERROR, END, REM, RUN, FILES, LIST, COPY, BIND, CLS, BEEP, LOCATE, WAIT,
+          PAUSE, REDIRECT, and one-line pointers ENDIF, ENDREP, RETURN, DIR, TYPE, TO, APPEND,
+          FROM. PROMPT gains the `PROMPT$` codes; HELP points to HELP SHELL, and its 81-character
+          line is rewrapped. 66 topics, 16424 bytes, from 9031; every line 80 characters at most.
+          - PLAN §13 gains the option of one `docs/SHELL.md` that `build.py` makes the shell
+            topics from.
+          - Build 1910 ms, the new baseline. `HELP NOSUCH` scans the whole file, so `CMDLETS`
+            takes 2.4 s, from about 1.5; `--update`'s 2 s cut its golden short, and the tail
+            was put back by hand. Goldens `CMDLETS` and `TED` regenerated, diffed: only the
+            topic list. `CMDLETS` ok 2.4 s, `TED` ok 1.8 s.
+          - Full suite: 63 tests, 0 failed, 64.2 s; the slowest `CMDLETS` 2.7 s. Steps since
+            the full suite: 0.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
