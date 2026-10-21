@@ -3228,14 +3228,46 @@
             follow 3a and 3b (most smaller, `ENDCHILD.COM` 126 to 130). Goldens regenerated,
             each diff only that; each 2.0 s. Re-runs: `FILES` ok 0.4 s, `HDIR` 1.4, `HDIRARG`
             1.2, `TREE` 1.5. Steps since the full suite: 0.
-          - Left for 3d: `CMDSHELL.COM` is 22048 bytes, more than one bank; shrink, split or
-            far calls, to decide.
+          - Left for 3d: `CMDSHELL.COM` is 22048 bytes, more than one bank; the user chose a
+            split across banks 3 and 4 (3d below).
         - Done, the doc batch (2026-10-21; the user said go). UXC-HELP Placing the code and
           the variables: the literals at `#DATA`, the kernel trap; `MKHELP.PY` 0.26 s, 40
           topics. UXCBASIC PLAN: the ROM-able entry. PLAN section 3: the ROM map (banks 2 and
           3), the trap on a pointer into `$C000-$FFFF` and the IRQ hook; section 10: the
           65536-byte ROM and `src/bank3`; section 12 item 6. No docs are owed. No build, no
           test. Steps since the full suite: 1.
+        - 3d, `CMDSHELL` split across ROM banks 3 and 4 (the user, 2026-10-21; asm ok).
+          `CMDSHELL` is 22046 bytes of code: 390 main, 18967 in 122 SUBs, 1523 startup and
+          runtime, 1096 strings. A bank holds 16288 bytes below `$FFA0`. Parts, one a step:
+          - 3d1 (done): ON CASE tables as fixups.
+          - 3d2: pyuxc `#ROMBANKS 3, 4` with `#ORG`. The SUBs at the tail, in code order, go
+            to the second bank, as many as the first bank needs. Main code, the startup and
+            the strings stay in the first. Each bank holds its own copy of the runtime records
+            (CMDSHELL about 1.5 KB more). A call to a SUB in the other bank goes to a veneer
+            in the caller's bank, 7 bytes a target: `lda #<S`, `ldy #>S`, `jmp far`. `far`, 23
+            bytes at the same address in both banks just below `$FFA0`: `sta`/`sty` a RAM
+            vector (a 2-byte data record), `lda #other`, `sta ROM_BANK`; in the other bank
+            `jsr` to `jmp (vector)`; then `pha`, `lda #other`, `sta ROM_BANK`; back home `pla`,
+            `rts`. It keeps X (the expression stack) and returns A/Y. About 50 cycles a call
+            more than a JSR. A GOTO, a label or a jump into the other bank is an error. The
+            JMP around each moved SUB is dropped (3 bytes). pyuxc writes two images.
+          - 3d3: `build.py` bank 4 (`bank4.s`, the `$FFA0` IRQ entry and vectors); the ROM
+            becomes 81920 bytes. `ROM3TEST` splits across banks 3 and 4 and tests the calls
+            both ways, X kept, BYTE, WORD, LONG and STRING results.
+          - 3d4: `CMDSHELL` in banks 3 and 4 (a wrapper source in `src/bank3` with `#ORG`,
+            `#DATA`, `#ROMBANKS` and `#INCLUDE`); then the boot shell.
+        - Done, 3d1 (2026-10-21; the user said split across banks 3 and 4): ON CASE tables
+          are fixups. Bug found: `cs_table` wrote each target as `g.lk_org + offset` with no
+          fixup, so when dead-code stripping cut a SUB before an ON CASE, every target pointed
+          past its body by the bytes cut (14 in a scratch test). Each table byte is now a
+          `K_F_LO` or `K_F_HI` `K_SEC_CODE` fixup (`uxc_case.py`), so the split can move the
+          table with its code too. No byte or cycle change; 2 fixups an entry at compile time.
+          - 211 sources (tests, `src`, `src/utils`) compiled by HEAD and by the new pyuxc: only
+            `ONCASE` differs, the same size, the table bytes fixed.
+          - `tests/ONCASE.UXB` gains `SUB NEVER_CALLED` before the first ON CASE; the golden
+            is unchanged.
+          - Tests: `ONCASE` ok 0.7 s, `JUMPOUT` 0.5. No ROM build. Docs owed: none. Steps since
+            the full suite: 2.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

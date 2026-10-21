@@ -16,8 +16,8 @@ The code, with min and max the lowest and the highest value of any CASE:
     out:
 
 The default is the CASE ELSE body, or else the last body's JMP out. A value from min to max
-with no CASE goes to the default too. The code never moves, so a table entry is the address
-g.lk_org + offset, written with no fixup.
+with no CASE goes to the default too. Each table byte is a K_F_LO or K_F_HI fixup to the
+target's code, so the table follows the code when the link step moves it.
 
 The entry on the nesting stack: g.ns_fl[] is the jump to the dispatch, g.ns_ex[] the jumps
 out, g.ns_p[] the count of CASEs, g.ns_el[] 1 after CASE ELSE and g.ns_top[] its body,
@@ -28,8 +28,8 @@ g.cs_bank at g.cs_base, 0 for none.
     cs_before()                   the first statement after ON CASE must be a CASE
 """
 
-from uxc_code import cb_add, cs_clear, cs_get, cs_put, emit
-from uxc_defs import K_CS_SIZE, K_EK_CONST, K_JP_LIST, K_NS_CASE, K_NS_SEL, K_SEC_CODE, K_SEC_CONST, \
+from uxc_code import cb_add, cs_clear, cs_get, cs_put, emit, fx_add
+from uxc_defs import K_CS_SIZE, K_EK_CONST, K_F_HI, K_F_LO, K_JP_LIST, K_NS_CASE, K_NS_SEL, K_SEC_CODE, K_SEC_CONST, \
     K_TT_NAME, K_TT_OP, K_TY_BYTE
 import uxc_cond
 import uxc_expr
@@ -183,15 +183,18 @@ def cs_end():
 
 def cs_table():
     """CS.TABLE. The low bytes (g.cs_byte = 0) or the high bytes (1) of the addresses of the
-    targets of the values from g.cs_min to g.cs_max."""
+    targets of the values from g.cs_min to g.cs_max, each a fixup."""
     for g.cs_v in range(g.cs_min, g.cs_max + 1):
         g.cs_at = g.cs_base + g.cs_v * 2
         cs_get()
         if g.cs_w == 0:
             g.cs_w = g.cs_default
-        g.cs_w = g.lk_org + g.cs_w
-        g.cs_wh = g.cs_w // 256
-        g.cb_b = g.cs_w - g.cs_wh * 256
+        g.fx_at = g.cb_n
+        g.fx_k = K_F_LO
         if g.cs_byte != 0:
-            g.cb_b = g.cs_wh
+            g.fx_k = K_F_HI
+        g.fx_s = K_SEC_CODE
+        g.fx_v = g.cs_w
+        fx_add()
+        g.cb_b = 0
         cb_add()

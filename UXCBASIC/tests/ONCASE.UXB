@@ -1,4 +1,8 @@
-' ONCASE -- ON CASE: lists, gaps, CASE ELSE, no CASE ELSE, 0 and 255, nesting, EXIT
+' ONCASE -- ON CASE: lists, gaps, CASE ELSE, no CASE ELSE, 0 and 255, nesting, EXIT, and
+' the tables after a SUB left out
+SUB NEVER_CALLED()
+  PRINT "NEVER"
+ENDSUB
 DIM I AS UBYTE, J AS UBYTE
 FOR I = 0 TO 7
   ON CASE I
