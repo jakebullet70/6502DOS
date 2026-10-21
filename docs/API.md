@@ -46,7 +46,7 @@ Conventions:
 | `exec` | 25 | `$038B` | 4Bh | `r0` path<br>`r1` command tail, length-prefixed | none | 2, 3, 8, 11, 15, 21, 30 | yes |
 | `exit` | 26 | `$038E` | 4Ch | `A` exit code | none | 1 | yes |
 | `exitcode` | 27 | `$0391` | 4Dh | none | `A` exit code<br>`X` how it ended: 0 exit, 1 break, 2 disk error, 3 keep | none | yes |
-| `keep` | 28 | `$0394` | 31h | `A` exit code | none | none | no |
+| `keep` | 28 | `$0394` | 31h | `A` exit code | none | 1 | yes |
 | `bank_alloc` | 29 | `$0397` | 48h | `A` size in banks, 0 to count | `A` the first bank of the run, or the number of free banks | 8 | yes |
 | `bank_free` | 30 | `$039A` | 49h | `A` the first bank of the run | none | 9 | yes |
 | `getvect` | 31 | `$039D` | 35h | `A` vector: 0 the IRQ hook, 1 the break handler, 2 the disk error handler | `r0` address | 1 | no |
@@ -100,7 +100,7 @@ Conventions:
 - `exec`: Runs a program and returns when it ends. `exitcode` gives its code. The file starts with its load address, which must be $0801, and the rest loads at $0801. A program that starts with a BASIC line `SYS n` starts at n, any other at $0801. The program gets the command tail in its PSP at $0780: cut to 126 characters, and followed by a CR that the length does not count. Its handles are copies of the caller's. `exec` saves the caller's pages from $0700 to the page in its `PSP_TOP`, $0702, then its zero page from r0 to $7F, in a run of RAM banks from `bank_alloc`, and frees the run when the program ends. No free run gives error 8, and so does a fifth program inside 4.
 - `exit`: Ends the program and returns to its parent. `RTS` from the program's start is `exit` with code 0. Does not return, except with error 1 when no program is running.
 - `exitcode`: Gives the exit code of the last program that ended.
-- `keep`: Ends the program and keeps its RAM banks and its IRQ hook. Does not return.
+- `keep`: Ends the program as `exit` does, but keeps its RAM banks and its IRQ hook. Nothing frees the banks. Does not return, except with error 1 when no program is running.
 - `bank_alloc`: Hands out a run of 8 KB RAM banks that follow each other: the lowest run that is free. A size of 0 gives the number of free banks and hands out nothing. The banks belong to the running program, and `exit` frees them. Error 8 when no run of the size is free.
 - `bank_free`: Frees a run of banks from `bank_alloc`. Error 9 when A is not the first bank of a run of the running program.
 - `getvect`: Gives a handler address.

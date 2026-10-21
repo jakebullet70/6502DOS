@@ -3095,6 +3095,25 @@
           section 7: the save as a run, its size, the parent frees it, the depth; section 8:
           `MEM`; section 11 step 10; section 13: the allocator question is gone. No docs are
           owed for item 2. No build, no test. Steps since the full suite: 6.
+        - Done, 2e `keep` (2026-10-21; the user said go for the asm): call 28. `api_keep` in
+          `exec.s` gives the program's banks to `BANK_KEPT` (`$FE`, `mem.inc`), which nothing
+          frees, then ends as `exit` does with `exitcode` X = 3. `bank_exit` takes the new owner
+          in Y: 0 frees, `exec_unwind` passes 0. `keep` with no program running is error 1. The
+          kept program's handles close and its VARBANK strings drop, as with `exit`. The IRQ hook
+          waits for `setvect`. `tools/api.py`: call 28 written.
+          - ROM +18 bytes: `api_keep` 15, `ldy #0` 2, `tya`/`sta` for `stz` 1. `exit` +2 cycles,
+            plus 2 a freed bank. `keep` scans the owner table twice, about 8800 cycles.
+          - New test `KEEP` (`tests/KEEP.S`, `tests/com/KEEPKID.S`; `.IN` local): keep from the
+            monitor (error 1), a child keeps 2 banks (code 7, X = 3), the count stays 60 after
+            `BANKKID` exits at the same depth, `bank_free` of a kept bank (error 9).
+          - Build 1466 ms, the new baseline. Tests: `KEEP` ok 2.0 s, `BANKS` 0.4, `EXEC` 0.7.
+          - Full suite (step 7): 62 tests, 5 failed, 45.1 s. `FILES`, `HDIR`, `HDIRARG`, `TREE`:
+            the root gains `BANKKID.COM` and `KEEPKID.COM`, `C:\DOS` gains `MEM.SCOM`.
+            `CLOCKCMD`: `UPTIME` reads 6 s, not 5. Goldens regenerated, each diff only that;
+            each 2.0 s.
+          - Docs owed: PLAN section 3 (`keep is not written` in String heaps; `BANK_KEPT` in
+            Banked RAM), section 7's `keep` bullet, section 11 step 10. Item 2 is done. Steps
+            since the full suite: 0.
      3. UXCBASIC ROM-able output (PLAN section 12 item 6), then `CMDSHELL` in ROM banks (it is
         about 19 KB, so two banks). New commands stay `.SCOM` files on disk; a `BIND` alias
         can replace a ROM built-in. `CONFIG.SYS` `SHELL=` loads a disk shell instead.

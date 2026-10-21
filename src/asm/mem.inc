@@ -89,6 +89,7 @@ RENAME_PATH   = $AB00           ; $AB00-$ABFF: api_rename's new path
 BANK_OWNER    = $AC00           ; $AC00-$ACFF: the owner of each RAM bank (banks.s)
 BANK_SYSTEM   = $FF             ; BANK_OWNER: a kernel bank, or a bank the machine lacks
 BANK_FIRST    = $80             ; BANK_OWNER: the first bank of a run
+BANK_KEPT     = $FE             ; BANK_OWNER: a bank of a program that ended with keep
 
 ; Directory entry attributes
 ATTR_READ_ONLY = $01

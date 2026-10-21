@@ -205,9 +205,12 @@ CALLS = [
     call(27, "exitcode", 0x4D, "Gives the exit code of the last program that ended.",
          out=[("A", "exit code"), ("X", "how it ended: 0 exit, 1 break, 2 disk error, 3 keep")],
          written=True),
-    call(28, "keep", 0x31, "Ends the program and keeps its RAM banks and its IRQ hook. "
-         "Does not return.",
-         in_=[("A", "exit code")]),
+    call(28, "keep", 0x31, "Ends the program as `exit` does, but keeps its RAM banks and its "
+         "IRQ hook. Nothing frees the banks. Does not return, except with error 1 when no "
+         "program is running.",
+         in_=[("A", "exit code")],
+         errors=[1],
+         written=True),
     call(29, "bank_alloc", 0x48, "Hands out a run of 8 KB RAM banks that follow each other: "
          "the lowest run that is free. A size of 0 gives the number of free banks and hands out "
          "nothing. The banks belong to the running program, and `exit` frees them. Error 8 "

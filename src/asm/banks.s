@@ -3,7 +3,7 @@
 ; BANK_OWNER in RAM bank 0 holds a byte for each RAM bank: 0 when free, BANK_SYSTEM for the
 ; kernel's banks and the banks the machine lacks, else the exec depth of the program that took it
 ; plus 1. BANK_FIRST marks the first bank of a run bank_alloc handed out. exit frees the banks of
-; the program that ends.
+; the program that ends; keep marks them BANK_KEPT, which nothing frees.
 
 .setcpu "65C02"
 
@@ -133,7 +133,8 @@ api_bank_free:
         sec
         bra bank_done
 
-; bank_exit: frees the banks of the program at exec_depth. Selects RAM bank 0. Changes A and X.
+; bank_exit: gives the banks of the program at exec_depth to owner Y: 0 frees them, BANK_KEPT keeps
+; them. Selects RAM bank 0. Changes A and X.
 bank_exit:
         stz RAM_BANK
         ldx exec_depth
@@ -145,7 +146,8 @@ bank_exit:
         and #<~BANK_FIRST
         cmp bank_want
         bne @next
-        stz BANK_OWNER,x
+        tya
+        sta BANK_OWNER,x
 @next:
         inx
         bne @bank

@@ -2,7 +2,8 @@
 ;
 ; exec copies the parent's PSP, memory and zero page to RAM banks, gives the child copies of the
 ; parent's handles and the command tail in the same PSP, loads the program and calls its start.
-; exit, or RTS from the start, closes the child's handles and copies the parent back.
+; exit, or RTS from the start, closes the child's handles and copies the parent back. keep does
+; the same but keeps the child's banks.
 
 .setcpu "65C02"
 
@@ -10,7 +11,7 @@
 .include "api.inc"
 .include "far.inc"
 
-.export api_exec, api_exit, api_exitcode, exec_break
+.export api_exec, api_exit, api_exitcode, api_keep, exec_break
 .import handles_inherit, handles_close, heap_exec, heap_exit, CHROUT
 .import api_bank_alloc, api_bank_free, bank_exit
 .import jsrfar, bank0, lib_open, lib_read, lib_close
@@ -33,7 +34,7 @@ save_bank:    .res EXEC_LEVELS  ; the first bank of each level's save
 .segment "KERNELRAM"
 
 exec_result:  .res 1            ; exec_unwind: A to return
-exit_how:     .res 1            ; how the last program ended: 0 exit, 1 break
+exit_how:     .res 1            ; how the last program ended: 0 exit, 1 break, 3 keep
 exec_file:    .res 1            ; the program file's context in the FAT32 library
 
 .segment "CODE"
@@ -152,9 +153,20 @@ exec_bank:
         stx RAM_BANK
         rts
 
+api_keep:
+        ldy #BANK_KEPT
+        ldx exec_depth
+        beq exit_none
+        pha
+        jsr bank_exit           ; exec_unwind's bank_exit then finds none
+        pla
+        ldx #3                  ; ended by keep
+        bra exec_quit
+
 api_exit:
         ldx exec_depth
         bne exit_normal
+exit_none:
         lda #ERR_BAD_FUNCTION   ; no program to end
         sec
         rts
@@ -194,6 +206,7 @@ exec_unwind:
         php
         jsr handles_close
         jsr heap_exit
+        ldy #0                  ; free the child's banks
         jsr bank_exit
         dec exec_depth
         sec
