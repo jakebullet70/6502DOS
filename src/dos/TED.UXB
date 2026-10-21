@@ -10,6 +10,10 @@
 ' -- key other than Y or N goes back to the text.
 ' -- F1 or Ctrl+G shows the keys from C:\DOS\TED.HLP until a key is pressed; no TED.HLP
 ' -- shows File not found on the status row.
+' -- Shift+F1 asks DOS help on: on the status row, with the word at the cursor, its letters
+' -- and digits, as the topic. Enter clears the screen and runs C:\DOS\HELP.COM on the topic,
+' -- or with no topic, then waits for a key. Tab or an extended key goes back to the text. A
+' -- HELP.COM that does not run shows its error on the status row.
 ' -- Ctrl+C is a key, not the STOP key. A save writes TED.$$$ in the file's directory, then
 ' -- gives it the file's name, so a failed save keeps the file as it was. Lines end in CR LF,
 ' -- or in LF when the file's first line did.
@@ -51,7 +55,9 @@ CONST CTRL_C AS UBYTE = 3, LF AS UBYTE = 10, CTRL_Q AS UBYTE = 17, CTRL_S AS UBY
 CONST CTRL_G AS UBYTE = 7, CTRL_V AS UBYTE = 22, CTRL_X AS UBYTE = 24
 CONST PSP_TOP AS UWORD = $0702, POOL_END AS UWORD = $9700
 CONST CLIPBOARD AS UWORD = $9700, CLIP_SIZE AS UWORD = 2048
-CONST HELP_NAME$ = "C:\DOS\TED.HLP"
+CONST HELP_NAME$ = "C:\DOS\TED.HLP", HELP_PROGRAM$ = "C:\DOS\HELP.COM"
+' The page of $9EFF: exec saves the whole program area, the text and the clipboard with it.
+CONST LAST_PAGE AS UBYTE = $9E
 
 
 DIM FILE_NAME AS STRING * 80, STATUS AS STRING * 120, MESSAGE AS STRING * 40
@@ -475,6 +481,54 @@ END SUB
 
 
 
+' 1 when CHARACTER is a letter or a digit.
+FUNCT IS_WORD(CHARACTER AS UBYTE) AS UBYTE
+  IF CHARACTER >= ASC("a") THEN CHARACTER = CHARACTER - 32
+  IF CHARACTER >= ASC("A") AND CHARACTER <= ASC("Z") THEN RETURN 1
+  RETURN CHARACTER >= ASC("0") AND CHARACTER <= ASC("9")
+END FUNCT
+
+
+
+' Asks DOS help on: with the word at the cursor, then runs HELP_PROGRAM$ on it until a key is
+' pressed. CON_EDIT echoes Enter as CR LF, which scrolls the status row; the help clears the
+' screen after it. Trap: HELP.COM reads its topic from P1$, not from the command tail.
+SUB SHOW_DOS_HELP()
+  DIM TOPIC AS STRING * 20, START AS UWORD, FINISH AS UWORD
+  START = CURSOR
+  DO WHILE START > 0
+    IF IS_WORD(BYTE_AT(START - 1)) = 0 THEN EXIT DO
+    START = START - 1
+  LOOP
+  FINISH = CURSOR
+  DO WHILE FINISH < TEXT_LENGTH
+    IF IS_WORD(BYTE_AT(FINISH)) = 0 THEN EXIT DO
+    FINISH = FINISH + 1
+  LOOP
+  IF FINISH - START > 19 THEN FINISH = START + 19
+  TOPIC = ""
+  DO WHILE START < FINISH
+    TOPIC = TOPIC + CHR$(BYTE_AT(START))
+    START = START + 1
+  LOOP
+  CONS.LOCATE(STATUS_ROW, 0)
+  PRINT STATUS_COLORS$; "DOS help on: "; CONS.CLEAR_EOL$;
+  KEY = DOS.CON_EDIT(TOPIC)
+  PRINT CONS.NORMAL$;
+  IF KEY <> KEYS.ENTER THEN RETURN
+  PRINT CONS.CLEAR_SCREEN$;
+  HEAP.SYS_STRINGS_SET(SLOT_P1, TOPIC)
+  DOS.EXEC(HELP_PROGRAM$, " " + TOPIC)
+  IF DOS.ERROR <> 0 THEN
+    MESSAGE = DOS.ERRMSG(DOS.ERROR)
+  ELSE
+    KEY = WAITKEY()
+  END IF
+  NEED_PAGE = 1
+END SUB
+
+
+
 
 ' Sets CURSOR_COLUMN, and moves the page and the view sideways so the cursor shows. Asks for
 ' the page to be drawn again, or to move up one row when the cursor went one line below it.
@@ -706,6 +760,7 @@ END IF
 ' PSP_TOP holds the page of the program's end.
 POOL_START = ContentsAt(PSP_TOP)
 POOL_START = (POOL_START + 1) << 8
+ContentsAt(PSP_TOP) = LAST_PAGE
 QUIT = LOAD()
 IF QUIT <> 0 THEN END QUIT
 GAP_POSITION = TEXT_LENGTH
@@ -777,6 +832,8 @@ DO
       CURSOR = POSITION_AT(LINE_BEGIN, GOAL)
     CASE KEYS.KEY_F1
       SHOW_HELP()
+    CASE KEYS.KEY_SHIFT_F1
+      SHOW_DOS_HELP()
     CASE KEYS.KEY_DELETE
       IF SELECTION_END > SELECTION_BEGIN THEN
         REMOVE_PART(SELECTION_BEGIN, SELECTION_END)

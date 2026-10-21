@@ -18,5 +18,6 @@
  ^S                   Save
  ^Q                   Quit
  F1  ^G               This help
+ Shift+F1             DOS help on the word at the cursor
 
  Press a key to go back to the text.

@@ -3378,6 +3378,21 @@
         - `CMDSHELL.COM` stays on the card as the RAM build of the shell (the user's choice).
           `sd/CMDSHELL.TXT` says what it is. Build 1677 ms, the new baseline. A scratch boot
           types the file. No test ran. Steps since the full suite: 4.
+        - TED Shift+F1, DOS help (2026-10-21; the user picked a prompt filled with the word at
+          the cursor): `SHOW_DOS_HELP` takes the letters and digits around the cursor, at most
+          19, and asks `DOS help on:` on the status row through `DOS.CON_EDIT`. Enter clears the
+          screen, sets P1$ to the topic, since `HELP.COM` reads P1$ and not the tail, runs
+          `C:\DOS\HELP.COM` with `DOS.EXEC`, and waits for a key. An empty topic lists the
+          topics. Tab or an extended key goes back; Esc does not end a `CON_EDIT` line, so Esc
+          is not a cancel. TED sets `PSP_TOP` to `$9E` at start-up, so exec saves the text and
+          the clipboard (5 banks). TED.HLP gains a Shift+F1 row.
+          - `TED.COM` 11953 bytes, 1140 more: P1$ set 335, word scan 139, exec 144, CON_EDIT
+            58, topic build 71, prompt 36, error 33, the rest 296; the `PSP_TOP` store and the `CASE` 25. The text
+            pool loses the same.
+          - Build 2109 ms, the new baseline. `tests/TED.IN` gains a run: `mem.`, Left,
+            Shift+F1 shows MEM; Shift+F1 with the word erased lists the topics; Shift+F1, Tab
+            goes back. Golden regenerated, diffed: only the TED.HLP row and the new run. TED ok
+            2.5 s. Steps since the full suite: 5.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
