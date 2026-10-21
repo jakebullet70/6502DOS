@@ -85,6 +85,14 @@ CONST FLOW_SIZE AS UBYTE = 16
 DIM FLOW_LOW(16) AS UWORD, FLOW_HIGH(16) AS UWORD, FLOW_LINE(16) AS UWORD, FLOW_TIMES(16) AS UBYTE
 DIM FLOW_COUNT AS UBYTE
 
+' CALL: CALLED is set while a script that CALL started runs. The script that ran CALL is kept in
+' CALLER_PATH, CALLER_LOW, CALLER_HIGH, CALLER_LINE and CALLER_RESUMING, and goes on when the
+' called script ends. The called script's flow stack starts at FLOW_BASE, above the caller's
+' entries; FLOW_BASE is 0 otherwise.
+DIM CALLER_PATH AS STRING * 128
+DIM CALLER_LOW AS UWORD, CALLER_HIGH AS UWORD, CALLER_LINE AS UWORD
+DIM CALLER_RESUMING AS UBYTE, CALLED AS UBYTE, FLOW_BASE AS UBYTE
+
 ' IF: the left string of a comparison. SKIP_DEPTH counts the IF and REPEAT blocks open while a
 ' script's lines are skipped; 0 runs them. While lines are skipped, ENDIF and ENDREP each close
 ' a block of either kind.
@@ -113,7 +121,7 @@ DIM KEY_TYPED AS UWORD
 DIM MATCH_WANTED AS UBYTE, MATCH_SEEN AS UBYTE
 DIM MATCH_NAME AS STRING * 32
 ' The statements of RUN_LINE, for Tab, each followed by a space. A new statement goes here too.
-CONST BUILTIN_NAMES$ = "BEEP BIND CD CHDIR CLS COLOR COPY DEL DELETE DIR END ENDIF ENDREP FILES GOSUB GOTO IF INPUT LIST LOCATE MD MKDIR ONERROR PAUSE PRINT RD REM REN RENAME REPEAT RETURN RMDIR RUN SETSYS TYPE VER VERSION WAIT "
+CONST BUILTIN_NAMES$ = "BEEP BIND CALL CD CHDIR CLS COLOR COPY DEL DELETE DIR END ENDIF ENDREP FILES GOSUB GOTO IF INPUT LIST LOCATE MD MKDIR ONERROR PAUSE PRINT RD REM REN RENAME REPEAT RETURN RMDIR RUN SETSYS TYPE VER VERSION WAIT "
 
 ' The code of the character at CURSOR, or 0 past the end of the line.
 FUNCT CURRENT_CHAR() AS UBYTE
@@ -1006,8 +1014,8 @@ FUNCT FIND_PROGRAM() AS UBYTE
   RETURN 0
 END FUNCT
 
-' Starts the script PROGRAM_PATH at its first line, with ONERROR(0). The script that ran it
-' ends. A path without a drive takes the current drive and directory, so a CHDIR in the script
+' Starts the script PROGRAM_PATH at its first line, with ONERROR(0) and SCRIPT_LINE 0. The
+' script that ran it ends. A path without a drive takes the current drive and directory, so a CHDIR in the script
 ' keeps its file.
 ' Trap: a path with a drive and no root, C:NAME.CMD, is kept as it is.
 SUB START_SCRIPT()
@@ -1025,7 +1033,7 @@ SUB START_SCRIPT()
   SCRIPT_LINE = 0
   EMPTY_READ_AHEAD()
   RESUMING = 0
-  FLOW_COUNT = 0
+  FLOW_COUNT = FLOW_BASE
   SCRIPT_ACTIVE = 1
 END SUB
 
@@ -1095,7 +1103,7 @@ SUB CLOSE_SCRIPT()
 END SUB
 
 ' Copies the next line of the script into LINE_TEXT. The end of the file or an error ends the
-' script; an error is reported.
+' script; an error is reported, and ends the script that called it too.
 SUB READ_SCRIPT_LINE()
   DIM CODE AS UBYTE
   CODE = READ_NEXT_LINE()
@@ -1104,6 +1112,7 @@ SUB READ_SCRIPT_LINE()
   IF DOS.ERROR
     ContentsAt(@LINE_TEXT + 1) = 0
     SKIP_DEPTH = 0
+    CALLED = 0
     REPORT_DOS(DOS.ERROR)
   ENDIF
 END SUB
@@ -1153,6 +1162,33 @@ SUB RUN_PROGRAM()
   ' X = 1: Ctrl+C ended the program.
   SYS DOS.API_EXITCODE
   IF DOS.REG_X = 1 THEN STOPPED = 1
+END SUB
+
+' CALL name [arguments]: runs name as typing name does. A script called from a script runs, then the
+' calling script goes on at the line after the CALL, with its ONERROR and its flow stack. Its P1$
+' to P9$ are not restored. A CALL in a called script gives Insufficient memory.
+SUB DO_CALL()
+  IF CALLED
+    REPORT_DOS(DOS.ERR_NO_MEMORY)
+    RETURN
+  ENDIF
+  READ_ARGUMENT()
+  IF FAILED THEN RETURN
+  IF IN_SCRIPT
+    CALLER_PATH = SCRIPT_PATH
+    CALLER_LOW = SCRIPT_LOW
+    CALLER_HIGH = SCRIPT_HIGH
+    CALLER_LINE = SCRIPT_LINE
+    CALLER_RESUMING = RESUMING
+    FLOW_BASE = FLOW_COUNT
+    CALLED = 1
+  ENDIF
+  RUN_PROGRAM()
+  ' START_SCRIPT sets SCRIPT_LINE to 0. A script line is 1 or more.
+  IF SCRIPT_LINE
+    CALLED = 0
+    FLOW_BASE = 0
+  ENDIF
 END SUB
 
 ' ONERROR(1): an error in a script line goes on to the next line. ONERROR(0): an error ends
@@ -1248,7 +1284,7 @@ SUB DO_RETURN()
   IF FAILED THEN RETURN
   IF IN_SCRIPT = 0 THEN RETURN
   DO
-    IF FLOW_COUNT = 0
+    IF FLOW_COUNT = FLOW_BASE
       REPORT_ERROR("RETURN without GOSUB")
       RETURN
     ENDIF
@@ -1286,7 +1322,7 @@ SUB DO_ENDREP()
   IF IN_SCRIPT = 0 THEN RETURN
   TIMES = 0
   TOP = FLOW_COUNT - 1
-  IF FLOW_COUNT THEN TIMES = FLOW_TIMES(TOP)
+  IF FLOW_COUNT > FLOW_BASE THEN TIMES = FLOW_TIMES(TOP)
   IF TIMES = 0
     SYNTAX_ERROR()
     RETURN
@@ -1592,6 +1628,8 @@ SUB RUN_LINE()
         READ_ARGUMENT()
         IF FAILED THEN RETURN
         RUN_PROGRAM()
+      CASE "CALL"
+        DO_CALL()
       CASE "ONERROR"
         DO_ONERROR()
       CASE "GOTO"
@@ -1698,7 +1736,7 @@ SUB PRINT_PROMPT()
 END SUB
 
 ' Asks "Terminate CMD job (Y/N)?" until Y or N, in either case, and prints it. Ctrl+C counts as
-' Y. Y ends the script.
+' Y. Y ends the script, and the script that called it.
 SUB ASK_TERMINATE()
   DIM ANSWER AS UBYTE
   START_LINE()
@@ -1714,7 +1752,10 @@ SUB ASK_TERMINATE()
     PRINT
   LOOP
   PRINT CHR$(ANSWER)
-  IF ANSWER = 89 THEN SCRIPT_ACTIVE = 0
+  IF ANSWER = 89
+    SCRIPT_ACTIVE = 0
+    CALLED = 0
+  ENDIF
 END SUB
 
 ' Counts the match in MATCH_NAME. Returns 1 when it is match MATCH_WANTED.
@@ -1890,11 +1931,26 @@ RUNNING = 1
 PROGRAM_PATH = "C:\STARTUP.CMD"
 IF IS_FILE() THEN START_SCRIPT()
 DO WHILE RUNNING
+  IF SCRIPT_ACTIVE = 0 AND CALLED
+    ' The called script ended: the caller goes on at the line after its CALL.
+    SCRIPT_PATH = CALLER_PATH
+    SCRIPT_LOW = CALLER_LOW
+    SCRIPT_HIGH = CALLER_HIGH
+    SCRIPT_LINE = CALLER_LINE
+    RESUMING = CALLER_RESUMING
+    FLOW_COUNT = FLOW_BASE
+    FLOW_BASE = 0
+    CALLED = 0
+    SKIP_DEPTH = 0
+    EMPTY_READ_AHEAD()
+    SCRIPT_ACTIVE = 1
+  ENDIF
   IN_SCRIPT = SCRIPT_ACTIVE
   IF IN_SCRIPT
     READ_SCRIPT_LINE()
   ELSE
     SKIP_DEPTH = 0
+    FLOW_BASE = 0
     PRINT_PROMPT()
     PROMPT_COLUMN = POS(0)
     LINE_TEXT = ""
@@ -1921,6 +1977,7 @@ DO WHILE RUNNING
   IF IN_SCRIPT AND FAILED AND RESUMING = 0
     PRINT "in "; SCRIPT_PATH; " line "; MID$(STR$(SCRIPT_LINE), 2)
     SCRIPT_ACTIVE = 0
+    CALLED = 0
   ENDIF
   IF SCRIPT_ACTIVE
     POLL_BREAK()

@@ -95,9 +95,9 @@ WHERE name [SILENT]             (Command line or Script)
 The shell runs a line typed at the prompt, or a line of a script.
 The first word is a statement, an alias or a program. Case does not matter.
   The statements, each with its topic:
-  BEEP BIND CD CHDIR CLS COLOR COPY DEL DELETE DIR END ENDIF ENDREP FILES
-  GOSUB GOTO IF INPUT LIST LOCATE MD MKDIR ONERROR PAUSE PRINT RD REM REN
-  RENAME REPEAT RETURN RMDIR RUN SETSYS TYPE VER VERSION WAIT
+  BEEP BIND CALL CD CHDIR CLS COLOR COPY DEL DELETE DIR END ENDIF ENDREP
+  FILES GOSUB GOTO IF INPUT LIST LOCATE MD MKDIR ONERROR PAUSE PRINT RD REM
+  REN RENAME REPEAT RETURN RMDIR RUN SETSYS TYPE VER VERSION WAIT
   name = expression sets a variable. There is no LET.
   A program is a .SCOM, .COM or .CMD file. See HELP WHERE.
   See also HELP SCRIPTS, VARIABLES, EXPRESSIONS, REDIRECT and PROMPT.
@@ -110,7 +110,7 @@ A script is a text file NAME.CMD of shell lines. Typing NAME runs it.
   and ends the script. See HELP ONERROR.
   Ctrl+C asks Terminate CMD job (Y/N)? Y ends the script.
   A program run from a script goes back to it. A script run from a script
-  ends the first one.
+  ends the first one. CALL runs a script and goes back. See HELP CALL.
   A label is a name of 2 characters or more and a colon, on its own line.
   IF blocks, REPEAT, GOTO and GOSUB work only in a script.
 :VARIABLES
@@ -220,6 +220,17 @@ RUN name [arguments]            (Command line or Script)
   script ends there. name may be a string, so a variable can hold it.
   Example:
     RUN A$ DOCS\README.TXT
+:CALL
+CALL name [arguments]           (Command line or Script)
+  Runs the program or script name, as typing name does. A script called
+  from a script runs to its end or its END. Then the first script goes on
+  at the line after the CALL, with its ONERROR, GOSUBs and loops.
+  P1$ to P9$ hold the called script's words, not the first script's.
+  A called script cannot CALL. That gives Insufficient memory.
+  An error or Ctrl+C that ends the called script ends the first one too.
+  name may be a string, so a variable can hold it.
+  Example:
+    CALL BACKUP DOCS
 :FILES
 FILES [pattern]   or   DIR      (Command line or Script)
   Lists the names that match pattern, or the current directory. Each name

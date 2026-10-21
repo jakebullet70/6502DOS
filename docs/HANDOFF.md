@@ -3433,8 +3433,35 @@
           - Build 1804 ms, the new baseline. Goldens `CMDLETS` (tail put back by hand again)
             and `TED` regenerated, diffed: only the DISKFREE and MEM layout. `CMDLETS` ok
             2.3 s, `TED` ok 1.7 s. Steps since the full suite: 1.
-        - Open question, asked 2026-10-21: a `CALL` that runs a script and comes back, as
-          MS-DOS 3.3's does. Today a script run from a script ends the first one.
+        - `CALL` (2026-10-21; the user chose one level): `CALL name [arguments]` runs name
+          as typing it does. Called from a script, a script runs to its end or `END`, then the
+          caller goes on at the line after the `CALL` with its `ONERROR`, GOSUBs and loops.
+          `DO_CALL` keeps the caller in `CALLER_PATH`, `CALLER_LOW`, `CALLER_HIGH`,
+          `CALLER_LINE`, `CALLER_RESUMING`, and sets `FLOW_BASE` to `FLOW_COUNT` and `CALLED`
+          to 1. `START_SCRIPT` sets `FLOW_COUNT` to `FLOW_BASE`; `RETURN` and `ENDREP` stop at
+          `FLOW_BASE`. A script started sets `SCRIPT_LINE` to 0, so `DO_CALL` clears `CALLED`
+          and `FLOW_BASE` when `SCRIPT_LINE` is not 0 after `RUN_PROGRAM` (a program, or an
+          error). The main loop resumes the caller when `SCRIPT_ACTIVE` is 0 and `CALLED` is
+          set. An error not resumed, a read error and Ctrl+C's Y clear `CALLED`, so they end
+          both scripts; the prompt clears `FLOW_BASE`. A `RUN` or a script name in the called
+          script chains, and the caller still resumes. A `CALL` in a called script gives
+          Insufficient memory. P1$ to P9$ are not restored.
+          - Cost: `CMDSHELL.COM` 22376 bytes, +328. RAM about 140 bytes (`CALLER_PATH` 128,
+            3 words, 3 bytes). Banks after: bank 3 16152 bytes used, 113 free; bank 4 7316,
+            8949 free. The main loop's check costs a few cycles a line.
+          - `HELP.TXT`: topic CALL after RUN; SHELL's statement list and SCRIPTS name it. 67
+            topics, 17666 bytes. `BUILTIN_NAMES$` gains `CALL` for Tab.
+          - New scripts `tests/sd/SCRIPTS/CALLS.CMD`, `CALLED.CMD`, `CALLERR.CMD`; new test
+            `SHCALL` (`.IN` and golden local): CALL within REPEAT and after GOSUB, the called
+            script's RETURN, ENDREP and nested CALL refused, the caller's loop going on, a
+            chain inside a called script, CALL of a missing name, an error in a called script
+            under the caller's `ONERROR 1`, CALL at the prompt, `DEEP` still 17 deep.
+          - Build 2881 ms (the shell recompiled), the new baseline. `SHCALL` ok 1.0 s,
+            `SHGOTO` 0.7, `SHREPEAT` 0.6, `SHSCRIPT` 0.9, `SHBREAK` 0.5, `SHTAB` 0.8.
+            `CMDLETS` and `TED` failed on the SD's free space (689 to 686 KB) and the topic
+            list; their goldens are the previous ones with those changes, as `--update` cut
+            both short. `TREE` gains the 3 scripts. `CMDLETS` ok 2.5 s, `TED` 1.9 s, `TREE`
+            1.7 s. Steps since the full suite: 2.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
