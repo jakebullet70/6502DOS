@@ -10,7 +10,7 @@
 .export boot_shell, irq
 .exportzp ticks
 
-.define SHELL_PATH "C:\CMDSHELL.COM"
+.define SHELL_PATH "C:\ROMSHELL.COM"   ; starts the shell in ROM banks 3 and 4
 
 .segment "KERNELZP" : zeropage
 
