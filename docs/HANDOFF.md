@@ -3425,6 +3425,16 @@
             topic list. `CMDLETS` ok 2.4 s, `TED` ok 1.8 s.
           - Full suite: 63 tests, 0 failed, 64.2 s; the slowest `CMDLETS` 2.7 s. Steps since
             the full suite: 0.
+        - Help examples (2026-10-21; the user saw HELP BIND's examples read as prose): every
+          topic's examples sit at its end under `Example:` or `Examples:`, indented 4. The
+          seven `SILENT` topics keep `At the prompt:` and `In a script:` as labels on their own
+          lines. HELP's and PROMPT's examples moved to the end; BIND says "After BIND H = HELP,
+          typing H IF runs HELP IF."; EXIST's header lines up. 17049 bytes, from 16424.
+          - Build 1804 ms, the new baseline. Goldens `CMDLETS` (tail put back by hand again)
+            and `TED` regenerated, diffed: only the DISKFREE and MEM layout. `CMDLETS` ok
+            2.3 s, `TED` ok 1.7 s. Steps since the full suite: 1.
+        - Open question, asked 2026-10-21: a `CALL` that runs a script and comes back, as
+          MS-DOS 3.3's does. Today a script run from a script ends the first one.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
