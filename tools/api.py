@@ -190,9 +190,9 @@ CALLS = [
          "$0801. The program gets the command tail in its PSP at $0780: cut to 126 characters, "
          "and followed by a CR that the length does not count. Its handles are copies of the "
          "caller's. `exec` saves the caller's pages from $0700 to the page in its `PSP_TOP`, "
-         "$0702, then its zero page from r0 to $7F, in RAM banks 1 to 10, right after the "
-         "save of the program that ran the caller. A save that does not fit gives error 8, and "
-         "so does a fifth program inside 4.",
+         "$0702, then its zero page from r0 to $7F, in a run of RAM banks from `bank_alloc`, and "
+         "frees the run when the program ends. No free run gives error 8, and so does a fifth "
+         "program inside 4.",
          in_=[("r0", "path"), ("r1", "command tail, length-prefixed")],
          errors=[2, 3, 8, 11, 15, 21, 30],
          written=True),

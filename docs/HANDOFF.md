@@ -3039,6 +3039,28 @@
             `BOOT` 0.3. Docs owed: PLAN section 3 (the owner table, the probe, the run calls,
             bank 0 not bank 1), section 4's row, section 11 step 10 in part. Steps since the
             full suite: 2.
+        - Done, 2b (2026-10-21; the user said go): each `exec` save is its own run from
+          `bank_alloc`, (`PSP_TOP` - `>PSP` + 2 pages + 31) / 32 banks, from `$A000` of its first
+          bank; no packing. `save_bank` (KERNELZP, `EXEC_LEVELS` bytes) holds each level's first
+          bank; `save_page` and `next_page` are gone (the page step is inline). The save is
+          tagged as the parent's (`exec_depth` + 1 before the `inc`), so the parent's
+          `bank_free` frees it at the end of the copy back, in `parent_copy`. No free run gives
+          error 8. `SAVE_BANKS` is gone; VARBANK stays 11 (`= 11` in `mem.inc`). `bank_init`
+          frees banks 1 to the top and marks VARBANK system: 62 free on x16emu. A full save
+          takes 5 banks, boot's shell save 1. The depth is now bound by `EXEC_LEVELS` (4).
+          - CODE +11 B, KERNELZP -6 B (now `$80-$DE`). A save or copy back costs about 14
+            cycles a page less (no `jsr next_page`), plus the scan of `bank_alloc`.
+          - `tools/api.py`: `exec` says a run from `bank_alloc`.
+          - Goldens: `BANKS` (new bank numbers; the save takes 12 to 16), `EXEC` (the `N`
+            chain is 4 deep, exitcode 11; X after `exec` is now the bank after the freed run),
+            `HEAP` and `ENDCODE` (X only). `tests/BANKS.S` and `tests/EXEC.S` comments updated.
+          - `str_heap` still refuses banks below VARBANK (`HEAP.S` result 10, bank 5): 2c.
+          - Trap: a test whose output departs from its golden shows "got" cut at the first
+            differing line, which looks like a hang after `G 1000`. Run `--update` and diff.
+          - Build 1847 ms, the new baseline. Tests: `BANKS` ok 0.4 s, `EXEC` 0.8, `HEAP` 0.5,
+            `ENDCODE` 0.6, `BOOT` 0.4, `SHELL` 0.5. Docs owed: as 2a, plus PLAN section 3's map
+            rows for banks 1 to 10, section 7's packed save (now runs), section 13's allocator
+            question (answered). Steps since the full suite: 3.
      3. UXCBASIC ROM-able output (PLAN section 12 item 6), then `CMDSHELL` in ROM banks (it is
         about 19 KB, so two banks). New commands stay `.SCOM` files on disk; a `BIND` alias
         can replace a ROM built-in. `CONFIG.SYS` `SHELL=` loads a disk shell instead.

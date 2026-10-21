@@ -11,7 +11,8 @@
 .include "far.inc"
 
 .export api_exec, api_exit, api_exitcode, exec_break
-.import handles_inherit, handles_close, heap_exec, heap_exit, bank_exit, CHROUT
+.import handles_inherit, handles_close, heap_exec, heap_exit, CHROUT
+.import api_bank_alloc, api_bank_free, bank_exit
 .import jsrfar, bank0, lib_open, lib_read, lib_close
 .importzp file_size, saved_bank
 .exportzp exec_depth
@@ -24,11 +25,10 @@ PROGRAM_SIZE  = PROGRAM_END + 1 - PROGRAM
 exec_depth:   .res 1            ; the programs running under exec, 0 to EXEC_LEVELS
 exit_code:    .res 1            ; the code of the last program that ended
 copy_low:     .res 2            ; parent_copy: a page from PSP to PROGRAM_END
-copy_high:    .res 2            ; parent_copy: a page of the save banks
+copy_high:    .res 2            ; parent_copy: a page of the save
 copy_back:    .res 1            ; parent_copy: bit 7 set to copy to the parent
 exec_entry:   .res 2            ; the load address, then the program's start
-save_bank:    .res EXEC_LEVELS + 1 ; where the save of each level starts: the bank - 1
-save_page:    .res EXEC_LEVELS + 1 ; and the page EOR >BANKED_RAM; reset zeroes level 0's
+save_bank:    .res EXEC_LEVELS  ; the first bank of each level's save
 
 .segment "KERNELRAM"
 
@@ -113,7 +113,7 @@ api_exec:
 @bad_format:
         lda #ERR_BAD_FORMAT
         bra @refused
-@full:                          ; the save banks are full
+@full:                          ; no run of banks for the save
         pla
         sta RAM_BANK
 @too_big:
@@ -300,17 +300,32 @@ find_start:
 
 ; parent_copy: copies the pages from PSP to PSP_TOP, at most to PROGRAM_END, then a page of r0
 ; to PROGRAM_ZP_END, to the save of level exec_depth with carry clear, or back from it with
-; carry set. Sets the start of the next level's save to the page after. The copy back restores
-; the PSP first, so PSP_TOP is the parent's from the second page on. Returns carry set when the
-; save does not fit in the save banks. Changes A, X, Y and RAM_BANK.
+; carry set. A save takes a run of banks from bank_alloc, and the copy back frees it. The copy
+; back restores the PSP first, so PSP_TOP is the parent's from the second page on. Returns carry
+; set when no run is free. Changes A, X, Y and RAM_BANK.
 parent_copy:
         ror copy_back
+        bmi @bank
+        lda PSP_TOP             ; the banks of PSP_TOP - >PSP + 2 pages, rounded up
+        clc
+        adc #32 + 1 - >PSP
+        ror
+        lsr
+        lsr
+        lsr
+        lsr
+        bne @take
+        inc                     ; PSP_TOP below PSP: one page, then the zero page
+@take:
+        jsr api_bank_alloc
+        bcs @full
+        ldx exec_depth
+        sta save_bank,x
+@bank:
         ldx exec_depth
         lda save_bank,x
-        inc
         sta RAM_BANK
-        lda save_page,x
-        eor #>BANKED_RAM
+        lda #>BANKED_RAM
         sta copy_high+1
         stz copy_low
         stz copy_high
@@ -333,8 +348,14 @@ parent_copy:
         bne @back
 @next:
         inc copy_low+1
-        jsr next_page
-        bcs @full               ; only a save: a copy back fits
+        inc copy_high+1
+        lda copy_high+1
+        cmp #>ROM
+        bne @in_bank
+        lda #>BANKED_RAM
+        sta copy_high+1
+        inc RAM_BANK
+@in_bank:
         lda copy_low+1
         cmp #>(PROGRAM_END + 1)
         beq @zero_page
@@ -355,33 +376,13 @@ parent_copy:
 @zp_next:
         iny
         bpl @zp
-        jsr next_page           ; a copy back writes the same start again
-        lda RAM_BANK
-        dec
-        sta save_bank+1,x
-        lda copy_high+1
-        eor #>BANKED_RAM
-        sta save_page+1,x
+        bit copy_back
+        bpl @saved
+        lda save_bank,x
+        jmp api_bank_free       ; carry clear
+@saved:
         clc
 @full:
         rts
         .assert PROGRAM_ZP_END = $7F, error, "parent_copy ends the zero page with BPL"
         .assert <PSP = 0 && <(PROGRAM_END + 1) = 0, error, "parent_copy copies whole pages"
-        .assert >(PROGRAM_END + 1) - >PSP < SAVE_BANKS * 32, error, "a full save fits the save banks"
-        .assert VARBANK <= 64, error, "the save banks pass 512 KB"
-
-; next_page: moves copy_high to the next page of the save banks. Returns carry set when that page
-; is in VARBANK. Changes A and RAM_BANK.
-next_page:
-        inc copy_high+1
-        lda copy_high+1
-        cmp #>ROM
-        clc
-        bne @done
-        lda #>BANKED_RAM
-        sta copy_high+1
-        inc RAM_BANK
-        lda RAM_BANK
-        cmp #VARBANK
-@done:
-        rts

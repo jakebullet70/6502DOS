@@ -1,6 +1,7 @@
-; BANKS: the bank allocator, bank_alloc and bank_free, on x16emu's 64 banks: banks 12 to 63 are
-; free at boot. tests/com/BANKKID.S takes banks and exits without freeing them. Keeps each call's
-; A, carry and X at RESULTS, 3 bytes a call, for BANKS.IN to dump.
+; BANKS: the bank allocator, bank_alloc and bank_free, on x16emu's 64 banks: banks 1 to 10 and
+; 12 to 63 are free at boot. exec takes its save from them. tests/com/BANKKID.S takes banks and
+; exits without freeing them. Keeps each call's A, carry and X at RESULTS, 3 bytes a call, for
+; BANKS.IN to dump.
 
 .setcpu "65C02"
 
@@ -19,21 +20,21 @@ RESULTS = $1200
 .endmacro
 
         stz index
-        lda #0                  ; 1: the free count: 52
+        lda #0                  ; 1: the free count: 62
         jsr alloc
-        lda #1                  ; 2: one bank: 12
+        lda #1                  ; 2: one bank: 1
         jsr alloc
-        lda #3                  ; 3: three: 13
+        lda #3                  ; 3: three: 2
         jsr alloc
-        lda #1                  ; 4: one: 16
+        lda #1                  ; 4: one: 5
         jsr alloc
-        lda #14                 ; 5: not the first of a run: error 9
+        lda #3                  ; 5: not the first of a run: error 9
         jsr free
-        lda #13                 ; 6: 13 to 15
+        lda #2                  ; 6: 2 to 4
         jsr free
-        lda #0                  ; 7: 50
+        lda #0                  ; 7: 60
         jsr alloc
-        lda #2                  ; 8: two: 13, then 17 past the lone 15
+        lda #2                  ; 8: two: 2, then 6 past the lone 4
         jsr alloc
         lda #2
         jsr alloc
@@ -45,21 +46,22 @@ RESULTS = $1200
         jsr free
         lda #200                ; 10: too many: error 8
         jsr alloc
-        lda #0                  ; 11: 46
+        lda #0                  ; 11: 56
         jsr alloc
-        point r0, kid           ; 12: BANKKID takes 19 and 20, then 15, and exits with 19
+        point r0, kid           ; 12: the save takes 12 to 16; BANKKID takes 8 and 9,
+                                ; then 4, and exits with 8
         point r1, empty
         jsr API_EXEC
         jsr save
         jsr API_EXITCODE
         jsr save
-        lda #0                  ; 13: exit freed them: 46
+        lda #0                  ; 13: exit freed them and the save: 56
         jsr alloc
-        lda #1                  ; 14: 15
+        lda #1                  ; 14: 4
         jsr alloc
-        lda #12                 ; 15: free 12, then again: error 9
+        lda #1                  ; 15: free 1, then again: error 9
         jsr free
-        lda #12
+        lda #1
         jsr free
         rts
 

@@ -20,10 +20,9 @@ bank_want:    .res 1            ; bank_alloc: the length of the run; bank_exit: 
 
 .segment "CODE"
 
-; bank_init: marks bank 0, the save banks and VARBANK as the system's, the banks after them as
-; free, and the banks the machine lacks as the system's. A machine has 64, 128 or 256 banks. Bank
-; 64 or 128 is missing when a byte written to it reads back wrong or lands in bank 0. Needs RAM
-; bank 0 selected. Changes A, X and Y.
+; bank_init: marks bank 0, VARBANK and the banks the machine lacks as the system's, the other banks
+; as free. A machine has 64, 128 or 256 banks. Bank 64 or 128 is missing when a byte written to it
+; reads back wrong or lands in bank 0. Needs RAM bank 0 selected. Changes A, X and Y.
 bank_init:
         stz BANK_OWNER          ; bank 0's probe byte
         lda #64
@@ -50,10 +49,12 @@ bank_init:
 @free:
         dex
         stz BANK_OWNER,x
-        cpx #VARBANK + 1
-        bne @free
+        cpx #2
+        bcs @free
+        lda #BANK_SYSTEM
+        sta BANK_OWNER + VARBANK
         rts
-        .assert VARBANK < 63, error, "bank_init frees banks from VARBANK + 1 up"
+        .assert VARBANK < 64, error, "VARBANK is on every machine"
 
 ; api_bank_alloc: takes the lowest run of A free banks. A = 0 counts the free banks instead.
 api_bank_alloc:

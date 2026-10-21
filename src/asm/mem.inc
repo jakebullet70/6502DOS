@@ -52,17 +52,16 @@ COMMAND_TAIL  = $0780           ; a length byte, then the text after the program
 TAIL_MAX      = 126             ; the longest command tail
 PROGRAM       = $0801           ; $0801-$9EFF: the program
 PROGRAM_END   = $9EFF
-; exec saves the parent's pages from PSP to PSP_TOP, then a page of r0 to PROGRAM_ZP_END, to the
-; save banks 1 to SAVE_BANKS, right after the save of the level before. EXEC_LEVELS programs run
-; one inside another at most, while the saves fit.
+; exec saves the parent's pages from PSP to PSP_TOP, then a page of r0 to PROGRAM_ZP_END, to a
+; run of banks from bank_alloc. EXEC_LEVELS programs run one inside another at most, while the
+; saves fit.
 PROGRAM_ZP_END = $7F
-SAVE_BANKS    = 10
 EXEC_LEVELS   = 4
 BANKED_RAM    = $A000           ; $A000-$BFFF, the bank in RAM_BANK
 ROM           = $C000           ; $C000-$FFFF, the bank in ROM_BANK
 
 ; A string heap (strings.s): a RAM bank of string blocks. VARBANK is the shared one.
-VARBANK       = 1 + SAVE_BANKS
+VARBANK       = 11
 HEAP_BUMP     = $A000           ; the address of the next block
 HEAP_FLOORS   = $A002           ; a word for each exec depth: the lowest block GC moves
 HEAP_SYSTEM   = $A00C           ; VARBANK: the system descriptors, SYSTEM_STRINGS words
