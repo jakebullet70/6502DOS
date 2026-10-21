@@ -60,10 +60,11 @@ UPTIME [SILENT]                 (Command line or Script)
 :MEM
 MEM [SILENT]                    (Command line or Script)
   Tells the free 8 KB RAM banks, such as 53 banks free, 424 KB.
-  Sets P1$ to the number of free banks.
+  Tells the free low RAM, the program area: 38655 bytes low RAM free.
+  Sets P1$ to the number of free banks and P2$ to the free low RAM bytes.
   At the prompt: MEM
   In a script:   MEM SILENT
-                 PRINT "Free banks: " + P1$
+                 PRINT "Free banks: " + P1$ + ", low RAM: " + P2$
 :WHERE
 WHERE name [SILENT]             (Command line or Script)
   Tells the path of the program the shell runs for name.
