@@ -297,9 +297,10 @@ CALLS = [
          out=[("r0", "free bytes")],
          written=True),
     call(45, "str_heap", None, ("Chooses the program's string heap. Bank 11 is the shared heap, "
-          "every program's at its start. A higher bank becomes a new, empty heap whose blocks "
-          "start at r0; the bytes from $A00C to r0 are the program's."),
-         in_=[("A", "bank, 11 or higher"), ("r0", "the first block, $A00C or higher; not for bank 11")],
+          "every program's at its start. Any other bank must be one the program took from "
+          "`bank_alloc`; it becomes a new, empty heap whose blocks start at r0, and the bytes "
+          "from $A00C to r0 are the program's."),
+         in_=[("A", "bank: 11, or a bank of the program's"), ("r0", "the first block, $A00C or higher; not for bank 11")],
          errors=[9],
          written=True),
     call(46, "con_colour", None, ("Gets the console color with carry set, sets it with carry clear. "

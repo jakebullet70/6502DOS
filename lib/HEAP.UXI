@@ -41,8 +41,8 @@ NAMESPACE HEAP
     RETURN DOS.R0
   END FUNCT
 
-  ' Makes BANK the program's heap. A bank above VARBANK becomes an empty heap whose blocks
-  ' start at FIRST.
+  ' Makes BANK the program's heap. Any bank but VARBANK must be one the program took with
+  ' DOS.API_BANK_ALLOC; it becomes an empty heap whose blocks start at FIRST.
   SUB STR_HEAP(BANK AS UBYTE, FIRST AS UWORD)
     DOS.REG_A = BANK
     DOS.R0 = FIRST
@@ -102,7 +102,7 @@ NAMESPACE HEAP
 
   ' Sets the string of system descriptor SLOT, 0 to 31, to TEXT, in VARBANK whichever bank is
   ' the program's heap. Trap: STR_HEAP can not switch back to a program's own bank, as it
-  ' empties a bank above VARBANK, so this sets and restores PSP_HEAP itself.
+  ' empties any bank but VARBANK, so this sets and restores PSP_HEAP itself.
   SUB SYS_STRINGS_SET(SLOT AS UBYTE, TEXT AS STRING)
     DIM HEAP AS UBYTE
     HEAP = ContentsAt(PSP_HEAP)

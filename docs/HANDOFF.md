@@ -3061,6 +3061,21 @@
             `ENDCODE` 0.6, `BOOT` 0.4, `SHELL` 0.5. Docs owed: as 2a, plus PLAN section 3's map
             rows for banks 1 to 10, section 7's packed save (now runs), section 13's allocator
             question (answered). Steps since the full suite: 3.
+        - Done, 2c (2026-10-21; the user said go): `str_heap` takes bank 11 as before; any
+          other bank must have `BANK_OWNER` & ~`BANK_FIRST` = `exec_depth` + 1 (a bank of any
+          run the program took), else error 9. It reads `BANK_OWNER` with `RAM_BANK` 0 and puts
+          the caller's back by hand, not by `bank0`.
+          - CODE +18 B. Not checked: a program that frees its heap's bank keeps `PSP_HEAP` on
+            it until its exit.
+          - `tests/HEAP.S` takes its bank from `bank_alloc` (`heap` at `$54`, one result more)
+            in place of bank 22. Result 10 (bank 5) is a free bank, still error 9. Golden:
+            `bank_alloc` gives 1, `str_alloc` A = 1, the results after it shift 3 bytes; SNAP3
+            is the same. `tools/api.py` `str_heap` text and the `lib/HEAP.UXI` comments updated.
+          - Trap: `git stash` then `build.py` regenerates `docs/API.md` from the stashed
+            `api.py`, and `stash pop` then refuses. `git checkout -- docs/API.md`, then pop.
+          - Build 1414 ms, the new baseline. Test: `HEAP` ok 0.7 s. Docs owed: as 2b, plus PLAN
+            section 3's `str_heap` rule. Item 2 left: `MEM`, `keep`. Steps since the full
+            suite: 4.
      3. UXCBASIC ROM-able output (PLAN section 12 item 6), then `CMDSHELL` in ROM banks (it is
         about 19 KB, so two banks). New commands stay `.SCOM` files on disk; a `BIND` alias
         can replace a ROM built-in. `CONFIG.SYS` `SHELL=` loads a disk shell instead.

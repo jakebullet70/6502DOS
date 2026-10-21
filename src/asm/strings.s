@@ -190,12 +190,21 @@ api_str_gc:
 
 api_str_heap:
         cmp #VARBANK
-        bcc bad_block
+        bne @own
         sta PSP_HEAP
-        bne @fill
         clc
         rts
-@fill:
+@own:                           ; a bank of a run the program took from bank_alloc
+        tax
+        ldy RAM_BANK
+        stz RAM_BANK
+        lda BANK_OWNER,x
+        sty RAM_BANK
+        and #<~BANK_FIRST
+        dec
+        cmp exec_depth
+        bne bad_block
+        stx PSP_HEAP
         jsr heap_bank
         jsr heap_fill
         clc

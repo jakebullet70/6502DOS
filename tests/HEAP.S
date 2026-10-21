@@ -1,5 +1,5 @@
 ; HEAP: the string heap calls str_alloc, str_free, str_gc and str_heap, in VARBANK and in a
-; program's own bank, and the floor and the drop that exec and exit give VARBANK, with
+; bank the program takes from bank_alloc, and the floor and the drop that exec and exit give VARBANK, with
 ; tests/com/HEAPKID.S. Keeps each call's A, carry and X at RESULTS, 3 bytes a call, and copies
 ; of the heaps' first $78 bytes at SNAP1 to SNAP3, for HEAP.IN to dump.
 
@@ -15,13 +15,14 @@ r3      = $08
 first   = $50                   ; a descriptor in the zero page
 index   = $52                   ; the offset of the next result
 count   = $53
+heap    = $54                   ; the bank from bank_alloc
 RESULTS = $1800
 SNAP1   = $1900                 ; VARBANK after HEAPKID
 SNAP2   = $1980                 ; VARBANK after str_gc
-SNAP3   = $1A00                 ; bank 22
+SNAP3   = $1A00                 ; the program's bank
 second  = $1A80                 ; a descriptor in program RAM
 stale   = $1A82                 ; a descriptor whose block is not its own
-many    = $1B00                 ; 40 descriptors in bank 22
+many    = $1B00                 ; 40 descriptors in the program's bank
 VARBANK = 11
 SYSTEM  = $A00C                 ; the first system descriptor of VARBANK
 
@@ -104,10 +105,13 @@ SYSTEM  = $A00C                 ; the first system descriptor of VARBANK
         point r3, SNAP2
         lda #VARBANK
         jsr snap
-        lda #5                  ; 10: a save bank: error 9
+        lda #5                  ; 10: a bank not the program's: error 9
         jsr API_STR_HEAP
         jsr save
-        lda #22                 ; 11: bank 22, cleared, blocks from $A010
+        lda #1                  ; 11: a bank from bank_alloc, cleared, blocks from $A010
+        jsr API_BANK_ALLOC
+        jsr save
+        sta heap
         sta RAM_BANK
         ldy #0
 @clear:
@@ -117,10 +121,10 @@ SYSTEM  = $A00C                 ; the first system descriptor of VARBANK
         bne @clear
         stz RAM_BANK
         point r0, $A010
-        lda #22
+        lda heap
         jsr API_STR_HEAP
         jsr save
-        point r0, $A00C         ; a descriptor in bank 22: A = 22, r1 = $A012
+        point r0, $A00C         ; a descriptor in the bank: A = the bank, r1 = $A012
         lda #2
         jsr API_STR_ALLOC
         jsr save
@@ -133,7 +137,7 @@ SYSTEM  = $A00C                 ; the first system descriptor of VARBANK
         lda #255
         jsr API_STR_ALLOC
         bcs @full
-        lda #22                 ; the first text byte: the count
+        lda heap                ; the first text byte: the count
         sta RAM_BANK
         lda count
         ldy #1
@@ -158,13 +162,13 @@ SYSTEM  = $A00C                 ; the first system descriptor of VARBANK
         lda many+2              ; the second string moved to $A015: its descriptor $A017,
         ldx many+3              ; its first text byte 1
         jsr save
-        lda #22
+        lda heap
         sta RAM_BANK
         lda $A018
         stz RAM_BANK
         jsr save
         point r3, SNAP3
-        lda #22
+        lda heap
         jsr snap
         lda #VARBANK            ; 14: back to VARBANK
         jsr API_STR_HEAP
