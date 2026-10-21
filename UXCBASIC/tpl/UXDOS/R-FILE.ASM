@@ -39,10 +39,9 @@ open    jsr API_OPEN
 create  lda #0                  ; no attributes
         jsr API_CREATE
         bcs fail
-        bra handle              ; a new file needs no seek
 opened  bit ZP_TMP
         bmi handle              ; read
-        phx                     ; append: to the end
+        phx                     ; write and append: to the end, which is 0 for a new file
         stz API_R0
         stz API_R0+1
         stz API_R1

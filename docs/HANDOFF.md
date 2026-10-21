@@ -3183,6 +3183,11 @@
             missing file (checked by reading). Steps since the full suite: 3.
           - Docs owed: PLAN line 1251 and UXCBASIC PLAN line 1493 still say `OPEN` passes the
             mode letter.
+        - Done, 3b3 (2026-10-21; the user said go, asm ok): `R_FILE` drops `bra handle`, so a
+          made file is sought to its end too (offset 0, one more API call per `O.WRITE`).
+          `R_FILE` 2 bytes fewer (table 6683), the 6 programs with `OPEN` 2 bytes each. Build
+          5136 ms, the new baseline. Tests: `FILEW` ok 0.7 s, `FILEB` 0.5, `FILEERR` 0.5.
+          Steps since the full suite: 4.
           - Left for 3b: audit other routines that change a string in place for a moment.
           - Left for 3c (asm): a UXCBASIC program in ROM bank 3, with the `$FFA0` IRQ entry,
             the `$FFFA` vectors and a COM stub as `MSBASIC.COM` has. 3d: `CMDSHELL.COM` is
