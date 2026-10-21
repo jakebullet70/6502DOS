@@ -129,9 +129,7 @@ done    lda ZP_TMP
 
 ; The high words of the expression stack: R_ESTKH,x is the high word of the LONG at ESTK,x.
 R_ESTKH .block
-        #tpl
-        .fill 32
-        #endtpl
+        #data 32, 0
         .endblock
 
 ; A/Y/ZP_HI = 0 - A/Y/ZP_HI

@@ -3139,6 +3139,35 @@
             `R_KEY.mods` 1, `R_PRLONG.buffer` 13, `S_CHROUT` `got`/`out` (`out` starts at
             `STDOUT`), `S_CHRIN` `next`/`line` 84, `R_FIN.got`), and 6502DOS `R_FILE`'s
             `dec`/`inc` of a name's length byte, which is a literal for `OPEN("X", ...)`.
+        - Done, 3b1 (2026-10-21; the user said "go asm"): no runtime record writes its own
+          code.
+          - Data records (`tpl/MACROS.ASM`): `#data size, zero` writes `.byte size, $FE +
+            zero` and no code. Fields are `=` names in the `.block`. `#recdw` is a data word
+            holding another record's address. MKTPL reads them (fixup count 254 or 255).
+          - pyuxc: `rt_close` adds every record a used record names, before the startup, so
+            the data records are known (`g.rt_dn_all`). They follow the temp pools, outside
+            the file; `T_TOP` covers them. `rt_data_zero` emits `T_STZ` (new, `stz abs`) for
+            each one with zero = 1. `rt_data_place` sets their addresses after the layout; a
+            data record that joins later is `DATA RECORD LINKED LATE`. `dd_runtime_bytes`
+            skips them.
+          - Records: `R_ESTKH` data 32. New data `R_KEYMODS` 1 (zeroed), `R_LBUF` 13 (for
+            `R_PRLONG`), `R_LINE` 84 (`next` zeroed, `line`; for `S_CHRIN`). `ZP_OUT` `$2B`
+            (the output handle; `S_INIT` sets `STDOUT`, `chkout`/`clrchn` write it) and
+            `ZP_GOT` `$2E` (the byte `S_CHROUT` writes and `R_FIN.getc` reads; `r0` points
+            at it, no address word).
+          - Sizes, 103 programs against 3a: every one smaller, 1671 bytes in all. 58 by 8
+            (`S_CHROUT` 11 fewer, `R_PRSTR` 1 fewer, `S_INIT` 4 more), INPUT ones by 89 to
+            102, LONG print by 53, files by 17 or 18, `KEYMODS` users by 5 or 6.
+            `CMDSHELL.COM` 22048 (8 fewer). 6502DOS table 6866 to 6701 bytes. Cycles:
+            `S_CHROUT` 9 fewer a character, `R_PRSTR` 1 fewer a string, `getc` 7 fewer a
+            byte. Startup: 4 more each zeroed data record, 5 for `S_INIT`.
+          - Checked by hand: `INPUT1` stores 0 at `$0BC8` (`R_LINE`, past the file's end
+            `$0AAB`), and `PSP_TOP` gets page `$0C`.
+          - Build 4258 ms, 24 programs compiled (2.8 s), the new baseline for a build that
+            recompiles all. Tests: `PRINTS` ok 0.8 s, `INPUT1` 0.5, `LONGIN` 0.6, `LONG1` 0.5,
+            `FILEW` 0.6, `FILER` 0.5, `KEYEXT1` 0.5, `DATASEP` 0.5. Steps since the full
+            suite: 2.
+          - Left for 3b2: `R_FILE`'s `dec`/`inc` of the name's length byte.
           - Left for 3c (asm): a UXCBASIC program in ROM bank 3, with the `$FFA0` IRQ entry,
             the `$FFFA` vectors and a COM stub as `MSBASIC.COM` has. 3d: `CMDSHELL.COM` is
             22056 bytes, more than one bank; shrink, split or far calls, to decide.

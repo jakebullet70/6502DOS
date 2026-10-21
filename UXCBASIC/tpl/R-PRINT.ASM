@@ -19,7 +19,7 @@ R_PRSTR .block
         adc #0
         sta API_R0+1
         phx
-        #rec ldx, S_CHROUT, S_CHROUT.out - S_CHROUT.rec_code
+        ldx ZP_OUT
         jsr API_WRITE
         plx
         rts
@@ -186,8 +186,7 @@ print   #self lda, buffer_at    ; R_PRSLONG comes in here
         #rec jsr, R_PRSTR
         lda #" "
         #rec jmp, S_CHROUT
-buffer_at #selfdw buffer
-buffer  .fill 13                ; [max][len], a sign and 10 digits
+buffer_at #recdw R_LBUF
         #endtpl
         .endblock
 

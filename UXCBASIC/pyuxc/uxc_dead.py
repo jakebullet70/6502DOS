@@ -50,7 +50,7 @@ from uxc_code import cb_get, cb_put, fx_put, fx_read, rt_clear, rt_use
 from uxc_defs import K_DD_MAX, K_DS_MAX, K_DV_MAX, K_FRAME_BASE, K_RT_LIST, K_SEC_BSS, \
     K_SEC_CODE, K_SEC_LABEL, K_SEC_REC, K_SEC_STR, K_SEC_VAR, K_SK_ARRAY, K_SK_CALL, K_SK_DEAD, K_SK_LABEL, K_SK_SUB, \
     K_SK_VAR, K_SY_BLOCK, K_SY_END, K_SY_FIXED, K_SY_LIVE, K_SY_TEMP, K_TT_EOL, K_TT_NAME, \
-    K_TT_NUM, K_TT_OP, K_TY_STR
+    K_TP_DATA, K_TT_NUM, K_TT_OP, K_TY_STR
 import uxc_lex
 import uxc_name
 import uxc_sym
@@ -336,7 +336,8 @@ def dd_open():
 
 
 def dd_runtime_bytes():
-    """DD.RUNTIME.BYTES. g.dd_runtime, the bytes of the runtime records needed now."""
+    """DD.RUNTIME.BYTES. g.dd_runtime, the bytes of the runtime records needed now. The data
+    records are not in the file and do not count."""
     g.dd_runtime = 0
     for g.dd_i in range(g.rt_n):
         g.ram = g.rt_bank
@@ -344,7 +345,8 @@ def dd_runtime_bytes():
             256 * g.ram[K_RT_LIST - 0xA000 + g.dd_i * 2 + 1]
         g.ram = g.tp_bank
         g.dd_a = g.ram[g.tp_ix + g.dd_id * 2] + 256 * g.ram[g.tp_ix + g.dd_id * 2 + 1]
-        g.dd_runtime = g.dd_runtime + g.ram[g.dd_a]
+        if g.ram[g.dd_a + 1] < K_TP_DATA:
+            g.dd_runtime = g.dd_runtime + g.ram[g.dd_a]
 
 
 # Unused variables

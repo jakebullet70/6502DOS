@@ -31,6 +31,7 @@ UXDOS_DIR = os.path.join(HERE, "UXDOS")
 
 F_ABS, F_LO, F_HI, F_SELF, F_REC, F_REC_HI = 1, 2, 3, 4, 5, 6
 KINDS = {F_ABS: "ABS", F_LO: "LO", F_HI: "HI", F_SELF: "SELF", F_REC: "REC"}
+DATA = 254              # the fixup count of a data record, + 1 when its first byte starts at 0
 
 
 def assemble(uxdos=0, binary=BIN, listing=LST):
@@ -50,7 +51,8 @@ def assemble(uxdos=0, binary=BIN, listing=LST):
 
 
 def load(data):
-    """Read a table. Return a list of records: (code bytes, [(offset, kind, arg)])."""
+    """Read a table. Return a list of records: (code bytes, [(offset, kind, arg)]). A data
+    record's fixups are None and its code is its size in zero bytes."""
     if data[:3] != b"UXT" or data[3] != 1:
         sys.exit("MKTPL: not a version 1 UXT table")
     count, index = struct.unpack_from("<HH", data, 4)
@@ -58,6 +60,9 @@ def load(data):
     for i in range(count):
         at = struct.unpack_from("<H", data, index + 2 * i)[0]
         length, nfix = data[at], data[at + 1]
+        if nfix >= DATA:
+            records.append((bytes(length), None))
+            continue
         code = data[at + 2:at + 2 + length]
         fix = data[at + 2 + length:at + 2 + length + 3 * nfix]
         fixups = [tuple(fix[j:j + 3]) for j in range(0, len(fix), 3)]
@@ -71,7 +76,7 @@ def check(records, ids):
     """Stop on a fixup that points outside its record or names something that is not there."""
     bad = []
     for rid, (code, fixups) in enumerate(records):
-        for off, kind, arg in fixups:
+        for off, kind, arg in fixups or []:
             size = 1 if kind in (F_LO, F_HI) else 2
             if kind not in KINDS or off + size > len(code) or (kind == F_REC and arg >= len(records)):
                 bad.append("%s: fixup (%d, %d, %d)" % (ids[rid], off, kind, arg))
@@ -100,6 +105,9 @@ def build():
             out.write("%s = %d\n" % (name, rid))
     write_defines(ids)
     for rid, (code, fixups) in enumerate(records):
+        if fixups is None:
+            print("  %3d %-10s %3d  DATA" % (rid, ids[rid], len(code)))
+            continue
         fx = " ".join("%s%s@%d" % (KINDS[k], "" if k == F_SELF else
                       (":" + ids[a] if k == F_REC else ":S%d" % a), o) for o, k, a in fixups)
         print("  %3d %-10s %3d  %s" % (rid, ids[rid], len(code), fx))

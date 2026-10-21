@@ -45,10 +45,10 @@ def lk_link():
     """LK.LINK. The startup work: clear the array space, set the max of each string block,
     then lay out the pools of temps after it and set the max of each temp. The temps are not
     cleared. With #DATA the variables lie outside the file, before the array space, and the
-    one clear covers both. For 6502DOS it also stores the page of the program's end in
-    PSP_TOP. The SUBs
-    nothing calls are left out first, then the global variables nothing names, then the string
-    literals nothing names."""
+    one clear covers both. The data records follow the pools; the startup sets the first byte
+    of those that ask for it to 0. For 6502DOS it also stores the page of the program's end in
+    PSP_TOP. The SUBs nothing calls are left out first, then the global variables nothing
+    names, then the string literals nothing names."""
     uxc_dead.dd_strip()
     uxc_dead.dv_strip()
     uxc_dead.ds_strip()
@@ -58,6 +58,7 @@ def lk_link():
     g.sy_flags = 1
     uxc_sym.sy_set()
     g.lk_start = g.cb_n
+    uxc_code.rt_close()
     if g.lk_apart != 0 and g.vr_n + g.bs_n > 0:
         g.sl_s[0] = K_SEC_VAR
         g.sl_v[0] = 0
@@ -72,6 +73,10 @@ def lk_link():
         emit(T.T_ZERO)
     uxc_str.sg_maxes()
     uxc_sub.sb_pools()
+    # The data records follow the pools.
+    g.rt_data_at = g.bs_n
+    g.bs_n = g.bs_n + g.rt_dn_all
+    uxc_code.rt_data_zero()
     if g.target == "6502dos":
         g.sl_s[0] = K_SEC_BSS
         g.sl_v[0] = g.bs_n
@@ -85,7 +90,8 @@ def lk_link():
     g.lk_i = 0
     while g.lk_i < g.rt_n:
         uxc_code.rt_place()
-        emit(g.rt_id)
+        if g.rt_dn == 0:
+            emit(g.rt_id)
         g.lk_i = g.lk_i + 1
     # The strings, out of their own bank.
     g.lk_str = g.lk_org + g.cb_n
@@ -104,6 +110,8 @@ def lk_link():
         er_stop("PROGRAM TOO BIG")
     if g.lk_apart != 0 and g.lk_var < g.lk_org + g.cb_n and g.lk_org < g.lk_bss + g.bs_n:
         er_stop("#DATA OVERLAPS THE CODE")
+    g.rt_data_at = g.lk_bss + g.rt_data_at
+    uxc_code.rt_data_place()
     for g.fx_i in range(g.fx_n):
         lk_fix()
 

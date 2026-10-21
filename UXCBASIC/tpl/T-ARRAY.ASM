@@ -146,14 +146,14 @@ done    plx
 
 ; GETEXTKEY() and WAITKEY(): C clear waits for a key, the cursor blinking; C set returns at
 ; once. A/Y = the key: a plain key its character, an extended key its scan code * 256, no key
-; 0. mods = the modifiers, for KEYMODS(). Keeps X. The stock table has no con_getkey; its
+; 0. R_KEYMODS = the modifiers, for KEYMODS(). Keeps X. The stock table has no con_getkey; its
 ; record returns no key.
 R_KEY   .block
         #tpl
         .if UXDOS != 0
         phx
         jsr API_GETKEY
-        #self sty, mods
+        #rec sty, R_KEYMODS
         pha
         txa
         tay
@@ -164,7 +164,6 @@ R_KEY   .block
         tay
         .endif
         rts
-mods    .byte 0
         #endtpl
         .endblock
 

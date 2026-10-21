@@ -10,10 +10,18 @@
 ;   the code
 ;   the fixups, three bytes each: offset in the code, kind, argument
 ;
+; A data record:
+;   its size (byte), $FF when the startup sets its first byte to 0, else $FE
+;
 ; The compiler copies a record's code into the program and then applies its fixups. A record
 ; is used inline (a template, T_) or placed once at the end of the program (a runtime routine,
 ; R_, or a system table entry, S_). Records reach each other through F_REC fixups, so linking
 ; one record links every record it needs.
+;
+; A data record is RAM that runtime routines write. The compiler places it after the array
+; space and the temps, outside the file. Its bytes start undefined, except that the startup
+; sets the first byte to 0 when the record asks for it. A record's code is never written, so
+; that the program can run from ROM.
 ;
 ; Each record sits in its own .block, which keeps its labels local:
 ;
@@ -52,6 +60,15 @@ rec_id  = len(tpl_all)
         .byte rec_fix - rec_code
         .byte (rec_end - rec_fix) / 3
 rec_code
+        .endsegment
+
+; A data record of size bytes, 1 to 255. zero is 1 when the startup sets its first byte to 0,
+; else 0. It takes no #endtpl. Name its fields with = inside its .block: out = 0.
+data    .segment size, zero
+rec_id  = len(tpl_all)
+        tpl_all ::= tpl_all .. [*]
+        .cerror \size < 1 || \size > 255, "a data record is 1 to 255 bytes"
+        .byte \size, $fe + \zero
         .endsegment
 
 ; Close a record: write its fixups.
@@ -124,6 +141,12 @@ recx    .segment op, target, add=0
 selfdw  .segment target
         tpl_fix ::= tpl_fix .. [(* - rec_code, F_SELF, 0)]
         .word \target - rec_code
+        .endsegment
+
+; A data word, the address of another record + add: a field of a data record.
+recdw   .segment target, add=0
+        tpl_fix ::= tpl_fix .. [(* - rec_code, F_REC + \target.rec_id / 256, \target.rec_id % 256)]
+        .word \add
         .endsegment
 
 ; A data word, <slot> + add: the data a runtime routine reads after its JSR.

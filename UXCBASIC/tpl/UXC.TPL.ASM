@@ -105,7 +105,33 @@ T_WAITKEY .block
 ; KEYMODS(): A = the modifiers of the last GETEXTKEY() or WAITKEY().
 T_KEYMODS .block
         #tpl
-        #rec lda, R_KEY, R_KEY.mods - R_KEY.rec_code
+        #rec lda, R_KEYMODS
+        #endtpl
+        .endblock
+
+; The data records, RAM outside the file (MACROS.ASM).
+
+; The modifiers of the last key R_KEY returned, 0 before the first.
+R_KEYMODS .block
+        #data 1, 1
+        .endblock
+
+; R_PRLONG's digits: [max][len], a sign and 10 digits.
+R_LBUF  .block
+        #data 13, 0
+        .endblock
+
+; S_CHRIN's line.
+R_LINE  .block
+        #data 84, 1
+next    = 0                     ; the offset in line of the next character, 0 when none is left
+line    = 1                     ; [max][len], the text, the CR
+        .endblock
+
+; At startup: the first byte of the data record S0 = 0.
+T_STZ   .block
+        #tpl
+        #ab stz, S0
         #endtpl
         .endblock
 

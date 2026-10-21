@@ -109,6 +109,10 @@ K_RT_USED = 0xA000
 K_RT_LIST = 0xA800
 K_RT_ADDR = 0xB000
 
+# The fixup count of a data record in UXC.TPL.BIN, + 1 when the startup sets its first byte to
+# 0. Its length byte is its size.
+K_TP_DATA = 254
+
 # The symbol table: bucket heads, then 32-byte records.
 K_SY_HEADS = 512
 K_SY_MAX = 1008

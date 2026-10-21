@@ -5,25 +5,21 @@
 ; Write A to the output handle: STDOUT, or the handle R_FILE.chkout chose. Keeps A, X and Y.
 S_CHROUT .block
         #tpl
-        #self sta, got
+        sta ZP_GOT
         phx
         phy
-        #self lda, got_at
+        lda #ZP_GOT
         sta API_R0
-        #self lda, got_at+1
-        sta API_R0+1
+        stz API_R0+1
         lda #1
         sta API_R1
         stz API_R1+1
-        #self ldx, out
+        ldx ZP_OUT
         jsr API_WRITE
         ply
         plx
-        #self lda, got
+        lda ZP_GOT
         rts
-got_at #selfdw got
-out     .byte STDOUT            ; the output handle
-got     .byte 0
         #endtpl
         .endblock
 
@@ -48,26 +44,24 @@ S_GETIN .block
 ; none is left. Changes X and Y.
 S_CHRIN .block
         #tpl
-        #self ldx, next
+        #rec ldx, R_LINE, R_LINE.next
         bne take
         lda #81                 ; 80 characters, then the CR
-        #self sta, line
+        #rec sta, R_LINE, R_LINE.line
         #self lda, line_at
         sta API_R0
         #self lda, line_at+1
         sta API_R0+1
         jsr API_LINE
         ldx #2
-take    #selfx lda, line
+take    #recx lda, R_LINE, R_LINE.line
         inx
         cmp #13
         bne +
         ldx #0                  ; the line is done
-+       #self stx, next
++       #rec stx, R_LINE, R_LINE.next
         rts
-line_at #selfdw line
-next    .byte 0                 ; the offset of the next character in line, 0 when none is left
-line    .fill 83                ; [max][len], the text, the CR
+line_at #recdw R_LINE, R_LINE.line
         #endtpl
         .endblock
 
@@ -125,9 +119,12 @@ S_LKUPLA .block
         #endtpl
         .endblock
 
-; Startup: 6502DOS keeps the screen in CP437, so there is nothing to set.
+; Startup: the output goes to STDOUT. 6502DOS keeps the screen in CP437, so there is nothing
+; else to set.
 S_INIT  .block
         #tpl
+        lda #STDOUT
+        sta ZP_OUT
         rts
         #endtpl
         .endblock

@@ -12,7 +12,10 @@
     emit(id)                           copy record id into the code, with slots g.sl_s g.sl_v
     rt_use()   in  g.rt_id             the runtime routine is needed at the end of the program
     rt_clear()                         no runtime routine is needed yet
-    rt_place() rt_address()            the routine addresses, for the link step
+    rt_close()                         every record the used ones name is used, and the bytes
+                                       of the data records
+    rt_data_zero()                     the startup's 0 in the data records that ask for it
+    rt_place() rt_data_place() rt_address()    the record addresses, for the link step
     cs_clear() cs_put() cs_get()       the ON CASE targets in g.cs_bank, for UXC-CASE.BL
     sp_copy()                          append the strings to the code
 
@@ -23,7 +26,7 @@ n MOD 8192 of g.cb_bank[n // 8192]. A K_RT_ address is index K_RT_x - $A000 of g
 import os
 
 from uxc_defs import K_CODE_BANKS, K_CS_SIZE, K_F_ABS, K_F_HI, K_F_LO, K_F_REC, K_F_REC_HI, K_F_SELF, \
-    K_FX_MAX, K_RT_ADDR, K_RT_LIST, K_RT_USED, K_SEC_CODE, K_SEC_CONST, K_SEC_REC
+    K_FX_MAX, K_RT_ADDR, K_RT_LIST, K_RT_USED, K_SEC_CODE, K_SEC_CONST, K_SEC_REC, K_TP_DATA
 import uxc_tpl as T
 from uxc_state import er_stop, g, uxc_bank
 
@@ -234,13 +237,85 @@ def rt_clear():
         g.ram[K_RT_USED - 0xA000 + g.cb_i] = 0
 
 
-def rt_place():
-    """RT.PLACE. In g.lk_i, out g.rt_id: record g.lk_i of K_RT_LIST, whose address is set to
-    the end of the code."""
+def rt_get():
+    """RT.GET. In g.lk_i, out g.rt_id, record g.lk_i of K_RT_LIST, and g.rt_dn, its size when
+    it is a data record, else 0, and g.rt_dz, 1 when the startup sets its first byte to 0.
+    Out: g.rt_a, its place in the table, with g.tp_bank selected."""
     g.ram = g.rt_bank
     g.rt_id = g.ram[K_RT_LIST - 0xA000 + g.lk_i * 2] + \
         256 * g.ram[K_RT_LIST - 0xA000 + g.lk_i * 2 + 1]
+    g.ram = g.tp_bank
+    g.rt_a = g.ram[g.tp_ix + g.rt_id * 2] + 256 * g.ram[g.tp_ix + g.rt_id * 2 + 1]
+    g.rt_dn = 0
+    g.rt_dz = 0
+    if g.ram[g.rt_a + 1] >= K_TP_DATA:
+        g.rt_dn = g.ram[g.rt_a]
+        g.rt_dz = g.ram[g.rt_a + 1] - K_TP_DATA
+
+
+def rt_close():
+    """RT.CLOSE. Add to K_RT_LIST every record that a record on it names, so that the data
+    records are known before the startup sets them. Out: g.rt_dn_all, the bytes of the data
+    records."""
+    g.rt_dn_all = 0
+    g.lk_i = 0
+    while g.lk_i < g.rt_n:
+        rt_get()
+        g.rt_dn_all = g.rt_dn_all + g.rt_dn
+        if g.rt_dn == 0:
+            g.rt_nf = g.ram[g.rt_a + 1]
+            g.rt_fa = g.rt_a + 2 + g.ram[g.rt_a]
+            for g.rt_j in range(g.rt_nf):
+                g.ram = g.tp_bank
+                g.rt_k = g.ram[g.rt_fa + g.rt_j * 3 + 1]
+                g.rt_g = g.ram[g.rt_fa + g.rt_j * 3 + 2]
+                if g.rt_k == K_F_REC_HI:
+                    g.rt_k = K_F_REC
+                    g.rt_g = g.rt_g + 256
+                if g.rt_k == K_F_REC:
+                    g.rt_id = g.rt_g
+                    rt_use()
+        g.lk_i = g.lk_i + 1
+
+
+def rt_data_place():
+    """RT.DATA.PLACE. In g.rt_data_at: each data record's address, in turn from there. A data
+    record that rt_close did not count stops the link: the startup did not see it."""
+    g.rt_at = g.rt_data_at
+    g.rt_dn_all_placed = 0
+    for g.lk_i in range(g.rt_n):
+        rt_get()
+        if g.rt_dn > 0:
+            rt_address_set()
+            g.rt_at = g.rt_at + g.rt_dn
+            g.rt_dn_all_placed = g.rt_dn_all_placed + g.rt_dn
+    if g.rt_dn_all_placed != g.rt_dn_all:
+        er_stop("DATA RECORD LINKED LATE")
+
+
+def rt_data_zero():
+    """RT.DATA.ZERO. At startup, the first byte of each data record that asks for it = 0."""
+    for g.lk_i in range(g.rt_n):
+        rt_get()
+        if g.rt_dz != 0:
+            g.sl_s[0] = K_SEC_REC
+            g.sl_v[0] = g.rt_id
+            emit(T.T_STZ)
+
+
+def rt_place():
+    """RT.PLACE. In g.lk_i, out g.rt_id and g.rt_dn as rt_get: record g.lk_i of K_RT_LIST,
+    whose address is set to the end of the code. A data record is left to rt_data_place."""
+    rt_get()
+    if g.rt_dn > 0:
+        return
     g.rt_at = g.lk_org + g.cb_n
+    rt_address_set()
+
+
+def rt_address_set():
+    """RT.ADDRESS.SET. In g.rt_id g.rt_at: the record's address."""
+    g.ram = g.rt_bank
     g.rt_hi = g.rt_at // 256
     g.ram[K_RT_ADDR - 0xA000 + g.rt_id * 2] = g.rt_at - g.rt_hi * 256
     g.ram[K_RT_ADDR - 0xA000 + g.rt_id * 2 + 1] = g.rt_hi

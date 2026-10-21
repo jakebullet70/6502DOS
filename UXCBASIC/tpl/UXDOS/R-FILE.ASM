@@ -85,13 +85,13 @@ chkout  phx
         pla
         plx
         bcs bad
-        #rec sta, S_CHROUT, S_CHROUT.out - S_CHROUT.rec_code
+        sta ZP_OUT
         rts
 bad     #rec jmp, R_EFILE
 
 ; Send the output back to STDOUT. Keeps X.
 clrchn  lda #STDOUT
-        #rec sta, S_CHROUT, S_CHROUT.out - S_CHROUT.rec_code
+        sta ZP_OUT
         rts
         #endtpl
         .endblock
@@ -128,10 +128,9 @@ eof     phx
 
 ; The next byte of the input in A, C clear. C set: the end of the file. Loses X and Y.
 getc    ldx ZP_FILE
-        #self lda, got_at
+        lda #ZP_GOT
         sta API_R0
-        #self lda, got_at+1
-        sta API_R0+1
+        stz API_R0+1
         lda #1
         sta API_R1
         stz API_R1+1
@@ -139,7 +138,7 @@ getc    ldx ZP_FILE
         bcs +                   ; an error reads as the end
         lda #0                  ; C set when r1 is 0: no byte
         cmp API_R1
-        #self lda, got
+        lda ZP_GOT
 +       rts
 
 ; Read from the input into the block at A/Y, cut at the block's max; the rest of the line is
@@ -200,9 +199,6 @@ done    lda ZP_TMP
         lda ZP_DST
         ldy ZP_DST+1
         rts
-
-got_at #selfdw got
-got     .byte 0                 ; the byte getc reads
         #endtpl
         .endblock
 
