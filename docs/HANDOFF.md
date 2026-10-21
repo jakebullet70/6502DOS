@@ -3222,16 +3222,20 @@
           - New test `ROM3` (`.IN` local): INPUT, a FUNCTION's string, an array, LONG, a file
             written and read back, `DOS.EXEC` of `ARGS.COM`, then `PEEK($01)` reads 3.
           - Build 4699 ms (all recompiled), the new baseline; bank 3 alone 1810 ms. Tests:
-            `ROM3` ok 0.4 s, `DATASEP` 0.5, `SHBOOT` 0.5, `ASK` 0.4. Steps since the full
-            suite: 6. The full suite is next: `FILES`, `HDIR`, `HDIRARG`, `TREE` will show
-            `ROM3TEST.COM` in the test card's root.
-          - Docs owed: UXC-HELP Placing the code and the variables (strings at `#DATA`, the
-            kernel trap), UXCBASIC PLAN's ROM-able entry, PLAN section 2's ROM map (banks 2
-            and 3; line 113 and line 1171 are stale), a trap in section 2: a program in a ROM
-            bank passes the kernel no pointer into `$C000-$FFFF`, and its IRQ hook cannot be
-            in that bank.
+            `ROM3` ok 0.4 s, `DATASEP` 0.5, `SHBOOT` 0.5, `ASK` 0.4.
+          - Full suite (step 7): 63 tests, 4 failed, 47.0 s. `FILES`, `HDIR`, `HDIRARG`,
+            `TREE`: the root gains `ROM3TEST.COM` (9 bytes), and the compiled `.COM` sizes
+            follow 3a and 3b (most smaller, `ENDCHILD.COM` 126 to 130). Goldens regenerated,
+            each diff only that; each 2.0 s. Re-runs: `FILES` ok 0.4 s, `HDIR` 1.4, `HDIRARG`
+            1.2, `TREE` 1.5. Steps since the full suite: 0.
           - Left for 3d: `CMDSHELL.COM` is 22048 bytes, more than one bank; shrink, split or
             far calls, to decide.
+        - Done, the doc batch (2026-10-21; the user said go). UXC-HELP Placing the code and
+          the variables: the literals at `#DATA`, the kernel trap; `MKHELP.PY` 0.26 s, 40
+          topics. UXCBASIC PLAN: the ROM-able entry. PLAN section 3: the ROM map (banks 2 and
+          3), the trap on a pointer into `$C000-$FFFF` and the IRQ hook; section 10: the
+          65536-byte ROM and `src/bank3`; section 12 item 6. No docs are owed. No build, no
+          test. Steps since the full suite: 1.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

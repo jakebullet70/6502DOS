@@ -1392,9 +1392,9 @@ See [[Files]], [[INPUT and LINPUT]], [[END]].
 
 ## Placing the code and the variables
 
-#ORG address puts the code at the address. #DATA address puts the variables,
-then the array space, at the address, outside the file. A program for ROM
-takes both.
+#ORG address puts the code at the address. #DATA address puts the string
+literals, then the variables, then the array space, at the address, outside
+the file. A program for ROM takes both.
 
 ```
 #ORG $C000
@@ -1404,9 +1404,13 @@ COUNT = COUNT + 1
 ```
 
 - With #ORG the file holds the code with no load address.
-- With #DATA the start of the program sets the variables and the array space
-  to 0. Without it the variables are in the file, and the array space follows
+- With #DATA the start of the program copies the string literals from the file
+  to the address, and sets the variables and the array space to 0. Without it
+  the literals and the variables are in the file, and the array space follows
   them.
+- Trap: on 6502DOS the kernel runs in ROM bank 0 or 1, and reads an address
+  from $C000 up in its own bank. A program in another ROM bank needs #DATA, so
+  PRINT, OPEN and DOS.EXEC get their literals from RAM.
 - The run-time library's own variables follow the array space.
 - Each holds for the whole source, wherever it stands. A second #ORG stops the
   compile with #ORG TWICE, a second #DATA with #DATA TWICE.

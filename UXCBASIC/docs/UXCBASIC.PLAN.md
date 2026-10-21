@@ -1432,8 +1432,9 @@ To do, not designed yet:
     too; whether `ASM` blocks with absolute addresses inside the program are allowed in
     relocatable output; and the directive that selects it.
 - **ROM-able output** (user, 2026-10-13; for 6502DOS). Done in pyuxc. `#ORG address` puts the
-  code at the address, with no load address in the file. `#DATA address` puts the variables,
-  then the array space, at a RAM address outside the file, and the startup clears both. The
+  code at the address, with no load address in the file. `#DATA address` puts the string
+  literals, then the variables, then the array space, at a RAM address outside the file. The
+  startup copies the literals there from the file with `T_LITCOPY` and clears the rest. The
   runtime's data records follow the array space. Help topic: Placing the code and the variables.
 
   - Code in ROM cannot be written, so nothing in the code may be a variable. No runtime

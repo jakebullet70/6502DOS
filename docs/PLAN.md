@@ -110,7 +110,9 @@ The UXCBASIC library is the folder `lib/`. Each file holds one namespace of the 
 | `$A000–$BFFF` banks 1 to 10, 12 and up | handed out by `bank_alloc`: `exec`'s saves (section 7) and the programs' banks |
 | `$C000–$FFFF` ROM bank 0 | kernel core and the vectors. `$FFCF` and `$FFD2` jump to `con_in` and `con_out`, and `$FFF6–$FFF9` hold `MIST` (section 10) |
 | `$C000–$FFFF` ROM bank 1 | the FAT32 library, the kernel's file calls on it, and its glue to the SD driver |
-| `$C000–$FFFF` ROM banks 2 and up | not in the image yet |
+| `$C000–$FFFF` ROM bank 2 | MSBASIC, started by `MSBASIC.COM` |
+| `$C000–$FFFF` ROM bank 3 | the one UXCBASIC program in `src/bank3`, started by its `.COM` stub |
+| `$C000–$FFFF` ROM banks 4 and up | not in the image yet |
 
 VRAM:
 
@@ -129,6 +131,10 @@ VRAM:
   until code writes it. Each bank holds the same IRQ entry and exit at `$FFA0`: the entry
   saves A and the bank and selects bank 0, the exit selects the saved bank and returns. A BRK
   drops the bank and goes to the monitor in bank 0.
+- Trap: the kernel runs in ROM bank 0 or 1, so an address it gets in `$C000–$FFFF` reads
+  that bank. A program in another ROM bank passes the kernel no pointer into its own code, and
+  its IRQ hook cannot lie in that bank. A UXCBASIC program there uses `#DATA`, which copies its
+  string literals to RAM.
 - Trap: UXCBASIC's `SYS` loads A, X, Y and P from `$030C–$030F` and stores them back. The gate
   and the vectors must not use those four bytes.
 - Trap: `$01` reads back as noise until code writes it. Reset writes 0 to it before the gate
@@ -1168,7 +1174,12 @@ Folders:
   COM file is older than the source, than `UXCBASIC/tpl/UXDOS/UXC.TPL.BIN`, or than a
   file the source includes, or than a file of pyuxc. `#INCLUDE` looks in the source's folder,
   then `lib/`.
-- `src/asm/rom.cfg` links ROM banks 0 and 1, so `build/6502DOS.ROM` is 32768 bytes.
+- `src/asm/rom.cfg` links ROM banks 0 and 1. `build.py` appends MSBASIC's 6502dos target as
+  bank 2 and the program of `src/bank3` as bank 3, so `build/6502DOS.ROM` is 65536 bytes.
+- `src/bank3` holds one `NAME.UXB` with `#ORG $C000`, `bank3.s` and `bank3.cfg`, which put it
+  at `$C000` with the IRQ entry and the vectors, and `stub.s`, which assembles to
+  `build/bas/NAME.COM`: it selects bank 3 and jumps to `$C000`. ld65 stops the link when the
+  code reaches `$FFA0`.
 - `tools/mksd.py` writes an SD card image from a folder: an MBR, one partition of type `$0C` at
   sector 2048, and FAT32. A name that is 8.3 goes in as its 8.3 name in capitals. Any other
   name, up to 255 characters, goes in as a long name as typed, with an 8.3 alias `BASE~N.EXT`.
@@ -1349,8 +1360,9 @@ the UXCBASIC plan, section 5, in this order:
 
    Such a `SUB` is a valid entry in the jump table.
 6. **ROM-able output.** Written in pyuxc. `#ORG address` puts the code at the address, with no
-   load address in the file. `#DATA address` puts the variables and the array space at a RAM
-   address outside the file, and the startup clears them. The runtime's writable bytes are data
+   load address in the file. `#DATA address` puts the string literals, the variables and the
+   array space at a RAM address outside the file. The startup copies the literals there and
+   clears the rest. The runtime's writable bytes are data
    records after the array space. No runtime template writes its own code or a source string.
 7. **Relocatable output.**
 
