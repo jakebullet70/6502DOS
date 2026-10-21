@@ -142,5 +142,40 @@ T_OPENA .block
         #endtpl
         .endblock
 
+; At startup, with #DATA: copy S2 bytes, 1 or more, from S0 to S1. The string literals go from
+; the file to the data area, where the kernel reads them from any ROM bank. Keeps X.
+T_LITCOPY .block
+        #tpl
+        #lo lda, S0
+        sta ZP_PTR
+        #hi lda, S0
+        sta ZP_PTR+1
+        #lo lda, S1
+        sta ZP_DST
+        #hi lda, S1
+        sta ZP_DST+1
+        phx
+        #hi ldx, S2             ; the whole pages
+        ldy #0
+page    beq part
+whole   lda (ZP_PTR),y
+        sta (ZP_DST),y
+        iny
+        bne whole
+        inc ZP_PTR+1
+        inc ZP_DST+1
+        dex
+        bra page
+part    #lo ldx, S2             ; the rest
+        beq done
+rest    lda (ZP_PTR),y
+        sta (ZP_DST),y
+        iny
+        dex
+        bne rest
+done    plx
+        #endtpl
+        .endblock
+
 tpl_count = len(tpl_all)
 index   .word tpl_all

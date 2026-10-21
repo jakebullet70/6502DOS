@@ -3199,9 +3199,39 @@
           section 3: `BANK_KEPT`, `keep is not written` gone; section 7: the `keep` bullet;
           section 11 step 6d: `OPEN`; section 12 item 6. No docs are owed. No build, no test.
           Steps since the full suite: 5.
-          - Left for 3c (asm): a UXCBASIC program in ROM bank 3, with the `$FFA0` IRQ entry,
-            the `$FFFA` vectors and a COM stub as `MSBASIC.COM` has. 3d: `CMDSHELL.COM` is
-            22056 bytes, more than one bank; shrink, split or far calls, to decide.
+        - Done, 3c (2026-10-21; the user said "go on asm"): a UXCBASIC program in ROM bank 3.
+          - `src/bank3/` holds one `NAME.UXB` (now `ROM3TEST.UXB`, with `#ORG $C000` and
+            `#DATA $0801`), `bank3.s` (`.incbin` of the program at `$C000`, the `$FFA0` IRQ
+            entry, the `$FFFA` vectors), `bank3.cfg`, and `stub.s` (7 bytes: `lda #3`,
+            `sta ROM_BANK`, `jmp ROM`). `build.py` `build_bank3` compiles it to
+            `build/bank3/BANK3.BIN`, links bank 3, appends it after MSBASIC's bank 2 (the ROM
+            is 65536 bytes), and writes the stub to `build/bas/NAME.COM`. `make_templates` now
+            runs before it. ld65 stops the link when the code reaches `$FFA0`.
+          - Found: the kernel runs in bank 0 or 1, so a pointer it gets into `$C000-$FFFF`
+            reads bank 0. A literal handed to `write` (PRINT), `open`/`create` or `exec`
+            failed. The user chose: literals to RAM.
+          - pyuxc: with `#DATA`, the strings lie at its address, then the variables, then the
+            array space. New template `T_LITCOPY` (id 271, 50 bytes, inline) copies the
+            literals there at startup from the label `%STRS` in the file (`lk_strs_copy`).
+            Strings that join after it stop the link: `STRINGS ADDED LATE`. The overlap check
+            starts at `lk_data`. Cost: RAM = the literals (CMDSHELL 1096 bytes), about 16
+            cycles a byte at start (CMDSHELL about 18000). Table 6683 to 6755 bytes.
+          - Without `#DATA` the output is byte for byte the same: 125 programs compiled by
+            HEAD and by the new pyuxc; only `DATASEP` (its source changed) differs.
+          - `DATASEP` now peeks the literal `"HI"` at `$6001` (2, 72) and W at `$6004`.
+          - New test `ROM3` (`.IN` local): INPUT, a FUNCTION's string, an array, LONG, a file
+            written and read back, `DOS.EXEC` of `ARGS.COM`, then `PEEK($01)` reads 3.
+          - Build 4699 ms (all recompiled), the new baseline; bank 3 alone 1810 ms. Tests:
+            `ROM3` ok 0.4 s, `DATASEP` 0.5, `SHBOOT` 0.5, `ASK` 0.4. Steps since the full
+            suite: 6. The full suite is next: `FILES`, `HDIR`, `HDIRARG`, `TREE` will show
+            `ROM3TEST.COM` in the test card's root.
+          - Docs owed: UXC-HELP Placing the code and the variables (strings at `#DATA`, the
+            kernel trap), UXCBASIC PLAN's ROM-able entry, PLAN section 2's ROM map (banks 2
+            and 3; line 113 and line 1171 are stale), a trap in section 2: a program in a ROM
+            bank passes the kernel no pointer into `$C000-$FFFF`, and its IRQ hook cannot be
+            in that bank.
+          - Left for 3d: `CMDSHELL.COM` is 22048 bytes, more than one bank; shrink, split or
+            far calls, to decide.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

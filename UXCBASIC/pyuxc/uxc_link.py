@@ -44,8 +44,8 @@ def lk_init_call():
 def lk_link():
     """LK.LINK. The startup work: clear the array space, set the max of each string block,
     then lay out the pools of temps after it and set the max of each temp. The temps are not
-    cleared. With #DATA the variables lie outside the file, before the array space, and the
-    one clear covers both. The data records follow the pools; the startup sets the first byte
+    cleared. With #DATA the strings, the variables and the array space lie outside the file in
+    that order: the startup copies the strings there and one clear covers the rest. The data records follow the pools; the startup sets the first byte
     of those that ask for it to 0. For 6502DOS it also stores the page of the program's end in
     PSP_TOP. The SUBs nothing calls are left out first, then the global variables nothing
     names, then the string literals nothing names."""
@@ -71,6 +71,8 @@ def lk_link():
         g.sl_s[1] = K_SEC_CONST
         g.sl_v[1] = g.bs_n
         emit(T.T_ZERO)
+    if g.lk_apart != 0 and g.sp_n > 0:
+        lk_strs_copy()
     uxc_str.sg_maxes()
     uxc_sub.sb_pools()
     # The data records follow the pools.
@@ -93,13 +95,22 @@ def lk_link():
         if g.rt_dn == 0:
             emit(g.rt_id)
         g.lk_i = g.lk_i + 1
-    # The strings, out of their own bank.
+    # The strings, out of their own bank. With #DATA the startup copies them to its address.
     g.lk_str = g.lk_org + g.cb_n
+    if g.lk_apart != 0 and g.sp_n > 0:
+        if g.sp_n != g.lk_strs_n:
+            er_stop("STRINGS ADDED LATE")
+        g.sy_r = g.lk_strs_record
+        uxc_sym.sy_get()
+        g.sy_val = g.cb_n
+        g.sy_flags = 1
+        uxc_sym.sy_set()
     uxc_code.sp_copy()
-    # The variables, all 0, in the file or at #DATA's address.
+    # The variables, all 0, in the file or after the strings at #DATA's address.
     g.lk_var = g.lk_org + g.cb_n
     if g.lk_apart != 0:
-        g.lk_var = g.lk_data
+        g.lk_str = g.lk_data
+        g.lk_var = g.lk_data + g.sp_n
     else:
         for g.lk_i in range(1, g.vr_n + 1):
             g.cb_b = 0
@@ -108,12 +119,34 @@ def lk_link():
     g.lk_bss = g.lk_var + g.vr_n
     if g.lk_bss + g.bs_n > K_TOP or g.lk_org + g.cb_n > 65536:
         er_stop("PROGRAM TOO BIG")
-    if g.lk_apart != 0 and g.lk_var < g.lk_org + g.cb_n and g.lk_org < g.lk_bss + g.bs_n:
+    if g.lk_apart != 0 and g.lk_data < g.lk_org + g.cb_n and g.lk_org < g.lk_bss + g.bs_n:
         er_stop("#DATA OVERLAPS THE CODE")
     g.rt_data_at = g.lk_bss + g.rt_data_at
     uxc_code.rt_data_place()
     for g.fx_i in range(g.fx_n):
         lk_fix()
+
+
+def lk_strs_copy():
+    """LK.STRS.COPY. At startup, with #DATA: copy the g.sp_n bytes of strings from the file,
+    at the label %STRS, which lk_link places, to the data area."""
+    g.sy_name = "%STRS"
+    g.sy_ow = 0
+    g.sy_kind = K_SK_LABEL
+    g.sy_type = 0
+    g.sy_val = 0
+    g.sy_flags = 0
+    g.sy_cnt = 0
+    uxc_sym.sy_add()
+    g.lk_strs_record = g.sy_r
+    g.lk_strs_n = g.sp_n
+    g.sl_s[0] = K_SEC_LABEL
+    g.sl_v[0] = g.lk_strs_record
+    g.sl_s[1] = K_SEC_STR
+    g.sl_v[1] = 0
+    g.sl_s[2] = K_SEC_CONST
+    g.sl_v[2] = g.sp_n
+    emit(T.T_LITCOPY)
 
 
 def lk_fix():
