@@ -3167,7 +3167,23 @@
             recompiles all. Tests: `PRINTS` ok 0.8 s, `INPUT1` 0.5, `LONGIN` 0.6, `LONG1` 0.5,
             `FILEW` 0.6, `FILER` 0.5, `KEYEXT1` 0.5, `DATASEP` 0.5. Steps since the full
             suite: 2.
-          - Left for 3b2: `R_FILE`'s `dec`/`inc` of the name's length byte.
+        - Done, 3b2 (2026-10-21; the user said go): the 6502DOS `R_FILE` does not write the
+          name. It has 3 entries, `append`, `write`, `read` (that order; BIT skips), which set
+          `ZP_TMP` bit 7 for read, else bit 6 for append. `T_OPEN` calls `R_FILE.write`, new
+          `T_OPENA` (id 270) `R_FILE.append`, `R_FIN` jumps to `R_FILE.read`. The stock
+          `R_FILE` labels `write` and `append` at its start. pyuxc: on 6502DOS `sg_open` passes
+          the name as it is (no letter, no `sg_open_join`) and emits `T_FOPEN`, `T_OPEN` or
+          `T_OPENA`. An appended file that was made new is not sought.
+          - Sizes against 3b1: `R_FILE` 24 bytes fewer (6502DOS table 6701 to 6685, `T_OPENA`
+            8 of it). 6 programs smaller, 306 bytes: `FILEW` 114 (variable names lose the
+            copy and the joins), `SHOW` 61, `FILEB`/`FILER` 39, `FILEERR` 27, `FILEINCLOSED`
+            26. Cycles: an OPEN for reading about 60 fewer.
+          - Build 4668 ms (24 programs recompiled), the new baseline. Tests: `FILEW` ok 0.7 s,
+            `FILER` 0.5, `FILEB` 0.5, `FILEERR` 0.5, `FILEINCLOSED` 0.5. No test appends to a
+            missing file (checked by reading). Steps since the full suite: 3.
+          - Docs owed: PLAN line 1251 and UXCBASIC PLAN line 1493 still say `OPEN` passes the
+            mode letter.
+          - Left for 3b: audit other routines that change a string in place for a moment.
           - Left for 3c (asm): a UXCBASIC program in ROM bank 3, with the `$FFA0` IRQ entry,
             the `$FFFA` vectors and a COM stub as `MSBASIC.COM` has. 3d: `CMDSHELL.COM` is
             22056 bytes, more than one bank; shrink, split or far calls, to decide.

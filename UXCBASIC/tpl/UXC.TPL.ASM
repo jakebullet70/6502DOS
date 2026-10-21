@@ -135,5 +135,12 @@ T_STZ   .block
         #endtpl
         .endblock
 
+; T_OPEN for O.APPEND, 6502DOS only.
+T_OPENA .block
+        #tpl
+        #rec jsr, R_FILE, R_FILE.append - R_FILE.rec_code
+        #endtpl
+        .endblock
+
 tpl_count = len(tpl_all)
 index   .word tpl_all

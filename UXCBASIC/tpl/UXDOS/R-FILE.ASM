@@ -1,68 +1,62 @@
 ; R-FILE.ASM for 6502DOS -- the runtime routines for files, through 6502DOS handles.
 ;
 ; A handle is a 6502DOS handle. Handles 0-2 are standard input, output and error. The records
-; and their entries are tpl/R-FILE.ASM's. OPEN passes the name with its mode letter last:
-; R for O.READ, W for O.WRITE, A for O.APPEND.
+; and their entries are tpl/R-FILE.ASM's, with an entry for each mode of OPEN.
 
-; Open the file named by the string at A/Y, its mode letter last. A/Y = the handle, or NOFILE
-; ($FFFF) when the open fails. The string is whole again on return.
+; Open the file named by the string at A/Y. A/Y = the handle, or NOFILE ($FFFF) when the open
+; fails. The string is not written.
+;   append  O.APPEND: makes the file when it is not there, then goes to its end
+;   write   O.WRITE: makes the file, or empties it
+;   read    O.READ
+; ZP_TMP bit 7 is set for read; for write and append, bit 6 is set for append.
 R_FILE  .block
         #tpl
+append  sec
+        .byte $24               ; BIT zp: skips the clc
+write   clc
+        ror ZP_TMP
+        clc
+        .byte $24               ; BIT zp: skips the sec
+read    sec
+        ror ZP_TMP
         phx
-        sta ZP_PTR
-        sty ZP_PTR+1
-        ldy #1
-        lda (ZP_PTR),y          ; the length, the mode letter included
-        dec a                   ; the path leaves the letter out until the end
-        sta (ZP_PTR),y
-        tay
-        iny
-        iny
-        lda (ZP_PTR),y          ; the mode letter
-        sta ZP_TMP
-        clc                     ; r0 = the path, at its length byte
-        lda ZP_PTR
-        adc #1
+        inc a                   ; r0 = the path, at its length byte
         sta API_R0
-        lda ZP_PTR+1
-        adc #0
-        sta API_R0+1
-        lda ZP_TMP
-        cmp #"W"
-        beq create
-        and #1                  ; R ($52): access 0, read. A ($41): access 1, write
-        jsr API_OPEN
+        bne +
+        iny
++       sty API_R0+1
+        lda #0                  ; access 0: read
+        bit ZP_TMP
+        bmi open
+        bvc create              ; write
+        inc a                   ; append: access 1, write
+open    jsr API_OPEN
         bcc opened
-        ldy ZP_TMP
-        cpy #"A"
-        bne fail
-        cmp #2                  ; O.APPEND makes a file that is not there
+        bit ZP_TMP
+        bmi fail                ; read
+        cmp #2                  ; append makes a file that is not there
         bne fail
 create  lda #0                  ; no attributes
         jsr API_CREATE
         bcs fail
-opened  stx ZP_TMP+1
-        lda ZP_TMP
-        cmp #"A"
-        bne back
-        stz API_R0              ; O.APPEND: to the end
+        bra handle              ; a new file needs no seek
+opened  bit ZP_TMP
+        bmi handle              ; read
+        phx                     ; append: to the end
+        stz API_R0
         stz API_R0+1
         stz API_R1
         stz API_R1+1
         lda #2
         jsr API_SEEK
-        bra back
-fail    lda #$ff
-        sta ZP_TMP+1
-back    ldy #1                  ; the mode letter back into the length
-        lda (ZP_PTR),y
-        inc a
-        sta (ZP_PTR),y
+        plx
+handle  txa
         ldy #0
-        lda ZP_TMP+1
-        bpl +
-        dey                     ; NOFILE
-+       plx
+        plx
+        rts
+fail    lda #$ff                ; NOFILE
+        tay
+        plx
         rts
 
 ; Close handle A. Handles 0-2 stay open. A handle that is not open, NOFILE included, is
@@ -98,10 +92,10 @@ clrchn  lda #STDOUT
 
 ; Reading. ioctl input status tells the end of a file before a read reaches it.
 
-; Open for reading: R_FILE. A/Y as R_FILE.
+; Open for reading: R_FILE.read. A/Y as R_FILE.
 R_FIN   .block
         #tpl
-        #rec jmp, R_FILE
+        #rec jmp, R_FILE, R_FILE.read - R_FILE.rec_code
 
 ; Take the input from handle A until clrchn. A handle that is not open stops the program with
 ; FILE NOT OPEN.

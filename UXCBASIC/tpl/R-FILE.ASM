@@ -6,10 +6,11 @@
 
 ; Open the file named by the string at A/Y, a whole DOS name with its mode, such as
 ; "@:LOG,S,W". A/Y = the handle, or NOFILE ($FFFF) when no handle is free or the drive
-; reports an error.
+; reports an error. write and append are the same entry; the 6502DOS R_FILE tells them apart.
 R_FILE  .block
         #tpl
-        phx
+write
+append  phx
         sta ZP_PTR
         sty ZP_PTR+1
         lda #15                 ; the command channel, opened once

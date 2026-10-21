@@ -2,10 +2,11 @@
 ;
 ; PRINT #F%, "HI" is the load of F%, T_CHKOUT, the items as PRINT has them, T_CLRCHN.
 
-; A/Y = the handle of the file whose whole DOS name is the string at A/Y, or NOFILE.
+; A/Y = the handle of the file named by the string at A/Y, or NOFILE. The name is the whole DOS
+; name on the stock ROM. On 6502DOS, the file is opened for O.WRITE.
 T_OPEN  .block
         #tpl
-        #rec jsr, R_FILE
+        #rec jsr, R_FILE, R_FILE.write - R_FILE.rec_code
         #endtpl
         .endblock
 

@@ -624,9 +624,9 @@ def sg_last_word():
 
 def sg_open():
     """SG.OPEN. OPEN(name$, mode): the handle, a WORD. The mode is a name, so the whole DOS
-    name is known here: name,S,R for O.READ, @:name,S,W for O.WRITE, name,S,A for O.APPEND. On
-    6502DOS the name is followed by the mode's letter only: R, W or A. A literal name is joined
-    at compile time."""
+    name is known here: name,S,R for O.READ, @:name,S,W for O.WRITE, name,S,A for O.APPEND. A
+    literal name is joined at compile time. On 6502DOS the name is passed as it is, and the
+    mode picks the template: T_FOPEN, T_OPEN or T_OPENA."""
     g.ex_i = g.ex_vn - 1
     if g.ex_vt[g.ex_i] != K_TY_STR:
         er_mismatch()
@@ -647,22 +647,23 @@ def sg_open():
     if g.sg_open_suffix == ",S,W":
         g.sg_open_prefix = "@:"
     reading = g.sg_open_suffix == ",S,R"
-    if g.target == "6502dos":
-        g.sg_open_prefix = ""
-        g.sg_open_suffix = g.sg_open_suffix[-1]
+    appending = g.sg_open_suffix == ",S,A"
     uxc_lex.lx_next()
     sg_close()
-    g.ex_i = g.ex_vn - 1
-    sg_take_literal()
-    if g.sg_was_literal == 1:
-        g.ex_vn = g.ex_vn - 1
-        g.sg_text = g.sg_open_prefix + g.sg_last_text + g.sg_open_suffix
-        sg_push_literal()
-    else:
-        sg_open_join()
+    if g.target != "6502dos":
+        g.ex_i = g.ex_vn - 1
+        sg_take_literal()
+        if g.sg_was_literal == 1:
+            g.ex_vn = g.ex_vn - 1
+            g.sg_text = g.sg_open_prefix + g.sg_last_text + g.sg_open_suffix
+            sg_push_literal()
+        else:
+            sg_open_join()
     sg_tos()
     if reading:
         emit(T.T_FOPEN)
+    elif appending and g.target == "6502dos":
+        emit(T.T_OPENA)
     else:
         emit(T.T_OPEN)
     g.ex_ty = K_TY_WORD
