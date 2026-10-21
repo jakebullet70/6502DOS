@@ -1,0 +1,6 @@
+CMDSHELL.COM is the 6502DOS shell, built to run from RAM.
+6502DOS boots C:\ROMSHELL.COM, which runs the same shell from ROM banks
+3 and 4.
+Type CMDSHELL to run the RAM copy, to tell a fault in the shell from a fault
+in its ROM banks.
+Both copies build from src/bas/CMDSHELL.UXI.

@@ -3375,6 +3375,9 @@
             `build/6502DOS.ROM` on a copy of `build/SD.IMG` reaches the shell prompt; `VER`
             and `DIR` run, and `DIR` lists `ROMSHELL.COM` in the root. No test card changed, so
             no test ran. Steps since the full suite: 3.
+        - `CMDSHELL.COM` stays on the card as the RAM build of the shell (the user's choice).
+          `sd/CMDSHELL.TXT` says what it is. Build 1677 ms, the new baseline. A scratch boot
+          types the file. No test ran. Steps since the full suite: 4.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
