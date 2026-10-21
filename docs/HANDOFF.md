@@ -3329,6 +3329,8 @@
             `ROM3` ok 0.4 s, `SHBOOT` 0.4. Docs owed: `UXC-HELP.md` (`#ROMBANKS` with the
             name), `pyuxc/README.md` (the result line), PLAN line 1183 (`bank.s`, bank 4, the
             81920-byte ROM). Steps since the full suite: 6; the next step runs it.
+        - Full suite (step 7, 2026-10-21): 63 tests, 0 failed, 50.3 s; slowest `HELPBAS` and
+          `GREP` 1.9 s. Steps since the full suite: 0. Next: 3d4.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
