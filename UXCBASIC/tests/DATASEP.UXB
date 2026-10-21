@@ -1,0 +1,12 @@
+' DATASEP -- #DATA: the variables, then the array space, at $6000, outside the file
+#DATA $6000
+DIM W AS UWORD, B AS UBYTE, L AS LONG
+DIM S AS STRING * 10, A(3) AS UWORD
+PRINT W; B; L; LEN(S); A(2)
+PRINT AddrOf(W); AddrOf(B); AddrOf(L); AddrOf(S); AddrOf(A)
+W = $1234
+B = 7
+L = 100000
+S = "HI"
+A(2) = 99
+PRINT PEEK($6000); PEEK($6001); B; L; S; A(2)

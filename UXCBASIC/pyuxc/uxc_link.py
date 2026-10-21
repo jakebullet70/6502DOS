@@ -3,7 +3,8 @@
     lk_init_call()   at the start of the program, the call to the startup work
     lk_link()        append the startup work, the runtime routines, the strings and the
                      variables to the code, then resolve every fixup
-    lk_write()       in  g.ui_obj    write the PRG: the load address, then the code buffer
+    lk_write()       in  g.ui_obj    write the PRG: the load address, then the code buffer.
+                     With #ORG, the code buffer only. Out: g.lk_size, the file's bytes
 
 UXC-LINK.BL has the order of the routines and why a forward call needs nothing special.
 """
@@ -43,7 +44,9 @@ def lk_init_call():
 def lk_link():
     """LK.LINK. The startup work: clear the array space, set the max of each string block,
     then lay out the pools of temps after it and set the max of each temp. The temps are not
-    cleared. For 6502DOS it also stores the page of the program's end in PSP_TOP. The SUBs
+    cleared. With #DATA the variables lie outside the file, before the array space, and the
+    one clear covers both. For 6502DOS it also stores the page of the program's end in
+    PSP_TOP. The SUBs
     nothing calls are left out first, then the global variables nothing names, then the string
     literals nothing names."""
     uxc_dead.dd_strip()
@@ -55,7 +58,13 @@ def lk_link():
     g.sy_flags = 1
     uxc_sym.sy_set()
     g.lk_start = g.cb_n
-    if g.bs_n > 0:
+    if g.lk_apart != 0 and g.vr_n + g.bs_n > 0:
+        g.sl_s[0] = K_SEC_VAR
+        g.sl_v[0] = 0
+        g.sl_s[1] = K_SEC_CONST
+        g.sl_v[1] = g.vr_n + g.bs_n
+        emit(T.T_ZERO)
+    elif g.bs_n > 0:
         g.sl_s[0] = K_SEC_BSS
         g.sl_v[0] = 0
         g.sl_s[1] = K_SEC_CONST
@@ -81,15 +90,20 @@ def lk_link():
     # The strings, out of their own bank.
     g.lk_str = g.lk_org + g.cb_n
     uxc_code.sp_copy()
-    # The variables, all 0.
+    # The variables, all 0, in the file or at #DATA's address.
     g.lk_var = g.lk_org + g.cb_n
-    for g.lk_i in range(1, g.vr_n + 1):
-        g.cb_b = 0
-        cb_add()
+    if g.lk_apart != 0:
+        g.lk_var = g.lk_data
+    else:
+        for g.lk_i in range(1, g.vr_n + 1):
+            g.cb_b = 0
+            cb_add()
     # The array space follows, outside the file.
-    g.lk_bss = g.lk_org + g.cb_n
-    if g.lk_bss + g.bs_n > K_TOP:
+    g.lk_bss = g.lk_var + g.vr_n
+    if g.lk_bss + g.bs_n > K_TOP or g.lk_org + g.cb_n > 65536:
         er_stop("PROGRAM TOO BIG")
+    if g.lk_apart != 0 and g.lk_var < g.lk_org + g.cb_n and g.lk_org < g.lk_bss + g.bs_n:
+        er_stop("#DATA OVERLAPS THE CODE")
     for g.fx_i in range(g.fx_n):
         lk_fix()
 
@@ -155,8 +169,11 @@ def lk_fix():
 def lk_write():
     """LK.WRITE. The PRG goes into g.out_folder."""
     g.lk_hi = g.lk_org // 256
+    g.lk_size = g.cb_n
     with open(os.path.join(g.out_folder, g.ui_obj), "wb") as prg:
-        prg.write(bytes((g.lk_org - g.lk_hi * 256, g.lk_hi)))
+        if g.lk_raw == 0:
+            prg.write(bytes((g.lk_org - g.lk_hi * 256, g.lk_hi)))
+            g.lk_size = g.cb_n + 2
         for g.cb_at in range(g.cb_n):
             cb_get()
             prg.write(bytes((g.cb_b,)))

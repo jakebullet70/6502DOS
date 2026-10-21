@@ -3117,6 +3117,31 @@
      3. UXCBASIC ROM-able output (PLAN section 12 item 6), then `CMDSHELL` in ROM banks (it is
         about 19 KB, so two banks). New commands stay `.SCOM` files on disk; a `BIND` alias
         can replace a ROM built-in. `CONFIG.SYS` `SHELL=` loads a disk shell instead.
+        Parts (the user, 2026-10-21): 3a pyuxc only; 3b and 3c are asm, ask first.
+        - Done, 3a (2026-10-21; the user said go, `#ORG`/`#DATA` spelling): pyuxc only.
+          `#ORG address` puts the code at the address, with no `T_STUB` and no load address
+          in the file. `#DATA address` puts the variables, then the array space, at the
+          address, outside the file; the startup's one `T_ZERO` then clears both (`vr_n +
+          bs_n` from VAR 0). Each once (`#ORG TWICE`, `#DATA TWICE`). `sb_scan` reads them
+          (`dd_place_scan` in `uxc_dead.py`), so ON CASE tables see `lk_org`; `dd_keep_line`
+          skips them in pass 2. Link: code past `$FFFF` is `PROGRAM TOO BIG`; data that
+          meets the code is `#DATA OVERLAPS THE CODE`. `g.lk_size` is the file's bytes.
+          - Without the directives the output is byte for byte the same: 103 programs
+            (the tests, `src/bas`, `src/scom`) compiled by HEAD and by the new pyuxc.
+          - New test `DATASEP` (`#DATA $6000`): the variables read 0, the addresses $6000,
+            $6002, $6003, the string block at $6007, the array at $6013. It cannot show the
+            clear of dirty RAM; checked by hand that `#ORG $C000` + `#DATA $0801` clears
+            `$0801` for `vr_n + bs_n` bytes and stores page `$08` in `PSP_TOP`.
+          - Test: `DATASEP` ok 0.6 s. No ROM build. Docs owed: `UXC-HELP.md` on `#ORG` and
+            `#DATA`, UXCBASIC PLAN's ROM-able entry, PLAN section 12 item 6. Steps since the
+            full suite: 1.
+          - Left for 3b (asm): writable bytes inside runtime records (`R_ESTKH` 32,
+            `R_KEY.mods` 1, `R_PRLONG.buffer` 13, `S_CHROUT` `got`/`out` (`out` starts at
+            `STDOUT`), `S_CHRIN` `next`/`line` 84, `R_FIN.got`), and 6502DOS `R_FILE`'s
+            `dec`/`inc` of a name's length byte, which is a literal for `OPEN("X", ...)`.
+          - Left for 3c (asm): a UXCBASIC program in ROM bank 3, with the `$FFA0` IRQ entry,
+            the `$FFFA` vectors and a COM stub as `MSBASIC.COM` has. 3d: `CMDSHELL.COM` is
+            22056 bytes, more than one bank; shrink, split or far calls, to decide.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

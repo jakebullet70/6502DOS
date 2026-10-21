@@ -5,7 +5,9 @@ that nothing names.
                  program does not reach through a chain of calls, and count the runtime
                  records again. Out: g.dd_subs, the SUBs left out, and g.dd_bytes, the bytes
                  of code and runtime records saved. g.dd_keep_subs set keeps every SUB.
-    dd_keep_line() a line that starts with #, with the token at the #: #KEEP or #ENDKEEP
+    dd_keep_line() a line that starts with #, with the token at the #: #KEEP or #ENDKEEP.
+                   #ORG and #DATA lines are skipped; dd_place_scan read them
+    dd_place_scan() in sb_scan's pass, a line that starts with #: #ORG or #DATA
     dd_open()      at the end of the source, a #KEEP without its #ENDKEEP is an error
     dv_log()       in g.dv_s, 0 for the variables or 1 for the array space, and g.sb_place:
                    log where a new global variable starts
@@ -20,6 +22,13 @@ that nothing names.
     #KEEP ALL              keeps every SUB, as g.dd_keep_subs does
     #KEEP ... #ENDKEEP     keeps each SUB whose SUB line is between them
 A SUB kept has K_SY_LIVE set before the link step.
+
+    #ORG address    the code starts at the address. The file has no BASIC line and no load
+                    address: g.lk_raw is 1.
+    #DATA address   the variables, then the array space, start at the address, outside the
+                    file, and the startup clears both: g.lk_apart is 1, g.lk_data the address.
+Each is allowed once. The first pass reads them, so they hold for the whole source wherever
+they stand.
 
 A call is a K_SEC_LABEL fixup to the SUB's record, owned by the caller. A SUB's code runs from
 the JMP around it, 3 bytes before its value, to the word at K_SY_END of its record. Every
@@ -41,7 +50,7 @@ from uxc_code import cb_get, cb_put, fx_put, fx_read, rt_clear, rt_use
 from uxc_defs import K_DD_MAX, K_DS_MAX, K_DV_MAX, K_FRAME_BASE, K_RT_LIST, K_SEC_BSS, \
     K_SEC_CODE, K_SEC_LABEL, K_SEC_REC, K_SEC_STR, K_SEC_VAR, K_SK_ARRAY, K_SK_CALL, K_SK_DEAD, K_SK_LABEL, K_SK_SUB, \
     K_SK_VAR, K_SY_BLOCK, K_SY_END, K_SY_FIXED, K_SY_LIVE, K_SY_TEMP, K_TT_EOL, K_TT_NAME, \
-    K_TT_OP, K_TY_STR
+    K_TT_NUM, K_TT_OP, K_TY_STR
 import uxc_lex
 import uxc_name
 import uxc_sym
@@ -254,6 +263,10 @@ def dd_keep_line():
         g.dd_region_line = 0
         uxc_lex.lx_next()
         return
+    if g.tk_s == "ORG" or g.tk_s == "DATA":
+        uxc_lex.lx_next()
+        uxc_lex.lx_next()
+        return
     if g.tk_s != "KEEP":
         er_syntax()
     uxc_lex.lx_next()
@@ -272,6 +285,31 @@ def dd_keep_line():
         if g.tk_t != K_TT_OP or g.tk_k != 44:
             return
         uxc_lex.lx_next()
+
+
+def dd_place_scan():
+    """DD.PLACE.SCAN. #ORG address or #DATA address, with the token at the #. Any other #
+    line is left to dd_keep_line."""
+    uxc_lex.lx_next()
+    if g.tk_t != K_TT_NAME or (g.tk_s != "ORG" and g.tk_s != "DATA"):
+        return
+    g.dd_place = g.tk_s
+    uxc_lex.lx_next()
+    if g.tk_t != K_TT_NUM or g.tk_v > 65535:
+        er_syntax()
+    if g.dd_place == "ORG":
+        if g.lk_raw != 0:
+            er_stop("#ORG TWICE")
+        g.lk_raw = 1
+        g.lk_org = g.tk_v
+    else:
+        if g.lk_apart != 0:
+            er_stop("#DATA TWICE")
+        g.lk_apart = 1
+        g.lk_data = g.tk_v
+    uxc_lex.lx_next()
+    if g.tk_t != K_TT_EOL:
+        er_syntax()
 
 
 def dd_keep_name():

@@ -41,6 +41,9 @@ def start(tpl_folder):
     uxc_lex.lx_open()
     put("COMPILING " + g.ui_src)
     g.lk_org = K_ORG
+    g.lk_raw = 0
+    g.lk_apart = 0
+    g.lk_data = 0
     g.vr_n = 0
     g.rt_n = 0
     g.bs_n = 0
@@ -52,7 +55,8 @@ def start(tpl_folder):
     uxc_sub.sb_scan()
     uxc_lex.close_2()
     uxc_lex.lx_open()
-    emit(T.T_STUB)
+    if g.lk_raw == 0:
+        emit(T.T_STUB)
     emit(T.T_START)
     uxc_link.lk_init_call()
 
@@ -72,8 +76,8 @@ def finish():
     uxc_link.lk_write()
     # The emulator's echo shows the file's bytes too, so start a fresh line.
     put("")
-    put(g.ui_obj + " " + str(g.cb_n + 2) + " BYTES")
-    g.ui_line = "OK," + g.ui_obj + "," + str(g.cb_n + 2)
+    put(g.ui_obj + " " + str(g.lk_size) + " BYTES")
+    g.ui_line = "OK," + g.ui_obj + "," + str(g.lk_size)
     if g.dd_subs > 0:
         g.ui_line = g.ui_line + ",REMOVED " + str(g.dd_subs) + " SUBS " + str(g.dd_bytes) + \
             " BYTES"

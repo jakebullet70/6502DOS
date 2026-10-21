@@ -52,6 +52,9 @@ def sb_scan():
             break
         uxc_lex.lx_whole()
         uxc_lex.lx_next()
+        if g.tk_t == K_TT_OP and g.tk_k == 35:
+            uxc_dead.dd_place_scan()
+            continue
         if g.tk_t != K_TT_NAME:
             continue
         if g.tk_s == "SUB" or g.tk_s == "FUNCTION":
