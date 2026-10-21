@@ -1,0 +1,26 @@
+'=============================================================================================
+' -- Callable Commandlet -----> MEM [SILENT]
+' -- Prints the free 8 KB RAM banks and their kilobytes: 53 banks free, 424 KB.
+' -- Sets P1$ to the number of free banks, 53.
+' -- SILENT, in capitals, prints nothing.
+' -- The banks that hold the saves of the programs that ran MEM are not free.
+' -- Exit code 0.
+' --
+' -- From a script:
+' --     MEM SILENT
+' --     PRINT "Free banks: " + P1$
+'=============================================================================================
+#INCLUDE "DOS.UXI"
+#INCLUDE "HEAP.UXI"
+#INCLUDE "SCOM.UXI"
+DIM FREE_BANKS AS UWORD, BANKS_TEXT AS STRING * 4
+
+IF HEAP.SYS_STRINGS_GET(SLOT_P1) = "SILENT" THEN SILENT = 1
+' bank_alloc with a size of 0 counts the free banks and hands out nothing.
+DOS.REG_A = 0
+SYS DOS.API_BANK_ALLOC
+FREE_BANKS = DOS.REG_A
+BANKS_TEXT = MID$(STR$(FREE_BANKS), 2)
+HEAP.SYS_STRINGS_SET(SLOT_P1, BANKS_TEXT)
+IF SILENT = 0 THEN PRINT BANKS_TEXT; " banks free, "; MID$(STR$(FREE_BANKS * 8), 2); " KB"
+END 0

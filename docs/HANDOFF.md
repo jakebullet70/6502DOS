@@ -3076,6 +3076,19 @@
           - Build 1414 ms, the new baseline. Test: `HEAP` ok 0.7 s. Docs owed: as 2b, plus PLAN
             section 3's `str_heap` rule. Item 2 left: `MEM`, `keep`. Steps since the full
             suite: 4.
+        - Done, 2d `MEM` (2026-10-21; the user said go): `src/scom/MEM.UXB`, `MEM [SILENT]`.
+          `bank_alloc` with A = 0 gives the free banks; it prints `53 banks free, 424 KB` and
+          sets `P1$` to the count. The call is inline, not a `DOS.UXI` wrapper: pyuxc keeps a
+          FUNCT nothing calls, so a wrapper would grow every program. The saves of the
+          programs that ran `MEM` are not free: from the monitor through the shell, 62 less 9.
+          `HELP.TXT` has a `MEM` topic, and the `HELP` line names it.
+          - `MEM.SCOM` 1511 bytes. ROM: none. No asm.
+          - New test `MEMCMD` (`tests/MEMCMD.IN`, local): `MEM`, `MEM SILENT`, `P1$`. Golden
+            `CMDLETS`: the topic list gains `MEM`.
+          - Builds: 4134 ms (every `.UXB` compiled, the first build with a new `.UXB`), then
+            1499 and 1381 ms; 1381 ms is the new baseline. Tests: `MEMCMD` ok 0.5 s, `CMDLETS`
+            1.7. Docs owed: as 2c, plus PLAN section 9's `MEM` entry (no longer waits) and
+            section 11 step 10's `MEM`. Item 2 left: `keep`. Steps since the full suite: 5.
      3. UXCBASIC ROM-able output (PLAN section 12 item 6), then `CMDSHELL` in ROM banks (it is
         about 19 KB, so two banks). New commands stay `.SCOM` files on disk; a `BIND` alias
         can replace a ROM built-in. `CONFIG.SYS` `SHELL=` loads a disk shell instead.

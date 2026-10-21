@@ -2,8 +2,8 @@
 HELP [topic]
   Prints the help on topic. With no topic it lists the topics.
   HELP DISKFREE
-  DISKFREE, DISKINFO, DATE, TIME, UPTIME and WHERE work at the prompt and in a
-  script.
+  DISKFREE, DISKINFO, DATE, TIME, UPTIME, MEM and WHERE work at the prompt and in
+  a script.
   EXIST is for scripts and prints nothing.
   Each puts its result in P1$ for a script to test.
   SILENT prints nothing, not even an error. An error empties P1$.
@@ -57,6 +57,13 @@ UPTIME [SILENT]                 (Command line or Script)
   At the prompt: UPTIME
   In a script:   UPTIME SILENT
                  PRINT "Up " + P1$ + " seconds"
+:MEM
+MEM [SILENT]                    (Command line or Script)
+  Tells the free 8 KB RAM banks, such as 53 banks free, 424 KB.
+  Sets P1$ to the number of free banks.
+  At the prompt: MEM
+  In a script:   MEM SILENT
+                 PRINT "Free banks: " + P1$
 :WHERE
 WHERE name [SILENT]             (Command line or Script)
   Tells the path of the program the shell runs for name.
