@@ -1,0 +1,8 @@
+' ROMSHELL.UXB -- CMDSHELL, the 6502DOS shell, run from ROM banks 3 and 4: tools/build.py puts
+' its code there and ROMSHELL.COM starts it. The SUBs at the tail of CMDSHELL.UXI go to bank 4.
+#ORG $C000
+#DATA $0801
+#ROMBANKS 3, 4
+#INCLUDE "DOS.UXI"
+#INCLUDE "HEAP.UXI"
+#INCLUDE "../bas/CMDSHELL.UXI"

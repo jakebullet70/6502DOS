@@ -1,5 +1,6 @@
-' ROM3TEST.UXB -- runs from ROM banks 3 and 4: tools/build.py puts its code there and
-' ROM3TEST.COM starts it. It writes each kind of RAM a program uses and runs a child. FAR_BYTE
+' ROM3TEST.UXB -- runs from ROM banks 3 and 4 when it is the one .UXB in src/bank3: tools/build.py
+' puts its code there and ROM3TEST.COM starts it. It writes each kind of RAM a program uses and
+' runs a child. FAR_BYTE
 ' and the SUBs after it run from bank 4; they call bank 3 and are called from it.
 #INCLUDE "DOS.UXI"
 #ORG $C000

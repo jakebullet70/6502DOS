@@ -1,0 +1,1930 @@
+' CMDSHELL.UXI -- the code of CMDSHELL, the 6502DOS shell. CMDSHELL.UXB and
+' src/bank3/ROMSHELL.UXB include it after DOS.UXI and HEAP.UXI. It includes no file: an
+' included file cannot.
+
+' A script, NAME.CMD, runs one line at a time in the same language. STARTUP.CMD in the root of
+' the boot drive, C:, runs when the shell starts.
+
+' The line, as CON_LINE fills it: its size leaves room for the CR.
+DIM LINE_TEXT AS STRING * 128
+DIM INPUT_TEXT AS STRING * 81
+' The name READ_NAME read last, in capitals.
+DIM NAME_TEXT AS STRING * 128
+' The position in LINE_TEXT of the next character to read, from 1.
+DIM CURSOR AS UBYTE
+DIM RUNNING AS UBYTE
+' Set by REPORT_ERROR. The statement stops when it is set.
+DIM FAILED AS UBYTE
+
+' A to Z.
+DIM NUMBER_VARIABLES(26) AS WORD
+' The descriptors of A$ to Z$. Their strings are in VARBANK, up to 255 characters.
+DIM STRING_VARIABLES(26) AS UWORD
+
+' What NAME_KIND gives.
+CONST KIND_NONE AS UBYTE = 0, KIND_NUMBER AS UBYTE = 1, KIND_STRING AS UBYTE = 2
+
+' The expression stacks of EVAL_NUMBER. An operator is its character, or NEGATE for a unary
+' minus. The value stack holds one more than the operator stack can.
+CONST STACK_SIZE AS UBYTE = 16, NEGATE AS UBYTE = 1
+DIM OPERATOR_STACK(16) AS UBYTE
+DIM VALUE_STACK(17) AS WORD
+DIM OPERATOR_COUNT AS UBYTE, VALUE_COUNT AS UBYTE
+DIM NUMBER_RESULT AS WORD
+DIM FIRST_NUMBER AS UWORD, SECOND_NUMBER AS UWORD
+DIM NUMBER_TEXT AS STRING * 6
+DIM STRING_RESULT AS STRING * 255
+
+' The paths of the file statements. COPY builds SOURCE_PATH and TARGET_PATH for each file.
+DIM FROM_PATH AS STRING * 128, TO_PATH AS STRING * 128
+DIM SOURCE_PATH AS STRING * 128, TARGET_PATH AS STRING * 128
+' COPY_HANDLE moves the bytes of a file through COPY_BUFFER, and keeps the last in LAST_BYTE.
+CONST COPY_SIZE AS UWORD = 1024, DISK_FULL AS UBYTE = 255
+DIM COPY_BUFFER(1024) AS UBYTE
+DIM LAST_BYTE AS UBYTE
+DIM FILE_SIZE AS ULONG
+
+' RUN_PROGRAM: the name typed, the file found for it, a directory of PATH$, the command tail.
+DIM PROGRAM_NAME AS STRING * 128, PROGRAM_PATH AS STRING * 128
+DIM SEARCH_DIRECTORY AS STRING * 128, TAIL_TEXT AS STRING * 128
+' NEXT_DIRECTORY: the position in STRING_RESULT of the next directory of PATH$.
+DIM SEARCH_START AS UWORD
+' FIND_ALIAS: the position of the CR after the alias found.
+DIM ALIAS_END AS UBYTE
+' While TO, APPEND or FROM sends handle REDIRECTED to a file, the handle that keeps the console;
+' else 0. REDIRECTED is 1 for TO and APPEND, 0 for FROM.
+DIM SAVED_HANDLE AS UWORD, REDIRECTED AS UBYTE
+' The pipe. PIPE_TEXT is the line after the first |. PIPE_PATH is the pipe file the last
+' statement wrote, PIPE1.$$$ or PIPE2.$$$ in the directory of TEMP$, or in the root of the
+' current drive when TEMP$ is empty. PIPE_DIGIT is the address of its digit, and PIPE_NUMBER the digit, 1 or 2; 0 when the
+' line has no |. While handle 1 goes to a pipe file, PIPE_OUTPUT is the handle that keeps what
+' it was; PIPE_INPUT likewise for handle 0; else 0.
+DIM PIPE_TEXT AS STRING * 128, PIPE_PATH AS STRING * 128
+DIM PIPE_OUTPUT AS UWORD, PIPE_INPUT AS UWORD, PIPE_DIGIT AS UWORD, PIPE_NUMBER AS UBYTE
+
+' The script is the file at the full path SCRIPT_PATH. SCRIPT_HIGH:SCRIPT_LOW is the 32-bit
+' position of the next line. The read-ahead is the first BUFFER_COUNT bytes of COPY_BUFFER, and
+' the byte at BUFFER_INDEX is at the script position. An empty read-ahead is filled from the
+' script, which is open in SCRIPT_HANDLE until the line is read; 0 means closed. SCRIPT_ACTIVE
+' is set while a script runs. SCRIPT_LINE is the number of the line running. IN_SCRIPT is set
+' while a line of a script runs. RESUMING is set by ONERROR(1).
+' Trap: a script edited while it runs goes on at its old position, and up to 255 bytes of it
+' come from the read-ahead as they were.
+DIM SCRIPT_PATH AS STRING * 128
+DIM SCRIPT_LOW AS UWORD, SCRIPT_HIGH AS UWORD, SCRIPT_LINE AS UWORD
+DIM SCRIPT_ACTIVE AS UBYTE, IN_SCRIPT AS UBYTE, RESUMING AS UBYTE
+DIM BUFFER_COUNT AS UBYTE, BUFFER_INDEX AS UBYTE, SCRIPT_HANDLE AS UWORD
+' The shell runs in DOS.STOP.CATCH. STOPPED is set when Ctrl+C was pressed during a line, or ended
+' the program the line ran. After a script line, it asks whether to end the script.
+DIM STOPPED AS UBYTE
+
+' The flow stack: a script position for each GOSUB and REPEAT open. FLOW_TIMES is the runs a
+' REPEAT has left, from its count down to 1, or 0 for a GOSUB. RETURN and ENDREP pop it.
+' Trap: a GOTO out of a REPEAT loop leaves its entry on the stack.
+CONST FLOW_SIZE AS UBYTE = 16
+DIM FLOW_LOW(16) AS UWORD, FLOW_HIGH(16) AS UWORD, FLOW_LINE(16) AS UWORD, FLOW_TIMES(16) AS UBYTE
+DIM FLOW_COUNT AS UBYTE
+
+' IF: the left string of a comparison. SKIP_DEPTH counts the IF and REPEAT blocks open while a
+' script's lines are skipped; 0 runs them. While lines are skipped, ENDIF and ENDREP each close
+' a block of either kind.
+DIM LEFT_TEXT AS STRING * 255
+DIM SKIP_DEPTH AS UBYTE
+
+' Tab at the prompt. PROMPT_COLUMN is the column the line starts in. COMPLETE_TEXT is the line
+' as the last Tab left it. COMPLETE_STEM is the word Tab completes, from position
+' COMPLETE_START of the line; COMPLETE_START is 0 before the first Tab of a line.
+' COMPLETE_COMMAND is 1 when the word is a first word with no directory part and no dot.
+' COMPLETE_INDEX is the match on show, from 0, or 255 for none.
+DIM PROMPT_COLUMN AS UBYTE
+DIM COMPLETE_TEXT AS STRING * 128, COMPLETE_STEM AS STRING * 128
+DIM COMPLETE_START AS UBYTE, COMPLETE_COMMAND AS UBYTE, COMPLETE_INDEX AS UBYTE
+' The last HISTORY_SIZE lines typed at the prompt are VARBANK's system strings HISTORY_FIRST
+' up, a ring. HISTORY_NEXT is the slot in the ring, from 0, the next line goes to.
+' HISTORY_BACK is the count of lines Up went back, 0 for the line typed.
+CONST HISTORY_FIRST AS UBYTE = 14, HISTORY_SIZE AS UBYTE = 8
+' Up and Down as CON_EDIT gives them, KEYS.KEY_UP and KEYS.KEY_DOWN. Trap: KEYS.UXI takes the
+' shell past the compiler's 1008 names.
+CONST KEY_UP AS UWORD = $4800, KEY_DOWN AS UWORD = $5000
+DIM HISTORY_NEXT AS UBYTE, HISTORY_BACK AS UBYTE
+' The key CON_EDIT ended the line with.
+DIM KEY_TYPED AS UWORD
+' FIND_MATCH: the match asked for, the matches passed, and the name of the match.
+DIM MATCH_WANTED AS UBYTE, MATCH_SEEN AS UBYTE
+DIM MATCH_NAME AS STRING * 32
+' The statements of RUN_LINE, for Tab, each followed by a space. A new statement goes here too.
+CONST BUILTIN_NAMES$ = "BEEP BIND CD CHDIR CLS COLOR COPY DEL DELETE DIR END ENDIF ENDREP FILES GOSUB GOTO IF INPUT LIST LOCATE MD MKDIR ONERROR PAUSE PRINT RD REM REN RENAME REPEAT RETURN RMDIR RUN SETSYS TYPE VER VERSION WAIT "
+
+' The code of the character at CURSOR, or 0 past the end of the line.
+FUNCT CURRENT_CHAR() AS UBYTE
+  IF CURSOR > LEN(LINE_TEXT) THEN RETURN 0
+  RETURN ContentsAt(@LINE_TEXT + 1 + CURSOR)
+END FUNCT
+
+SUB SKIP_SPACES()
+  DO WHILE CURRENT_CHAR() = 32
+    CURSOR = CURSOR + 1
+  LOOP
+END SUB
+
+' Starts a new line when the cursor is not in column 0.
+SUB START_LINE()
+  IF POS(0) > 0 THEN PRINT
+END SUB
+
+
+' Sets STOPPED when Ctrl+C was pressed. con_status reads the key waiting, so a Ctrl+C typed
+' while no program asked for a key counts.
+' Trap: a Ctrl+C behind another key waiting is not read.
+SUB POLL_BREAK()
+  SYS DOS.API_CON_STATUS
+  IF DOS.STOP_PRESSED() THEN STOPPED = 1
+END SUB
+
+' Prints the message on a line of its own, on the screen, and sets FAILED. A line being skipped
+' prints nothing.
+SUB REPORT_ERROR(MESSAGE$)
+  FAILED = 1
+  IF SKIP_DEPTH THEN RETURN
+  END_REDIRECT()
+  RESTORE_HANDLE(PIPE_OUTPUT, 1)
+  PIPE_OUTPUT = 0
+  START_LINE()
+  PRINT MESSAGE$
+END SUB
+
+' Reports a syntax error.
+SUB SYNTAX_ERROR()
+  REPORT_ERROR("Syntax error")
+END SUB
+
+' Reports a syntax error unless only spaces are left on the line.
+SUB EXPECT_END()
+  SKIP_SPACES()
+  IF CURRENT_CHAR() <> 0 THEN SYNTAX_ERROR()
+END SUB
+
+' Reads the name at CURSOR into NAME_TEXT, in capitals: a letter, then letters, digits and $.
+' NAME_TEXT is empty when no letter is at CURSOR.
+SUB READ_NAME()
+  DIM CODE AS UBYTE
+  NAME_TEXT = ""
+  DO
+    CODE = CURRENT_CHAR()
+    IF CODE >= 97 AND CODE <= 122 THEN CODE = CODE - 32
+    IF CODE < 65 OR CODE > 90
+      IF NAME_TEXT = "" THEN EXIT DO
+      IF CODE <> 36 AND (CODE < 48 OR CODE > 57) THEN EXIT DO
+    ENDIF
+    NAME_TEXT = NAME_TEXT + CHR$(CODE)
+    CURSOR = CURSOR + 1
+  LOOP
+END SUB
+
+' The kind of the name in NAME_TEXT: KIND_NUMBER for A to Z, KIND_STRING for A$ to Z$,
+' P1$ to P9$, PATH$, PROMPT$, EDITOR$ and TEMP$. A number's first character, less 65, is its
+' index.
+FUNCT NAME_KIND() AS UBYTE
+  DIM CODE AS UBYTE
+  IF LEN(NAME_TEXT) = 1 THEN RETURN KIND_NUMBER
+  SELECT CASE NAME_TEXT
+    CASE "PATH$", "PROMPT$", "EDITOR$", "TEMP$"
+      RETURN KIND_STRING
+  END SELECT
+  IF LEN(NAME_TEXT) = 2 AND ContentsAt(@NAME_TEXT + 3) = 36 THEN RETURN KIND_STRING
+  IF LEN(NAME_TEXT) = 3 AND ASC(NAME_TEXT) = 80 AND ContentsAt(@NAME_TEXT + 4) = 36
+    CODE = ContentsAt(@NAME_TEXT + 3)
+    IF CODE >= 49 AND CODE <= 57 THEN RETURN KIND_STRING
+  ENDIF
+  RETURN KIND_NONE
+END FUNCT
+
+' The address of the descriptor of the string variable in NAME_TEXT. P1$ to P9$ are VARBANK's
+' system strings 0 to 8, PATH$ is 9, PROMPT$ 10, EDITOR$ 11 and TEMP$ 13, so they outlive a
+' program.
+FUNCT DESCRIPTOR_OF() AS UWORD
+  IF LEN(NAME_TEXT) = 5
+    IF ASC(NAME_TEXT) = 80 THEN RETURN HEAP.PATH_STRING
+    RETURN HEAP.TEMP_STRING
+  ENDIF
+  IF LEN(NAME_TEXT) = 7
+    IF ASC(NAME_TEXT) = 80 THEN RETURN HEAP.PROMPT_STRING
+    RETURN HEAP.EDITOR_STRING
+  ENDIF
+  IF LEN(NAME_TEXT) = 3 THEN RETURN HEAP.SYS_STRINGS_BASE + (ContentsAt(@NAME_TEXT + 3) - 49) * 2
+  RETURN @STRING_VARIABLES + (ASC(NAME_TEXT) - 65) * 2
+END FUNCT
+
+' Adds COUNT bytes from SOURCE to the end of STRING_RESULT, cut at 255 characters.
+SUB APPEND_TEXT(SOURCE AS UWORD, COUNT AS UBYTE)
+  DIM LENGTH AS UBYTE
+  LENGTH = LEN(STRING_RESULT)
+  IF COUNT > 255 - LENGTH THEN COUNT = 255 - LENGTH
+  DO WHILE COUNT > 0
+    LENGTH = LENGTH + 1
+    ContentsAt(@STRING_RESULT + 1 + LENGTH) = ContentsAt(SOURCE)
+    SOURCE = SOURCE + 1
+    COUNT = COUNT - 1
+  LOOP
+  ContentsAt(@STRING_RESULT + 1) = LENGTH
+END SUB
+
+' Adds the characters of LINE_TEXT from position FIRST up to PAST, not PAST itself, to
+' STRING_RESULT.
+SUB APPEND_LINE(FIRST AS UBYTE, PAST AS UBYTE)
+  APPEND_TEXT(@LINE_TEXT + 1 + FIRST, PAST - FIRST)
+END SUB
+
+' Adds the characters of DOS.CALL_TEXT from position FIRST up to PAST, not PAST itself, to
+' STRING_RESULT.
+SUB APPEND_CALL(FIRST AS UBYTE, PAST AS UBYTE)
+  APPEND_TEXT(@DOS.CALL_TEXT + 1 + FIRST, PAST - FIRST)
+END SUB
+
+' Sets the string variable of the descriptor at DESCRIPTOR to STRING_RESULT.
+SUB STORE_STRING(DESCRIPTOR AS UWORD)
+  HEAP.STR_SET(DESCRIPTOR, STRING_RESULT)
+  REPORT_DOS(DOS.ERROR)
+END SUB
+
+' Sets NAME_TEXT to the current drive and directory, as in C:\BIN.
+SUB READ_CURDIR()
+  NAME_TEXT = CHR$(65 + DOS.GETDRIVE()) + ":\" + DOS.GETCWD(0)
+END SUB
+
+' Whether the expression at CURSOR is a string: it starts with a quote, a string variable or
+' CURDIR$.
+FUNCT IS_STRING_START() AS UBYTE
+  DIM START AS UBYTE
+  IF CURRENT_CHAR() = 34 THEN RETURN 1
+  START = CURSOR
+  READ_NAME()
+  CURSOR = START
+  IF NAME_KIND() = KIND_STRING OR NAME_TEXT = "CURDIR$" THEN RETURN 1
+  RETURN 0
+END FUNCT
+
+' Reads a string expression at CURSOR into STRING_RESULT: quoted strings, A$ to Z$, P1$ to
+' P9$, the system variables and CURDIR$, joined with +. A string with no closing quote runs to the end of the line.
+SUB EVAL_STRING()
+  DIM CODE AS UBYTE, START AS UBYTE
+  STRING_RESULT = ""
+  DO
+    SKIP_SPACES()
+    CODE = CURRENT_CHAR()
+    IF CODE = 34
+      CURSOR = CURSOR + 1
+      START = CURSOR
+      DO
+        CODE = CURRENT_CHAR()
+        IF CODE = 0 OR CODE = 34 THEN EXIT DO
+        CURSOR = CURSOR + 1
+      LOOP
+      APPEND_LINE(START, CURSOR)
+      IF CODE = 34 THEN CURSOR = CURSOR + 1
+    ELSE
+      READ_NAME()
+      CODE = NAME_KIND()
+      IF CODE = KIND_STRING
+        HEAP.STR_READ(DESCRIPTOR_OF())
+        APPEND_TEXT(@DOS.CALL_TEXT + 2, LEN(DOS.CALL_TEXT))
+      ELSEIF NAME_TEXT = "CURDIR$"
+        READ_CURDIR()
+        APPEND_TEXT(@NAME_TEXT + 2, LEN(NAME_TEXT))
+      ELSEIF CODE = KIND_NUMBER
+        REPORT_ERROR("Type mismatch")
+        RETURN
+      ELSE
+        SYNTAX_ERROR()
+        RETURN
+      ENDIF
+    ENDIF
+    SKIP_SPACES()
+    IF CURRENT_CHAR() <> 43 THEN EXIT DO
+    CURSOR = CURSOR + 1
+  LOOP
+END SUB
+
+' The priority of an operator on OPERATOR_STACK. A ( has the lowest, so nothing pops it.
+FUNCT PRIORITY(OPERATOR AS UBYTE) AS UBYTE
+  SELECT CASE OPERATOR
+    CASE NEGATE
+      RETURN 3
+    CASE 42, 47
+      RETURN 2
+    CASE 43, 45
+      RETURN 1
+  ENDSELECT
+  RETURN 0
+END FUNCT
+
+' The value of the color named in NAME_TEXT, from DOS.UXI. Another name is a syntax error.
+' Each name takes 11 characters of the table, in the order of the values, so a name's position
+' less 1, divided by 11, is its value.
+FUNCT COLOR_NUMBER() AS WORD
+  DIM POSITION AS UBYTE
+  POSITION = INSTR(" BLACK      WHITE      RED        CYAN       PURPLE     GREEN      BLUE       YELLOW     ORANGE     BROWN      LIGHTRED   DARKGRAY   GRAY       LIGHTGREEN LIGHTBLUE  LIGHTGRAY ", " " + NAME_TEXT + " ")
+  IF POSITION = 0 OR NAME_TEXT = ""
+    SYNTAX_ERROR()
+    RETURN 0
+  ENDIF
+  RETURN (POSITION - 1) / 11
+END FUNCT
+
+' Pops the top operator and applies it to the top value, or to the top two.
+SUB APPLY_OPERATOR()
+  DIM OPERATOR AS UBYTE, LEFT_VALUE AS WORD, RIGHT_VALUE AS WORD
+  OPERATOR_COUNT = OPERATOR_COUNT - 1
+  OPERATOR = OPERATOR_STACK(OPERATOR_COUNT)
+  RIGHT_VALUE = VALUE_STACK(VALUE_COUNT - 1)
+  IF OPERATOR = NEGATE
+    VALUE_STACK(VALUE_COUNT - 1) = -RIGHT_VALUE
+    RETURN
+  ENDIF
+  VALUE_COUNT = VALUE_COUNT - 1
+  LEFT_VALUE = VALUE_STACK(VALUE_COUNT - 1)
+  SELECT CASE OPERATOR
+    CASE 43
+      LEFT_VALUE = LEFT_VALUE + RIGHT_VALUE
+    CASE 45
+      LEFT_VALUE = LEFT_VALUE - RIGHT_VALUE
+    CASE 42
+      LEFT_VALUE = LEFT_VALUE * RIGHT_VALUE
+    CASE ELSE
+      IF RIGHT_VALUE = 0
+        IF SKIP_DEPTH = 0
+          REPORT_ERROR("Division by zero")
+          RETURN
+        ENDIF
+        ' A line being skipped divides by 1, so that its condition is read to its end.
+        RIGHT_VALUE = 1
+      ENDIF
+      LEFT_VALUE = LEFT_VALUE / RIGHT_VALUE
+  END SELECT
+  VALUE_STACK(VALUE_COUNT - 1) = LEFT_VALUE
+END SUB
+
+' Pushes an operator. Reports a syntax error when the stack is full.
+SUB PUSH_OPERATOR(OPERATOR AS UBYTE)
+  IF OPERATOR_COUNT = STACK_SIZE
+    SYNTAX_ERROR()
+    RETURN
+  ENDIF
+  OPERATOR_STACK(OPERATOR_COUNT) = OPERATOR
+  OPERATOR_COUNT = OPERATOR_COUNT + 1
+END SUB
+
+' Reads a number expression at CURSOR into NUMBER_RESULT: whole numbers and A to Z, with
+' + - * /, a unary minus and brackets. * and / come before + and -. It stops at the first
+' character that cannot go on the expression. UXCBASIC has no recursion, so the brackets
+' and the order of the operators are worked with the two stacks.
+SUB EVAL_NUMBER()
+  DIM CODE AS UBYTE, NEW_PRIORITY AS UBYTE
+  OPERATOR_COUNT = 0
+  VALUE_COUNT = 0
+  DO
+    ' A value: any number of ( and -, then a number or a variable.
+    SKIP_SPACES()
+    CODE = CURRENT_CHAR()
+    IF CODE = 40 OR CODE = 45
+      IF CODE = 45 THEN CODE = NEGATE
+      PUSH_OPERATOR(CODE)
+      IF FAILED THEN RETURN
+      CURSOR = CURSOR + 1
+      CONTINUE
+    ENDIF
+    IF CODE >= 48 AND CODE <= 57
+      VALUE_STACK(VALUE_COUNT) = VAL(MID$(LINE_TEXT, CURSOR))
+      DO
+        CURSOR = CURSOR + 1
+        CODE = CURRENT_CHAR()
+      LOOP WHILE CODE >= 48 AND CODE <= 57
+    ELSE
+      READ_NAME()
+      CODE = NAME_KIND()
+      IF CODE = KIND_NUMBER
+        VALUE_STACK(VALUE_COUNT) = NUMBER_VARIABLES(ASC(NAME_TEXT) - 65)
+      ELSEIF CODE = KIND_STRING OR CURRENT_CHAR() = 34
+        REPORT_ERROR("Type mismatch")
+        RETURN
+      ELSE
+        VALUE_STACK(VALUE_COUNT) = COLOR_NUMBER()
+        IF FAILED THEN RETURN
+      ENDIF
+    ENDIF
+    VALUE_COUNT = VALUE_COUNT + 1
+    ' An operator: any number of ), then + - * / or the end of the expression.
+    DO
+      SKIP_SPACES()
+      CODE = CURRENT_CHAR()
+      IF CODE <> 41 THEN EXIT DO
+      DO WHILE OPERATOR_COUNT > 0 AND OPERATOR_STACK(OPERATOR_COUNT - 1) <> 40
+        APPLY_OPERATOR()
+        IF FAILED THEN RETURN
+      LOOP
+      IF OPERATOR_COUNT = 0
+        SYNTAX_ERROR()
+        RETURN
+      ENDIF
+      OPERATOR_COUNT = OPERATOR_COUNT - 1
+      CURSOR = CURSOR + 1
+    LOOP
+    IF CODE <> 42 AND CODE <> 43 AND CODE <> 45 AND CODE <> 47 THEN EXIT DO
+    NEW_PRIORITY = PRIORITY(CODE)
+    DO WHILE OPERATOR_COUNT > 0 AND PRIORITY(OPERATOR_STACK(OPERATOR_COUNT - 1)) >= NEW_PRIORITY
+      APPLY_OPERATOR()
+      IF FAILED THEN RETURN
+    LOOP
+    PUSH_OPERATOR(CODE)
+    IF FAILED THEN RETURN
+    CURSOR = CURSOR + 1
+  LOOP
+  ' The end: apply what is left. A ( still open is an error.
+  DO WHILE OPERATOR_COUNT > 0
+    IF OPERATOR_STACK(OPERATOR_COUNT - 1) = 40
+      SYNTAX_ERROR()
+      RETURN
+    ENDIF
+    APPLY_OPERATOR()
+    IF FAILED THEN RETURN
+  LOOP
+  NUMBER_RESULT = VALUE_STACK(0)
+END SUB
+
+' PRINT: expressions separated by ;. A number prints with no spaces around it. A ; at the end
+' leaves the cursor on the line.
+SUB DO_PRINT()
+  DIM NEW_LINE AS UBYTE
+  NEW_LINE = 1
+  DO
+    SKIP_SPACES()
+    IF CURRENT_CHAR() = 0 THEN EXIT DO
+    IF IS_STRING_START()
+      EVAL_STRING()
+      IF FAILED THEN RETURN
+      PRINT STRING_RESULT;
+    ELSE
+      EVAL_NUMBER()
+      IF FAILED THEN RETURN
+      NUMBER_TEXT = STR$(NUMBER_RESULT)
+      IF NUMBER_RESULT >= 0 THEN NUMBER_TEXT = MID$(NUMBER_TEXT, 2)
+      PRINT NUMBER_TEXT;
+    ENDIF
+    NEW_LINE = 1
+    SKIP_SPACES()
+    IF CURRENT_CHAR() = 0 THEN EXIT DO
+    IF CURRENT_CHAR() <> 59
+      SYNTAX_ERROR()
+      RETURN
+    ENDIF
+    CURSOR = CURSOR + 1
+    NEW_LINE = 0
+  LOOP
+  IF NEW_LINE THEN PRINT
+END SUB
+
+' WAIT seconds: waits that many seconds, 60 VSYNCs each. A key does not end the wait. A value
+' below 0 is a syntax error.
+SUB DO_WAIT()
+  DIM SECONDS AS WORD, START AS UWORD
+  EVAL_NUMBER()
+  IF FAILED THEN RETURN
+  SECONDS = NUMBER_RESULT
+  ' CURSOR on the WAIT makes EXPECT_END report the error.
+  IF SECONDS < 0 THEN CURSOR = 1
+  EXPECT_END()
+  IF FAILED THEN RETURN
+  DO WHILE SECONDS
+    START = DOS.TICKS()
+    DO
+    LOOP UNTIL DOS.TICKS() - START >= 60
+    SECONDS = SECONDS - 1
+    POLL_BREAK()
+    IF STOPPED THEN EXIT DO
+  LOOP
+END SUB
+
+' Reads the two numbers of "first,second" into FIRST_NUMBER and SECOND_NUMBER. As UWORD, a
+' value below 0 is above 32767.
+SUB EVAL_PAIR()
+  EVAL_NUMBER()
+  IF FAILED THEN RETURN
+  FIRST_NUMBER = NUMBER_RESULT
+  IF CURRENT_CHAR() <> 44
+    SYNTAX_ERROR()
+    RETURN
+  ENDIF
+  CURSOR = CURSOR + 1
+  EVAL_NUMBER()
+  SECOND_NUMBER = NUMBER_RESULT
+END SUB
+
+' LOCATE row,column: moves the cursor to the row, 0 to 29, and the column, 0 to 79, counted from
+' the top left. A value out of range is a syntax error.
+SUB DO_LOCATE()
+  EVAL_PAIR()
+  IF FAILED THEN RETURN
+  ' CURSOR on the LOCATE makes EXPECT_END report the error.
+  IF FIRST_NUMBER > 29 OR SECOND_NUMBER > 79 THEN CURSOR = 1
+  EXPECT_END()
+  IF FAILED THEN RETURN
+  POS(1) = FIRST_NUMBER
+  POS(0) = SECOND_NUMBER
+END SUB
+
+' COLOR foreground,background: sets the color of the characters written from now on. Each
+' value is 0 to 15, from DOS.UXI's color names. A value out of range is a syntax error.
+SUB DO_COLOR()
+  EVAL_PAIR()
+  IF FAILED THEN RETURN
+  ' CURSOR on the COLOR makes EXPECT_END report the error.
+  IF FIRST_NUMBER > 15 OR SECOND_NUMBER > 15 THEN CURSOR = 1
+  EXPECT_END()
+  IF FAILED THEN RETURN
+  DOS.SET_COLOR(SECOND_NUMBER * 16 + FIRST_NUMBER)
+END SUB
+
+' INPUT name: prints "? ", reads a line and sets the variable to it. A number takes the
+' number the line starts with, or 0.
+SUB DO_INPUT()
+  DIM KIND AS UBYTE, INDEX AS UBYTE, DESCRIPTOR AS UWORD
+  SKIP_SPACES()
+  READ_NAME()
+  KIND = NAME_KIND()
+  IF KIND = KIND_NONE
+    SYNTAX_ERROR()
+    RETURN
+  ENDIF
+  INDEX = ASC(NAME_TEXT) - 65
+  DESCRIPTOR = DESCRIPTOR_OF()
+  EXPECT_END()
+  IF FAILED THEN RETURN
+  PRINT "? ";
+  DOS.CON_LINE(INPUT_TEXT)
+  IF KIND = KIND_NUMBER
+    NUMBER_VARIABLES(INDEX) = VAL(INPUT_TEXT)
+  ELSE
+    STRING_RESULT = INPUT_TEXT
+    STORE_STRING(DESCRIPTOR)
+  ENDIF
+END SUB
+
+' name = expression, with CURSOR on the =.
+SUB DO_ASSIGN()
+  DIM KIND AS UBYTE, INDEX AS UBYTE, DESCRIPTOR AS UWORD
+  KIND = NAME_KIND()
+  IF KIND = KIND_NONE
+    SYNTAX_ERROR()
+    RETURN
+  ENDIF
+  INDEX = ASC(NAME_TEXT) - 65
+  DESCRIPTOR = DESCRIPTOR_OF()
+  CURSOR = CURSOR + 1
+  SKIP_SPACES()
+  IF KIND = KIND_NUMBER
+    EVAL_NUMBER()
+    IF FAILED THEN RETURN
+    EXPECT_END()
+    IF FAILED THEN RETURN
+    NUMBER_VARIABLES(INDEX) = NUMBER_RESULT
+  ELSE
+    EVAL_STRING()
+    IF FAILED THEN RETURN
+    EXPECT_END()
+    IF FAILED THEN RETURN
+    STORE_STRING(DESCRIPTOR)
+  ENDIF
+END SUB
+
+' Prints the string of the descriptor at DESCRIPTOR, on a line.
+SUB PRINT_SYSTEM(DESCRIPTOR AS UWORD)
+  HEAP.STR_READ(DESCRIPTOR)
+  PRINT DOS.CALL_TEXT
+END SUB
+
+' SETSYS alone prints each system variable as NAME=value, one a line. SETSYS name = expression
+' sets PATH$, PROMPT$, EDITOR$ or TEMP$.
+SUB DO_SETSYS()
+  SKIP_SPACES()
+  IF CURRENT_CHAR() = 0
+    PRINT "PATH$=";
+    PRINT_SYSTEM(HEAP.PATH_STRING)
+    READ_CURDIR()
+    PRINT "CURDIR$="; NAME_TEXT
+    PRINT "PROMPT$=";
+    PRINT_SYSTEM(HEAP.PROMPT_STRING)
+    PRINT "EDITOR$=";
+    PRINT_SYSTEM(HEAP.EDITOR_STRING)
+    PRINT "TEMP$=";
+    PRINT_SYSTEM(HEAP.TEMP_STRING)
+    RETURN
+  ENDIF
+  READ_NAME()
+  SKIP_SPACES()
+  ' The variable names of 5 or more characters are the system ones. DO_ASSIGN rejects others.
+  IF LEN(NAME_TEXT) < 5 OR CURRENT_CHAR() <> 61
+    SYNTAX_ERROR()
+    RETURN
+  ENDIF
+  DO_ASSIGN()
+END SUB
+
+' The aliases are one string, a CR after each NAME=command.
+
+' Reads the aliases into DOS.CALL_TEXT. Returns the position there of the alias NAME_TEXT, or 0,
+' and sets ALIAS_END to the position of its CR.
+FUNCT FIND_ALIAS() AS UBYTE
+  DIM FOUND AS UBYTE
+  HEAP.STR_READ(HEAP.BIND_STRING)
+  ' A CR before the first alias. A string of 255 loses its last CR, which is not searched for.
+  FOUND = INSTR(CHR$(13) + DOS.CALL_TEXT, CHR$(13) + NAME_TEXT + "=")
+  IF FOUND THEN ALIAS_END = INSTR(DOS.CALL_TEXT, CHR$(13), FOUND)
+  RETURN FOUND
+END FUNCT
+
+' Whether the word READ_WORD read, NAME_TEXT, is an alias. When it is, LINE_TEXT becomes its
+' command followed by the rest of the line, and CURSOR is 1.
+FUNCT EXPAND_ALIAS() AS UBYTE
+  DIM FOUND AS UBYTE
+  FOUND = FIND_ALIAS()
+  IF FOUND = 0 THEN RETURN 0
+  FOUND = FOUND + LEN(NAME_TEXT) + 1
+  STRING_RESULT = ""
+  APPEND_CALL(FOUND, ALIAS_END)
+  APPEND_LINE(CURSOR, LEN(LINE_TEXT) + 1)
+  LINE_TEXT = STRING_RESULT
+  CURSOR = 1
+  RETURN 1
+END FUNCT
+
+' BIND alone prints each alias as NAME=command, one a line. BIND name = command makes the name
+' run the command, the rest of the line. An empty command removes the alias.
+SUB DO_BIND()
+  DIM FOUND AS UBYTE
+  SKIP_SPACES()
+  IF CURRENT_CHAR() = 0
+    HEAP.STR_READ(HEAP.BIND_STRING)
+    PRINT DOS.CALL_TEXT;
+    RETURN
+  ENDIF
+  READ_NAME()
+  SKIP_SPACES()
+  IF NAME_TEXT = "" OR CURRENT_CHAR() <> 61
+    SYNTAX_ERROR()
+    RETURN
+  ENDIF
+  CURSOR = CURSOR + 1
+  SKIP_SPACES()
+  FOUND = FIND_ALIAS()
+  IF FOUND = 0
+    ALIAS_END = LEN(DOS.CALL_TEXT)
+    FOUND = ALIAS_END + 1
+  ENDIF
+  ' The aliases before and after the old one.
+  STRING_RESULT = ""
+  APPEND_CALL(1, FOUND)
+  APPEND_CALL(ALIAS_END + 1, LEN(DOS.CALL_TEXT) + 1)
+  IF CURRENT_CHAR()
+    IF LEN(NAME_TEXT) + LEN(LINE_TEXT) + 3 - CURSOR > 255 - LEN(STRING_RESULT)
+      REPORT_DOS(DOS.ERR_NO_MEMORY)
+      RETURN
+    ENDIF
+    STRING_RESULT = STRING_RESULT + NAME_TEXT + "="
+    APPEND_LINE(CURSOR, LEN(LINE_TEXT) + 1)
+    STRING_RESULT = STRING_RESULT + CHR$(13)
+  ENDIF
+  STORE_STRING(HEAP.BIND_STRING)
+END SUB
+
+' ---- the file statements ----
+
+' Reports error CODE with its message, unless it is 0.
+SUB REPORT_DOS(CODE AS UBYTE)
+  IF CODE = DISK_FULL
+    REPORT_ERROR("Insufficient disk space")
+  ELSEIF CODE <> 0
+    REPORT_ERROR(DOS.ERRMSG(CODE))
+  ENDIF
+END SUB
+
+' Reads the argument at CURSOR into STRING_RESULT: a string expression when it starts with a
+' quote, a string variable or CURDIR$, else the text up to the next space. A missing argument
+' is a syntax error.
+SUB READ_ARGUMENT()
+  SKIP_SPACES()
+  IF CURRENT_CHAR() = 0
+    SYNTAX_ERROR()
+    RETURN
+  ENDIF
+  IF IS_STRING_START()
+    EVAL_STRING()
+  ELSE
+    READ_WORD()
+  ENDIF
+END SUB
+
+' Reads the text at CURSOR up to the next space into STRING_RESULT.
+SUB READ_WORD()
+  DIM START AS UBYTE
+  START = CURSOR
+  DO WHILE CURRENT_CHAR() > 32
+    CURSOR = CURSOR + 1
+  LOOP
+  STRING_RESULT = MID$(LINE_TEXT, START, CURSOR - START)
+END SUB
+
+' Reads the last argument of the statement into STRING_RESULT.
+SUB LAST_ARGUMENT()
+  READ_ARGUMENT()
+  IF FAILED THEN RETURN
+  EXPECT_END()
+END SUB
+
+' Ends a FINDFIRST and FINDNEXT search that went over COUNT names: reports its error, or
+' prints COUNT and TEXT$.
+SUB END_SEARCH(COUNT AS UWORD, TEXT$)
+  IF DOS.ERROR <> DOS.ERR_NO_MORE
+    REPORT_DOS(DOS.ERROR)
+    RETURN
+  ENDIF
+  NAME_TEXT = MID$(STR$(COUNT), 2)
+  PRINT_SPACES(6 - LEN(NAME_TEXT))
+  PRINT NAME_TEXT; TEXT$
+END SUB
+
+SUB PRINT_SPACES(COUNT AS UBYTE)
+  DO WHILE COUNT > 0
+    PRINT " ";
+    COUNT = COUNT - 1
+  LOOP
+END SUB
+
+FUNCT IS_SEPARATOR(CODE AS UBYTE) AS UBYTE
+  IF CODE = 92 OR CODE = 47 OR CODE = 58 THEN RETURN 1
+  RETURN 0
+END FUNCT
+
+FUNCT HAS_WILDCARD(PATH$) AS UBYTE
+  IF INSTR(PATH$, "*") OR INSTR(PATH$, "?") THEN RETURN 1
+  RETURN 0
+END FUNCT
+
+' The length of the directory part of PATH$: up to its last \, / or :.
+FUNCT DIRECTORY_LENGTH(PATH$) AS UBYTE
+  DIM POSITION AS UBYTE, LENGTH AS UBYTE
+  POSITION = 0
+  LENGTH = 0
+  DO WHILE POSITION < LEN(PATH$)
+    POSITION = POSITION + 1
+    IF IS_SEPARATOR(ContentsAt(@PATH$ + 1 + POSITION)) THEN LENGTH = POSITION
+  LOOP
+  RETURN LENGTH
+END FUNCT
+
+' Whether PATH$ is a directory: empty, ending in \, / or :, or the name of a directory. A
+' directory's name gets a \ on its end, so that a name can follow it.
+FUNCT IS_DIRECTORY(PATH$) AS UBYTE
+  IF PATH$ = "" THEN RETURN 1
+  IF IS_SEPARATOR(ContentsAt(@PATH$ + 1 + LEN(PATH$))) THEN RETURN 1
+  IF HAS_WILDCARD(PATH$) THEN RETURN 0
+  DOS.FINDFIRST(PATH$, DOS.ATTR_DIRECTORY OR DOS.ATTR_HIDDEN OR DOS.ATTR_SYSTEM)
+  IF DOS.ERROR THEN RETURN 0
+  IF (DOS.FOUND_ATTRIBUTES AND DOS.ATTR_DIRECTORY) = 0 THEN RETURN 0
+  PATH$ = PATH$ + "\"
+  RETURN 1
+END FUNCT
+
+' Copies the open file SOURCE to TARGET from its position to its end. Returns 0, an error
+' number, or DISK_FULL when TARGET took fewer bytes than it was given. Keeps the last byte
+' copied in LAST_BYTE. Empties the script's read-ahead, which shares COPY_BUFFER.
+FUNCT COPY_HANDLE(SOURCE AS UWORD, TARGET AS UWORD) AS UBYTE
+  DIM COUNT AS UWORD
+  EMPTY_READ_AHEAD()
+  DO
+    COUNT = DOS.READ_FILE(SOURCE, @COPY_BUFFER, COPY_SIZE)
+    IF DOS.ERROR THEN RETURN DOS.ERROR
+    IF COUNT = 0 THEN RETURN 0
+    LAST_BYTE = COPY_BUFFER(COUNT - 1)
+    IF DOS.WRITE_FILE(TARGET, @COPY_BUFFER, COUNT) < COUNT
+      IF DOS.ERROR THEN RETURN DOS.ERROR
+      RETURN DISK_FULL
+    ENDIF
+  LOOP
+END FUNCT
+
+' FILES [pattern]: the names that match, each with its size or <DIR>, then their count. A
+' directory lists the names in it; no pattern lists the current directory.
+SUB DO_FILES()
+  DIM COUNT AS UWORD
+  FROM_PATH = ""
+  SKIP_SPACES()
+  IF CURRENT_CHAR() <> 0
+    READ_ARGUMENT()
+    IF FAILED THEN RETURN
+    FROM_PATH = STRING_RESULT
+  ENDIF
+  EXPECT_END()
+  IF FAILED THEN RETURN
+  ' Only for the \ that IS_DIRECTORY puts on a directory's name.
+  COUNT = IS_DIRECTORY(FROM_PATH)
+  COUNT = 0
+  DOS.FINDFIRST(FROM_PATH, DOS.ATTR_DIRECTORY OR DOS.ATTR_HIDDEN OR DOS.ATTR_SYSTEM)
+  DO WHILE DOS.ERROR = 0
+    IF DOS.FOUND_ATTRIBUTES AND DOS.ATTR_DIRECTORY
+      NAME_TEXT = "<DIR>"
+    ELSE
+      ContentsAtW(@FILE_SIZE) = DOS.FOUND_SIZE_LOW
+      ContentsAtW(@FILE_SIZE + 2) = DOS.FOUND_SIZE_HIGH
+      NAME_TEXT = MID$(STR$(FILE_SIZE), 2)
+    ENDIF
+    PRINT DOS.FOUND_NAME;
+    IF LEN(DOS.FOUND_NAME) + LEN(NAME_TEXT) < 23
+      PRINT_SPACES(23 - LEN(DOS.FOUND_NAME) - LEN(NAME_TEXT))
+    ELSE
+      PRINT " ";                                   ' a name past the column
+    ENDIF
+    PRINT NAME_TEXT
+    COUNT = COUNT + 1
+    DOS.FINDNEXT()
+  LOOP
+  END_SEARCH(COUNT, " File(s)")
+END SUB
+
+' LIST file: prints the file. A file that does not end in a line feed gets a new line.
+SUB DO_LIST()
+  DIM HANDLE AS UWORD, CODE AS UBYTE
+  LAST_ARGUMENT()
+  IF FAILED THEN RETURN
+  HANDLE = DOS.OPEN_FILE(STRING_RESULT, DOS.ACCESS_READ)
+  REPORT_DOS(DOS.ERROR)
+  IF FAILED THEN RETURN
+  LAST_BYTE = 10
+  CODE = COPY_HANDLE(HANDLE, 1)
+  DOS.CLOSE_FILE(HANDLE)
+  IF LAST_BYTE <> 10 THEN PRINT
+  REPORT_DOS(CODE)
+END SUB
+
+' Copies the file SOURCE_PATH to TARGET_PATH. Sets FAILED on an error.
+SUB COPY_FILE()
+  DIM SOURCE AS UWORD, TARGET AS UWORD, CODE AS UBYTE
+  SOURCE = DOS.OPEN_FILE(SOURCE_PATH, DOS.ACCESS_READ)
+  REPORT_DOS(DOS.ERROR)
+  IF FAILED THEN RETURN
+  TARGET = DOS.CREATE_FILE(TARGET_PATH, 0)
+  CODE = DOS.ERROR
+  IF CODE = 0
+    CODE = COPY_HANDLE(SOURCE, TARGET)
+    DOS.CLOSE_FILE(TARGET)
+    IF CODE = 0 THEN CODE = DOS.ERROR
+  ENDIF
+  DOS.CLOSE_FILE(SOURCE)
+  REPORT_DOS(CODE)
+END SUB
+
+' COPY from to: copies a file. A from with * or ? copies each file that matches, and then to
+' must be a directory. A to that is a directory takes each file under its own name.
+SUB DO_COPY()
+  DIM INTO AS UBYTE, PREFIX AS UBYTE, COUNT AS UWORD
+  READ_ARGUMENT()
+  IF FAILED THEN RETURN
+  FROM_PATH = STRING_RESULT
+  LAST_ARGUMENT()
+  IF FAILED THEN RETURN
+  TO_PATH = STRING_RESULT
+  INTO = IS_DIRECTORY(TO_PATH)
+  IF INTO = 0 AND HAS_WILDCARD(FROM_PATH)
+    REPORT_ERROR("Target must be a directory")
+    RETURN
+  ENDIF
+  PREFIX = DIRECTORY_LENGTH(FROM_PATH)
+  TARGET_PATH = TO_PATH
+  COUNT = 0
+  DOS.FINDFIRST(FROM_PATH, 0)
+  DO WHILE DOS.ERROR = 0
+    SOURCE_PATH = MID$(FROM_PATH, 1, PREFIX) + DOS.FOUND_NAME
+    IF INTO THEN TARGET_PATH = TO_PATH + DOS.FOUND_NAME
+    COPY_FILE()
+    IF FAILED THEN RETURN
+    COUNT = COUNT + 1
+    DOS.FINDNEXT()
+  LOOP
+  END_SEARCH(COUNT, " File(s) copied")
+END SUB
+
+' RENAME old new.
+SUB DO_RENAME()
+  READ_ARGUMENT()
+  IF FAILED THEN RETURN
+  FROM_PATH = STRING_RESULT
+  LAST_ARGUMENT()
+  IF FAILED THEN RETURN
+  DOS.RENAME(FROM_PATH, STRING_RESULT)
+  REPORT_DOS(DOS.ERROR)
+END SUB
+
+' DELETE or DEL, MKDIR or MD, RMDIR or RD, and CHDIR or CD, each with one path. STATEMENT is
+' the first letter of the statement's name; any letter but D, M and R is CHDIR.
+SUB DO_ONE_PATH(STATEMENT AS UBYTE)
+  LAST_ARGUMENT()
+  IF FAILED THEN RETURN
+  SELECT CASE STATEMENT
+    CASE 68
+      DOS.DELETE(STRING_RESULT)
+    CASE 77
+      DOS.MKDIR(STRING_RESULT)
+    CASE 82
+      DOS.RMDIR(STRING_RESULT)
+    CASE ELSE
+      DOS.CHDIR(STRING_RESULT)
+  END SELECT
+  REPORT_DOS(DOS.ERROR)
+END SUB
+
+' ---- running a program ----
+
+' Whether PROGRAM_PATH names a file.
+FUNCT IS_FILE() AS UBYTE
+  DOS.FINDFIRST(PROGRAM_PATH, 0)
+  IF DOS.ERROR = 0 THEN RETURN 1
+  RETURN 0
+END FUNCT
+
+' Whether the program PROGRAM_NAME is in DIRECTORY$, which is empty or ends in a separator.
+' A name with an extension is taken as it is, else NAME.SCOM, NAME.COM, then NAME.CMD. Puts
+' the path in PROGRAM_PATH.
+FUNCT FIND_IN(DIRECTORY$) AS UBYTE
+  IF INSTR(PROGRAM_NAME, ".", DIRECTORY_LENGTH(PROGRAM_NAME) + 1)
+    PROGRAM_PATH = DIRECTORY$ + PROGRAM_NAME
+    RETURN IS_FILE()
+  ENDIF
+  PROGRAM_PATH = DIRECTORY$ + PROGRAM_NAME + ".SCOM"
+  IF IS_FILE() THEN RETURN 1
+  PROGRAM_PATH = DIRECTORY$ + PROGRAM_NAME + ".COM"
+  IF IS_FILE() THEN RETURN 1
+  PROGRAM_PATH = DIRECTORY$ + PROGRAM_NAME + ".CMD"
+  RETURN IS_FILE()
+END FUNCT
+
+' Puts PATH$ in STRING_RESULT for NEXT_DIRECTORY, which then starts at its first
+' directory.
+SUB START_PATH()
+  STRING_RESULT = HEAP.STR_GET(HEAP.PATH_STRING)
+  SEARCH_START = 1
+END SUB
+
+' Puts the next directory of PATH$ in SEARCH_DIRECTORY, with a separator on its end. Returns 0
+' past the last one.
+FUNCT NEXT_DIRECTORY() AS UBYTE
+  DIM FINISH AS UWORD
+  DO WHILE SEARCH_START <= LEN(STRING_RESULT)
+    FINISH = INSTR(STRING_RESULT, ";", SEARCH_START)
+    IF FINISH = 0 THEN FINISH = LEN(STRING_RESULT) + 1
+    SEARCH_DIRECTORY = MID$(STRING_RESULT, SEARCH_START, FINISH - SEARCH_START)
+    SEARCH_START = FINISH + 1
+    IF SEARCH_DIRECTORY <> ""
+      IF IS_SEPARATOR(ContentsAt(@SEARCH_DIRECTORY + 1 + LEN(SEARCH_DIRECTORY))) = 0
+        SEARCH_DIRECTORY = SEARCH_DIRECTORY + "\"
+      ENDIF
+      RETURN 1
+    ENDIF
+  LOOP
+  RETURN 0
+END FUNCT
+
+' Whether PROGRAM_NAME names a program, and puts its path in PROGRAM_PATH. A name with a
+' directory is looked for there only, any other in the current directory, then in each
+' directory of PATH$. A name with * or ? names none.
+FUNCT FIND_PROGRAM() AS UBYTE
+  IF HAS_WILDCARD(PROGRAM_NAME) THEN RETURN 0
+  IF FIND_IN("") THEN RETURN 1
+  IF DIRECTORY_LENGTH(PROGRAM_NAME) > 0 THEN RETURN 0
+  START_PATH()
+  DO WHILE NEXT_DIRECTORY()
+    IF FIND_IN(SEARCH_DIRECTORY) THEN RETURN 1
+  LOOP
+  RETURN 0
+END FUNCT
+
+' Starts the script PROGRAM_PATH at its first line, with ONERROR(0). The script that ran it
+' ends. A path without a drive takes the current drive and directory, so a CHDIR in the script
+' keeps its file.
+' Trap: a path with a drive and no root, C:NAME.CMD, is kept as it is.
+SUB START_SCRIPT()
+  SCRIPT_PATH = PROGRAM_PATH
+  IF MID$(SCRIPT_PATH, 2, 1) <> ":"
+    IF IS_SEPARATOR(ASC(SCRIPT_PATH)) = 0
+      STRING_RESULT = DOS.GETCWD(0)
+      IF STRING_RESULT <> "" THEN SCRIPT_PATH = STRING_RESULT + "\" + SCRIPT_PATH
+      SCRIPT_PATH = "\" + SCRIPT_PATH
+    ENDIF
+    SCRIPT_PATH = CHR$(65 + DOS.GETDRIVE()) + ":" + SCRIPT_PATH
+  ENDIF
+  SCRIPT_LOW = 0
+  SCRIPT_HIGH = 0
+  SCRIPT_LINE = 0
+  EMPTY_READ_AHEAD()
+  RESUMING = 0
+  FLOW_COUNT = 0
+  SCRIPT_ACTIVE = 1
+END SUB
+
+' Empties the read-ahead, so the next line is read from the file at the script position. Call it
+' after any change to the script position other than reading a line.
+SUB EMPTY_READ_AHEAD()
+  BUFFER_COUNT = 0
+  BUFFER_INDEX = 0
+END SUB
+
+' Moves the script position BYTES bytes on.
+SUB ADVANCE_SCRIPT(BYTES AS UBYTE)
+  SCRIPT_LOW = SCRIPT_LOW + BYTES
+  IF SCRIPT_LOW < BYTES THEN SCRIPT_HIGH = SCRIPT_HIGH + 1
+END SUB
+
+' Copies the line at the script position into LINE_TEXT, moves the position past it, and counts
+' it in SCRIPT_LINE. The bytes come from the read-ahead. An empty one is filled with 255 bytes
+' from the script; the script is opened into SCRIPT_HANDLE first when that is 0, and the caller
+' closes it with CLOSE_SCRIPT. A line ends in LF; a CR is dropped. A line is cut at 127
+' characters. Returns 10 when an LF ended the line; any other value means the line was the
+' last. DOS.ERROR holds the error of the open or the read, or 0.
+FUNCT READ_NEXT_LINE() AS UBYTE
+  DIM FIRST AS UBYTE, CODE AS UBYTE, LENGTH AS UBYTE
+  LENGTH = 0
+  CODE = 0
+  DOS.ERROR = 0
+  SCRIPT_LINE = SCRIPT_LINE + 1
+  FIRST = BUFFER_INDEX
+  DO
+    IF BUFFER_INDEX = BUFFER_COUNT
+      ADVANCE_SCRIPT(BUFFER_INDEX - FIRST)
+      FIRST = 0
+      EMPTY_READ_AHEAD()
+      IF SCRIPT_HANDLE = 0
+        SCRIPT_HANDLE = DOS.OPEN_FILE(SCRIPT_PATH, DOS.ACCESS_READ)
+        IF DOS.ERROR
+          SCRIPT_HANDLE = 0
+          EXIT DO
+        ENDIF
+        DOS.SEEK(SCRIPT_HANDLE, 0, SCRIPT_LOW, SCRIPT_HIGH)
+      ENDIF
+      BUFFER_COUNT = DOS.READ_FILE(SCRIPT_HANDLE, @COPY_BUFFER, 255)
+      IF BUFFER_COUNT = 0 THEN EXIT DO
+    ENDIF
+    CODE = COPY_BUFFER(BUFFER_INDEX)
+    BUFFER_INDEX = BUFFER_INDEX + 1
+    IF CODE = 10 THEN EXIT DO
+    IF CODE <> 13 AND LENGTH < 127
+      LENGTH = LENGTH + 1
+      ContentsAt(@LINE_TEXT + 1 + LENGTH) = CODE
+    ENDIF
+  LOOP
+  ADVANCE_SCRIPT(BUFFER_INDEX - FIRST)
+  ContentsAt(@LINE_TEXT + 1) = LENGTH
+  RETURN CODE
+END FUNCT
+
+' Closes SCRIPT_HANDLE when it is open, sets it to 0, and leaves DOS.ERROR as it was.
+SUB CLOSE_SCRIPT()
+  DIM CODE AS UBYTE
+  IF SCRIPT_HANDLE = 0 THEN RETURN
+  CODE = DOS.ERROR
+  DOS.CLOSE_FILE(SCRIPT_HANDLE)
+  SCRIPT_HANDLE = 0
+  DOS.ERROR = CODE
+END SUB
+
+' Copies the next line of the script into LINE_TEXT. The end of the file or an error ends the
+' script; an error is reported.
+SUB READ_SCRIPT_LINE()
+  DIM CODE AS UBYTE
+  CODE = READ_NEXT_LINE()
+  CLOSE_SCRIPT()
+  IF CODE <> 10 THEN SCRIPT_ACTIVE = 0
+  IF DOS.ERROR
+    ContentsAt(@LINE_TEXT + 1) = 0
+    SKIP_DEPTH = 0
+    REPORT_DOS(DOS.ERROR)
+  ENDIF
+END SUB
+
+' Runs the program or script named in STRING_RESULT with the arguments at CURSOR, each read as
+' a file argument. P1$ to P9$ are set empty, then take the arguments, one each. The command
+' tail is the arguments, each after a space.
+SUB RUN_PROGRAM()
+  DIM INDEX AS UBYTE, CODE AS UBYTE
+  PROGRAM_NAME = STRING_RESULT
+  INDEX = 0
+  DO WHILE INDEX < LEN(PROGRAM_NAME)
+    INDEX = INDEX + 1
+    CODE = ContentsAt(@PROGRAM_NAME + 1 + INDEX)
+    IF CODE >= 97 AND CODE <= 122 THEN ContentsAt(@PROGRAM_NAME + 1 + INDEX) = CODE - 32
+  LOOP
+  IF FIND_PROGRAM() = 0
+    REPORT_ERROR("Bad command or file name")
+    RETURN
+  ENDIF
+  FOR INDEX = 0 TO 8
+    HEAP.STR_FREE(HEAP.SYS_STRINGS_BASE + INDEX * 2)
+  NEXT
+  INDEX = 0
+  TAIL_TEXT = ""
+  DO
+    SKIP_SPACES()
+    IF CURRENT_CHAR() = 0 THEN EXIT DO
+    READ_ARGUMENT()
+    IF FAILED THEN RETURN
+    IF INDEX < 9
+      STORE_STRING(HEAP.SYS_STRINGS_BASE + INDEX * 2)
+      IF FAILED THEN RETURN
+      INDEX = INDEX + 1
+    ENDIF
+    TAIL_TEXT = TAIL_TEXT + " " + STRING_RESULT
+  LOOP
+  IF LEN(PROGRAM_PATH) > 4 AND MID$(PROGRAM_PATH, LEN(PROGRAM_PATH) - 3) = ".CMD"
+    START_SCRIPT()
+    RETURN
+  ENDIF
+  DOS.EXEC(PROGRAM_PATH, TAIL_TEXT)
+  IF DOS.ERROR
+    REPORT_DOS(DOS.ERROR)
+    RETURN
+  ENDIF
+  ' X = 1: Ctrl+C ended the program.
+  SYS DOS.API_EXITCODE
+  IF DOS.REG_X = 1 THEN STOPPED = 1
+END SUB
+
+' ONERROR(1): an error in a script line goes on to the next line. ONERROR(0): an error ends
+' the script. RESUMING takes the low byte of the value.
+SUB DO_ONERROR()
+  EVAL_NUMBER()
+  IF FAILED THEN RETURN
+  EXPECT_END()
+  IF FAILED THEN RETURN
+  RESUMING = NUMBER_RESULT
+END SUB
+
+' GOTO label: the script goes on after the line label:, looked for from the start of the file.
+' A label has two characters at least. A label not found is an error, and the script stays where
+' it was. At the prompt GOTO does nothing.
+SUB DO_GOTO()
+  DIM CODE AS UBYTE, BACK_LOW AS UWORD, BACK_HIGH AS UWORD, BACK_LINE AS UWORD
+  SKIP_SPACES()
+  READ_NAME()
+  ' A label has two characters at least. CURSOR on the GOTO makes EXPECT_END report the error.
+  IF LEN(NAME_TEXT) < 2 THEN CURSOR = 1
+  SEARCH_DIRECTORY = NAME_TEXT
+  EXPECT_END()
+  IF FAILED THEN RETURN
+  IF IN_SCRIPT = 0 THEN RETURN
+  BACK_LOW = SCRIPT_LOW
+  BACK_HIGH = SCRIPT_HIGH
+  BACK_LINE = SCRIPT_LINE
+  SCRIPT_LOW = 0
+  SCRIPT_HIGH = 0
+  SCRIPT_LINE = 0
+  EMPTY_READ_AHEAD()
+  DO
+    CODE = READ_NEXT_LINE()
+    IF DOS.ERROR THEN EXIT DO
+    CURSOR = 1
+    SKIP_SPACES()
+    READ_NAME()
+    SKIP_SPACES()
+    IF CURRENT_CHAR() = 58 AND NAME_TEXT = SEARCH_DIRECTORY
+      CLOSE_SCRIPT()
+      ' The line read last may have been the last line of the script.
+      SCRIPT_ACTIVE = 1
+      RETURN
+    ENDIF
+  LOOP WHILE CODE = 10
+  CLOSE_SCRIPT()
+  SCRIPT_LOW = BACK_LOW
+  SCRIPT_HIGH = BACK_HIGH
+  SCRIPT_LINE = BACK_LINE
+  EMPTY_READ_AHEAD()
+  REPORT_DOS(DOS.ERROR)
+  IF FAILED = 0 THEN REPORT_ERROR("Label not found")
+END SUB
+
+' Pushes the script position, the line after the one running, and TIMES onto the flow stack. A
+' full stack gives Insufficient memory.
+SUB PUSH_FLOW(TIMES AS UBYTE)
+  IF FLOW_COUNT = FLOW_SIZE
+    REPORT_DOS(DOS.ERR_NO_MEMORY)
+    RETURN
+  ENDIF
+  FLOW_LOW(FLOW_COUNT) = SCRIPT_LOW
+  FLOW_HIGH(FLOW_COUNT) = SCRIPT_HIGH
+  FLOW_LINE(FLOW_COUNT) = SCRIPT_LINE
+  FLOW_TIMES(FLOW_COUNT) = TIMES
+  FLOW_COUNT = FLOW_COUNT + 1
+END SUB
+
+' Sets the script position to the flow stack entry FLOW_COUNT.
+SUB JUMP_FLOW()
+  SCRIPT_LOW = FLOW_LOW(FLOW_COUNT)
+  SCRIPT_HIGH = FLOW_HIGH(FLOW_COUNT)
+  SCRIPT_LINE = FLOW_LINE(FLOW_COUNT)
+  EMPTY_READ_AHEAD()
+  ' The line read last may have been the last line of the script.
+  SCRIPT_ACTIVE = 1
+END SUB
+
+' GOSUB label: GOTO label, with the position after the GOSUB line pushed for RETURN.
+SUB DO_GOSUB()
+  IF IN_SCRIPT THEN PUSH_FLOW(0)
+  IF FAILED THEN RETURN
+  DO_GOTO()
+  IF FAILED = 0 THEN RETURN
+  IF IN_SCRIPT THEN FLOW_COUNT = FLOW_COUNT - 1
+END SUB
+
+' RETURN: the script goes on after the line of the last GOSUB. The REPEAT loops open above that
+' GOSUB are popped. At the prompt RETURN does nothing.
+SUB DO_RETURN()
+  EXPECT_END()
+  IF FAILED THEN RETURN
+  IF IN_SCRIPT = 0 THEN RETURN
+  DO
+    IF FLOW_COUNT = 0
+      REPORT_ERROR("RETURN without GOSUB")
+      RETURN
+    ENDIF
+    FLOW_COUNT = FLOW_COUNT - 1
+  LOOP WHILE FLOW_TIMES(FLOW_COUNT)
+  JUMP_FLOW()
+END SUB
+
+' REPEAT n: the lines up to the ENDREP that matches run n times. With n below 1 they are
+' skipped. n above 255 gives Syntax error. At the prompt REPEAT does nothing.
+SUB DO_REPEAT()
+  EVAL_NUMBER()
+  IF FAILED THEN RETURN
+  EXPECT_END()
+  IF FAILED THEN RETURN
+  IF IN_SCRIPT = 0 THEN RETURN
+  IF NUMBER_RESULT < 1
+    SKIP_DEPTH = 1
+    RETURN
+  ENDIF
+  IF NUMBER_RESULT > 255
+    SYNTAX_ERROR()
+    RETURN
+  ENDIF
+  PUSH_FLOW(NUMBER_RESULT)
+END SUB
+
+' ENDREP: the lines after the last REPEAT run again while it has runs left; then the script goes
+' on after the ENDREP. With no REPEAT on top of the stack it gives Syntax error. At the prompt
+' ENDREP does nothing.
+SUB DO_ENDREP()
+  DIM TIMES AS UBYTE, TOP AS UBYTE
+  EXPECT_END()
+  IF FAILED THEN RETURN
+  IF IN_SCRIPT = 0 THEN RETURN
+  TIMES = 0
+  TOP = FLOW_COUNT - 1
+  IF FLOW_COUNT THEN TIMES = FLOW_TIMES(TOP)
+  IF TIMES = 0
+    SYNTAX_ERROR()
+    RETURN
+  ENDIF
+  FLOW_COUNT = TOP
+  IF TIMES = 1 THEN RETURN
+  FLOW_TIMES(TOP) = TIMES - 1
+  JUMP_FLOW()
+  FLOW_COUNT = FLOW_COUNT + 1
+END SUB
+
+' IF condition [statement]. The condition is two number or two string expressions with =, <>,
+' <, >, <= or >= between them. Returns other than 0 when the statement after the condition is to
+' run. A condition alone on the line starts a block that ENDIF ends: when it fails in a script,
+' the lines up to that ENDIF are skipped. In a line being skipped, it opens a block within.
+' Trap: a skipped IF line with a syntax error does not open a block, so its ENDIF closes the
+' block around it.
+FUNCT DO_IF() AS UBYTE
+  DIM IS_TEXT AS UBYTE, MASK AS UBYTE, CODE AS UBYTE, RELATION AS UBYTE, LEFT_NUMBER AS WORD
+  SKIP_SPACES()
+  IS_TEXT = IS_STRING_START()
+  IF IS_TEXT
+    EVAL_STRING()
+    LEFT_TEXT = STRING_RESULT
+  ELSE
+    EVAL_NUMBER()
+    LEFT_NUMBER = NUMBER_RESULT
+  ENDIF
+  IF FAILED THEN RETURN 0
+  ' The comparison, as bits: < is 1, = is 2, > is 4.
+  SKIP_SPACES()
+  MASK = 0
+  DO
+    CODE = CURRENT_CHAR() - 60
+    IF CODE > 2 THEN EXIT DO
+    IF CODE = 2 THEN CODE = 3
+    MASK = MASK OR (CODE + 1)
+    CURSOR = CURSOR + 1
+  LOOP
+  IF MASK = 0
+    SYNTAX_ERROR()
+    RETURN 0
+  ENDIF
+  ' The right expression, and the bit of how the left stands to it.
+  RELATION = 4
+  IF IS_TEXT
+    EVAL_STRING()
+    IF LEFT_TEXT < STRING_RESULT THEN RELATION = 1
+    IF LEFT_TEXT = STRING_RESULT THEN RELATION = 2
+  ELSE
+    EVAL_NUMBER()
+    IF LEFT_NUMBER < NUMBER_RESULT THEN RELATION = 1
+    IF LEFT_NUMBER = NUMBER_RESULT THEN RELATION = 2
+  ENDIF
+  IF FAILED THEN RETURN 0
+  MASK = MASK AND RELATION
+  SKIP_SPACES()
+  IF CURRENT_CHAR() THEN RETURN MASK
+  IF SKIP_DEPTH
+    SKIP_DEPTH = SKIP_DEPTH + 1
+  ELSEIF IN_SCRIPT
+    IF MASK = 0 THEN SKIP_DEPTH = 1
+  ENDIF
+  RETURN 0
+END FUNCT
+
+' ---- redirection ----
+
+' Finds the word TO, APPEND or FROM, outside quotes, from the character before CURSOR on, so the
+' word may come right after the statement's name and its spaces. When it is there, cuts the
+' line before it and sends handle 1, or handle 0 for FROM, to the file named after it. TO creates
+' the file. APPEND opens it at its end, and creates it when it is missing. FROM opens it to read.
+' A redirect already in force ends first. Moves CURSOR. Sets FAILED on an error.
+SUB START_REDIRECT()
+  DIM CODE AS UBYTE, QUOTED AS UBYTE, CUT AS UBYTE, FILE AS UWORD
+  QUOTED = 0
+  CURSOR = CURSOR - 1
+  DO
+    CODE = CURRENT_CHAR()
+    IF CODE = 0 THEN RETURN
+    CURSOR = CURSOR + 1
+    IF CODE = 34 THEN QUOTED = QUOTED XOR 1
+    IF CODE = 32 AND QUOTED = 0
+      ' CUT takes the length of the line before the space.
+      CUT = CURSOR - 2
+      ' A name holds no quote, so the scan may go on after it.
+      READ_NAME()
+      IF CURRENT_CHAR() <= 32
+        IF NAME_TEXT = "TO" OR NAME_TEXT = "APPEND" OR NAME_TEXT = "FROM" THEN EXIT DO
+      ENDIF
+    ENDIF
+  LOOP
+  ' CODE is 0 for TO, 2 for FROM and 4 for APPEND, kept since LAST_ARGUMENT may read a name.
+  CODE = LEN(NAME_TEXT) - 2
+  LAST_ARGUMENT()
+  IF FAILED THEN RETURN
+  ContentsAt(@LINE_TEXT + 1) = CUT
+  END_REDIRECT()
+  REDIRECTED = 1
+  IF CODE = 4
+    FILE = DOS.OPEN_FILE(STRING_RESULT, 1)
+    IF DOS.ERROR = DOS.ERR_NOT_FOUND
+      FILE = DOS.CREATE_FILE(STRING_RESULT, 0)
+    ELSEIF DOS.ERROR = 0
+      DOS.SEEK(FILE, 2, 0, 0)
+    ENDIF
+  ELSEIF CODE
+    FILE = DOS.OPEN_FILE(STRING_RESULT, 0)
+    REDIRECTED = 0
+  ELSE
+    FILE = DOS.CREATE_FILE(STRING_RESULT, 0)
+  ENDIF
+  REPORT_DOS(DOS.ERROR)
+  IF FAILED THEN RETURN
+  SAVED_HANDLE = SEND_HANDLE(FILE, REDIRECTED)
+END SUB
+
+' Ends a TO, an APPEND or a FROM: sends the handle back to the console, which closes the file.
+SUB END_REDIRECT()
+  RESTORE_HANDLE(SAVED_HANDLE, REDIRECTED)
+  SAVED_HANDLE = 0
+END SUB
+
+' Sends HANDLE to the file open in FILE, and closes FILE. Returns a new handle that keeps what
+' HANDLE was.
+FUNCT SEND_HANDLE(FILE AS UWORD, HANDLE AS UBYTE) AS UWORD
+  DIM SAVED AS UWORD
+  SAVED = DOS.DUP(HANDLE)
+  DOS.DUP2(FILE, HANDLE)
+  DOS.CLOSE_FILE(FILE)
+  RETURN SAVED
+END FUNCT
+
+' Sends HANDLE back to what the handle SAVED keeps, and closes SAVED. Does nothing when SAVED
+' is 0.
+SUB RESTORE_HANDLE(SAVED AS UWORD, HANDLE AS UBYTE)
+  IF SAVED = 0 THEN RETURN
+  DOS.DUP2(SAVED, HANDLE)
+  DOS.CLOSE_FILE(SAVED)
+END SUB
+
+' Finds a | outside quotes, from CURSOR on. When it is there, keeps the text after it in
+' PIPE_TEXT, cuts the line before it, and sends handle 1 to a new pipe file. When handle 1 goes
+' to a pipe file already, as for an alias whose command has a |, the text after the | goes
+' before PIPE_TEXT, with a | between. Keeps CURSOR. Sets FAILED on an error.
+SUB START_PIPE()
+  DIM CODE AS UBYTE, QUOTED AS UBYTE, FIRST AS UBYTE, FILE AS UWORD
+  QUOTED = 0
+  FIRST = CURSOR
+  DO
+    CODE = CURRENT_CHAR()
+    IF CODE = 0
+      CURSOR = FIRST
+      RETURN
+    ENDIF
+    CURSOR = CURSOR + 1
+    IF CODE = 34 THEN QUOTED = QUOTED XOR 1
+    IF CODE = 124 AND QUOTED = 0 THEN EXIT DO
+  LOOP
+  STRING_RESULT = ""
+  APPEND_LINE(CURSOR, LEN(LINE_TEXT) + 1)
+  ContentsAt(@LINE_TEXT + 1) = CURSOR - 2
+  CURSOR = FIRST
+  IF PIPE_OUTPUT
+    PIPE_TEXT = STRING_RESULT + "|" + PIPE_TEXT
+    RETURN
+  ENDIF
+  PIPE_TEXT = STRING_RESULT
+  IF PIPE_NUMBER = 0
+    ' The first pipe of the line names both pipe files. TEMP$ and "\PIPE1.$$$" fit in 128.
+    HEAP.STR_READ(HEAP.TEMP_STRING)
+    IF LEN(DOS.CALL_TEXT) > 118
+      REPORT_DOS(DOS.ERR_NO_PATH)
+      RETURN
+    ENDIF
+    PIPE_PATH = DOS.CALL_TEXT
+    IF IS_SEPARATOR(ContentsAt(@PIPE_PATH + 1 + LEN(PIPE_PATH))) = 0
+      PIPE_PATH = PIPE_PATH + "\"
+    ENDIF
+    PIPE_PATH = PIPE_PATH + "PIPE1.$$$"
+    PIPE_DIGIT = @PIPE_PATH + LEN(PIPE_PATH) - 3
+  ENDIF
+  PIPE_NUMBER = (PIPE_NUMBER AND 1) + 1
+  ContentsAt(PIPE_DIGIT) = 48 + PIPE_NUMBER
+  FILE = DOS.CREATE_FILE(PIPE_PATH, 0)
+  REPORT_DOS(DOS.ERROR)
+  IF FAILED THEN RETURN
+  PIPE_OUTPUT = SEND_HANDLE(FILE, 1)
+END SUB
+
+' Runs the statement after the | of the line, with handle 0 reading the pipe file, and on along
+' the line while a statement sends handle 1 to a pipe file. An error ends the line. Deletes the
+' pipe files.
+SUB RUN_PIPE()
+  DIM FILE AS UWORD
+  DO WHILE PIPE_OUTPUT
+    RESTORE_HANDLE(PIPE_OUTPUT, 1)
+    PIPE_OUTPUT = 0
+    RESTORE_HANDLE(PIPE_INPUT, 0)
+    PIPE_INPUT = 0
+    FILE = DOS.OPEN_FILE(PIPE_PATH, 0)
+    REPORT_DOS(DOS.ERROR)
+    IF FAILED THEN EXIT DO
+    PIPE_INPUT = SEND_HANDLE(FILE, 0)
+    LINE_TEXT = PIPE_TEXT
+    RUN_LINE()
+    END_REDIRECT()
+  LOOP
+  RESTORE_HANDLE(PIPE_INPUT, 0)
+  PIPE_INPUT = 0
+  ' Deletes pipe file 2, then pipe file 1. Either may be missing.
+  PIPE_NUMBER = 2
+  DO WHILE PIPE_NUMBER
+    ContentsAt(PIPE_DIGIT) = 48 + PIPE_NUMBER
+    DOS.DELETE(PIPE_PATH)
+    PIPE_NUMBER = PIPE_NUMBER - 1
+  LOOP
+END SUB
+
+' Runs the statement in LINE_TEXT. While SKIP_DEPTH is not 0, only IF, ENDIF, REPEAT and ENDREP
+' run, to count the blocks, and errors are not reported.
+SUB RUN_LINE()
+  DIM START AS UBYTE, BOUND AS UBYTE
+  CURSOR = 1
+  FAILED = 0
+  ' Set once an alias is expanded, so its command is not looked up again.
+  BOUND = 0
+  ' Once more for the statement after a condition that holds.
+  DO
+    SKIP_SPACES()
+    IF CURRENT_CHAR() = 0 THEN RETURN
+    ' A comment runs to the end of the line: REM, ' or //.
+    IF CURRENT_CHAR() = 39 THEN RETURN
+    START = CURSOR
+    IF CURRENT_CHAR() = 47
+      CURSOR = CURSOR + 1
+      IF CURRENT_CHAR() = 47 THEN RETURN
+      CURSOR = START
+    ENDIF
+    READ_NAME()
+    IF NAME_TEXT = "REM" THEN RETURN
+    IF SKIP_DEPTH
+      SELECT CASE NAME_TEXT
+        CASE "IF"
+          ' START only takes the result.
+          START = DO_IF()
+        CASE "REPEAT"
+          SKIP_DEPTH = SKIP_DEPTH + 1
+        CASE "ENDIF", "ENDREP"
+          SKIP_DEPTH = SKIP_DEPTH - 1
+      END SELECT
+      FAILED = 0
+      RETURN
+    ENDIF
+    IF NAME_TEXT = ""
+      SYNTAX_ERROR()
+      RETURN
+    ENDIF
+    SKIP_SPACES()
+    IF CURRENT_CHAR() = 61
+      DO_ASSIGN()
+      RETURN
+    ENDIF
+    IF CURRENT_CHAR() = 58 AND LEN(NAME_TEXT) > 1
+      ' A label does nothing when it runs. One letter and a colon is a drive, as in C:\BIN\TOOL.
+      CURSOR = CURSOR + 1
+      EXPECT_END()
+      RETURN
+    ENDIF
+    ' IF leaves its | and TO to the statement after the condition. BIND keeps them in the
+    ' command.
+    IF NAME_TEXT <> "IF" AND NAME_TEXT <> "BIND"
+      START_PIPE()
+      IF FAILED THEN RETURN
+      START_REDIRECT()
+      IF FAILED THEN RETURN
+      ' LAST_ARGUMENT may have read a name.
+      CURSOR = START
+      READ_NAME()
+      SKIP_SPACES()
+    ENDIF
+    SELECT CASE NAME_TEXT
+      CASE "IF"
+        IF DO_IF() THEN CONTINUE
+      CASE "ENDIF"
+        EXPECT_END()
+      CASE "PRINT"
+        DO_PRINT()
+      CASE "INPUT"
+        DO_INPUT()
+      CASE "FILES","DIR"
+        DO_FILES()
+      CASE "LIST","TYPE"
+        DO_LIST()
+      CASE "COPY"
+        DO_COPY()
+      CASE "RENAME","REN"
+        DO_RENAME()
+      CASE "DELETE", "DEL", "MKDIR", "MD", "RMDIR", "RD", "CHDIR", "CD"
+        DO_ONE_PATH(ASC(NAME_TEXT))
+      CASE "RUN"
+        SCRIPT_ACTIVE = 0
+        READ_ARGUMENT()
+        IF FAILED THEN RETURN
+        RUN_PROGRAM()
+      CASE "ONERROR"
+        DO_ONERROR()
+      CASE "GOTO"
+        DO_GOTO()
+      CASE "GOSUB"
+        DO_GOSUB()
+      CASE "RETURN"
+        DO_RETURN()
+      CASE "REPEAT"
+        DO_REPEAT()
+      CASE "ENDREP"
+        DO_ENDREP()
+      CASE "CLS"
+        EXPECT_END()
+        IF FAILED = 0 THEN PRINT CHR$(12);
+      CASE "BEEP"
+        EXPECT_END()
+        IF FAILED = 0 THEN PRINT CHR$(7);
+      CASE "LOCATE"
+        DO_LOCATE()
+      CASE "COLOR"
+        DO_COLOR()
+      CASE "WAIT"
+        DO_WAIT()
+      CASE "PAUSE"
+        ' Trap: the key comes from the keyboard, even when FROM sends handle 0 to a file.
+        EXPECT_END()
+        IF FAILED = 0
+          DO
+            POLL_BREAK()
+          LOOP UNTIL GETKEY() OR STOPPED
+        ENDIF
+      CASE "SETSYS"
+        DO_SETSYS()
+      CASE "BIND"
+        DO_BIND()
+      CASE "VERSION", "VER"
+        EXPECT_END()
+        IF FAILED = 0 THEN PRINT "6502DOS V"; DOS.VERSION()
+      CASE "END"
+        EXPECT_END()
+        IF FAILED THEN RETURN
+        IF IN_SCRIPT
+          SCRIPT_ACTIVE = 0
+        ELSE
+          RUNNING = 0
+        ENDIF
+      CASE ELSE
+        CURSOR = START
+        READ_WORD()
+        IF BOUND = 0 AND LEN(STRING_RESULT) = LEN(NAME_TEXT)
+          BOUND = 1
+          IF EXPAND_ALIAS() THEN CONTINUE
+        ENDIF
+        RUN_PROGRAM()
+    END SELECT
+    RETURN
+  LOOP
+END SUB
+
+' Prints the prompt from PROMPT$, or the drive and > when PROMPT$ is empty. The prompt starts in
+' column 0: a cursor inside a row gets a new line first. In PROMPT$, $P prints the current drive
+' and directory, $N the drive, $G >, $L <, $B |, $Q =, $_ a new line and $$ $. The letter after $
+' is either case. A $ before any other character prints nothing.
+SUB PRINT_PROMPT()
+  DIM PROMPT_INDEX AS UBYTE, PROMPT_CHAR AS UBYTE, AFTER_DOLLAR AS UBYTE
+  START_LINE()
+  HEAP.STR_READ(HEAP.PROMPT_STRING)
+  IF DOS.CALL_TEXT = ""
+    PRINT CHR$(65 + DOS.GETDRIVE()); ">";
+    RETURN
+  ENDIF
+  LEFT_TEXT = DOS.CALL_TEXT
+  AFTER_DOLLAR = 0
+  FOR PROMPT_INDEX = 1 TO LEN(LEFT_TEXT)
+    PROMPT_CHAR = ContentsAt(@LEFT_TEXT + 1 + PROMPT_INDEX)
+    IF AFTER_DOLLAR
+      AFTER_DOLLAR = 0
+      SELECT CASE PROMPT_CHAR OR 32
+        CASE 112
+          READ_CURDIR()
+          PRINT NAME_TEXT;
+        CASE 110
+          PRINT CHR$(65 + DOS.GETDRIVE());
+        CASE 103
+          PRINT ">";
+        CASE 108
+          PRINT "<";
+        CASE 98
+          PRINT "|";
+        CASE 113
+          PRINT "=";
+        CASE 127
+          PRINT
+        CASE 36
+          PRINT "$";
+      END SELECT
+    ELSEIF PROMPT_CHAR = 36
+      AFTER_DOLLAR = 1
+    ELSE
+      PRINT CHR$(PROMPT_CHAR);
+    ENDIF
+  NEXT
+END SUB
+
+' Asks "Terminate CMD job (Y/N)?" until Y or N, in either case, and prints it. Ctrl+C counts as
+' Y. Y ends the script.
+SUB ASK_TERMINATE()
+  DIM ANSWER AS UBYTE
+  START_LINE()
+  DO
+    PRINT "Terminate CMD job (Y/N)? ";
+    DO
+      ANSWER = GETKEY()
+      IF DOS.STOP_PRESSED() THEN ANSWER = 89
+    LOOP UNTIL ANSWER
+    ' Capital Y and N; no other key becomes either.
+    ANSWER = ANSWER AND 223
+    IF ANSWER = 89 OR ANSWER = 78 THEN EXIT DO
+    PRINT
+  LOOP
+  PRINT CHR$(ANSWER)
+  IF ANSWER = 89 THEN SCRIPT_ACTIVE = 0
+END SUB
+
+' Counts the match in MATCH_NAME. Returns 1 when it is match MATCH_WANTED.
+FUNCT TAKE_MATCH() AS UBYTE
+  IF MATCH_SEEN = MATCH_WANTED THEN RETURN 1
+  MATCH_SEEN = MATCH_SEEN + 1
+  RETURN 0
+END FUNCT
+
+' Takes each name that matches PROGRAM_PATH to TAKE_MATCH, and returns 1 when one is the match
+' wanted. ATTRIBUTES is DOS.ATTR_DIRECTORY for files and directories, each directory with a \ on
+' its end, or 0 for programs, each without its extension. A name that starts with . is left out.
+FUNCT TAKE_FILES(ATTRIBUTES AS UBYTE) AS UBYTE
+  DOS.FINDFIRST(PROGRAM_PATH, ATTRIBUTES)
+  DO WHILE DOS.ERROR = 0
+    MATCH_NAME = DOS.FOUND_NAME
+    IF ATTRIBUTES = 0 THEN MATCH_NAME = LEFT$(MATCH_NAME, INSTR(MATCH_NAME, ".") - 1)
+    IF DOS.FOUND_ATTRIBUTES AND DOS.ATTR_DIRECTORY THEN MATCH_NAME = MATCH_NAME + "\"
+    IF ASC(MATCH_NAME) <> 46
+      IF TAKE_MATCH() THEN RETURN 1
+    ENDIF
+    DOS.FINDNEXT()
+  LOOP
+  RETURN 0
+END FUNCT
+
+' Puts match MATCH_WANTED of COMPLETE_STEM in MATCH_NAME, and returns 1. The matches are the
+' built-in statements when COMPLETE_COMMAND is 1, then the files and directories, then the .SCOM,
+' .COM and .CMD programs on PATH$ when COMPLETE_COMMAND is 1. Returns 0 when there are not that
+' many, with their count in MATCH_SEEN.
+FUNCT FIND_MATCH() AS UBYTE
+  DIM POSITION AS UBYTE, FINISH AS UBYTE
+  MATCH_SEEN = 0
+  IF COMPLETE_COMMAND
+    NAME_TEXT = UCASE$(COMPLETE_STEM)
+    POSITION = 1
+    DO WHILE POSITION < LEN(BUILTIN_NAMES$)
+      FINISH = INSTR(BUILTIN_NAMES$, " ", POSITION)
+      MATCH_NAME = MID$(BUILTIN_NAMES$, POSITION, FINISH - POSITION)
+      IF LEFT$(MATCH_NAME, LEN(NAME_TEXT)) = NAME_TEXT
+        IF TAKE_MATCH() THEN RETURN 1
+      ENDIF
+      POSITION = FINISH + 1
+    LOOP
+  ENDIF
+  PROGRAM_PATH = COMPLETE_STEM + "*"
+  IF INSTR(COMPLETE_STEM, ".", DIRECTORY_LENGTH(COMPLETE_STEM) + 1) = 0
+    PROGRAM_PATH = PROGRAM_PATH + ".*"
+  ENDIF
+  IF TAKE_FILES(DOS.ATTR_DIRECTORY) THEN RETURN 1
+  IF COMPLETE_COMMAND
+    START_PATH()
+    DO WHILE NEXT_DIRECTORY()
+      PROGRAM_PATH = SEARCH_DIRECTORY + COMPLETE_STEM + "*.SCOM"
+      IF TAKE_FILES(0) THEN RETURN 1
+      PROGRAM_PATH = SEARCH_DIRECTORY + COMPLETE_STEM + "*.COM"
+      IF TAKE_FILES(0) THEN RETURN 1
+      PROGRAM_PATH = SEARCH_DIRECTORY + COMPLETE_STEM + "*.CMD"
+      IF TAKE_FILES(0) THEN RETURN 1
+    LOOP
+  ENDIF
+  RETURN 0
+END FUNCT
+
+' Tab at the prompt: puts the next match of the last word of LINE_TEXT in its place, or the one
+' before with Shift. After the last match comes the first, and before the first the last. A line
+' that Tab did not leave starts again: Tab gives its first match, Shift+Tab its last. A word
+' with no match stays as it is. The word starts after the last space outside quotes, and a quote
+' at its start is not part of the name. A match with a space goes in quotes; the closing quote of
+' a directory is left off, so that a name can follow it.
+SUB COMPLETE_WORD()
+  DIM CODE AS UBYTE, QUOTED AS UBYTE
+  IF COMPLETE_START = 0 OR LINE_TEXT <> COMPLETE_TEXT
+    COMPLETE_START = 1
+    QUOTED = 0
+    CURSOR = 1
+    DO
+      CODE = CURRENT_CHAR()
+      IF CODE = 0 THEN EXIT DO
+      CURSOR = CURSOR + 1
+      IF CODE = 34 THEN QUOTED = QUOTED XOR 1
+      IF CODE = 32 AND QUOTED = 0 THEN COMPLETE_START = CURSOR
+    LOOP
+    CURSOR = COMPLETE_START
+    IF CURRENT_CHAR() = 34 THEN CURSOR = CURSOR + 1
+    COMPLETE_STEM = MID$(LINE_TEXT, CURSOR)
+    COMPLETE_COMMAND = 0
+    IF COMPLETE_STEM <> "" AND INSTR(COMPLETE_STEM, ".") = 0
+      IF DIRECTORY_LENGTH(COMPLETE_STEM) = 0
+        CURSOR = 1
+        SKIP_SPACES()
+        IF CURSOR = COMPLETE_START THEN COMPLETE_COMMAND = 1
+      ENDIF
+    ENDIF
+    COMPLETE_INDEX = 255
+  ENDIF
+  COMPLETE_TEXT = LINE_TEXT
+  ' Bit 0 of the modifiers is Shift.
+  IF DOS.CON_EDIT_MODS AND 1
+    IF COMPLETE_INDEX = 0 OR COMPLETE_INDEX = 255
+      ' Past the last match: MATCH_SEEN is the count.
+      MATCH_WANTED = 255
+      IF FIND_MATCH() = 0 THEN COMPLETE_INDEX = MATCH_SEEN
+    ENDIF
+    MATCH_WANTED = COMPLETE_INDEX - 1
+  ELSE
+    ' 255 + 1 is 0.
+    MATCH_WANTED = COMPLETE_INDEX + 1
+  ENDIF
+  IF FIND_MATCH() = 0
+    MATCH_WANTED = 0
+    IF FIND_MATCH() = 0 THEN RETURN
+  ENDIF
+  COMPLETE_INDEX = MATCH_WANTED
+  NAME_TEXT = LEFT$(COMPLETE_STEM, DIRECTORY_LENGTH(COMPLETE_STEM)) + MATCH_NAME
+  IF INSTR(NAME_TEXT, " ")
+    NAME_TEXT = CHR$(34) + NAME_TEXT
+    IF ContentsAt(@NAME_TEXT + 1 + LEN(NAME_TEXT)) <> 92 THEN NAME_TEXT = NAME_TEXT + CHR$(34)
+  ENDIF
+  LINE_TEXT = LEFT$(LEFT$(LINE_TEXT, COMPLETE_START - 1) + NAME_TEXT, 127)
+  COMPLETE_TEXT = LINE_TEXT
+END SUB
+
+' Clears LINE_TEXT from the screen, the cursor at its end, and puts the cursor where it
+' started, for CON_EDIT to show the line again.
+SUB CLEAR_LINE()
+  DIM ROW AS UBYTE
+  ROW = POS(1) - (PROMPT_COLUMN + LEN(LINE_TEXT)) / POS(3)
+  POS(1) = ROW
+  POS(0) = PROMPT_COLUMN
+  PRINT_SPACES(LEN(LINE_TEXT))
+  POS(1) = ROW
+  POS(0) = PROMPT_COLUMN
+END SUB
+
+' The descriptor of the line BACK lines before the next one kept: 1 is the newest, 0 the slot
+' the next line goes to.
+FUNCT HISTORY_SLOT(BACK AS UBYTE) AS UWORD
+  RETURN HEAP.SYS_STRINGS_BASE + (HISTORY_FIRST + ((HISTORY_NEXT - BACK) AND 7)) * 2
+END FUNCT
+
+' KEY_TYPED Up at the prompt: LINE_TEXT becomes the line before the one shown. Down: the line
+' after it, or an empty line after the newest. Any other key leaves it.
+SUB RECALL_LINE()
+  IF KEY_TYPED = KEY_UP
+    IF HISTORY_BACK = HISTORY_SIZE THEN RETURN
+    HEAP.STR_READ(HISTORY_SLOT(HISTORY_BACK + 1))
+    IF DOS.CALL_TEXT = "" THEN RETURN
+    HISTORY_BACK = HISTORY_BACK + 1
+  ELSEIF KEY_TYPED = KEY_DOWN
+    IF HISTORY_BACK = 0 THEN RETURN
+    HISTORY_BACK = HISTORY_BACK - 1
+    DOS.CALL_TEXT = ""
+    IF HISTORY_BACK THEN HEAP.STR_READ(HISTORY_SLOT(HISTORY_BACK))
+  ELSE
+    RETURN
+  ENDIF
+  LINE_TEXT = DOS.CALL_TEXT
+END SUB
+
+' Keeps LINE_TEXT in the history, in place of the oldest line. An empty line or a repeat of the
+' newest is not kept.
+SUB KEEP_LINE()
+  IF LINE_TEXT = "" THEN RETURN
+  HEAP.STR_READ(HISTORY_SLOT(1))
+  IF LINE_TEXT = DOS.CALL_TEXT THEN RETURN
+  HEAP.STR_SET(HISTORY_SLOT(0), LINE_TEXT)
+  IF DOS.ERROR = 0 THEN HISTORY_NEXT = (HISTORY_NEXT + 1) AND 7
+END SUB
+
+DOS.STOP_KEY(DOS.STOP.CATCH)
+RUNNING = 1
+PROGRAM_PATH = "C:\STARTUP.CMD"
+IF IS_FILE() THEN START_SCRIPT()
+DO WHILE RUNNING
+  IN_SCRIPT = SCRIPT_ACTIVE
+  IF IN_SCRIPT
+    READ_SCRIPT_LINE()
+  ELSE
+    SKIP_DEPTH = 0
+    PRINT_PROMPT()
+    PROMPT_COLUMN = POS(0)
+    LINE_TEXT = ""
+    COMPLETE_START = 0
+    HISTORY_BACK = 0
+    DO
+      KEY_TYPED = DOS.CON_EDIT(LINE_TEXT)
+      IF KEY_TYPED = 13 THEN EXIT DO
+      CLEAR_LINE()
+      IF KEY_TYPED = 9
+        COMPLETE_WORD()
+      ELSE
+        RECALL_LINE()
+      ENDIF
+    LOOP
+    KEEP_LINE()
+    ' A Ctrl+C in the line does nothing: STOP_PRESSED clears the flag, so a script the line starts
+    ' does not see it.
+    IF DOS.STOP_PRESSED() THEN STOPPED = 0
+  ENDIF
+  RUN_LINE()
+  END_REDIRECT()
+  IF PIPE_NUMBER THEN RUN_PIPE()
+  IF IN_SCRIPT AND FAILED AND RESUMING = 0
+    PRINT "in "; SCRIPT_PATH; " line "; MID$(STR$(SCRIPT_LINE), 2)
+    SCRIPT_ACTIVE = 0
+  ENDIF
+  IF SCRIPT_ACTIVE
+    POLL_BREAK()
+    IF STOPPED THEN ASK_TERMINATE()
+  ENDIF
+  STOPPED = 0
+LOOP

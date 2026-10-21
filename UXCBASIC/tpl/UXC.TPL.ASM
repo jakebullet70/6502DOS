@@ -155,8 +155,8 @@ T_LITCOPY .block
         #hi lda, S1
         sta ZP_DST+1
         phx
-        #hi ldx, S2             ; the whole pages
         ldy #0
+        #hi ldx, S2             ; the whole pages
 page    beq part
 whole   lda (ZP_PTR),y
         sta (ZP_DST),y

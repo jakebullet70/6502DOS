@@ -3254,8 +3254,8 @@
           - 3d3 (done): `build.py` bank 4 (`bank4.s`, the `$FFA0` IRQ entry and vectors); the ROM
             becomes 81920 bytes. `ROM3TEST` splits across banks 3 and 4 and tests the calls
             both ways, X kept, BYTE, WORD, LONG and STRING results.
-          - 3d4: `CMDSHELL` in banks 3 and 4 (a wrapper source in `src/bank3` with `#ORG`,
-            `#DATA`, `#ROMBANKS` and `#INCLUDE`); then the boot shell.
+          - 3d4 (done): `CMDSHELL` in banks 3 and 4, started by `ROMSHELL.COM`.
+          - 3d5: the boot shell runs the shell in ROM.
         - Done, 3d1 (2026-10-21; the user said split across banks 3 and 4): ON CASE tables
           are fixups. Bug found: `cs_table` wrote each target as `g.lk_org + offset` with no
           fixup, so when dead-code stripping cut a SUB before an ON CASE, every target pointed
@@ -3331,6 +3331,33 @@
             81920-byte ROM). Steps since the full suite: 6; the next step runs it.
         - Full suite (step 7, 2026-10-21): 63 tests, 0 failed, 50.3 s; slowest `HELPBAS` and
           `GREP` 1.9 s. Steps since the full suite: 0. Next: 3d4.
+        - Done, 3d4 (2026-10-21; the user said go): `CMDSHELL` runs from ROM banks 3 and 4.
+          - An included file cannot include another, so the shell's code moved from
+            `src/bas/CMDSHELL.UXB` to `src/bas/CMDSHELL.UXI`, which includes nothing.
+            `CMDSHELL.UXB` is the header comment and 3 lines: `#INCLUDE` `DOS.UXI`,
+            `HEAP.UXI`, `CMDSHELL.UXI`. `CMDSHELL.COM` is byte for byte the same.
+          - `src/bank3/ROMSHELL.UXB`: `#ORG $C000`, `#DATA $0801`, `#ROMBANKS 3, 4`, then the
+            same 3 includes (`../bas/CMDSHELL.UXI`). `build.py` writes `build/bas/ROMSHELL.COM`
+            (the 9-byte stub). `ROM3TEST.UXB` moved to `attic/`; it runs again when it is the
+            one `.UXB` in `src/bank3`.
+          - Bug found: `T_LITCOPY` ran `ldy #0` after `#hi ldx, S2`, so `page beq part` saw Z
+            from the `ldy` and copied no whole page: only the literals' first `count AND 255`
+            bytes reached RAM. `ROM3TEST`'s literals were under 256 bytes. The two lines are
+            swapped. No byte or cycle change.
+          - Bank 3 16008 bytes, bank 4 7120; SUBs 104 to 121 in bank 4; 10 veneers in bank 3,
+            56 in bank 4; 114 of 434 SUB calls cross (about 50 cycles each). `R_FARVEC` at
+            `$2D74`. The scratch checker: bad 0. ROM: no change in size (81920).
+          - Test `ROM3` (`.IN` and golden local) now runs `ROMSHELL.COM`: `VER`, `PRINT 6 * 7`,
+            a string variable, `ARGS ONE TWO` (a child), `IF`, the script `SCRIPTS\HELLO`,
+            `END`.
+          - Builds: 4773 ms (every program recompiled, the template table changed), then 2398
+            ms, the new baseline. Tests: `ROM3` ok 0.4 s, `DATASEP` (UXCBASIC) 0.6, `SHELL`
+            0.6. `FILES`, `HDIR`, `HDIRARG`, `TREE`: the root has `ROMSHELL.COM` in place of
+            `ROM3TEST.COM`; goldens regenerated (local), each diff only the name; then ok 0.4,
+            1.4, 1.1, 1.5 s.
+          - Docs owed: `UXC-HELP.md` (`#ROMBANKS` with the name), `pyuxc/README.md` (the
+            result line), PLAN line 1183 (`bank.s`, bank 4, the 81920-byte ROM, `ROMSHELL.UXB`,
+            `CMDSHELL.UXI`). Steps since the full suite: 1.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
