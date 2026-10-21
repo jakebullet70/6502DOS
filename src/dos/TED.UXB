@@ -8,12 +8,12 @@
 ' -- on screen. Ctrl+S saves the file. Ctrl+Q ends it, clears the screen and prints
 ' -- TED - The Tiny Editor... Bye!; text with changes first asks Save changes (Y/N)?, and a
 ' -- key other than Y or N goes back to the text.
-' -- F1 or Ctrl+G shows the keys from C:\DOS\TED.HLP until a key is pressed; no TED.HLP
-' -- shows File not found on the status row.
+' -- F1 or Ctrl+G shows the keys from C:\DOS\TED.HLP until a key is pressed.
 ' -- Shift+F1 asks DOS help on: on the status row, with the word at the cursor, its letters
-' -- and digits, as the topic. Enter clears the screen and runs C:\DOS\HELP.COM on the topic,
-' -- or with no topic, then waits for a key. Tab or an extended key goes back to the text. A
-' -- HELP.COM that does not run shows its error on the status row.
+' -- and digits, as the topic. Enter shows the topic from C:\DOS\HELP.TXT until a key is
+' -- pressed, or with no topic the topic names. A topic not in HELP.TXT shows No help for
+' -- TOPIC on the status row. Tab or an extended key goes back to the text.
+' -- A help file that does not open shows its error on the status row.
 ' -- Ctrl+C is a key, not the STOP key. A save writes TED.$$$ in the file's directory, then
 ' -- gives it the file's name, so a failed save keeps the file as it was. Lines end in CR LF,
 ' -- or in LF when the file's first line did.
@@ -55,9 +55,7 @@ CONST CTRL_C AS UBYTE = 3, LF AS UBYTE = 10, CTRL_Q AS UBYTE = 17, CTRL_S AS UBY
 CONST CTRL_G AS UBYTE = 7, CTRL_V AS UBYTE = 22, CTRL_X AS UBYTE = 24
 CONST PSP_TOP AS UWORD = $0702, POOL_END AS UWORD = $9700
 CONST CLIPBOARD AS UWORD = $9700, CLIP_SIZE AS UWORD = 2048
-CONST HELP_NAME$ = "C:\DOS\TED.HLP", HELP_PROGRAM$ = "C:\DOS\HELP.COM"
-' The page of $9EFF: exec saves the whole program area, the text and the clipboard with it.
-CONST LAST_PAGE AS UBYTE = $9E
+CONST HELP_NAME$ = "C:\DOS\TED.HLP", DOS_HELP_NAME$ = "C:\DOS\HELP.TXT"
 
 
 DIM FILE_NAME AS STRING * 80, STATUS AS STRING * 120, MESSAGE AS STRING * 40
@@ -84,6 +82,8 @@ DIM NEW_BEGIN AS UWORD, NEW_END AS UWORD, OLD_LINE AS UWORD
 DIM CLIP_LENGTH AS UWORD
 DIM ROW_TEXT(COLUMNS) AS UBYTE
 DIM KEY AS UWORD, MODIFIERS AS UBYTE, STEPS AS UBYTE, QUIT AS UBYTE
+' The topic Shift+F1 asks for, as typed.
+DIM TOPIC AS STRING * 20
 
 
 
@@ -449,34 +449,81 @@ END SUB
 
 
 
-' Shows HELP_NAME$ on a clear screen until a key is pressed, then asks for the page. The file
-' stays under 30 rows, so the screen does not scroll. Each LF goes out after a CR, since the
-' console's LF keeps the column. A file that does not open sets MESSAGE to its error.
-SUB SHOW_HELP()
-  DIM HELP_FILE AS UWORD, COUNT AS UWORD, PLACE AS UWORD
-  HELP_FILE = DOS.OPEN_FILE(HELP_NAME$, DOS.ACCESS_READ)
+' Shows HELP_NAME$, or with DOS_HELP = 1 the topic TOPIC of DOS_HELP_NAME$, on a clear screen
+' until a key is pressed, then asks for the page. In the file a line :HEADING starts the topic
+' HEADING, in capitals, up to the next such line. With no topic the lines before the first
+' heading show, then the headings. A TOPIC not in the file sets MESSAGE to No help for TOPIC.
+' Each LF goes out after a CR, since the console's LF keeps the column. A file that does not
+' open sets MESSAGE to its error.
+SUB SHOW_TEXT(DOS_HELP AS UBYTE)
+  DIM HELP_FILE AS UWORD, COUNT AS UWORD, PLACE AS UWORD, CHARACTER AS UBYTE
+  DIM AT_LINE_START AS UBYTE, IN_HEADING AS UBYTE, SHOWING AS UBYTE, MATCHING AS UBYTE
+  DIM LETTER AS UBYTE, TOPIC_LENGTH AS UBYTE, TOPIC_LETTER AS UBYTE
+  TOPIC_LENGTH = 0
+  IF DOS_HELP = 1 THEN
+    HELP_FILE = DOS.OPEN_FILE(DOS_HELP_NAME$, DOS.ACCESS_READ)
+    TOPIC_LENGTH = LEN(TOPIC)
+  ELSE
+    HELP_FILE = DOS.OPEN_FILE(HELP_NAME$, DOS.ACCESS_READ)
+  END IF
   IF HELP_FILE = NOFILE THEN
     MESSAGE = DOS.ERRMSG(DOS.ERROR)
     RETURN
   END IF
   PRINT CONS.NORMAL$; CONS.CLEAR_SCREEN$;
   CONS.LOCATE(2, 0)
+  SHOWING = 0
+  IF TOPIC_LENGTH = 0 THEN SHOWING = 1
+  IN_HEADING = 0
+  AT_LINE_START = 1
   DO
     COUNT = DOS.READ_FILE(HELP_FILE, @ROW_TEXT, COLUMNS)
     PLACE = 0
     DO WHILE PLACE < COUNT
-      IF ROW_TEXT(PLACE) = LF THEN
-        DOS.REG_A = KEYS.ENTER
+      CHARACTER = ROW_TEXT(PLACE)
+      PLACE = PLACE + 1
+      IF AT_LINE_START = 1 AND CHARACTER = ASC(":") THEN
+        IF SHOWING = 1 AND TOPIC_LENGTH <> 0 THEN
+          COUNT = 0
+          EXIT DO
+        END IF
+        SHOWING = 0
+        IN_HEADING = 1
+        MATCHING = 1
+        LETTER = 0
+      ELSEIF IN_HEADING = 1 THEN
+        IF CHARACTER = LF THEN
+          IN_HEADING = 0
+          IF LETTER = TOPIC_LENGTH THEN SHOWING = MATCHING
+          IF TOPIC_LENGTH = 0 THEN PRINT " ";
+        ELSE
+          IF TOPIC_LENGTH = 0 THEN
+            DOS.REG_A = CHARACTER
+            SYS DOS.API_CON_OUT
+          END IF
+          TOPIC_LETTER = ContentsAt(@TOPIC + 2 + LETTER)
+          IF TOPIC_LETTER >= ASC("a") THEN TOPIC_LETTER = TOPIC_LETTER - 32
+          IF LETTER >= TOPIC_LENGTH OR TOPIC_LETTER <> CHARACTER THEN MATCHING = 0
+          LETTER = LETTER + 1
+        END IF
+      ELSEIF SHOWING = 1 THEN
+        IF CHARACTER = LF THEN
+          DOS.REG_A = KEYS.ENTER
+          SYS DOS.API_CON_OUT
+        END IF
+        DOS.REG_A = CHARACTER
         SYS DOS.API_CON_OUT
       END IF
-      DOS.REG_A = ROW_TEXT(PLACE)
-      SYS DOS.API_CON_OUT
-      PLACE = PLACE + 1
+      AT_LINE_START = CHARACTER = LF
     LOOP
   LOOP UNTIL COUNT < COLUMNS
   DOS.CLOSE_FILE(HELP_FILE)
-  KEY = WAITKEY()
   NEED_PAGE = 1
+  IF SHOWING = 0 AND TOPIC_LENGTH <> 0 THEN
+    MESSAGE = "No help for " + TOPIC
+    RETURN
+  END IF
+  KEY = WAITKEY()
 END SUB
 
 
@@ -490,11 +537,11 @@ END FUNCT
 
 
 
-' Asks DOS help on: with the word at the cursor, then runs HELP_PROGRAM$ on it until a key is
-' pressed. CON_EDIT echoes Enter as CR LF, which scrolls the status row; the help clears the
-' screen after it. Trap: HELP.COM reads its topic from P1$, not from the command tail.
+' Asks DOS help on: with the word at the cursor, then shows that topic of DOS_HELP_NAME$.
+' CON_EDIT echoes Enter as CR LF, which scrolls the status row; the help clears the screen
+' after it.
 SUB SHOW_DOS_HELP()
-  DIM TOPIC AS STRING * 20, START AS UWORD, FINISH AS UWORD
+  DIM START AS UWORD, FINISH AS UWORD
   START = CURSOR
   DO WHILE START > 0
     IF IS_WORD(BYTE_AT(START - 1)) = 0 THEN EXIT DO
@@ -515,16 +562,8 @@ SUB SHOW_DOS_HELP()
   PRINT STATUS_COLORS$; "DOS help on: "; CONS.CLEAR_EOL$;
   KEY = DOS.CON_EDIT(TOPIC)
   PRINT CONS.NORMAL$;
-  IF KEY <> KEYS.ENTER THEN RETURN
-  PRINT CONS.CLEAR_SCREEN$;
-  HEAP.SYS_STRINGS_SET(SLOT_P1, TOPIC)
-  DOS.EXEC(HELP_PROGRAM$, " " + TOPIC)
-  IF DOS.ERROR <> 0 THEN
-    MESSAGE = DOS.ERRMSG(DOS.ERROR)
-  ELSE
-    KEY = WAITKEY()
-  END IF
   NEED_PAGE = 1
+  IF KEY = KEYS.ENTER THEN SHOW_TEXT(1)
 END SUB
 
 
@@ -760,7 +799,6 @@ END IF
 ' PSP_TOP holds the page of the program's end.
 POOL_START = ContentsAt(PSP_TOP)
 POOL_START = (POOL_START + 1) << 8
-ContentsAt(PSP_TOP) = LAST_PAGE
 QUIT = LOAD()
 IF QUIT <> 0 THEN END QUIT
 GAP_POSITION = TEXT_LENGTH
@@ -831,7 +869,7 @@ DO
       NEXT
       CURSOR = POSITION_AT(LINE_BEGIN, GOAL)
     CASE KEYS.KEY_F1
-      SHOW_HELP()
+      SHOW_TEXT(0)
     CASE KEYS.KEY_SHIFT_F1
       SHOW_DOS_HELP()
     CASE KEYS.KEY_DELETE
@@ -852,7 +890,7 @@ DO
     CASE CTRL_Q
       QUIT = ASK_QUIT()
     CASE CTRL_G
-      SHOW_HELP()
+      SHOW_TEXT(0)
     CASE CTRL_S
       SAVE()
     CASE CTRL_C

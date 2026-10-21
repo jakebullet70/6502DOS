@@ -3393,6 +3393,23 @@
             Shift+F1 shows MEM; Shift+F1 with the word erased lists the topics; Shift+F1, Tab
             goes back. Golden regenerated, diffed: only the TED.HLP row and the new run. TED ok
             2.5 s. Steps since the full suite: 5.
+        - TED Shift+F1 without exec (2026-10-21; the user asked TED to read the help itself):
+          F1's `SHOW_HELP` became `SHOW_TEXT(DOS_HELP)`. With 0 it shows `C:\DOS\TED.HLP` as
+          before. With 1 it reads `C:\DOS\HELP.TXT`: a line `:HEADING` starts a topic; the
+          heading is compared in place with the global `TOPIC`, through `@TOPIC + 2`, each
+          letter made a capital, so no `UCASE$` or string compare is linked. The topic's lines
+          show until the next heading; no topic shows the headings. A topic not found sets
+          MESSAGE to `No help for TOPIC` and skips the key wait. The exec, P1$ set and the
+          `PSP_TOP` store are gone.
+          - `TED.COM` 11862 bytes, 91 less than the exec version, 1049 more than before
+            Shift+F1: the Shift+F1 routine 563 (word scan and topic build 422), heading parse
+            176, message 83, topic end 33, the rest of `SHOW_TEXT` about 194. A first form
+            with string parameters, `UCASE$` and a heading string was 12070.
+          - Build 2079 ms, the new baseline. `tests/TED.IN` gains Shift+F1, the word erased,
+            `zz`, Enter. The page is drawn only when no key waits, so the message does not
+            show in the transcript; the next prompt follows the clear at once, so no key wait
+            ran. Golden regenerated, diffed: the topic list loses its trailing CR LF, one
+            more `ESC[0m`, the new run. TED ok 1.6 s. Steps since the full suite: 6.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
