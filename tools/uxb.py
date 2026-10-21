@@ -34,12 +34,18 @@ def includes(source):
     return paths
 
 
-def compile(source, program):
+def compile(source, program, second=None):
     """Compile source to program when program is missing or older than source, than the template
     table, than a file that source includes or than a file of pyuxc. Print the time a compile
-    took, and exit on a compile error."""
+    took, and exit on a compile error. second is where the second ROM bank's file of a
+    #ROMBANKS source goes; a compile without one removes it."""
     inputs = [source, TABLE] + includes(source) + glob.glob(os.path.join(PYUXC, "*.py"))
-    if os.path.exists(program) and all(os.path.getmtime(program) >= os.path.getmtime(i) for i in inputs):
+    outputs = [program]
+    if second is not None and re.search(r"^\s*#ROMBANKS\b", open(source, encoding="latin-1").read(),
+                                         re.IGNORECASE | re.MULTILINE):
+        outputs.append(second)
+    if all(os.path.exists(o) and all(os.path.getmtime(o) >= os.path.getmtime(i) for i in inputs)
+           for o in outputs):
         return
     if PYUXC not in sys.path:
         sys.path.insert(0, PYUXC)
@@ -53,4 +59,10 @@ def compile(source, program):
         sys.exit("%s did not compile: %s" % (os.path.basename(source), result))
     os.makedirs(os.path.dirname(program), exist_ok=True)
     shutil.copyfile(os.path.join(OUT, fields[1]), program)
+    if second is not None:
+        split = [f.split()[1] for f in fields if f.startswith("SECOND ")]
+        if split:
+            shutil.copyfile(os.path.join(OUT, split[0]), second)
+        elif os.path.exists(second):
+            os.remove(second)
     print("compiled %s, %.1f s" % (os.path.relpath(program, ROOT), time.time() - took))

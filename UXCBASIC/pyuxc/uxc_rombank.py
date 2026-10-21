@@ -1,9 +1,12 @@
 """#ROMBANKS: one program in two ROM banks.
 
-    #ROMBANKS first, second    with #ORG and #DATA. The program runs from ROM bank first at the
+    #ROMBANKS first, second [, name]
+                               with #ORG and #DATA. The program runs from ROM bank first at the
                                #ORG address, and the SUBs at its tail from ROM bank second at
                                the same address. dd_place_scan reads it: g.rb_on is 1, and
-                               g.rb_bank[0] and g.rb_bank[1] are the banks.
+                               g.rb_bank[0] and g.rb_bank[1] are the banks. name, a SUB or
+                               FUNCTION, is g.rb_name: it and every SUB after it in code order go
+                               to the second bank, and more before it when the first bank needs.
 
     rb_ranges()   at the start of the link step, after UXC-DEAD.BL: the code range of each SUB,
                   before SB.POOLS writes over K_SY_END
@@ -39,7 +42,7 @@ from uxc_state import er_stop, g
 
 def rb_ranges():
     """RB.RANGES. g.rb_record, g.rb_from and g.rb_to: each SUB left in, in code order, from its
-    JMP around to its end."""
+    JMP around to its end. g.rb_start: the first SUB that must move, g.rb_n when none must."""
     if g.lk_raw == 0 or g.lk_apart == 0:
         er_stop("#ROMBANKS NEEDS #ORG AND #DATA")
     if g.lk_org >= K_FAR:
@@ -59,6 +62,14 @@ def rb_ranges():
         if g.rb_from[i] < g.rb_to[i - 1]:
             er_stop("SUBS OVERLAP")
     g.rb_n = len(g.rb_record)
+    g.rb_start = g.rb_n
+    if g.rb_name != "":
+        g.sy_name = g.rb_name
+        g.sy_ow = 0
+        uxc_sym.sy_find()
+        if g.sy_r not in g.rb_record:
+            er_stop("#ROMBANKS SUB NOT FOUND")
+        g.rb_start = g.rb_record.index(g.sy_r)
     # T_FAR's data record must be known before the startup places the data records.
     g.rt_id = T.R_FARVEC
     rt_use()
@@ -207,12 +218,15 @@ def rb_uses():
 
 
 def rb_choose():
-    """RB.CHOOSE. g.rb_k, the first SUB moved: the most SUBs that the first bank can keep."""
+    """RB.CHOOSE. g.rb_k, the first SUB moved: the most SUBs before g.rb_start that the first
+    bank can keep."""
     g.rb_far_length = rb_length(T.T_FAR)
     g.rb_veneer_length = rb_length(T.T_FARCALL)
     room = K_FAR_END - g.lk_org
-    g.rb_k = g.rb_n
+    g.rb_k = g.rb_start
     cut = 0
+    for t in range(g.rb_start, g.rb_n):
+        cut = cut + g.rb_to[t] - g.rb_from[t]
     while True:
         veneers = 0
         for t in range(g.rb_k, g.rb_n):

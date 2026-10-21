@@ -49,6 +49,7 @@ def start(tpl_folder):
     g.lk_strs_record = 0
     g.rb_on = 0
     g.rb_bank = [0, 0]
+    g.rb_name = ""
     g.vr_n = 0
     g.rt_n = 0
     g.bs_n = 0

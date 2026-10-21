@@ -27,7 +27,7 @@ A SUB kept has K_SY_LIVE set before the link step.
                     address: g.lk_raw is 1.
     #DATA address   the variables, then the array space, start at the address, outside the
                     file, and the startup clears both: g.lk_apart is 1, g.lk_data the address.
-    #ROMBANKS a, b  the program runs from ROM banks a and b (uxc_rombank).
+    #ROMBANKS a, b [, name]  the program runs from ROM banks a and b (uxc_rombank).
 Each is allowed once. The first pass reads them, so they hold for the whole source wherever
 they stand.
 
@@ -324,7 +324,8 @@ def dd_place_scan():
 
 def dd_rombanks_scan():
     """DD.ROMBANKS.SCAN. #ROMBANKS first, second, with the token at ROMBANKS: g.rb_on is 1, and
-    g.rb_bank holds the two ROM banks (uxc_rombank)."""
+    g.rb_bank holds the two ROM banks (uxc_rombank). A third field, a SUB's name, is
+    g.rb_name."""
     if g.rb_on != 0:
         er_stop("#ROMBANKS TWICE")
     for g.dd_i in range(2):
@@ -340,6 +341,12 @@ def dd_rombanks_scan():
         er_syntax()
     g.rb_on = 1
     uxc_lex.lx_next()
+    if g.tk_t == K_TT_OP and g.tk_k == 44:
+        uxc_lex.lx_next()
+        if g.tk_t != K_TT_NAME:
+            er_syntax()
+        g.rb_name = g.tk_s
+        uxc_lex.lx_next()
     if g.tk_t != K_TT_EOL:
         er_syntax()
 

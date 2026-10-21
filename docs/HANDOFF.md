@@ -3251,7 +3251,7 @@
             `rts`. It keeps X (the expression stack) and returns A/Y. About 50 cycles a call
             more than a JSR. A GOTO, a label or a jump into the other bank is an error. The
             JMP around each moved SUB is dropped (3 bytes). pyuxc writes two images.
-          - 3d3: `build.py` bank 4 (`bank4.s`, the `$FFA0` IRQ entry and vectors); the ROM
+          - 3d3 (done): `build.py` bank 4 (`bank4.s`, the `$FFA0` IRQ entry and vectors); the ROM
             becomes 81920 bytes. `ROM3TEST` splits across banks 3 and 4 and tests the calls
             both ways, X kept, BYTE, WORD, LONG and STRING results.
           - 3d4: `CMDSHELL` in banks 3 and 4 (a wrapper source in `src/bank3` with `#ORG`,
@@ -3304,6 +3304,31 @@
           - Build 4423 ms (every program recompiled, the template table changed), the new
             baseline. Test: `ROM3` ok 0.6 s. Docs owed: `UXC-HELP.md` (`#ROMBANKS`),
             `pyuxc/README.md` (the result line). Steps since the full suite: 5.
+        - Done, 3d3 (2026-10-21; the user said go): `ROM3TEST` runs from ROM banks 3 and 4.
+          - pyuxc: `#ROMBANKS first, second, NAME` takes an optional SUB or FUNCTION name: it
+            and every SUB after it in code order go to the second bank, and more before it
+            when the first bank needs (`g.rb_name`, `g.rb_start`). A name that is not a live
+            SUB stops the link: `#ROMBANKS SUB NOT FOUND`. Compile time only. `ROM3TEST` (2 KB)
+            needs it to split at all.
+          - `src/bank3/bank3.s` and `bank3.cfg` are now `bank.s` and `bank.cfg`, assembled
+            once a bank with `-D BANK=3` and `-D BANK=4`; `.incbin .sprintf("BANK%d.BIN",
+            BANK)`. Segment `FARIRQ` (was `FARIRQ3`); `nmi` (an `rti`) moved there from CODE,
+            since the file now fills CODE to `$FFA0`.
+          - `build.py` `build_bank3` compiles to `BANK3.BIN` and `BANK4.BIN` (empty when the
+            program fits bank 3) and appends banks 3 and 4: the ROM is 81920 bytes.
+            `uxb.compile(source, program, second)` copies the `,SECOND` file to `second`, or
+            removes it; a `#ROMBANKS` source counts as up to date only when both exist.
+          - `ROM3TEST`: `#ROMBANKS 3, 4, FAR_BYTE`. Bank 3 2365 bytes, bank 4 698; 6 veneers
+            in bank 3, 2 in bank 4; 11 of 14 SUB calls cross. It prints `42 2000 1000000`
+            (BYTE, WORD, LONG), `217` (`5 + FAR_WORD(3) * 2 + FAR_BYTE(1) * 100`: X kept),
+            `HELLO, ADA! BANK 4` (a STRING; bank 4 calls `GREETING` in bank 3), `115` (bank 4
+            to 3 to 4) and `SUB IN BANK 4`. `ROM3.OUT` updated (local).
+          - Cost: ROM 16 KB more (bank 4). The scratch checker: bad 0. The 211 sources: only
+            `ROM3TEST` differs from HEAD.
+          - Build 4582 ms (every program recompiled, pyuxc changed), the new baseline. Tests:
+            `ROM3` ok 0.4 s, `SHBOOT` 0.4. Docs owed: `UXC-HELP.md` (`#ROMBANKS` with the
+            name), `pyuxc/README.md` (the result line), PLAN line 1183 (`bank.s`, bank 4, the
+            81920-byte ROM). Steps since the full suite: 6; the next step runs it.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

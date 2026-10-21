@@ -6,9 +6,10 @@ Runs tools/genapi.py, assembles every src/asm/*.s and build/gen/*.s with ca65, l
 with src/asm/rom.cfg into build/6502DOS.ROM, ROM banks 0 and 1, and copies LICENSE and NOTICE
 beside it. MSBASIC's 6502dos target, MSBASIC/src/msbasic.s with MSBASIC/src/6502dos.cfg, is
 ROM bank 2, appended to the image; its labels are build/MSBASIC.LBL. MSBASIC/src/6502dos_com.s
-assembles to build/bas/MSBASIC.COM, which starts it. ROM bank 3, appended next, is the one
-src/bank3/NAME.UXB, which sets #ORG $C000, compiled and linked with src/bank3/bank3.s and
-bank3.cfg; src/bank3/stub.s assembles to build/bas/NAME.COM, which starts it. ca65 and ld65 come from tools/cc65/bin only. Includes are found in src/asm and build/gen. The map is
+assembles to build/bas/MSBASIC.COM, which starts it. ROM banks 3 and 4, appended next, are the
+one src/bank3/NAME.UXB, which sets #ORG $C000 and #ROMBANKS 3, 4, compiled and linked with
+src/bank3/bank.s and bank.cfg; src/bank3/stub.s assembles to build/bas/NAME.COM, which starts
+it. ca65 and ld65 come from tools/cc65/bin only. Includes are found in src/asm and build/gen. The map is
 build/6502DOS.MAP, the label file build/6502DOS.LBL, and each listing build/obj/NAME.LST.
 build/TEST.ROM is the same image with boot_shell cleared: it boots to the monitor, not the shell.
 
@@ -173,24 +174,30 @@ def build_basic():
 
 
 def build_bank3():
-    """Append ROM bank 3 to build/6502DOS.ROM: the one src/bank3/NAME.UXB, compiled to
-    build/bank3/BANK3.BIN, then src/bank3/bank3.s, which holds it at $C000 and adds the IRQ
-    entry and the vectors. Assemble src/bank3/stub.s to build/bas/NAME.COM, which starts it.
-    Return the COM path."""
+    """Append ROM banks 3 and 4 to build/6502DOS.ROM: the one src/bank3/NAME.UXB, compiled to
+    build/bank3/BANK3.BIN and BANK4.BIN, each assembled with src/bank3/bank.s, which holds it
+    at $C000 and adds the IRQ entry and the vectors. BANK4.BIN is empty when the program fits
+    bank 3. Assemble src/bank3/stub.s to build/bas/NAME.COM, which starts it. Return the COM
+    path."""
     sources = glob.glob(os.path.join(BANK3_SRC, "*.UXB"))
     if len(sources) != 1:
         sys.exit("build: src/bank3 must hold one .UXB file")
     os.makedirs(BANK3_OUT, exist_ok=True)
-    uxb.compile(sources[0], os.path.join(BANK3_OUT, "BANK3.BIN"))
-    obj = os.path.join(OBJ, "bank3.o")
-    image = os.path.join(BANK3_OUT, "BANK3.ROM")
-    run([CA65, "-I", ASM, "-I", GEN, "--bin-include-dir", BANK3_OUT, "-o", obj,
-         "-l", os.path.join(OBJ, "BANK3.LST"), os.path.join(BANK3_SRC, "bank3.s")])
-    run([LD65, "-C", os.path.join(BANK3_SRC, "bank3.cfg"), "-o", image, obj])
-    if os.path.getsize(ROM) != 3 * BANK_SIZE or os.path.getsize(image) != BANK_SIZE:
-        sys.exit("build: banks 0 to 3 are not 16 KB each")
-    with open(ROM, "ab") as out:
-        out.write(open(image, "rb").read())
+    second = os.path.join(BANK3_OUT, "BANK4.BIN")
+    uxb.compile(sources[0], os.path.join(BANK3_OUT, "BANK3.BIN"), second)
+    if not os.path.exists(second):
+        open(second, "wb").close()
+    for bank in (3, 4):
+        obj = os.path.join(OBJ, "bank%d.o" % bank)
+        image = os.path.join(BANK3_OUT, "BANK%d.ROM" % bank)
+        run([CA65, "-D", "BANK=%d" % bank, "-I", ASM, "-I", GEN, "--bin-include-dir", BANK3_OUT,
+             "-o", obj, "-l", os.path.join(OBJ, "BANK%d.LST" % bank),
+             os.path.join(BANK3_SRC, "bank.s")])
+        run([LD65, "-C", os.path.join(BANK3_SRC, "bank.cfg"), "-o", image, obj])
+        if os.path.getsize(ROM) != bank * BANK_SIZE or os.path.getsize(image) != BANK_SIZE:
+            sys.exit("build: banks 0 to %d are not 16 KB each" % bank)
+        with open(ROM, "ab") as out:
+            out.write(open(image, "rb").read())
     obj = os.path.join(OBJ, "stub.o")
     stub = os.path.join(OBJ, "STUB.BIN")
     run([CA65, "-I", ASM, "-I", GEN, "-o", obj, os.path.join(BANK3_SRC, "stub.s")])
