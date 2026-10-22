@@ -1,0 +1,42 @@
+' STRINGAT: StringAt(a), the string block at address a. AT(N) keeps the addresses of three
+' strings. StringAt reads them, passes them to a STRING parameter that writes the caller's string,
+' and to an AS CONST parameter. Two StringAt in one call each keep their own address. Inside a SUB
+' StringAt reads through a local word. StringAt(P), P a WORD variable or an element at a
+' constant index, reads through P itself.
+DIM AT(3) AS UWORD, P AS UWORD, N AS UBYTE, A$ * 8, B$ * 8, C$ * 4
+
+SUB GROW(T$)
+  T$ = T$ + "+"
+END SUB
+
+SUB BOTH(L$ AS CONST, R$)
+  PRINT L$; "/"; R$; LEN(L$); LEN(R$)
+END SUB
+
+SUB SHOW_ALL()
+  DIM I AS UBYTE, Q AS UWORD
+  FOR I = 0 TO 2
+    PRINT "["; StringAt(AT(I)); "]";
+  NEXT I
+  Q = AT(1)
+  PRINT StringAt(Q)
+END SUB
+
+A$ = "ADA"
+B$ = "BOB"
+AT(0) = AddrOf(A$)
+AT(1) = AddrOf(B$)
+C$ = "LIT"
+AT(2) = AddrOf(C$)
+N = 1
+PRINT StringAt(AT(0)); LEN(StringAt(AT(N))); ASC(StringAt(AT(N)))
+GROW(StringAt(AT(0)))
+GROW(StringAt(AT(N)))
+PRINT A$; " "; B$
+BOTH(StringAt(AT(2)), StringAt(AT(0)))
+IF StringAt(AT(0)) = "ADA+" THEN PRINT "EQ"
+PRINT StringAt(AT(N)) + StringAt(AT(2)); " "; MID$(StringAt(AddrOf(B$)), 2, 2)
+P = AT(2)
+GROW(StringAt(P))
+PRINT StringAt(P); LEN(StringAt(P)); " "; C$
+SHOW_ALL()

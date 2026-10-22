@@ -3929,7 +3929,30 @@
               the CONST PARAMETER error); GUI.PLAN.md 2d (panels, PLACE, the title row, the
               limits D8 now 12 panels in all); the pyuxc README if it names sb_look_ahead.
               The HDIR goldens pending: CMDSHELL, VIEW, DATE, TIME, XCOPY and GREP shrank.
-            Next: phase 2, step 2e, GUI.SHOW and the focus loop.
+          - 2e, the user's choices (2026-10-22): GET moves from 3a into 2e, so the focus loop has
+            a control to move through (3a keeps SAY and SAYGET); GET keeps TARGET$'s and
+            MASK$'s addresses, and SHOW passes them to INPUT2 with a new built-in StringAt.
+          - Done (2026-10-22), 2e part 1: pyuxc `StringAt(a)`, the string block at the WORD
+            address a, anywhere a string is read; passed to a STRING parameter, the parameter is
+            the block at a (a write changes it); to an AS CONST parameter, as it is. Operator
+            `K_EO_STRINGAT` 23 (LOR 24, LAND 25: they stay last) in `ex_operand`/`ex_close`,
+            `sg_string_at` in `uxc_str.py`: the address goes in the statement's next `%S`
+            hidden word (the `sg_pointers` count, as `%P` and `%E`; `sg_is_result` matches
+            `%P` only, so no copy), and the entry reads through it. A WORD variable or an
+            element at a constant index (K_EK_MEM) is read through as it is, no `%S` word.
+            Reserved word STRINGAT. Not done: `StringAt(a) = x`. Cost a pass to a STRING
+            parameter, against passing the string by name: +2 bytes through a WORD variable,
+            +16 through any other expression (+2 bytes of RAM). Every test's PRG is unchanged
+            but the two new ones (difft against HEAD). New `UXCBASIC/tests/STRINGAT.UXB` (read,
+            LEN, ASC, compare, +, MID$, passed to a STRING and an AS CONST parameter, two in
+            one call, a global and a SUB's local WORD, an array element at a variable index)
+            ok 0.5 s, golden checked by hand; new `ERRSTRAT.UXB` (`StringAt("X")`, TYPE
+            MISMATCH) ok 0.0 s; SUBCONST ok 0.5 s. No build: the templates and the ROM did not
+            change. The to-do item "A WORD array store at a BYTE variable index, unchecked"
+            (the 15-byte template, about 6 bytes a store) is in UXCBASIC.PLAN.md section 5.
+            Owed to the doc batch: UXC-HELP StringAt (Pointers, with an example).
+            Next: 2e part 2, the control table, `GUI.GET` and `GUI.SHOW` with the focus loop
+            and D2's validation events.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

@@ -19,7 +19,7 @@ from uxc_code import emit
 from uxc_defs import K_EK_ADDR, K_EK_CMP, K_EK_CONST, K_EK_JMP, K_EK_MEM, K_EK_REG, K_EK_STK, \
     K_EO_ADD, K_EO_AND, K_EO_DIV, K_EO_EQ, K_EO_GE, K_EO_GT, K_EO_INDEX, K_EO_LAND, K_EO_LE, \
     K_EO_LOR, K_EO_LT, K_EO_MINUS, K_EO_MOD, K_EO_MUL, K_EO_NE, K_EO_NOT, K_EO_OR, K_EO_PAR, \
-    K_EO_PEEK, K_EO_SHL, K_EO_SHR, K_EO_SUB, K_EO_WORDPEEK, K_EO_XOR, K_EX_DEPTH, K_EX_MAX, \
+    K_EO_PEEK, K_EO_SHL, K_EO_SHR, K_EO_STRINGAT, K_EO_SUB, K_EO_WORDPEEK, K_EO_XOR, K_EX_DEPTH, K_EX_MAX, \
     K_OP_GE, K_OP_LE, K_OP_NE, K_OP_SHL, K_OP_SHR, K_SEC_BSS, K_SEC_CONST, K_SK_ARRAY, \
     K_SK_CONST, K_SK_SUB, K_SY_SIGNED, K_TT_NAME, K_TT_NUM, K_TT_OP, K_TT_STR, K_TY_BYTE, \
     K_TY_LONG, K_TY_RECORD, K_TY_STR, K_TY_WORD
@@ -92,6 +92,8 @@ def ex_operand():
         g.ex_peek_operator = K_EO_PEEK
     if g.tk_s == "CONTENTSATW":
         g.ex_peek_operator = K_EO_WORDPEEK
+    if g.tk_s == "STRINGAT":
+        g.ex_peek_operator = K_EO_STRINGAT
     if g.ex_peek_operator != 0:
         uxc_lex.lx_next()
         if g.tk_t != K_TT_OP or g.tk_k != 40:
@@ -402,6 +404,10 @@ def ex_close():
         g.ex_on = g.ex_on - 1
         uxc_index.ex_peek()
         return _OPERATOR
+    if g.ex_op[g.ex_on - 1] == K_EO_STRINGAT:
+        g.ex_on = g.ex_on - 1
+        uxc_str.sg_string_at()
+        return _OPERATOR
     if g.ex_op[g.ex_on - 1] == K_EO_INDEX:
         g.ex_on = g.ex_on - 1
         uxc_index.ex_index()
@@ -417,8 +423,8 @@ def ex_end():
 
 
 def ex_prec():
-    """EX.PREC. The precedence of operator g.ex_p in g.ex_pr, higher binds tighter. PAR, PEEK
-    and INDEX are 0, so no binary operator takes them off the stack."""
+    """EX.PREC. The precedence of operator g.ex_p in g.ex_pr, higher binds tighter. PAR, PEEK,
+    STRINGAT and INDEX are 0, so no binary operator takes them off the stack."""
     if g.ex_p >= K_EO_LOR:
         g.ex_pr = g.ex_p - K_EO_LOR + 1
         return

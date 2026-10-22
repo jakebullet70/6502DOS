@@ -1590,3 +1590,22 @@ To do, not designed yet:
   - The compiler only: PRG 0 bytes, RAM 0.
   - Tests: `ESCAPES` and `ERRESCAPE`.
   - Not taken: FreeBASIC's `$"..."`, which marks a literal with no escapes, and `Option Escape`.
+- **A WORD array store at a BYTE variable index, unchecked** (user, 2026-10-22; pyuxc only).
+  `W(I) = v` with `ERRORS OFF`, or with no check owed, for a WORD array of 128 elements or
+  fewer and an unsigned BYTE variable `I`. A template in the style of `T_POKE_AB` reads `I`
+  itself, so the index is not pushed.
+
+  ```
+  pha
+  phy
+  lda I
+  asl a
+  tay
+  pla
+  sta W+1,y
+  pla
+  sta W,y
+  ```
+
+  - 15 bytes. It replaces `T_PUSHB` and `T_STW_SY`, about 6 bytes less a store.
+  - It needs new asm.

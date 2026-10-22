@@ -179,10 +179,11 @@ K_EO_PAR = 19
 K_EO_PEEK = 20
 K_EO_INDEX = 21
 K_EO_WORDPEEK = 22
+K_EO_STRINGAT = 23
 # AND and OR between compares in a condition: jumps, not values (UXC-FLOW.BL). They are
 # the last two.
-K_EO_LOR = 23
-K_EO_LAND = 24
+K_EO_LOR = 24
+K_EO_LAND = 25
 
 # The expression stacks: entries in each, and words on the run-time stack.
 K_EX_MAX = 32

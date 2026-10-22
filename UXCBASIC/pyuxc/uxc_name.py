@@ -54,7 +54,7 @@ def nm_word():
     g.nm_q = "|GOTO|SUB|ENDSUB|FUNCTION|ENDFUNCTION|CALL|RETURN|INPUT|LINPUT|GETKEY|OPEN|CLOSE|READ|WRITE|EOF"
     g.nm_q = g.nm_q + "|DIR|PEEK|POKE|SYS|ASM|AND|OR|XOR|NOT|MOD|LEN|MID$|LEFT$|RIGHT$|CHR$|ASC|STR$|VAL|LVAL|NOFILE|"
     g.nm_q = g.nm_q + "INSTR|UCASE$|LCASE$|POS|ON|CASE|ENDCASE|SELECT|ENDSELECT|"
-    g.nm_q = g.nm_q + "ADDROF|CONTENTSAT|CONTENTSATW|GETEXTKEY|WAITKEY|KEYMODS|"
+    g.nm_q = g.nm_q + "ADDROF|CONTENTSAT|CONTENTSATW|STRINGAT|GETEXTKEY|WAITKEY|KEYMODS|"
     g.nm_b = "|" + g.sm_n + "|"
     if uxc_lex.instr(g.nm_r, g.nm_b) > 0:
         g.nm_word_found = 1

@@ -12,6 +12,7 @@
     sg_let()         name$ = expr, with the variable's record in g.sy_* and the token at the =
     sg_pass()        the top entry as the argument of a STRING parameter, into A/Y
     sg_result()      the result of a STRING SUB, in A/Y after its JSR, as a new entry
+    sg_string_at()   StringAt(a), the string block at the top entry's address, as a new entry
     sg_return_empty()  A/Y = the address of "", for a STRING SUB that ends with no RETURN
     sg_input()       INPUT or LINPUT, from the keyboard or #handle, with the token at the keyword
     sg_write()       WRITE handle, address, count, with the token at WRITE
@@ -260,7 +261,7 @@ def sg_scan_known():
     g.sg_scan_unknown = 1
     if g.tk_s in ("LEN", "ASC", "VAL", "CHR$", "STR$", "MID$", "LEFT$", "RIGHT$", "UCASE$", "LCASE$", "PEEK", "NOT", "INSTR", "POS",
                   "LVAL", "AND", "OR", "XOR", "MOD", "GETKEY", "OPEN", "EOF", "READ", "ADDROF",
-                  "CONTENTSAT", "CONTENTSATW", "GETEXTKEY", "WAITKEY", "KEYMODS"):
+                  "CONTENTSAT", "CONTENTSATW", "STRINGAT", "GETEXTKEY", "WAITKEY", "KEYMODS"):
         g.sg_scan_unknown = 0
 
 
@@ -948,6 +949,35 @@ def sg_result():
     g.ex_v = g.sg_pointer
     g.ex_ty = K_TY_STR
     uxc_expr.ex_pushv()
+
+
+def sg_string_at():
+    """SG.STRING.AT. StringAt(a), with the token after the ). The address goes into the
+    statement's next %S word, and the entry reads the block through it, as it reads a STRING
+    parameter. sg_is_result looks for %P words only, so an argument is passed as it is, not
+    copied. A WORD variable is that word already, so the entry reads through it. Clobbers
+    g.sy_*."""
+    g.ex_i = g.ex_vn - 1
+    if g.ex_vt[g.ex_i] == K_TY_STR:
+        er_mismatch()
+    if g.ex_vk[g.ex_i] == K_EK_MEM and g.ex_vt[g.ex_i] == K_TY_WORD:
+        g.ex_vt[g.ex_i] = K_TY_STR
+        g.ex_vg[g.ex_i] = 0
+        return
+    g.ex_fb = g.ex_i
+    uxc_expr.ex_flush()
+    g.ex_i = g.ex_vn - 1
+    g.ex_wd = 1
+    uxc_expr.ex_load()
+    g.sg_pointers = g.sg_pointers + 1
+    g.sy_name = "%S" + basic_str(g.sg_pointers)
+    sg_pointer_word()
+    g.ex_i = g.ex_vn - 1
+    g.ex_vk[g.ex_i] = K_EK_MEM
+    g.ex_vs[g.ex_i] = K_SEC_VAR
+    g.ex_vv[g.ex_i] = g.sg_pointer
+    g.ex_vt[g.ex_i] = K_TY_STR
+    g.ex_vg[g.ex_i] = 0
 
 
 def sg_pointer_word():
