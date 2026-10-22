@@ -3821,7 +3821,36 @@
             ERRCONTENTS ok 0.0 s, GUITHEME ok 0.4 s, GUIBOX ok 0.4 s, GUIEDIT ok 0.5 s,
             GUIFLAGS ok 0.4 s, GUIMASK ok 0.4 s, DOSAPI ok 0.8 s, SHRUN ok 0.9 s.
             Owed to the doc batch: UXC-HELP's ContentsAt cost rule names both forms.
-            Next: phase 2, step 2c, forms.
+          - Done (2026-10-22): GUI step 2c, forms, in `lib/GUI.UXI`. `GUI.CREATEFORM(TITLE$,
+            ROW, COLUMN, WIDTH, HEIGHT, FLAGS = 0) AS UBYTE` returns a handle, 1 to
+            `MOST_FORMS` (4), counting down from 4; 0 when all are in use. `GUI.CENTER` (255)
+            as ROW or COLUMN centers on `POS(2)`/`POS(3)`. The flag `GUI.FRAMED` (1) replaces
+            the plan's form flag `GUI.BOX` (now the SUB): a box of double lines. The tables are
+            parallel arrays, not records: `FORM_ROW`, `FORM_COLUMN`, `FORM_WIDTH`,
+            `FORM_HEIGHT`, `FORM_FLAGS` (UBYTE) and `FORM_TITLE_AT` (UWORD), 5 elements each,
+            element 0 unused; FORM_WIDTH 0 is a free form and stops the search at 0. A UBYTE
+            array with a UBYTE index reads in `ldy`/`lda abs,y`; a record field with a
+            variable index computes an address. The form keeps the title's address (D4).
+            `GUI.FREE(HANDLE)`. `GUI.DRAW_FORM(HANDLE)`: FRAMED draws the box in FRAME's color,
+            else clears the area in PAGE's color; the title, between spaces, centered on the
+            top row in TITLE's color, cut to WIDTH - 4; SHOW (2e) will call it.
+            `HALF_GAP(SPACE, SIZE)` gives the gap that centers SIZE in SPACE. The form code is under `ERRORS OFF` (the
+            handles are not checked), `ERRORS ON` after it. Not in 2c: the control table (with
+            the controls, phase 3) and sections (2d).
+            Size on top of INPUT2, THEME, USE_COLOR and BOX: region 1 2842 to 3510 bytes (+668:
+            CREATEFORM 283, FREE 19, DRAW_FORM 366), 4682 free; PRG 3353 to 4187 (+834; a
+            runtime record moves to low RAM, 3 veneers, the parameters); arrays 35 bytes. The
+            first form was 3786 (+944): ERRORS OFF saved 7 bytes an array access, BOX called
+            with globals, HALF_GAP shared by 3 sites, a REPEAT in place of the FOR.
+            Template costs found (pyuxc work, asm, not done): `(A - B) / 2` is PUSHB, SUBB,
+            PUSHB, LDB_C, SHRB, 34 bytes, for `sec`/`sbc`/`lsr` 5; an array store
+            `X(I) = V` is LDB_V, PUSHB, LDB_V, STB_SY, 19 bytes, for `lda`/`ldy`/`sta abs,y` 9.
+            Test `tests/GUIFORM.UXB` (new; framed at 2,5; CENTER with a cut title; no frame and
+            an empty title; a global title changed before the draw; a fifth form gets 0; FREE
+            and reuse; FREE(0)), wrote golden 2.0 s, checked by hand; then GUIFORM ok 0.5 s,
+            GUIBOX ok 0.4 s, GUITHEME ok 0.4 s. No build: the ROM and templates did not change.
+            Owed to the doc batch: GUI.PLAN.md 2c (FRAMED, DRAW_FORM, the arrays).
+            Next: phase 2, step 2d, sections and automatic layout.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

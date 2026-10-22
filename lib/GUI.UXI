@@ -60,6 +60,18 @@ NAMESPACE GUI
   ' Where SPAN prints its next row, and the row's length.
   DIM SPAN_ROW AS UBYTE, SPAN_COLUMN AS UBYTE, SPAN_LENGTH AS UBYTE
 
+  ' CREATEFORM's ROW or COLUMN that centers the form on the screen.
+  CONST CENTER AS UBYTE = 255
+  ' CREATEFORM's FLAGS. FRAMED draws the form in a box of double lines.
+  CONST FRAMED AS UBYTE = 1
+  ' The forms, handles 1 to MOST_FORMS, one element a form. Element 0 is never used, and its
+  ' FORM_WIDTH stays 0. A form whose FORM_WIDTH is 0 is free. FORM_TITLE_AT is the address of
+  ' the caller's title string.
+  ' Checklist: the arrays hold MOST_FORMS + 1 elements.
+  CONST MOST_FORMS AS UBYTE = 4
+  DIM FORM_ROW(5) AS UBYTE, FORM_COLUMN(5) AS UBYTE, FORM_WIDTH(5) AS UBYTE
+  DIM FORM_HEIGHT(5) AS UBYTE, FORM_FLAGS(5) AS UBYTE, FORM_TITLE_AT(5) AS UWORD
+
   ' Edits TARGET$ in a field at ROW and COLUMN, counted from 0, WIDTH characters wide.
   ' TARGET$ takes at most its own size in characters. The text scrolls inside the field when it
   ' is longer than WIDTH. Left, Right, Home, End, Backspace, Delete and Insert edit. Enter, Tab,
@@ -300,4 +312,79 @@ NAMESPACE GUI
       ROW = ROW + 1
     END REPEAT
   END SUB
+
+  ' Returns the gap before SIZE that centers it in SPACE.
+  FUNCTION HALF_GAP(SPACE AS UBYTE, SIZE AS UBYTE) AS UBYTE
+    RETURN (SPACE - SIZE) / 2
+  END FUNCTION
+
+  ' The forms' handles are not checked: a handle is one that CREATEFORM returned, or 0.
+  ERRORS OFF
+
+  ' Makes a form WIDTH columns by HEIGHT rows, its top left corner at ROW and COLUMN, counted
+  ' from 0, and returns its handle. CENTER as ROW or COLUMN centers the form on the screen.
+  ' FLAGS changes the form as the CONSTs above give. WIDTH is at least 4 and HEIGHT at least 2.
+  ' The form keeps the address of TITLE$, not a copy, so TITLE$ is a literal or a global
+  ' string. CREATEFORM returns 0 when MOST_FORMS forms are in use.
+  FUNCTION CREATEFORM(TITLE$, ROW AS UBYTE, COLUMN AS UBYTE, WIDTH AS UBYTE, HEIGHT AS UBYTE, FLAGS AS UBYTE = 0) AS UBYTE
+    DIM HANDLE AS UBYTE
+    HANDLE = MOST_FORMS
+    DO WHILE FORM_WIDTH(HANDLE) <> 0
+      HANDLE = HANDLE - 1
+    LOOP
+    IF HANDLE = 0 THEN RETURN 0
+    IF ROW = CENTER THEN ROW = HALF_GAP(POS(2), HEIGHT)
+    IF COLUMN = CENTER THEN COLUMN = HALF_GAP(POS(3), WIDTH)
+    FORM_ROW(HANDLE) = ROW
+    FORM_COLUMN(HANDLE) = COLUMN
+    FORM_WIDTH(HANDLE) = WIDTH
+    FORM_HEIGHT(HANDLE) = HEIGHT
+    FORM_FLAGS(HANDLE) = FLAGS
+    FORM_TITLE_AT(HANDLE) = AddrOf(TITLE$)
+    RETURN HANDLE
+  END FUNCTION
+
+  ' Frees the form HANDLE for the next CREATEFORM. A handle of 0 does nothing.
+  SUB FREE(HANDLE AS UBYTE)
+    FORM_WIDTH(HANDLE) = 0
+  END SUB
+
+  ' Draws the form HANDLE: the box in the theme's FRAME color when FRAMED, else the area
+  ' cleared in its PAGE color, then the title, between spaces, centered on the top row in its
+  ' TITLE color. A title too long for the row is cut. An empty title draws nothing.
+  SUB DRAW_FORM(HANDLE AS UBYTE)
+    DIM TITLE_AT AS UWORD, SHOWN AS UBYTE, SPOT AS UBYTE, TOP AS UBYTE
+    TOP = FORM_ROW(HANDLE)
+    SPAN_ROW = TOP
+    SPAN_COLUMN = FORM_COLUMN(HANDLE)
+    SPAN_LENGTH = FORM_WIDTH(HANDLE)
+    SPOT = FORM_HEIGHT(HANDLE)
+    IF FORM_FLAGS(HANDLE) AND FRAMED THEN
+      USE_COLOR(FRAME)
+      BOX(TOP, SPAN_COLUMN, SPAN_LENGTH, SPOT, DOUBLE)
+    ELSE
+      USE_COLOR(PAGE)
+      REPEAT SPOT
+        SPAN(32, 32, 32)
+      END REPEAT
+    ENDIF
+    ' The string's length byte is at +1, its characters from +2.
+    TITLE_AT = FORM_TITLE_AT(HANDLE)
+    SHOWN = ContentsAt(TITLE_AT + 1)
+    SPOT = SPAN_LENGTH - 4
+    IF SHOWN > SPOT THEN SHOWN = SPOT
+    IF SHOWN > 0 THEN
+      USE_COLOR(TITLE)
+      POS(1) = TOP
+      POS(0) = SPAN_COLUMN + HALF_GAP(SPAN_LENGTH, SHOWN + 2)
+      PRINT " ";
+      SPOT = 2
+      REPEAT SHOWN
+        PRINT CHR$(ContentsAt(TITLE_AT + SPOT));
+        SPOT = SPOT + 1
+      END REPEAT
+      PRINT " ";
+    ENDIF
+  END SUB
+  ERRORS ON
 END NAMESPACE

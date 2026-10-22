@@ -1,0 +1,47 @@
+' GUIFORM: GUI.CREATEFORM, GUI.DRAW_FORM and GUI.FREE. Each draw prints its characters; the
+' last line gives the handles, then the cursor's row and column after each draw.
+' 1: a framed form at 2, 5, 12 by 4. 2: a framed form 8 by 3 at CENTER, CENTER, its title cut
+' to 4 characters. 3: a form 6 by 2 with no frame and an empty title. 4: a form with no frame
+' and a global title, changed before the draw. 5: a fifth form gets 0. 6: after FREE, a new form
+' takes the freed handle; FREE(0) does nothing.
+#INCLUDE "KEYS.UXI"
+#INCLUDE "GUI.UXI"
+DIM ENDS(10) AS UBYTE, AT AS UBYTE, H(6) AS UBYTE, T$ * 4
+
+SUB KEEP()
+  ENDS(AT) = POS(1)
+  ENDS(AT + 1) = POS(0)
+  AT = AT + 2
+END SUB
+
+AT = 0
+H(0) = GUI.CREATEFORM("Help", 2, 5, 12, 4, GUI.FRAMED)
+GUI.DRAW_FORM(H(0))
+KEEP()
+H(1) = GUI.CREATEFORM("A long title", GUI.CENTER, GUI.CENTER, 8, 3, GUI.FRAMED)
+GUI.DRAW_FORM(H(1))
+KEEP()
+H(2) = GUI.CREATEFORM("", 20, 0, 6, 2)
+GUI.DRAW_FORM(H(2))
+KEEP()
+T$ = "X"
+H(3) = GUI.CREATEFORM(T$, 24, 70, 5, 2)
+T$ = "Y"
+GUI.DRAW_FORM(H(3))
+KEEP()
+H(4) = GUI.CREATEFORM("None", 1, 1, 4, 2)
+GUI.FREE(H(1))
+GUI.FREE(0)
+H(5) = GUI.CREATEFORM("Re", 1, 40, 8, 3, GUI.FRAMED)
+GUI.DRAW_FORM(H(5))
+KEEP()
+POS(1) = 27
+POS(0) = 0
+FOR AT = 0 TO 5
+  PRINT H(AT);
+NEXT AT
+PRINT
+FOR AT = 0 TO 9
+  PRINT ENDS(AT);
+NEXT AT
+PRINT
