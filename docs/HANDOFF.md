@@ -4059,7 +4059,39 @@
             to Save, Esc, a redraw and Alt+H) ok 0.4 s, golden traced by hand; GUICHECK,
             GUISHOW, GUISAY, GUISECT ok 0.4 s. No build. Owed to the doc batch: GUI.PLAN.md 3c
             (the next SHOW, the hot key's color, letters only).
-            Next: phase 3, step 3d, `GUI.CBO`, in region 2; agree where the split goes first.
+          - Done (2026-10-22), 3d, in `lib/GUI.UXI`; the split agreed with the user: the
+            constructor and dispatch in region 1, the list in region 2, reached through
+            parameters only, so no form table leaves region 1. `GUI.CBO(ROW, COLUMN, CAPTION$
+            AS CONST, CHOICES$ AS CONST, VALUE_AT AS UWORD, WIDTH AS UBYTE, FLAGS AS UBYTE = 0)
+            AS UBYTE`: SAYGET with CHOICES$ in the mask slot, then MAKE_CHOICE with KIND_CBO 4.
+            EDIT_FIELD calls `DROP_LIST(ROW, COLUMN, WIDTH, CHOICES_AT, VALUE_AT, MORE_FLAGS)`
+            in region 2 (`#REGION_SLOT 2` ... `#REGION_SLOT 1` before EDIT_FIELD), with
+            `PRINT_ITEM(CHOICES_AT, NUMBER, WIDTH)` (prints choice NUMBER cut or padded,
+            returns the last choice's number). The field is the choice, WIDTH - 1 wide, then
+            CP437 31 (a down arrow). Space opens the list: a BOX in MENU from ROW + 1, COLUMN - 1,
+            WIDTH + 2 by choices + 2, the choice in MENU_SELECTED; Up and Down wrap, Enter
+            chooses, Esc keeps the choice. On close: BOX again in PAGE (each theme's PAGE has
+            the foreground of its background, so it clears), SHOWN_FORM = 0, return 0. SHOW now
+            draws the form inside its loop when SHOWN_FORM is 0, so the form is drawn again
+            with the focus kept on the CBO; key 0 falls to CASE ELSE. My choices, not in
+            GUI.PLAN.md: Space only opens (no Alt+Down, no F4; KEYS has no F4); no Left/Right
+            in the closed field; the list does not scroll and drops below the field only
+            (trap noted on DROP_LIST); the list is cleared to PAGE (52 bytes), so a list past
+            the form's edge leaves no marks. Sizes on GUISHOW: region 1 7165 to 7258 (+93: the
+            dispatch 79, SHOW's restructure 15), region 2 733, low RAM +36 (the veneers, the
+            parameters, the region record, SHOWN_FORM). Every GUI program now takes 2 banks.
+            Region 1 left: GUICHECK 810 free, GUIBTN 902, GUICBO 987. Saving applied:
+            DROP_LIST sets SHOWN_FORM in place of a test of key 0 in SHOW (region 1 -23,
+            region 2 +5, low RAM +1). Measured, no gain: one USE_COLOR call per item (+3), the
+            two BOX calls through a SUB (+11), ROW through POS(1) (+4), a literal for CHR$(31)
+            (0). New `tests/GUICBO.UXB` and `.IN` (a SAYGET; CBO "Color" of
+            "Red|Green|Blue" 8 wide; CBO "Size" of "S|M|L" 4 wide at row 8, column 2; Space,
+            Down, Down wraps, Up wraps, Enter picks Blue, a redraw, "q", Tab, Space, Down, Esc
+            keeps M, Enter EV_DONE; round 2 Tab, Space, Esc, Esc EV_CANCEL) ok 0.6 s, golden
+            traced by hand; GUIBTN, GUICHECK, GUISHOW, GUISAY, GUISECT ok 0.4 to 0.5 s. No
+            build. Owed to the doc batch: GUI.PLAN.md 3d (the split, Space, no scroll, the
+            clear), D9 (CBO's list in region 2).
+            Next: phase 3, step 3e, `GUI.MEMO`, in region 2.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

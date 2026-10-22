@@ -1,7 +1,7 @@
 ' GUI.UXI: GUI Forms, the text-mode user interface library of 6502DOS's utilities.
 '
 ' A program includes KEYS.UXI, then GUI.UXI. The code runs from region 1, a RAM bank of its
-' own at $A000, and a SUB or FUNCTION adds bytes only when called.
+' own at $A000, and a CBO's list from region 2. A SUB or FUNCTION adds bytes only when called.
 
 #REGION_SLOT 1
 NAMESPACE GUI
@@ -93,8 +93,8 @@ NAMESPACE GUI
   ' CONTROL_SECTION is the section whose captions the field lines up on, or 0. CONTROL_KIND is
   ' one of the KIND_ CONSTs below.
   ' CONTROL_LABEL_AT, CONTROL_TEXT_AT and CONTROL_MASK_AT are the addresses of the caller's
-  ' caption, target and mask strings. For a CHECK or a RADIO, CONTROL_TEXT_AT is the address
-  ' of the caller's UBYTE, and CONTROL_MASK_AT of its choices. For a BUTTON, CONTROL_TEXT_AT is
+  ' caption, target and mask strings. For a CHECK, a RADIO or a CBO, CONTROL_TEXT_AT is the
+  ' address of the caller's UBYTE, and CONTROL_MASK_AT of its choices. For a BUTTON, CONTROL_TEXT_AT is
   ' its id, and CONTROL_MASK_AT the address of its caption.
   ' Checklist: the arrays hold MOST_CONTROLS + 1 elements.
   CONST MOST_CONTROLS AS UBYTE = 48
@@ -104,7 +104,7 @@ NAMESPACE GUI
   DIM CONTROL_LABEL_AT(49) AS UWORD, CONTROL_TEXT_AT(49) AS UWORD, CONTROL_MASK_AT(49) AS UWORD
   ' The kinds of control. A SAY is a KIND_FIELD of WIDTH 0.
   CONST KIND_FIELD AS UBYTE = 0, KIND_CHECK AS UBYTE = 1, KIND_RADIO AS UBYTE = 2
-  CONST KIND_BUTTON AS UBYTE = 3
+  CONST KIND_BUTTON AS UBYTE = 3, KIND_CBO AS UBYTE = 4
   ' SHOW's events. A button's id is below them.
   CONST EV_DONE AS UBYTE = 253, EV_LEAVE AS UBYTE = 254, EV_CANCEL AS UBYTE = 255
   ' The form SHOW runs, 0 when the next SHOW starts a form afresh. The control SHOW gives the
@@ -629,6 +629,18 @@ NAMESPACE GUI
     RETURN MAKE_CHOICE(CONTROL, ID, KIND_BUTTON)
   END FUNCTION
 
+  ' Makes a combo box of the current form, a field WIDTH columns wide with a list that drops
+  ' down, and returns its control number, as SAYGET does. CHOICES$ holds the choices with |
+  ' between them, as RADIO's does. The UBYTE at VALUE_AT is the chosen one, 0 for the first;
+  ' pass it as @NAME. The field shows the choice and a down arrow in its last column. Space
+  ' opens the list, and the form is drawn again when it closes. ROW, COLUMN, CAPTION$ and
+  ' FLAGS are SAYGET's. The form keeps the address of CHOICES$, not a copy.
+  FUNCTION CBO(ROW AS UBYTE, COLUMN AS UBYTE, CAPTION$ AS CONST, CHOICES$ AS CONST, VALUE_AT AS UWORD, WIDTH AS UBYTE, FLAGS AS UBYTE = 0) AS UBYTE
+    DIM CONTROL AS UBYTE
+    CONTROL = SAYGET(ROW, COLUMN, CAPTION$, ORIGINAL$, WIDTH, CHOICES$, FLAGS)
+    RETURN MAKE_CHOICE(CONTROL, VALUE_AT, KIND_CBO)
+  END FUNCTION
+
   ' Returns the screen column of CONTROL's field, as SAYGET gives it.
   FUNCTION FIELD_COLUMN(CONTROL AS UBYTE) AS UBYTE
     DIM GAP AS UBYTE, SECTION AS UBYTE
@@ -753,9 +765,84 @@ NAMESPACE GUI
     RETURN 0
   END FUNCTION
 
+  ' The drop-down list runs from region 2. It reaches the form's tables only through its
+  ' parameters, so the tables stay in region 1.
+#REGION_SLOT 2
+  ' Prints choice NUMBER of the choices at CHOICES_AT, cut or padded with spaces to WIDTH
+  ' characters, and returns the last choice's number.
+  FUNCTION PRINT_ITEM(CHOICES_AT AS UWORD, NUMBER AS UBYTE, WIDTH AS UBYTE) AS UBYTE
+    DIM ITEM AS UBYTE, SPOT AS UBYTE, CHARACTER AS UBYTE
+    ITEM = 0
+    SPOT = 2
+    REPEAT ContentsAt(CHOICES_AT + 1)
+      CHARACTER = ContentsAt(CHOICES_AT + SPOT)
+      SPOT = SPOT + 1
+      IF CHARACTER = ASC("|") THEN
+        ITEM = ITEM + 1
+      ELSEIF ITEM = NUMBER AND WIDTH <> 0 THEN
+        PRINT CHR$(CHARACTER);
+        WIDTH = WIDTH - 1
+      ENDIF
+    END REPEAT
+    REPEAT WIDTH
+      PRINT " ";
+    END REPEAT
+    RETURN ITEM
+  END FUNCTION
+
+  ' Draws a CBO's field, WIDTH columns at ROW and COLUMN: the chosen one of the choices at
+  ' CHOICES_AT, then a down arrow. The UBYTE at VALUE_AT is the choice, 0 for the first. With
+  ' MORE_FLAGS DRAW_ONLY it returns DRAW_ONLY. Else Space opens the list under the field: Up
+  ' and Down move through it, wrapping, Enter chooses and Esc leaves the choice as it was; the
+  ' list is cleared, SHOWN_FORM is set to 0 for SHOW to draw the form again, and DROP_LIST
+  ' returns 0, a key SHOW skips. It returns any other key.
+  ' Trap: the list takes the rows from ROW + 1 to ROW + 2 + the number of choices, and the
+  ' columns from COLUMN - 1 to COLUMN + WIDTH. It does not scroll.
+  FUNCTION DROP_LIST(ROW AS UBYTE, COLUMN AS UBYTE, WIDTH AS UBYTE, CHOICES_AT AS UWORD, VALUE_AT AS UWORD, MORE_FLAGS AS UBYTE) AS UWORD
+    DIM PRESSED AS UWORD, VALUE AS UBYTE, LAST AS UBYTE, ITEM AS UBYTE
+    POS(1) = ROW
+    POS(0) = COLUMN
+    VALUE = ContentsAt(VALUE_AT)
+    LAST = PRINT_ITEM(CHOICES_AT, VALUE, WIDTH - 1)
+    PRINT CHR$(31);
+    IF MORE_FLAGS <> 0 THEN RETURN MORE_FLAGS
+    POS(0) = COLUMN
+    PRESSED = WAITKEY()
+    IF PRESSED <> KEYS.SPACE THEN RETURN PRESSED
+    USE_COLOR(MENU)
+    BOX(ROW + 1, COLUMN - 1, WIDTH + 2, LAST + 3)
+    DO
+      ITEM = 0
+      REPEAT LAST + 1
+        USE_COLOR(MENU)
+        IF ITEM = VALUE THEN USE_COLOR(MENU_SELECTED)
+        POS(1) = ROW + 2 + ITEM
+        POS(0) = COLUMN
+        PRINT_ITEM(CHOICES_AT, ITEM, WIDTH)
+        ITEM = ITEM + 1
+      END REPEAT
+      POS(1) = ROW + 2 + VALUE
+      POS(0) = COLUMN
+      PRESSED = WAITKEY()
+      ' LAST is the last choice's number, so adding LAST + 1 wraps to the same choice, and
+      ' adding LAST to the choice before.
+      IF PRESSED = KEYS.KEY_UP THEN VALUE = VALUE + LAST
+      IF PRESSED = KEYS.KEY_DOWN THEN VALUE = VALUE + 1
+      IF VALUE > LAST THEN VALUE = VALUE - LAST - 1
+    LOOP UNTIL PRESSED = KEYS.ENTER OR PRESSED = KEYS.ESC
+    IF PRESSED = KEYS.ENTER THEN ContentsAt(VALUE_AT) = VALUE
+    ' Each theme's PAGE color has the same foreground as background, so the box clears.
+    USE_COLOR(PAGE)
+    BOX(ROW + 1, COLUMN - 1, WIDTH + 2, LAST + 3)
+    SHOWN_FORM = 0
+    RETURN 0
+  END FUNCTION
+#REGION_SLOT 1
+
   ' Runs INPUT2 on the field CONTROL, its FLAGS with MORE_FLAGS added, and returns INPUT2's key;
-  ' a CHECK or a RADIO runs PICK_CHOICE in its place, and a BUTTON PUSH_BUTTON. A field, CHECK
-  ' or RADIO takes the FIELD_FOCUS color, or the FIELD color when MORE_FLAGS is DRAW_ONLY.
+  ' a CHECK or a RADIO runs PICK_CHOICE in its place, a BUTTON PUSH_BUTTON, and a CBO
+  ' DROP_LIST. A field, CHECK, RADIO or CBO takes the FIELD_FOCUS color, or the FIELD color
+  ' when MORE_FLAGS is DRAW_ONLY.
   FUNCTION EDIT_FIELD(CONTROL AS UBYTE, MORE_FLAGS AS UBYTE) AS UWORD
     DIM TARGET_AT AS UWORD, MASK_AT AS UWORD, COLUMN AS UBYTE
     IF MORE_FLAGS = 0 THEN
@@ -766,6 +853,7 @@ NAMESPACE GUI
     ' Trap: FIELD_COLUMN called among INPUT2's arguments costs 48 bytes more than this.
     COLUMN = FIELD_COLUMN(CONTROL)
     IF CONTROL_KIND(CONTROL) = KIND_BUTTON THEN RETURN PUSH_BUTTON(CONTROL, COLUMN, MORE_FLAGS)
+    IF CONTROL_KIND(CONTROL) = KIND_CBO THEN RETURN DROP_LIST(CONTROL_ROW(CONTROL), COLUMN, CONTROL_WIDTH(CONTROL), CONTROL_MASK_AT(CONTROL), CONTROL_TEXT_AT(CONTROL), MORE_FLAGS)
     IF CONTROL_KIND(CONTROL) <> KIND_FIELD THEN RETURN PICK_CHOICE(CONTROL, COLUMN, MORE_FLAGS)
     TARGET_AT = CONTROL_TEXT_AT(CONTROL)
     MASK_AT = CONTROL_MASK_AT(CONTROL)
@@ -790,32 +878,37 @@ NAMESPACE GUI
   ' Down and Enter move the focus to the next control, and Shift+Tab and Up to the one before;
   ' the focus wraps from the last control to the first and back, and skips each SAY. Enter on
   ' the last control returns EV_DONE, and so does a form with no control but SAYs. Esc returns
-  ' EV_CANCEL. A button pressed returns its id, as BUTTON gives. Leaving a VALIDATE
-  ' field returns EV_LEAVE, with the field in LEFT_FIELD; the next SHOW moves the focus on, or
+  ' EV_CANCEL. A button pressed returns its id, as BUTTON gives. A CBO's list that closes has the
+  ' form drawn again, the focus on the CBO. Leaving a VALIDATE field returns EV_LEAVE, with the field in LEFT_FIELD; the next SHOW moves the focus on, or
   ' back to the field after REFUSE. A form is new to SHOW after EV_DONE, EV_CANCEL or FREE, and
   ' when another form was shown last. SHOW(0) returns EV_CANCEL.
   FUNCTION SHOW(HANDLE AS UBYTE) AS UBYTE
     DIM FOCUS AS UBYTE, DIRECTION AS UBYTE, PUSHED AS UBYTE, PRESSED AS UWORD, LABEL_AT AS UWORD
     IF HANDLE = 0 THEN RETURN EV_CANCEL
     IF HANDLE <> SHOWN_FORM THEN
-      SHOWN_FORM = HANDLE
-      DRAW_FORM(HANDLE)
-      FOCUS = MOST_CONTROLS
-      REPEAT MOST_CONTROLS
-        IF CONTROL_OWNER(FOCUS) = HANDLE THEN
-          USE_COLOR(TEXT)
-          POS(1) = CONTROL_ROW(FOCUS)
-          POS(0) = CONTROL_COLUMN(FOCUS)
-          LABEL_AT = CONTROL_LABEL_AT(FOCUS)
-          PRINT StringAt(LABEL_AT);
-          IF CONTROL_WIDTH(FOCUS) <> 0 THEN EDIT_FIELD(FOCUS, DRAW_ONLY)
-        ENDIF
-        FOCUS = FOCUS - 1
-      END REPEAT
+      SHOWN_FORM = 0
       NEXT_FOCUS = NEXT_CONTROL(HANDLE, 0, 1)
     ENDIF
     FOCUS = NEXT_FOCUS
-    DO WHILE FOCUS <> 0
+    DO
+      ' A form new to SHOW, or one a CBO's list has covered, is drawn whole.
+      IF SHOWN_FORM = 0 THEN
+        SHOWN_FORM = HANDLE
+        DRAW_FORM(HANDLE)
+        PUSHED = MOST_CONTROLS
+        REPEAT MOST_CONTROLS
+          IF CONTROL_OWNER(PUSHED) = HANDLE THEN
+            USE_COLOR(TEXT)
+            POS(1) = CONTROL_ROW(PUSHED)
+            POS(0) = CONTROL_COLUMN(PUSHED)
+            LABEL_AT = CONTROL_LABEL_AT(PUSHED)
+            PRINT StringAt(LABEL_AT);
+            IF CONTROL_WIDTH(PUSHED) <> 0 THEN EDIT_FIELD(PUSHED, DRAW_ONLY)
+          ENDIF
+          PUSHED = PUSHED - 1
+        END REPEAT
+      ENDIF
+      IF FOCUS = 0 THEN EXIT DO
       PRESSED = EDIT_FIELD(FOCUS, 0)
       EDIT_FIELD(FOCUS, DRAW_ONLY)
       IF STATUS_SHOWN <> 0 THEN

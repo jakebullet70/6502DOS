@@ -1,0 +1,44 @@
+' GUICBO: GUI.CBO. The last lines give the string, then the control numbers, each control's
+' column, and after each SHOW its event and the two choices.
+' A SAYGET, then a CBO "Color" of "Red|Green|Blue", 8 wide, and a CBO "Size" of "S|M|L", 4 wide,
+' at row 8, column 2.
+' Round 1: "Al" and Enter; on Color, Space opens the list on Green, Down, Down wraps to Red, Up
+' wraps to Blue, and Enter chooses it, and the form is drawn again; "q" does nothing, and Tab;
+' on Size, Space, Down and Esc leave M; Enter returns EV_DONE.
+' Round 2: Tab, then Space and Esc on Color, and Esc returns EV_CANCEL.
+#INCLUDE "KEYS.UXI"
+#INCLUDE "GUI.UXI"
+DIM KEPT(16) AS UBYTE, AT AS UBYTE, H AS UBYTE, N AS UBYTE
+DIM HUE AS UBYTE, SIZE AS UBYTE
+DIM N$ * 6
+
+SUB KEEP(VALUE AS UBYTE)
+  KEPT(AT) = VALUE
+  AT = AT + 1
+END SUB
+
+SUB KEEP_SHOW()
+  KEEP(GUI.SHOW(H))
+  KEEP(HUE)
+  KEEP(SIZE)
+END SUB
+
+AT = 0
+HUE = 1
+SIZE = 1
+H = GUI.CREATEFORM("Opts", 2, 0, 40, 12, GUI.FRAMED)
+KEEP(GUI.SAYGET(GUI.AUTO, GUI.AUTO, "Name", N$, 6))
+KEEP(GUI.CBO(GUI.AUTO, GUI.AUTO, "Color", "Red|Green|Blue", @HUE, 8))
+KEEP(GUI.CBO(8, 2, "Size", "S|M|L", @SIZE, 4))
+FOR N = 1 TO 3
+  KEEP(GUI.FIELD_COLUMN(N))
+NEXT N
+KEEP_SHOW()
+KEEP_SHOW()
+POS(1) = 24
+POS(0) = 0
+PRINT "["; N$; "]"
+FOR N = 0 TO AT - 1
+  PRINT KEPT(N);
+NEXT N
+PRINT
