@@ -1,0 +1,80 @@
+' BANK.UXI: the RAM bank calls of the 6502DOS API (docs/API.md), in namespace BANK.
+' Include DOS.UXI first.
+'
+' $00 selects the RAM bank at $A000 to $BFFF. The kernel's calls keep $00. A program's code,
+' variables and strings are in low RAM, so USE changes only what $A000 to $BFFF reads.
+' A SUB or FUNCT adds bytes only when called.
+'
+' DIM B AS UBYTE
+' B = BANK.ALLOC(1)
+' BANK.PUT_BYTE(B, $A000, 42)
+' PRINT BANK.GET_BYTE(B, $A000)    ' prints 42
+
+NAMESPACE BANK
+  CONST RAM_BANK AS UWORD = $0000
+
+  ' Takes the lowest run of COUNT free banks. Returns its first bank, 0 on an error. COUNT 0
+  ' gives the free count, as FREE_COUNT. exit frees the program's banks.
+  FUNCT ALLOC(COUNT AS UBYTE) AS UBYTE
+    DOS.REG_A = COUNT
+    SYS DOS.API_BANK_ALLOC
+    DOS.READ_ERR_STATUS()
+    IF DOS.ERROR <> 0 THEN RETURN 0
+    RETURN DOS.REG_A
+  END FUNCT
+
+  ' Frees the run of banks that starts at FIRST. A bank that does not start a run of this
+  ' program gives DOS.ERR_BAD_BLOCK.
+  SUB FREE(FIRST AS UBYTE)
+    DOS.REG_A = FIRST
+    SYS DOS.API_BANK_FREE
+    DOS.READ_ERR_STATUS()
+  END SUB
+
+  ' The number of free banks.
+  FUNCT FREE_COUNT() AS UBYTE
+    DOS.REG_A = 0
+    SYS DOS.API_BANK_ALLOC
+    RETURN DOS.REG_A
+  END FUNCT
+
+  ' Selects bank NUMBER at $A000.
+  SUB USE(NUMBER AS UBYTE)
+    ContentsAt(RAM_BANK) = NUMBER
+  END SUB
+
+  ' The bank selected at $A000.
+  FUNCT CURRENT() AS UBYTE
+    RETURN ContentsAt(RAM_BANK)
+  END FUNCT
+
+  ' The byte at ADDRESS with bank NUMBER selected. Keeps the bank selected.
+  FUNCT GET_BYTE(NUMBER AS UBYTE, ADDRESS AS UWORD) AS UBYTE
+    DIM CALLER AS UBYTE, VALUE AS UBYTE
+    CALLER = ContentsAt(RAM_BANK)
+    ContentsAt(RAM_BANK) = NUMBER
+    VALUE = ContentsAt(ADDRESS)
+    ContentsAt(RAM_BANK) = CALLER
+    RETURN VALUE
+  END FUNCT
+
+  ' Writes VALUE at ADDRESS with bank NUMBER selected. Keeps the bank selected.
+  SUB PUT_BYTE(NUMBER AS UBYTE, ADDRESS AS UWORD, VALUE AS UBYTE)
+    DIM CALLER AS UBYTE
+    CALLER = ContentsAt(RAM_BANK)
+    ContentsAt(RAM_BANK) = NUMBER
+    ContentsAt(ADDRESS) = VALUE
+    ContentsAt(RAM_BANK) = CALLER
+  END SUB
+
+  ' Calls the machine code at ADDRESS with bank NUMBER selected and X = X_IN, then selects the
+  ' caller's bank again. Returns the routine's A; its X, Y and carry are in DOS.REG_X,
+  ' DOS.REG_Y and bit 0 of DOS.REG_P. It does not set DOS.ERROR.
+  FUNCT FAR_CALL(NUMBER AS UBYTE, ADDRESS AS UWORD, X_IN AS UBYTE) AS UBYTE
+    DOS.REG_A = NUMBER
+    DOS.REG_X = X_IN
+    DOS.R0 = ADDRESS
+    SYS DOS.API_BANK_CALL
+    RETURN DOS.REG_A
+  END FUNCT
+END NAMESPACE

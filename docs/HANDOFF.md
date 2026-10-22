@@ -3517,6 +3517,18 @@
             Build 4849 ms, the new baseline: `DOS.UXI` changed, so every UXCBASIC program
             recompiled. `BANKCALL` ok 2.1 s, `BANKTRAP` ok 0.6 s. Steps since the full suite:
             4. Next: step 0d, `lib/BANK.UXI`.
+          - Done, 0d (2026-10-22): `lib/BANK.UXI`, namespace BANK, after DOS.UXI: `ALLOC`,
+            `FREE`, `FREE_COUNT`, `USE`, `CURRENT`, `GET_BYTE`, `PUT_BYTE`, `FAR_CALL`. PEEK,
+            POKE, SELECT and CALL are reserved words in pyuxc, so the plan's names became
+            `GET_BYTE`, `PUT_BYTE`, `USE` and `FAR_CALL`. `FAR_CALL(bank, address, x)` returns
+            the routine's A; X, Y and carry are in `DOS.REG_X`, `REG_Y`, `REG_P`. Bytes each
+            adds when first called, in a program with nothing else: ALLOC 128, FREE 109,
+            FREE_COUNT 68, USE 18, CURRENT 13, GET_BYTE 61, PUT_BYTE 64, FAR_CALL 107 (the
+            first SYS brings the runtime's 43-byte routine). New test `BANKLIB`
+            (`tests/BANKLIB.UXB`, golden local): 2 banks, a byte in each, USE, a routine put
+            at `$A000` and called, FREE twice (error 9), ALLOC(255) (error 8). Build 1830 ms,
+            the new baseline. `BANKLIB` ok 0.4 s. Steps since the full suite: 5. Next: step
+            0e, the `#RAMBANK` regions in pyuxc; agree the design first.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
