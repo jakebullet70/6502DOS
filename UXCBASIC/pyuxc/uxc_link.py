@@ -101,11 +101,13 @@ def lk_link():
         cb_put()
     if g.rb_on != 0:
         uxc_rombank.rb_split()
+    if g.rg_on != 0:
+        uxc_ramreg.rg_runtime()
     g.lk_i = 0
     while g.lk_i < g.rt_n:
         uxc_code.rt_place()
         if g.rt_dn == 0 and (g.rb_on == 0 or g.rb_need[g.rt_id] != 0) and \
-                (g.rg_on == 0 or g.rt_id != T.R_ERROR):
+                (g.rg_on == 0 or (g.rt_id != T.R_ERROR and g.rg_runtime_k[g.rt_id] == 0)):
             emit(g.rt_id)
         g.lk_i = g.lk_i + 1
     # The strings, out of their own bank. With #DATA the startup copies them to its address.

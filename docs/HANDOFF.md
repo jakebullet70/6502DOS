@@ -3624,6 +3624,26 @@
             1 data 80 to 50). Build 5199 ms, the new baseline. RGPASS ok 0.4 s, RGMULTI 0.4 s,
             RGDATA 0.4 s, RGCALL 0.4 s, RGERR 0.4 s. Steps since the full suite: 9; the full
             suite waits for the regions to be done. Next: 0g, runtime records in a region.
+          - Done, 0g (2026-10-22): a runtime record that only one region's code, or records
+            moved into that region, name moves into it, after its data (`rg_runtime` after the
+            startup work, `rg_name`, `rg_writes_bank`; `rg_place` emits them and sets their
+            address at `$A000`). Kept in low RAM: data records, a record named by low code
+            (the startup too) or by two regions, a record whose code holds a store to `$00`
+            (a byte scan; fixup operands skipped), `R_RGLOAD`, `R_EMEM`, `R_ERRORB`; `R_ERROR`
+            counts as `R_ERRORB`. The image grows, so `rg_runtime` writes the new size into
+            bytes 1 and 3 of each `T_RGLOAD` (`g.rg_load_at`). The REGION line adds `r OF
+            RUNTIME`. No asm. Low RAM saved, the file the same size: RGCALL 108 bytes, RGDATA
+            122, RGMULTI 46 (region 3), RGPASS 63, RGERR 160. Programs without regions compile
+            byte for byte the same (STRRET, FUNC1, BANKLIB checked). The kernel's file calls
+            read a caller's buffer in the caller's bank (`saved_bank`), so a region's address
+            passed to them is safe. New test `RGRUN` (`tests/`, golden local): the LONG
+            routines move into region 1 (414 bytes), VAL and the WORD divide into region 2
+            (186); INSTR (both regions), MID$ (low code) and R_EDIVZ (both) stay low; a
+            division by zero in region 2 prints `$07:A06E`. File 1920 bytes before and after.
+            Build 4871 ms, the new baseline. RGRUN ok 0.4 s, RGDATA 0.6 s, RGERR 0.4 s,
+            RGCALL 0.5 s, RGMULTI 0.4 s, RGPASS 0.4 s. Steps since the full suite: 10. The
+            regions (0e to 0g) are done. Next: the doc batch (UXC-HELP, the pyuxc README,
+            PLAN), then the full suite.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

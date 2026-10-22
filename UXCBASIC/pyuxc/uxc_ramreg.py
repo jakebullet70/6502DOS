@@ -25,7 +25,10 @@
                   into g.rg_fix, then add the gates and the veneers in low RAM
     rg_image_of(), rg_max()  in sg_maxes: a moved variable's string maxes go into g.rg_data
     rg_load()     first in the startup work: T_RGFROM, then a T_RGLOAD a region
-    rg_place()    after the variables: append each region's code, its veneers and its data
+    rg_runtime()  after the startup work: move into a region the runtime records that only its
+                  code names
+    rg_place()    after the variables: append each region's code, its veneers, its data and
+                  its runtime records
     rg_code_address()  in lk_fix: the address of code offset g.lk_v
     rg_data_address()  in lk_fix: the address of the K_SEC_RGDATA fixup read
 
@@ -46,17 +49,21 @@ A call across an edge goes to a veneer on the caller's side, a T_FARCALL, one a 
 It loads the SUB's address and jumps to a T_RGGATE in low RAM: the gate of the SUB's region, or
 for a SUB in low RAM, the gate of the caller's region. The gate calls the SUB through bank_call
 with the region's bank selected and then selects the caller's bank again. A call within a side
-is a JSR, and so is a call from a region to a runtime routine. A GOTO, or a jump of any kind but
-a SUB call, across an edge stops the link. R_ERRORB takes R_ERROR's place, so that an error in a
-region prints its bank.
+is a JSR, and so is a call from a region to a runtime record. A runtime record that only one
+region's code, or records in that region, name moves into it. A data record, a record that
+writes $00, the records that low code names, and R_RGLOAD, R_EMEM and R_ERRORB stay in low
+RAM. A region's records follow its data in its image; rg_runtime writes the larger size into
+the region's T_RGLOAD. A GOTO, or a jump of any kind but a SUB call, across an edge stops the link.
+R_ERRORB takes R_ERROR's place, so that an error in a region prints its bank.
 
 The cut out of the low code uses UXC-DEAD.BL's g.dd_from, g.dd_to, g.dd_sum and dd_shift, with
 the ranges of the SUBs moved.
 """
 
-from uxc_code import cb_add, cb_get, emit, fx_put, fx_read, rt_use
+from uxc_code import cb_add, cb_get, cb_put, emit, fx_put, fx_read, rt_address_set, rt_get, \
+    rt_use
 from uxc_defs import K_DV_MAX, K_F_ABS, K_FX_MAX, K_SEC_BSS, K_SEC_CODE, K_SEC_CONST, \
-    K_SEC_LABEL, K_SEC_RGDATA, K_SEC_STR, K_SK_LABEL, K_SK_SUB, K_SY_END, K_TOP, \
+    K_SEC_LABEL, K_SEC_REC, K_SEC_RGDATA, K_SEC_STR, K_SK_LABEL, K_SK_SUB, K_SY_END, K_TOP, \
     K_TT_EOL, K_TT_NUM
 import uxc_dead
 import uxc_lex
@@ -69,6 +76,12 @@ K_RG_ORG = 0xA000
 K_RG_ROOM = 8192
 K_RG_SLOTS = 63
 K_RG_GATE_BANK = 5
+# The bytes of T_RGLOAD that hold the image's size, lda #<size and ldy #>size.
+K_RG_LOAD_SIZE_LO = 1
+K_RG_LOAD_SIZE_HI = 3
+# The 65C02 stores to a zero-page address, then those to an absolute one.
+K_RG_STORES_ZP = (0x64, 0x84, 0x85, 0x86)
+K_RG_STORES_ABS = (0x8C, 0x8D, 0x8E, 0x9C)
 
 
 def rg_line():
@@ -503,7 +516,9 @@ def rg_load():
     g.sl_s[0] = K_SEC_BSS
     g.sl_v[0] = 0
     emit(T.T_RGFROM)
+    g.rg_load_at = [0] * (g.rg_count + 1)
     for k in range(1, g.rg_count + 1):
+        g.rg_load_at[k] = g.cb_n
         g.sl_s[0] = K_SEC_CONST
         g.sl_v[0] = g.rg_size[k]
         g.sl_s[1] = K_SEC_CODE
@@ -511,9 +526,90 @@ def rg_load():
         emit(T.T_RGLOAD)
 
 
+def rg_runtime():
+    """RG.RUNTIME. After the startup work: each runtime record that only region k's code, or
+    records of region k, name moves into region k. Out: g.rg_runtime_ids[k], those records in
+    list order; g.rg_runtime_k, the region of each record, else 0; g.rg_runtime_size[k], their
+    bytes. g.rg_size[k] and the size in region k's T_RGLOAD grow by them."""
+    uxc_rombank.rb_tables()
+    # g.rg_named: 0 named by nothing yet, -1 kept in low RAM, else the one region naming it.
+    g.rg_named = [0] * (T.TPL_COUNT + 1)
+    g.rg_work = []
+    for g.fx_i in range(g.fx_n):
+        fx_read()
+        if g.fx_s == K_SEC_REC:
+            rg_name(g.fx_v, -1)
+    for k in range(1, g.rg_count + 1):
+        for fixup in g.rg_fix[k]:
+            if fixup[2] == K_SEC_REC:
+                rg_name(fixup[3], k)
+    for record_id in (T.R_RGLOAD, T.R_EMEM, T.R_ERRORB):
+        rg_name(record_id, -1)
+    for g.lk_i in range(g.rt_n):
+        rt_get()
+        if g.rt_dn != 0 or rg_writes_bank() != 0:
+            rg_name(g.rt_id, -1)
+    while len(g.rg_work) > 0:
+        record_id = g.rg_work.pop()
+        for named in g.rb_refs[record_id]:
+            rg_name(named, g.rg_named[record_id])
+    g.rg_runtime_k = [0] * (T.TPL_COUNT + 1)
+    g.rg_runtime_ids = [[] for k in range(g.rg_count + 1)]
+    g.rg_runtime_size = [0] * (g.rg_count + 1)
+    for g.lk_i in range(g.rt_n):
+        rt_get()
+        k = g.rg_named[g.rt_id]
+        if k > 0:
+            g.rg_runtime_k[g.rt_id] = k
+            g.rg_runtime_ids[k].append(g.rt_id)
+            g.rg_runtime_size[k] = g.rg_runtime_size[k] + g.rb_size[g.rt_id]
+    for k in range(1, g.rg_count + 1):
+        g.rg_size[k] = g.rg_size[k] + g.rg_runtime_size[k]
+        if g.rg_size[k] > K_RG_ROOM:
+            er_stop("REGION " + str(g.rg_slots[k - 1]) + " FULL")
+        g.cb_at = g.rg_load_at[k] + K_RG_LOAD_SIZE_LO
+        g.cb_b = g.rg_size[k] % 256
+        cb_put()
+        g.cb_at = g.rg_load_at[k] + K_RG_LOAD_SIZE_HI
+        g.cb_b = g.rg_size[k] // 256
+        cb_put()
+
+
+def rg_name(record_id, k):
+    """RG.NAME. Code of region k, or of low RAM when k is -1, names runtime record record_id.
+    A record whose g.rg_named changes goes on g.rg_work, so that the records it names follow.
+    R_ERRORB stands for R_ERROR, which lk_fix resolves to it."""
+    if record_id == T.R_ERROR:
+        record_id = T.R_ERRORB
+    if g.rg_named[record_id] == k or g.rg_named[record_id] == -1:
+        return
+    if g.rg_named[record_id] == 0:
+        g.rg_named[record_id] = k
+    else:
+        g.rg_named[record_id] = -1
+    g.rg_work.append(record_id)
+
+
+def rg_writes_bank():
+    """RG.WRITES.BANK. 1 when the code of the record rt_get read holds a store to $00, else 0.
+    A byte pair that only looks like one counts too; a fixup's operand does not."""
+    length = g.ram[g.rt_a]
+    code = g.rt_a + 2
+    fixups = g.rt_a + 2 + length
+    operands = [g.ram[fixups + j * 3] for j in range(g.ram[g.rt_a + 1])]
+    for i in range(length - 1):
+        if i + 1 in operands or g.ram[code + i + 1] != 0:
+            continue
+        if g.ram[code + i] in K_RG_STORES_ZP:
+            return 1
+        if g.ram[code + i] in K_RG_STORES_ABS and i + 2 < length and g.ram[code + i + 2] == 0:
+            return 1
+    return 0
+
+
 def rg_place():
     """RG.PLACE. After the variables, for each region k: its code, its fixups, its records, its
-    veneers and its data, from g.rg_base[k] on."""
+    veneers, its data and its runtime records, from g.rg_base[k] on."""
     g.rg_base = [0] * (g.rg_count + 1)
     for k in range(1, g.rg_count + 1):
         g.rg_base[k] = g.cb_n
@@ -536,6 +632,11 @@ def rg_place():
             rg_veneer()
         for g.cb_b in g.rg_data[k]:
             cb_add()
+        for record_id in g.rg_runtime_ids[k]:
+            g.rt_id = record_id
+            g.rt_at = K_RG_ORG + g.cb_n - g.rg_base[k]
+            rt_address_set()
+            emit(record_id)
         if g.cb_n - g.rg_base[k] != g.rg_size[k]:
             er_stop("REGION SIZE CHANGED")
     if g.lk_org + g.cb_n > K_TOP:

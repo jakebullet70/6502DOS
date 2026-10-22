@@ -105,7 +105,8 @@ def finish():
         for k in range(1, g.rg_count + 1):
             slot = str(g.rg_slots[k - 1])
             put("REGION " + slot + ": " + str(g.rg_size[k]) + " BYTES, " +
-                str(len(g.rg_data[k])) + " OF DATA, " +
+                str(len(g.rg_data[k])) + " OF DATA, " + str(g.rg_runtime_size[k]) +
+                " OF RUNTIME, " +
                 str(uxc_ramreg.K_RG_ROOM - g.rg_size[k]) + " FREE")
             g.ui_line = g.ui_line + ",REGION " + slot + " " + str(g.rg_size[k]) + " BYTES"
     if g.dd_subs > 0:

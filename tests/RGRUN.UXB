@@ -1,0 +1,33 @@
+' RGRUN: runtime records in a region. A record that only one region's code names moves into
+' that region, with the records it names: the LONG multiply, divide and print in region 1, VAL in
+' region 2. A record that both regions name (INSTR), or that low code names (MID$), stays in
+' low RAM. A division by zero in a record moved into region 2 stops the program with the bank.
+DIM BIG AS LONG, SMALL AS UWORD, ZERO AS UWORD
+
+#REGION_SLOT 1
+SUB ONE()
+  BIG = 123456
+  PRINT BIG * 7; BIG / 3
+  PRINT INSTR("ONE TWO", "TWO")
+  PRINT MID$("REGION ONE", 8, 3)
+END SUB
+#REGION_SLOT 0
+
+#REGION_SLOT 2
+SUB TWO()
+  PRINT INSTR("TWO ONE", "ONE")
+  SMALL = VAL("77") + 1
+  PRINT SMALL; SMALL / 7
+END SUB
+
+SUB STOP_HERE()
+  PRINT SMALL / ZERO
+END SUB
+#REGION_SLOT 0
+
+ONE()
+TWO()
+PRINT MID$("LOW MID", 5)
+STOP_HERE()
+PRINT "NOT REACHED"
+END
