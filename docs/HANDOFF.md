@@ -3462,6 +3462,50 @@
             list; their goldens are the previous ones with those changes, as `--update` cut
             both short. `TREE` gains the 3 scripts. `CMDLETS` ok 2.5 s, `TED` 1.9 s, `TREE`
             1.7 s. Steps since the full suite: 2.
+        - GUI Forms V1 (2026-10-21): the user's roadmap is planned in
+          `UXCBASIC/docs/GUI.PLAN.md`, not committed, under review with the user. It holds
+          decisions D1 to D10, each with a recommendation, and steps 0a to 4a. Nothing is
+          built. The next step is the review.
+          - Revised (2026-10-21; the user: all GUI code in a bank, minimal low RAM): D0 adds
+            pyuxc `#RAMBANK n` regions. Bank 1: INPUT2, the engine, the controls but the
+            memo, the tables (about 6.4 KB). Bank 2: the memo, the menus, about 4.5 KB of memo
+            text (`GUI.MEMO_LOAD`, `GUI.MEMO_SAVE`). New steps 0b (check the bank traps), 0c,
+            0d, 0e.
+          - Revised again from GPC's `GP.BANKED` (attic/gpc/tools/gpc/GPC-BASIC/GP-BASIC.md
+            §3.12, BANKED-OR-NOT.md): no home bank. Every call into a region, and out of one
+            to a program SUB in low RAM, saves the bank, selects, and restores on return
+            (6-byte veneer a SUB, ~55 cycles). The compiler puts in low RAM what code outside
+            a region reaches (`GUI.FIELD`, cross-call parameters, addresses passed across).
+            Region code may not write `$00`; GOTO/ON across an edge refused; errors print the
+            bank. Trap: images in the program file must fit low RAM at load with the code
+            (program code about 29 KB); `NAME.OVL` later. Low RAM about 350 bytes.
+          - Order (the user, 2026-10-22): bank code first, then the GUI. The user chose both
+            an OS far call and a bank library. Step 0c: kernel API call `bank_call` (number 51,
+            `$03D9`), through the gate: A the bank, r0 the address, X in; keeps `$00`, selects,
+            calls, restores; A, X, Y, C out. Body in ROM bank 0 (writing `$00` is safe there),
+            about 25 bytes, about 125 cycles a call. Chosen over a stub in page 3 RAM (fast,
+            but eats the API's room) and a stub in each program. Step 0d: `lib/BANK.UXI`
+            (ALLOC, FREE, FREE_COUNT, SELECT, CURRENT, PEEK, POKE, CALL). Regions move to 0e
+            to 0g, with a 7-byte veneer (`lda #<SUB`, `ldy #>SUB`, `jmp REGION_CALL`) and a
+            12-byte `REGION_CALL` a region. The user agreed the asm of 0c (2026-10-22): the
+            `api_bank_call` body shown in the reply, 19 bytes, `ldy RAM_BANK`, `phy`, `sta
+            RAM_BANK`, `jsr @call`, `sta gate_a`, `pla`, `sta RAM_BANK`, `lda gate_a`, `rts`,
+            `@call: jmp (r0)`.
+          - Done, 0b (2026-10-22): no trap. New test `BANKTRAP` (`tests/BANKTRAP.S`, child
+            `tests/com/BANKCHK.S`; `.IN` and golden local) takes bank 1, puts the paths, the
+            text and the buffers at `$A000` in it, and makes 47 calls with it selected: write
+            to the console and to a file, create, filetime, seek, read, close, rename, attrib,
+            delete, findfirst, findnext, mkdir, chdir, getcwd, rmdir, getdrive, setdrive,
+            diskfree, con_status, con_cursor, con_colour, con_break, con_out, bank_alloc,
+            getdate, gettime, version, ticks, errmsg, getvect, ioctl, dup, str_alloc, str_gc,
+            str_free, exec, exitcode, bank_free. `$00` is 1 after each. The console shows the
+            text read back through the bank, the name findfirst found and getcwd's path.
+            BANKCHK starts in bank 1, selects bank 7 and exits with the bank it started in: 1,
+            and the parent has bank 1 after. Traps for test writers: a call does not keep X,
+            so load the handle before each call; `con_getkey` in a test eats the keys typed
+            ahead; the program typed in runs from `$1000` to about `$1283`, so the results go
+            at `$1400`. Build 2861 ms, the new baseline. `BANKTRAP` ok 0.5 s. Steps since the
+            full suite: 3. Next: step 0c, the asm agreed above.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
