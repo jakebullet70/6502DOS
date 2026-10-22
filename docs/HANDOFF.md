@@ -3951,8 +3951,35 @@
             change. The to-do item "A WORD array store at a BYTE variable index, unchecked"
             (the 15-byte template, about 6 bytes a store) is in UXCBASIC.PLAN.md section 5.
             Owed to the doc batch: UXC-HELP StringAt (Pointers, with an example).
-            Next: 2e part 2, the control table, `GUI.GET` and `GUI.SHOW` with the focus loop
-            and D2's validation events.
+          - Done (2026-10-22), 2e part 2, in `lib/GUI.UXI`: the control table, MOST_CONTROLS 48
+            (arrays of 49: CONTROL_OWNER, _ROW, _COLUMN, _WIDTH, _FLAGS, CONTROL_TEXT_AT,
+            CONTROL_MASK_AT; a name part is at most 16 characters, so not CONTROL_TARGET_AT).
+            `GUI.GET(ROW, COLUMN, TARGET$, WIDTH, MASK$ = "", FLAGS = 0) AS UBYTE` returns the
+            control number, 0 when full; it takes the lowest free control, so the focus order is
+            the order of the GETs. `NEXT_CONTROL(HANDLE, FROM, DIRECTION)` finds the next control
+            of a form, wrapping (HANDLE 0 finds a free one). `EDIT_FIELD` runs INPUT2 through
+            `StringAt`. INPUT2's new flag DRAW_ONLY 64 draws and returns; VALIDATE 32.
+            `GUI.SHOW(HANDLE) AS UBYTE`: a form new to SHOW is drawn with its fields; Tab, Down
+            and Enter go to the next control, Shift+Tab and Up to the one before, wrapping;
+            Enter on the last control returns EV_DONE 253 (also a form with no controls), Esc
+            EV_CANCEL 255, leaving a VALIDATE field EV_LEAVE 254 with `GUI.LEFT_FIELD`; the next
+            SHOW resumes. `GUI.REFUSE(MESSAGE$)` puts the focus back and shows the message on
+            the screen's last row in the STATUS color until the field is left. SHOW(0) returns
+            EV_CANCEL. FREE frees the controls too. My choices, not in GUI.PLAN.md: EV_DONE,
+            the event values (button ids go below 253), `LEFT_FIELD` for D2's `GUI.FIELD`
+            (ROLE.FIELD has the name), the status line for REFUSE. Region 1 bytes: GET and
+            NEXT_CONTROL about 241, SHOW, EDIT_FIELD and STATUS_LINE about 694, REFUSE 27,
+            INPUT2 DRAW_ONLY and the FREE loop about 91, tables 441 and 4 bytes of variables. A
+            program with the whole GUI: about 6.2 KB of region 1, about 1.9 KB free. Saving
+            applied: `ENDING = FLAGS AND DRAW_ONLY`, 2 bytes. `tools/tests.py` reserve 256 to
+            384 clusters: the test programs outgrew the block; the goldens that print free
+            space (DIRS, CMDLETS, TED, TREE, the BAS ones) are owed at the next full suite with
+            the HDIR ones. New `tests/GUISHOW.UXB` and `.IN` (refuse, resume, wrap both ways,
+            EV_DONE, Esc, 48 controls, an empty form, SHOW(0)) ok 0.5 s, golden traced by hand;
+            GUIMASK ok 0.4 s, GUIFORM ok 0.4 s. No build. Untested: Shift+Tab (tests cannot
+            type it). Owed to the doc batch: GUI.PLAN.md 2e (GET moved, the events, LEFT_FIELD,
+            REFUSE's status line).
+            Next: phase 3, step 3a, `GUI.SAY` and `GUI.SAYGET`.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

@@ -18,6 +18,9 @@ NAMESPACE GUI
   ' space, and lower case elsewhere.
   CONST PASSWORD AS UBYTE = 1, READ_ONLY AS UBYTE = 2, UPPER AS UBYTE = 4, LOWER AS UBYTE = 8
   CONST PROPER AS UBYTE = 16
+  ' GET's FLAGS add VALIDATE: SHOW returns EV_LEAVE when the user leaves the field. DRAW_ONLY
+  ' makes INPUT2 draw the field from its first character and return DRAW_ONLY, with no key read.
+  CONST VALIDATE AS UBYTE = 32, DRAW_ONLY AS UBYTE = 64
 
   ' The color roles of a theme, in the order of a theme's bytes. A color is the background
   ' times 16 plus the foreground, as DOS.SET_COLOR takes it.
@@ -83,6 +86,21 @@ NAMESPACE GUI
   DIM CURRENT_FORM AS UBYTE, OPEN_SECTION AS UBYTE, LAYOUT_SIDE AS UBYTE
   ' Where PLACE put the control: its screen row and column, and its section, 0 for none.
   DIM PLACED_ROW AS UBYTE, PLACED_COLUMN AS UBYTE, PLACED_SECTION AS UBYTE
+  ' The controls, 1 to MOST_CONTROLS. CONTROL_OWNER is the form's handle, and 0 for a free
+  ' control; element 0 is never used. A form's controls take the focus in the order of their
+  ' numbers, which is the order GET made them in. CONTROL_TEXT_AT and CONTROL_MASK_AT are the
+  ' addresses of the caller's strings.
+  ' Checklist: the arrays hold MOST_CONTROLS + 1 elements.
+  CONST MOST_CONTROLS AS UBYTE = 48
+  DIM CONTROL_OWNER(49) AS UBYTE, CONTROL_ROW(49) AS UBYTE, CONTROL_COLUMN(49) AS UBYTE
+  DIM CONTROL_WIDTH(49) AS UBYTE, CONTROL_FLAGS(49) AS UBYTE
+  DIM CONTROL_TEXT_AT(49) AS UWORD, CONTROL_MASK_AT(49) AS UWORD
+  ' SHOW's events. A button's id is below them.
+  CONST EV_DONE AS UBYTE = 253, EV_LEAVE AS UBYTE = 254, EV_CANCEL AS UBYTE = 255
+  ' The form SHOW runs, 0 when the next SHOW starts a form afresh. The control SHOW gives the
+  ' focus to next, 0 to return EV_DONE. The VALIDATE field of the last EV_LEAVE. 1 while
+  ' REFUSE's message is on the status line.
+  DIM SHOWN_FORM AS UBYTE, NEXT_FOCUS AS UBYTE, LEFT_FIELD AS UBYTE, STATUS_SHOWN AS UBYTE
 
   ' Edits TARGET$ in a field at ROW and COLUMN, counted from 0, WIDTH characters wide.
   ' TARGET$ takes at most its own size in characters. The text scrolls inside the field when it
@@ -106,7 +124,8 @@ NAMESPACE GUI
     ORIGINAL$ = TARGET$
     CURSOR = LEN(TARGET$)
     FIRST = 0
-    ENDING = 0
+    ' DRAW_ONLY ends INPUT2 after the first draw.
+    ENDING = FLAGS AND DRAW_ONLY
     BACKWARD = 0
     ' With no mask, MASK_CHAR stays X.
     MASK_CHAR = ASC("X")
@@ -123,6 +142,10 @@ NAMESPACE GUI
     LOOP
     ' The length byte is before the characters.
     IF FIXED > 0 THEN ContentsAt(TEXT_AT - 1) = FIXED
+    IF ENDING <> 0 THEN
+      CURSOR = 0
+      FIXED = 0
+    ENDIF
     DO
       ' In a masked field the cursor moves off the mask's own characters: back after Left or
       ' Backspace while there is a character to type before it, else forward. BACKWARD is 1
@@ -386,7 +409,8 @@ NAMESPACE GUI
     RETURN HANDLE
   END FUNCTION
 
-  ' Frees the form HANDLE and its sections for the next CREATEFORM. A handle of 0 does nothing.
+  ' Frees the form HANDLE, its sections and its controls for the next CREATEFORM and GET. A
+  ' handle of 0 does nothing. The next SHOW starts its form afresh.
   SUB FREE(HANDLE AS UBYTE)
     DIM PANEL AS UBYTE
     PANEL = MOST_PANELS
@@ -394,6 +418,12 @@ NAMESPACE GUI
       IF PANEL_OWNER(PANEL) = HANDLE THEN PANEL_OWNER(PANEL) = 0
       PANEL = PANEL - 1
     END REPEAT
+    PANEL = MOST_CONTROLS
+    REPEAT MOST_CONTROLS
+      IF CONTROL_OWNER(PANEL) = HANDLE THEN CONTROL_OWNER(PANEL) = 0
+      PANEL = PANEL - 1
+    END REPEAT
+    SHOWN_FORM = 0
   END SUB
 
   ' Opens a section in the form HANDLE, on the form's next automatic line, 1 column in from each
@@ -488,6 +518,127 @@ NAMESPACE GUI
       IF PANEL_OWNER(PANEL) = HANDLE AND PANEL <> HANDLE THEN DRAW_PANEL(PANEL)
       PANEL = PANEL - 1
     END REPEAT
+  END SUB
+
+  ' Returns the first control after FROM, counted in DIRECTION, 1 or 255, whose owner is HANDLE.
+  ' The count wraps from MOST_CONTROLS to 1 and from 1 to MOST_CONTROLS, and ends at FROM.
+  ' Returns 0 when there is none. FROM is 0 for the first, and HANDLE 0 for a free control.
+  FUNCTION NEXT_CONTROL(HANDLE AS UBYTE, FROM AS UBYTE, DIRECTION AS UBYTE) AS UBYTE
+    REPEAT MOST_CONTROLS
+      FROM = FROM + DIRECTION
+      IF FROM = 0 THEN FROM = MOST_CONTROLS
+      IF FROM > MOST_CONTROLS THEN FROM = 1
+      IF CONTROL_OWNER(FROM) = HANDLE THEN RETURN FROM
+    END REPEAT
+    RETURN 0
+  END FUNCTION
+
+  ' Makes a field of the current form that edits TARGET$ with INPUT2, WIDTH characters wide, and
+  ' returns its control number. ROW and COLUMN place it as PLACE does. MASK$ and FLAGS are
+  ' INPUT2's, and FLAGS may add VALIDATE. The form keeps the addresses of TARGET$ and MASK$, not
+  ' copies. GET returns 0 when MOST_CONTROLS controls are in use.
+  FUNCTION GET(ROW AS UBYTE, COLUMN AS UBYTE, TARGET$, WIDTH AS UBYTE, MASK$ AS CONST = "", FLAGS AS UBYTE = 0) AS UBYTE
+    DIM CONTROL AS UBYTE
+    CONTROL = NEXT_CONTROL(0, 0, 1)
+    IF CONTROL = 0 THEN RETURN 0
+    PLACE(ROW, COLUMN, 0)
+    CONTROL_OWNER(CONTROL) = CURRENT_FORM
+    CONTROL_ROW(CONTROL) = PLACED_ROW
+    CONTROL_COLUMN(CONTROL) = PLACED_COLUMN
+    CONTROL_WIDTH(CONTROL) = WIDTH
+    CONTROL_FLAGS(CONTROL) = FLAGS
+    CONTROL_TEXT_AT(CONTROL) = AddrOf(TARGET$)
+    CONTROL_MASK_AT(CONTROL) = AddrOf(MASK$)
+    RETURN CONTROL
+  END FUNCTION
+
+  ' Runs INPUT2 on the field CONTROL, its FLAGS with MORE_FLAGS added, and returns INPUT2's key.
+  ' The field takes the FIELD_FOCUS color, or the FIELD color when MORE_FLAGS is DRAW_ONLY.
+  FUNCTION EDIT_FIELD(CONTROL AS UBYTE, MORE_FLAGS AS UBYTE) AS UWORD
+    DIM TARGET_AT AS UWORD, MASK_AT AS UWORD
+    IF MORE_FLAGS = 0 THEN
+      USE_COLOR(FIELD_FOCUS)
+    ELSE
+      USE_COLOR(FIELD)
+    ENDIF
+    TARGET_AT = CONTROL_TEXT_AT(CONTROL)
+    MASK_AT = CONTROL_MASK_AT(CONTROL)
+    RETURN INPUT2(CONTROL_ROW(CONTROL), CONTROL_COLUMN(CONTROL), StringAt(TARGET_AT), CONTROL_WIDTH(CONTROL), StringAt(MASK_AT), CONTROL_FLAGS(CONTROL) OR MORE_FLAGS)
+  END FUNCTION
+
+  ' Clears the screen's last row in the STATUS color, all but its last column, and prints
+  ' MESSAGE$ there, cut to fit.
+  SUB STATUS_LINE(MESSAGE$ AS CONST)
+    USE_COLOR(STATUS)
+    SPAN_ROW = POS(2) - 1
+    SPAN_COLUMN = 0
+    SPAN_LENGTH = POS(3) - 1
+    SPAN(32, 32, 32)
+    POS(1) = SPAN_ROW - 1
+    POS(0) = 0
+    PRINT LEFT$(MESSAGE$, SPAN_LENGTH);
+  END SUB
+
+  ' Shows the form HANDLE and lets the user edit its fields, then returns an event. A form new
+  ' to SHOW is drawn with its fields, and the focus goes to its first control. Tab, Down and
+  ' Enter move the focus to the next control, and Shift+Tab and Up to the one before; the focus
+  ' wraps from the last control to the first and back. Enter on the last control returns
+  ' EV_DONE, and so does a form with no controls. Esc returns EV_CANCEL. Leaving a VALIDATE
+  ' field returns EV_LEAVE, with the field in LEFT_FIELD; the next SHOW moves the focus on, or
+  ' back to the field after REFUSE. A form is new to SHOW after EV_DONE, EV_CANCEL or FREE, and
+  ' when another form was shown last. SHOW(0) returns EV_CANCEL.
+  FUNCTION SHOW(HANDLE AS UBYTE) AS UBYTE
+    DIM FOCUS AS UBYTE, DIRECTION AS UBYTE, PRESSED AS UWORD
+    IF HANDLE = 0 THEN RETURN EV_CANCEL
+    IF HANDLE <> SHOWN_FORM THEN
+      SHOWN_FORM = HANDLE
+      DRAW_FORM(HANDLE)
+      FOCUS = MOST_CONTROLS
+      REPEAT MOST_CONTROLS
+        IF CONTROL_OWNER(FOCUS) = HANDLE THEN EDIT_FIELD(FOCUS, DRAW_ONLY)
+        FOCUS = FOCUS - 1
+      END REPEAT
+      NEXT_FOCUS = NEXT_CONTROL(HANDLE, 0, 1)
+    ENDIF
+    FOCUS = NEXT_FOCUS
+    DO WHILE FOCUS <> 0
+      PRESSED = EDIT_FIELD(FOCUS, 0)
+      EDIT_FIELD(FOCUS, DRAW_ONLY)
+      IF STATUS_SHOWN <> 0 THEN
+        STATUS_SHOWN = 0
+        STATUS_LINE("")
+      ENDIF
+      DIRECTION = 1
+      SELECT CASE PRESSED
+        CASE KEYS.ESC
+          SHOWN_FORM = 0
+          RETURN EV_CANCEL
+        CASE KEYS.ENTER, KEYS.KEY_DOWN
+        CASE KEYS.TAB
+          IF KEYMODS() AND KEYS.MOD_SHIFT THEN DIRECTION = 255
+        CASE KEYS.KEY_UP
+          DIRECTION = 255
+        CASE ELSE
+          CONTINUE
+      END SELECT
+      NEXT_FOCUS = NEXT_CONTROL(HANDLE, FOCUS, DIRECTION)
+      IF PRESSED = KEYS.ENTER AND NEXT_FOCUS <= FOCUS THEN NEXT_FOCUS = 0
+      IF CONTROL_FLAGS(FOCUS) AND VALIDATE THEN
+        LEFT_FIELD = FOCUS
+        RETURN EV_LEAVE
+      ENDIF
+      FOCUS = NEXT_FOCUS
+    LOOP
+    SHOWN_FORM = 0
+    RETURN EV_DONE
+  END FUNCTION
+
+  ' Puts the focus back on LEFT_FIELD at the next SHOW, after EV_LEAVE, and shows MESSAGE$ on the
+  ' status line, the screen's last row, until the user leaves the field.
+  SUB REFUSE(MESSAGE$ AS CONST)
+    NEXT_FOCUS = LEFT_FIELD
+    STATUS_LINE(MESSAGE$)
+    STATUS_SHOWN = 1
   END SUB
   ERRORS ON
 END NAMESPACE

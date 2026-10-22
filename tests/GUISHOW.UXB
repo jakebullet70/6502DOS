@@ -1,0 +1,46 @@
+' GUISHOW: GUI.GET, GUI.SHOW, GUI.REFUSE and the controls GUI.FREE frees. The last lines give
+' the strings, then each event SHOW returned with GUI.LEFT_FIELD, then the field numbers, then
+' the 48th and 49th GET after FREE, the event of a form with no controls, and SHOW(0).
+' Round 1, three fields, the 2nd with the mask ## and VALIDATE: "ab" and Down; Home, "1" and Tab is
+' refused while B$ holds a space; Left, "2" and Up moves back to field 1; Enter twice; at
+' field 3 Tab wraps to field 1 and Up wraps back to field 3; "z" and Enter returns EV_DONE.
+' Round 2: "q" and Esc puts A$ back and returns EV_CANCEL.
+#INCLUDE "KEYS.UXI"
+#INCLUDE "GUI.UXI"
+DIM KEPT(24) AS UBYTE, AT AS UBYTE, H AS UBYTE, EVENT AS UBYTE
+DIM A$ * 6, B$ * 2, C$ * 6, X$ * 2
+
+SUB KEEP(VALUE AS UBYTE)
+  KEPT(AT) = VALUE
+  AT = AT + 1
+END SUB
+
+AT = 0
+H = GUI.CREATEFORM("Show", 1, 0, 30, 6, GUI.FRAMED)
+KEEP(GUI.GET(GUI.AUTO, GUI.AUTO, A$, 6))
+KEEP(GUI.GET(GUI.AUTO, GUI.AUTO, B$, 6, "##", GUI.VALIDATE))
+KEEP(GUI.GET(GUI.AUTO, GUI.AUTO, C$, 6))
+DO
+  EVENT = GUI.SHOW(H)
+  KEEP(EVENT)
+  KEEP(GUI.LEFT_FIELD)
+  IF EVENT = GUI.EV_LEAVE AND INSTR(B$, " ") > 0 THEN GUI.REFUSE("Two digits")
+LOOP UNTIL EVENT = GUI.EV_DONE OR EVENT = GUI.EV_CANCEL
+KEEP(GUI.SHOW(H))
+GUI.FREE(H)
+H = GUI.CREATEFORM("Full", 0, 0, 6, 2)
+REPEAT 47
+  GUI.GET(0, 0, X$, 2)
+END REPEAT
+KEEP(GUI.GET(0, 0, X$, 2))
+KEEP(GUI.GET(0, 0, X$, 2))
+H = GUI.CREATEFORM("None", 10, 40, 8, 3)
+KEEP(GUI.SHOW(H))
+KEEP(GUI.SHOW(0))
+POS(1) = 20
+POS(0) = 0
+PRINT "["; A$; "]["; B$; "]["; C$; "]"
+FOR EVENT = 0 TO AT - 1
+  PRINT KEPT(EVENT);
+NEXT EVENT
+PRINT
