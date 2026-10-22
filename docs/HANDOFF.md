@@ -3657,6 +3657,14 @@
             `#ROMBANKS`, `#REGION_SLOT`; section 13: past bank 4, the ROM shell question gone.
             `lib/BANK.UXI`'s head comment: `USE` from a region is undone on return. No docs are
             owed. Steps since the full suite: 10. Next: the full suite.
+          - Done, the full suite (2026-10-22). Build 2586 ms, the new baseline. `tools/tests.py`:
+            73 tests, 6 failed, 61.0 s; the slowest `CMDLETS` 2.9 s. `DIRS`, `FILES`, `HDIR`,
+            `HDIRARG`, `HDIRRED`, `TREE` failed on the card's listing only: the new
+            `BANKCHK`, `BANKLIB` and `RG*` programs, and `CMDSHELL.COM` at 22376 bytes (CALL).
+            Goldens rewritten and diffed; re-run ok: `DIRS` 1.3 s, `FILES` 0.5, `HDIR` 1.5,
+            `HDIRARG` 1.2, `HDIRRED` 0.8, `TREE` 1.7. UXCBASIC `tests.py`: 191 tests, 0
+            failed, 48 s; the slowest 0.6 s. Steps since the full suite: 0. Next: GUI step 0a
+            (`UXCBASIC/docs/GUI.PLAN.md`).
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
