@@ -1,5 +1,5 @@
-' GUITHEME: GUI.THEME and GUI.USE_COLOR. Each line prints the current theme's 13 colors.
-' 1: the console color USE_COLOR sets before any THEME. 2 to 4: DARK, LIGHT and GRAY.
+' GUITHEME: GUI.THEME, GUI.THEME_FILE and GUI.USE_COLOR. Each line prints the current theme's
+' 13 colors. 1: the console color USE_COLOR sets before any THEME. 2 to 4: DARK, LIGHT and GRAY.
 ' 5: a theme file of 13 bytes. 6: a file of 3 bytes. 7: a missing file. 8: USE_COLOR(TITLE).
 #INCLUDE "KEYS.UXI"
 #INCLUDE "DOS.UXI"
@@ -33,12 +33,12 @@ CLOSE F
 F = OPEN("T3.GTH", O.WRITE)
 WRITE F, @B, 3
 CLOSE F
-GUI.THEME(FILE, "T13.GTH")
+GUI.THEME_FILE("T13.GTH")
 SHOW()
-GUI.THEME(FILE, "T3.GTH")
+GUI.THEME_FILE("T3.GTH")
 SHOW()
 GUI.THEME(GRAY)
-GUI.THEME(FILE, "NONE.GTH")
+GUI.THEME_FILE("NONE.GTH")
 SHOW()
 GUI.USE_COLOR(TITLE)
 I = DOS.GET_COLOR()

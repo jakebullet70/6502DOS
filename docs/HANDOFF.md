@@ -3802,8 +3802,15 @@
             and VLINE styles, VLINE in column 79; prints the cursor after each), wrote golden
             2.0 s, checked by hand; then GUIBOX ok 0.4 s, GUITHEME ok 0.5 s, GUIEDIT ok 0.5 s,
             GUIFLAGS ok 0.4 s, GUIMASK ok 0.4 s. Build 1.66 s.
-            Proposals (1) and (2) of 2a still wait for the user.
-            Next: phase 2, step 2c, forms.
+          - Done (2026-10-22): 2a's proposal (1), `GUI.THEME_FILE(FILE_NAME$)` split from
+            `GUI.THEME(KIND)`. `ENUM THEMES` is DARK, LIGHT, GRAY; FILE is gone. THEME_FILE
+            preloads DARK, then `READ`s up to 13 bytes, as before. Size on top of one INPUT2
+            call, THEME and USE_COLOR: region 1 3031 to 2616 bytes (-415), 5576 free; with
+            THEME_FILE too, 2858 less USE_COLOR's share. `GUI.PLAN.md` still says
+            `GUI.THEME(FILE, ...)`: fix at the doc batch. Test `tests/GUITHEME.UXB` calls
+            THEME_FILE; golden unchanged, ok 0.6 s. Build 1.40 s.
+            Next: 2a's proposal (2), the `ContentsAt(@X + B)` template (asm approved by the
+            user); then phase 2, step 2c, forms.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

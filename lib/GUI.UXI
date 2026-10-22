@@ -26,13 +26,13 @@ NAMESPACE GUI
     HOT_KEY, DISABLED, MENU, MENU_SELECTED, STATUS
   END ENUM
 
-  ' The themes THEME selects. FILE reads one from a file.
+  ' The built-in themes THEME selects.
   ENUM THEMES
-    DARK, LIGHT, GRAY, FILE
+    DARK, LIGHT, GRAY
   END ENUM
 
   ' The current theme: one color a member of ROLE, in its order. It is empty until the first
-  ' THEME or USE_COLOR.
+  ' THEME, THEME_FILE or USE_COLOR.
   DIM COLORS$ * 13
 
   ' The built-in themes, one color a role. As background, foreground:
@@ -204,20 +204,23 @@ NAMESPACE GUI
     LOOP
   END FUNCTION
 
-  ' Makes KIND the current theme. FILE reads up to 13 bytes from the file FILE_NAME$, one color
-  ' a role in ROLE's order. A role past the file's end takes DARK's color, and so does every
-  ' role when the file cannot be opened.
-  SUB THEME(KIND AS ENUM.THEMES, FILE_NAME$ = "")
-    DIM HANDLE AS UWORD, COUNT AS UWORD
+  ' Makes the built-in theme KIND the current theme.
+  SUB THEME(KIND AS ENUM.THEMES)
     COLORS$ = DARK_COLORS$
     IF KIND = THEMES.LIGHT THEN COLORS$ = LIGHT_COLORS$
     IF KIND = THEMES.GRAY THEN COLORS$ = GRAY_COLORS$
-    IF KIND = THEMES.FILE THEN
-      HANDLE = OPEN(FILE_NAME$, O.READ)
-      IF HANDLE <> NOFILE THEN
-        COUNT = READ(HANDLE, @COLORS$ + 2, 13)
-        CLOSE HANDLE
-      ENDIF
+  END SUB
+
+  ' Makes the theme in the file FILE_NAME$ the current theme. The file holds up to 13 bytes,
+  ' one color a role in ROLE's order. A role past the file's end takes DARK's color, and so
+  ' does every role when the file cannot be opened.
+  SUB THEME_FILE(FILE_NAME$)
+    DIM HANDLE AS UWORD, COUNT AS UWORD
+    COLORS$ = DARK_COLORS$
+    HANDLE = OPEN(FILE_NAME$, O.READ)
+    IF HANDLE <> NOFILE THEN
+      COUNT = READ(HANDLE, @COLORS$ + 2, 13)
+      CLOSE HANDLE
     ENDIF
   END SUB
 
