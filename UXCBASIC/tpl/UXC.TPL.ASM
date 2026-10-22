@@ -369,5 +369,32 @@ T_POKE_AB .block
         #endtpl
         .endblock
 
+; A/Y = the WORD array S0, element A. A is below 128. The flags are Y's.
+T_LDW_AY .block
+        #tpl
+        asl a
+        tay
+        #aby lda, S0, 1
+        pha
+        #aby lda, S0
+        ply
+        #endtpl
+        .endblock
+
+; The WORD array S0, at the BYTE index popped off the expression stack, = A/Y. The index is
+; below 128.
+T_STW_SY .block
+        #tpl
+        dex
+        dex
+        phy
+        asl ESTK,x
+        ldy ESTK,x
+        #aby sta, S0
+        pla
+        #aby sta, S0, 1
+        #endtpl
+        .endblock
+
 tpl_count = len(tpl_all)
 index   .word tpl_all

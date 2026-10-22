@@ -419,8 +419,9 @@ def sm_store():
 def sm_let_element():
     """SM.LET.ELEMENT. name(i) = expr, with the array's record in g.sy_*. A constant index is
     a store to the element. A BYTE array with a BYTE variable index, and no check, is
-    T_POKE_AB. A BYTE array with any other BYTE index pushes the index; any other index
-    pushes the element's address.
+    T_POKE_AB. A BYTE array with any other BYTE index, or a WORD array of 128 elements
+    or fewer with a BYTE index, pushes the index; any other index pushes the element's
+    address.
     Trap: T_POKE_AB reads the index after the value, so a FUNCTION in the value that changes
     the index moves the store."""
     g.sm_ty = g.sy_type
@@ -474,6 +475,22 @@ def sm_let_element():
         g.sl_s[0] = K_SEC_BSS
         g.sl_v[0] = g.sm_ad
         emit(T.T_STB_SY)
+        g.ex_sd = g.ex_sd - 1
+        return
+    if g.sm_ty == K_TY_WORD and g.ex_vt[g.ex_i] == K_TY_BYTE and g.sm_cnt <= 128:
+        uxc_expr.ex_tob()
+        if g.sm_errors_on == 1:
+            g.sl_s[0] = K_SEC_CONST
+            g.sl_v[0] = g.sm_cnt
+            emit(T.T_CHKB)
+        emit(T.T_PUSHB)
+        g.ex_sd = g.ex_sd + 1
+        uxc_lex.lx_next()
+        uxc_expr.ex_expr()
+        uxc_expr.ex_tow()
+        g.sl_s[0] = K_SEC_BSS
+        g.sl_v[0] = g.sm_ad
+        emit(T.T_STW_SY)
         g.ex_sd = g.ex_sd - 1
         return
     uxc_expr.ex_tow()

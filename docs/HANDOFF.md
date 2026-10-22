@@ -3902,6 +3902,20 @@
               GUIFORM -110, GUISECT -140. New `UXCBASIC/tests/ARRAYVB.UXB` ok 0.5 s; RUNSUB's
               error address moved (golden rewritten) ok 0.5 s; GUISECT, GUIFORM, GUIBOX,
               GUIEDIT, GUIFLAGS, GUIMASK, GUITHEME ok 0.4 to 0.5 s.
+            - Done after 2d: two new templates at the end of `UXC.TPL.ASM`, ids 285 and 286.
+              T_LDW_AY (`asl`, `tay`, `lda W+1,y`, `pha`, `lda W,y`, `ply`, 10 bytes) reads a
+              WORD array of 128 elements or fewer at a BYTE index; T_STW_SY (`dex`, `dex`,
+              `phy`, `asl ESTK,x`, `ldy ESTK,x`, `sta W,y`, `pla`, `sta W+1,y`, 14 bytes) stores
+              to one after T_PUSHB. They replace T_CHKW, T_IDXW and T_PEEKW or T_POKEW; the
+              check is T_CHKB. `B(I)` read, a BYTE array at a BYTE variable with no check, is
+              T_PEEK_AB (`ldy I`, `lda B,y`, 1 byte less). `ex_index` in `uxc_index.py`,
+              `sm_let_element` in `uxc_stmt.py`. Region 1 on the probe 4283 to 4228 (-55), 3964
+              free; PRG 4950 to 4895. CMDSHELL 21899 to 21534 (-365), DATE and TIME -68 each,
+              GREP -8, GUIFORM -46, GUISECT -55. Build 7150 ms (MKTPL, all programs, the ROM),
+              the new baseline. New `UXCBASIC/tests/ARRAYW.UXB` (UWORD and WORD arrays read and
+              stored at BYTE indexes, ERRORS OFF and ON, an array of 200 on the old path, BAD
+              SUBSCRIPT at 128) ok 0.6 s; ARRAY1 0.6, ARRAYVB 0.7, SUBCONST 0.6, DUP 0.8, GUIFORM
+              0.4, GUISECT 0.4, CMDLETS 2.3, SHELL 0.6, GREP 2.1, all ok.
             - Tests: new `UXCBASIC/tests/SUBCONST.UXB` (two literals, a global, pass-on to a
               plain parameter, AS CONST to AS CONST, a default) ok 0.6 s; `ERRCONSTLET` and
               `ERRCONSTIN` ok 0.2 s each; new `tests/GUISECT.UXB` (two forms, sections with and

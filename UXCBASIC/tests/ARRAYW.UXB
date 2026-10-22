@@ -1,0 +1,20 @@
+' ARRAYW: a WORD array of 128 elements or fewer at a BYTE index, T_LDW_AY and T_STW_SY; a BYTE
+' array read at a BYTE variable index with ERRORS OFF, T_PEEK_AB. BIG has 200 elements, so its
+' element takes the WORD index path. The last line stops with BAD SUBSCRIPT.
+DIM W(128) AS UWORD, S(5) AS WORD, BIG(200) AS UWORD, B(10) AS UBYTE, I AS UBYTE, J AS UBYTE
+I = 127
+W(I) = 60000
+W(I - 1) = W(I) + 1
+J = 2
+S(J) = -300
+S(J + 1) = S(J) * 2
+BIG(I + 50) = 7
+B(J) = 9
+ERRORS OFF
+PRINT W(127); W(126); S(2); S(3); BIG(177); B(J)
+W(J) = 1234
+PRINT W(J); B(J)
+ERRORS ON
+PRINT W(J * 0 + 127); S(J + 1)
+I = 128
+PRINT W(I)

@@ -111,8 +111,9 @@ def ex_peek_vb():
 
 def ex_index():
     """EX.INDEX. A constant index is checked here, and the element becomes a K_EK_MEM entry. A
-    BYTE array with a BYTE index is read with the index in Y. Any other index is a WORD, made
-    the element's address."""
+    BYTE array with a BYTE variable index, and no check, is T_PEEK_AB. A BYTE array with any
+    other BYTE index, or a WORD array of 128 elements or fewer with a BYTE index, is read
+    with the index in Y. Any other index is a WORD, made the element's address."""
     g.sy_r = g.ex_oa[g.ex_on]
     uxc_sym.sy_get()
     if g.sy_type >= K_TY_RECORD:
@@ -138,7 +139,14 @@ def ex_index():
     g.ex_fb = g.ex_i
     uxc_expr.ex_flush()
     g.ex_i = g.ex_vn - 1
-    if g.sy_type == K_TY_BYTE and g.ex_vt[g.ex_i] == K_TY_BYTE:
+    if g.sy_type == K_TY_BYTE and g.ex_vt[g.ex_i] == K_TY_BYTE and g.ex_vk[g.ex_i] == K_EK_MEM \
+            and (g.sm_errors_on == 0 or g.sy_cnt >= 256):
+        g.sl_s[0] = K_SEC_BSS
+        g.sl_v[0] = g.sy_val
+        g.sl_s[1] = g.ex_vs[g.ex_i]
+        g.sl_v[1] = g.ex_vv[g.ex_i]
+        emit(T.T_PEEK_AB)
+    elif g.sy_type == K_TY_BYTE and g.ex_vt[g.ex_i] == K_TY_BYTE:
         g.ex_wd = 0
         uxc_expr.ex_load()
         if g.sm_errors_on == 1 and g.sy_cnt < 256:
@@ -148,6 +156,16 @@ def ex_index():
         g.sl_s[0] = K_SEC_BSS
         g.sl_v[0] = g.sy_val
         emit(T.T_LDB_AY)
+    elif g.sy_type == K_TY_WORD and g.ex_vt[g.ex_i] == K_TY_BYTE and g.sy_cnt <= 128:
+        g.ex_wd = 0
+        uxc_expr.ex_load()
+        if g.sm_errors_on == 1:
+            g.sl_s[0] = K_SEC_CONST
+            g.sl_v[0] = g.sy_cnt
+            emit(T.T_CHKB)
+        g.sl_s[0] = K_SEC_BSS
+        g.sl_v[0] = g.sy_val
+        emit(T.T_LDW_AY)
     else:
         g.ex_wd = 1
         uxc_expr.ex_load()
