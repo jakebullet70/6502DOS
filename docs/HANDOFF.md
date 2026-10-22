@@ -3676,13 +3676,20 @@
             argument. A call with defaults left out compiles to the same bytes as one with them
             written: 0 bytes, 0 cycles. Tests ok: `SUBDEF` 0.5 s, `ERRDEFORDER`, `ERRDEFFEW`,
             `ERRDEFCONST` 0.0 s, `ERRSUBARGS` 0.0, `ENUMAS` 0.5, `LOCALPOOL` 0.5. Docs owed:
-            `help/UXC-HELP.md` SUB section, pyuxc README. Steps since the full suite: 1. Next:
-            GUI step 0b, a test program and no compiler change: each kernel call gives back
-            the RAM bank it was called with, `write` of a buffer at `$A000` reads the caller's
-            bank, and a `DOS.EXEC` child starts with the parent's bank, which the parent has
-            again after. First check what the `BANKCHK` test covers. Steps 0c to 0e look done
-            by the region work (`bank_call`, `lib/BANK.UXI`, `#REGION_SLOT`); check them
-            against `UXCBASIC/docs/GUI.PLAN.md` before step 1.
+            `help/UXC-HELP.md` SUB section, pyuxc README. Steps since the full suite: 1.
+          - Checked (2026-10-22): GUI steps 0b to 0g are done (0b is `BANKTRAP`, above; 0c to
+            0g the bank and region steps). `BANKTRAP` ok 0.6 s. Gap: `BANKTRAP` runs its
+            child with the asm `exec` call; no test runs `DOS.EXEC` from UXCBASIC with a bank
+            selected. `GUI.PLAN.md` still says `#RAMBANK`, `PEEK`, `POKE`, `SELECT`, `CALL`;
+            the built names are `#REGION_SLOT`, `GET_BYTE`, `PUT_BYTE`, `USE`, `FAR_CALL`.
+            Steps since the full suite: 1.
+          - Done (2026-10-22): test `BANKEXEC` (`tests/BANKEXEC.UXB`, child `BANKCHK.COM`).
+            The main code takes a bank, selects it and runs `DOS.EXEC`; a SUB of region 1 runs
+            `DOS.EXEC` with a literal pinned to low RAM. The child starts in the caller's bank
+            (the region's bank from the SUB), the caller has that bank after, and the main code
+            has its own bank after the SUB. `BANKEXEC` ok 0.4 s. Steps since the full suite: 2.
+            Next: GUI step 1a, INPUT2 editing (`UXCBASIC/docs/GUI.PLAN.md`). The `GUI.PLAN.md`
+            names are still to fix.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

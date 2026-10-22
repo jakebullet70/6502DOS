@@ -1,0 +1,30 @@
+' BANKEXEC: DOS.EXEC with a RAM bank selected. BANKCHK.COM selects bank 7 and ends with the
+' bank it started in as its exit code. From the main code, with a bank of the program's own
+' selected, the child starts in that bank and the program has it again after. From a SUB of
+' region 1, the child starts in the region's bank, the SUB goes on in it, and the main code has
+' its own bank again after the SUB. The region's path literal is pinned to low RAM.
+#INCLUDE "DOS.UXI"
+#INCLUDE "BANK.UXI"
+DIM OWN AS UBYTE, EXEC_ERROR AS UBYTE, EXIT_CODE AS UBYTE, AFTER AS UBYTE
+
+#REGION_SLOT 1
+SUB FROM_REGION()
+  DIM REGION_BANK AS UBYTE
+  REGION_BANK = BANK.CURRENT()
+  DOS.EXEC("BANKCHK.COM", "")
+  EXEC_ERROR = DOS.ERROR
+  EXIT_CODE = DOS.EXITCODE()
+  AFTER = BANK.CURRENT()
+  PRINT "REGION E"; EXEC_ERROR; " "; REGION_BANK <> OWN; EXIT_CODE = REGION_BANK; AFTER = REGION_BANK
+END SUB
+#REGION_SLOT 0
+
+OWN = BANK.ALLOC(1)
+BANK.USE(OWN)
+DOS.EXEC("\BANKCHK.COM", "")
+EXEC_ERROR = DOS.ERROR
+EXIT_CODE = DOS.EXITCODE()
+AFTER = BANK.CURRENT()
+PRINT "MAIN E"; EXEC_ERROR; " "; OWN <> 0; EXIT_CODE = OWN; AFTER = OWN
+FROM_REGION()
+PRINT "BACK"; BANK.CURRENT() = OWN
