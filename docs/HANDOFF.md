@@ -3809,8 +3809,19 @@
             THEME_FILE too, 2858 less USE_COLOR's share. `GUI.PLAN.md` still says
             `GUI.THEME(FILE, ...)`: fix at the doc batch. Test `tests/GUITHEME.UXB` calls
             THEME_FILE; golden unchanged, ok 0.6 s. Build 1.40 s.
-            Next: 2a's proposal (2), the `ContentsAt(@X + B)` template (asm approved by the
-            user); then phase 2, step 2c, forms.
+          - Done (2026-10-22): 2a's proposal (2), pyuxc templates `T_PEEK_AB` and `T_POKE_AB`
+            (ids 283, 284), 6 bytes each: `ldy B` then `lda`/`sta X,y`, for `ContentsAt(@X +
+            B)` read or assigned, X any fixed address (K_EK_ADDR entry, folded `@X + 2` too),
+            B an unsigned BYTE variable. `ex_vb_test` sets `g.ex_vb_a` for an address;
+            `ex_peek_vb` and `sm_contents` pick AB or VB. USE_COLOR 2517 to 2491 (-26), region
+            1 with THEME and USE_COLOR 2590, 5602 free. Also hits DOS.UXI (FOUND_NAME,
+            CALL_TEXT loops) and HEAP.UXI (STR_READ). POINTERVB gained an `@X + I` section
+            (array, page carry at $9DFE + 3, `@S$ + 2 + I`), golden rewritten and checked.
+            Build 5.02 s (templates rebuilt). POINTERVB ok 0.5 s, POINTERS ok 0.5 s,
+            ERRCONTENTS ok 0.0 s, GUITHEME ok 0.4 s, GUIBOX ok 0.4 s, GUIEDIT ok 0.5 s,
+            GUIFLAGS ok 0.4 s, GUIMASK ok 0.4 s, DOSAPI ok 0.8 s, SHRUN ok 0.9 s.
+            Owed to the doc batch: UXC-HELP's ContentsAt cost rule names both forms.
+            Next: phase 2, step 2c, forms.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

@@ -2,9 +2,10 @@
 
     ex_peek()     PEEK(a) or ContentsAt(a), the BYTE at the top entry; ContentsAtW(a), the
                   WORD. The operator is g.ex_op[g.ex_on].
-    ex_vb_test()  whether the + about to be applied is P + B inside ( ), for T_PEEK_VB and
-                  T_POKE_VB
-    ex_peek_vb()  ContentsAt(P + B), a WORD variable plus a BYTE variable
+    ex_vb_test()  whether the + about to be applied is P + B or @X + B inside ( ), for
+                  T_PEEK_VB, T_POKE_VB, T_PEEK_AB and T_POKE_AB
+    ex_peek_vb()  ContentsAt(P + B) or ContentsAt(@X + B), a WORD variable or an address,
+                  plus a BYTE variable
     ex_index()    array g.ex_oa[g.ex_on], element of the top entry
 """
 
@@ -52,8 +53,8 @@ def ex_peek():
 
 def ex_vb_test():
     """EX.VB.TEST. g.ex_vb = 1 when the top operator is + with a ( under it, and the two top
-    entries are a WORD variable and an unsigned BYTE variable, in either order. g.ex_vb_w and
-    g.ex_vb_b are their entries."""
+    entries are a WORD variable or an address, and an unsigned BYTE variable, in either order.
+    g.ex_vb_w and g.ex_vb_b are their entries. g.ex_vb_a = 1 for an address."""
     g.ex_vb = 0
     if g.ex_on - 2 < g.ex_op_base or g.ex_vn < 2:
         return
@@ -64,7 +65,12 @@ def ex_vb_test():
     if g.ex_vt[g.ex_vb_w] == K_TY_BYTE:
         g.ex_vb_w = g.ex_vn - 1
         g.ex_vb_b = g.ex_vn - 2
-    if g.ex_vk[g.ex_vb_w] != K_EK_MEM or g.ex_vt[g.ex_vb_w] != K_TY_WORD:
+    if g.ex_vt[g.ex_vb_w] != K_TY_WORD:
+        return
+    g.ex_vb_a = 0
+    if g.ex_vk[g.ex_vb_w] == K_EK_ADDR:
+        g.ex_vb_a = 1
+    if g.ex_vk[g.ex_vb_w] != K_EK_MEM and g.ex_vb_a == 0:
         return
     if g.ex_vk[g.ex_vb_b] != K_EK_MEM or g.ex_vt[g.ex_vb_b] != K_TY_BYTE:
         return
@@ -82,12 +88,15 @@ def ex_vb_slots():
 
 
 def ex_peek_vb():
-    """EX.PEEK.VB. ContentsAt(P + B), with the ) as the token: the operators +, ( and PEEK
-    come off, and the two entries become the BYTE in A."""
+    """EX.PEEK.VB. ContentsAt(P + B) or ContentsAt(@X + B), with the ) as the token: the
+    operators +, ( and PEEK come off, and the two entries become the BYTE in A."""
     g.ex_fb = g.ex_vn - 2
     uxc_expr.ex_flush()
     ex_vb_slots()
-    emit(T.T_PEEK_VB)
+    if g.ex_vb_a == 1:
+        emit(T.T_PEEK_AB)
+    else:
+        emit(T.T_PEEK_VB)
     g.ex_vn = g.ex_vn - 1
     g.ex_i = g.ex_vn - 1
     g.ex_vk[g.ex_i] = K_EK_REG

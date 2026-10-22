@@ -1,4 +1,5 @@
-' POINTERVB -- ContentsAt(P + I), a UWORD pointer plus a UBYTE index, read and assigned
+' POINTERVB -- ContentsAt(P + I) and ContentsAt(@X + I), a UWORD pointer or an address plus
+' a UBYTE index, read and assigned
 DIM P AS UWORD, I AS UBYTE, J AS UBYTE, X AS UBYTE, S AS BYTE
 DIM B(5) AS UBYTE
 B(1) = 11
@@ -33,3 +34,19 @@ ContentsAt(P + S) = 43
 PRINT ContentsAt(P + S); B(3)
 ContentsAtW(P + I) = $2C2D
 PRINT ContentsAtW(P + I); B(1); B(2)
+' @X + I, an address plus a UBYTE index, read and assigned
+DIM W AS UBYTE AT $9DFE, S$ * 8
+J = 2
+PRINT ContentsAt(@B + I); ContentsAt(J + @B)
+ContentsAt(@B + I) = 51
+ContentsAt(J + AddrOf(B)) = 52
+PRINT B(1); B(2)
+ContentsAt(@B + 2 + I) = ContentsAt(@B + I) + 3
+PRINT B(3)
+I = 3
+PRINT ContentsAt(@W + I)
+ContentsAt(@W + I) = 79
+PRINT PEEK($9E01)
+S$ = "ABC"
+I = 1
+PRINT ContentsAt(@S$ + 2 + I)

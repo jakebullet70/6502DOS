@@ -353,5 +353,21 @@ T_POKE_VB .block
         #endtpl
         .endblock
 
+; A = the BYTE at the address S0, plus the BYTE variable S1: ContentsAt(@X + B).
+T_PEEK_AB .block
+        #tpl
+        #ab ldy, S1
+        #aby lda, S0
+        #endtpl
+        .endblock
+
+; The BYTE at the address S0, plus the BYTE variable S1, = A: ContentsAt(@X + B) = A.
+T_POKE_AB .block
+        #tpl
+        #ab ldy, S1
+        #aby sta, S0
+        #endtpl
+        .endblock
+
 tpl_count = len(tpl_all)
 index   .word tpl_all

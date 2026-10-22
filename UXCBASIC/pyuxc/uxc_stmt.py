@@ -497,8 +497,9 @@ def sm_store_through():
 def sm_contents():
     """SM.CONTENTS. ContentsAt(a) = v stores a BYTE, as POKE a, v does. ContentsAtW(a) = v
     stores a WORD. The expression starts at the (, and ex_close stops it at the matching ).
-    ContentsAt(P + B) = v, a WORD variable plus an unsigned BYTE variable, is T_POKE_VB.
-    Trap: T_POKE_VB reads P and B after v, so a FUNCTION in v that changes P or B moves the
+    ContentsAt(P + B) = v, a WORD variable plus an unsigned BYTE variable, is T_POKE_VB, and
+    ContentsAt(@X + B) = v is T_POKE_AB.
+    Trap: both read P and B after v, so a FUNCTION in v that changes P or B moves the
     store."""
     g.sm_ty = K_TY_BYTE
     if g.sm_w == "CONTENTSATW":
@@ -520,6 +521,7 @@ def sm_contents():
         g.sm_vb_wv = g.ex_vv[g.ex_vb_w]
         g.sm_vb_bs = g.ex_vs[g.ex_vb_b]
         g.sm_vb_bv = g.ex_vv[g.ex_vb_b]
+        g.sm_vb_a = g.ex_vb_a
         g.ex_vn = g.ex_vn - 2
         uxc_lex.lx_next()
         uxc_expr.ex_expr()
@@ -528,7 +530,10 @@ def sm_contents():
         g.sl_v[0] = g.sm_vb_wv
         g.sl_s[1] = g.sm_vb_bs
         g.sl_v[1] = g.sm_vb_bv
-        emit(T.T_POKE_VB)
+        if g.sm_vb_a == 1:
+            emit(T.T_POKE_AB)
+        else:
+            emit(T.T_POKE_VB)
         return
     sm_poke_address()
 
