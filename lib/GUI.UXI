@@ -90,14 +90,19 @@ NAMESPACE GUI
   ' control; element 0 is never used. A form's controls take the focus in the order of their
   ' numbers, which is the order they were made in. CONTROL_ROW and CONTROL_COLUMN are the
   ' caption's place. CONTROL_WIDTH is the field's, and 0 for a SAY, which takes no focus.
-  ' CONTROL_SECTION is the section whose captions the field lines up on, or 0.
+  ' CONTROL_SECTION is the section whose captions the field lines up on, or 0. CONTROL_KIND is
+  ' one of the KIND_ CONSTs below.
   ' CONTROL_LABEL_AT, CONTROL_TEXT_AT and CONTROL_MASK_AT are the addresses of the caller's
-  ' caption, target and mask strings.
+  ' caption, target and mask strings. For a CHECK or a RADIO, CONTROL_TEXT_AT is the address
+  ' of the caller's UBYTE, and CONTROL_MASK_AT of its choices.
   ' Checklist: the arrays hold MOST_CONTROLS + 1 elements.
   CONST MOST_CONTROLS AS UBYTE = 48
   DIM CONTROL_OWNER(49) AS UBYTE, CONTROL_ROW(49) AS UBYTE, CONTROL_COLUMN(49) AS UBYTE
   DIM CONTROL_WIDTH(49) AS UBYTE, CONTROL_FLAGS(49) AS UBYTE, CONTROL_SECTION(49) AS UBYTE
+  DIM CONTROL_KIND(49) AS UBYTE
   DIM CONTROL_LABEL_AT(49) AS UWORD, CONTROL_TEXT_AT(49) AS UWORD, CONTROL_MASK_AT(49) AS UWORD
+  ' The kinds of control. A SAY is a KIND_FIELD of WIDTH 0.
+  CONST KIND_FIELD AS UBYTE = 0, KIND_CHECK AS UBYTE = 1, KIND_RADIO AS UBYTE = 2
   ' SHOW's events. A button's id is below them.
   CONST EV_DONE AS UBYTE = 253, EV_LEAVE AS UBYTE = 254, EV_CANCEL AS UBYTE = 255
   ' The form SHOW runs, 0 when the next SHOW starts a form afresh. The control SHOW gives the
@@ -560,6 +565,7 @@ NAMESPACE GUI
     CONTROL_SECTION(CONTROL) = PLACED_SECTION
     CONTROL_WIDTH(CONTROL) = WIDTH
     CONTROL_FLAGS(CONTROL) = FLAGS
+    CONTROL_KIND(CONTROL) = KIND_FIELD
     CONTROL_LABEL_AT(CONTROL) = AddrOf(CAPTION$)
     CONTROL_TEXT_AT(CONTROL) = AddrOf(TARGET$)
     CONTROL_MASK_AT(CONTROL) = AddrOf(MASK$)
@@ -578,6 +584,37 @@ NAMESPACE GUI
     RETURN SAYGET(ROW, COLUMN, CAPTION$, ORIGINAL$, 0)
   END FUNCTION
 
+  ' Makes CONTROL, made by SAYGET, of KIND, with the choice in the UBYTE at VALUE_AT. Returns
+  ' CONTROL. A CONTROL of 0 sets element 0, which nothing reads.
+  FUNCTION MAKE_CHOICE(CONTROL AS UBYTE, VALUE_AT AS UWORD, KIND AS UBYTE) AS UBYTE
+    CONTROL_TEXT_AT(CONTROL) = VALUE_AT
+    CONTROL_KIND(CONTROL) = KIND
+    RETURN CONTROL
+  END FUNCTION
+
+  ' Makes a check box of the current form, [X] or [ ] with CAPTION$ after it, and returns its
+  ' control number, as SAYGET does. The UBYTE at VALUE_AT is 1 when checked and 0 when clear;
+  ' pass it as @NAME. ROW and COLUMN place the box as SAYGET places a field with no caption.
+  ' FLAGS may be VALIDATE. Space, Left and Right check and clear it.
+  FUNCTION CHECK(ROW AS UBYTE, COLUMN AS UBYTE, CAPTION$ AS CONST, VALUE_AT AS UWORD, FLAGS AS UBYTE = 0) AS UBYTE
+    DIM CONTROL AS UBYTE
+    CONTROL = SAYGET(ROW, COLUMN, "", ORIGINAL$, 1, CAPTION$, FLAGS)
+    RETURN MAKE_CHOICE(CONTROL, VALUE_AT, KIND_CHECK)
+  END FUNCTION
+
+  ' Makes a set of radio buttons of the current form with the caption CAPTION$ before it, and
+  ' returns its control number, as SAYGET does. CHOICES$ holds the choices with | between
+  ' them: "Red|Green|Blue" draws (*) Red ( ) Green ( ) Blue. The UBYTE at VALUE_AT is the
+  ' chosen one, 0 for the first; pass it as @NAME. ROW, COLUMN and FLAGS are SAYGET's, and the
+  ' choices start where SAYGET's field would. Space and Right choose the next, wrapping to the
+  ' first, and Left the one before, wrapping to the last. The form keeps the address of
+  ' CHOICES$, not a copy.
+  FUNCTION RADIO(ROW AS UBYTE, COLUMN AS UBYTE, CAPTION$ AS CONST, CHOICES$ AS CONST, VALUE_AT AS UWORD, FLAGS AS UBYTE = 0) AS UBYTE
+    DIM CONTROL AS UBYTE
+    CONTROL = SAYGET(ROW, COLUMN, CAPTION$, ORIGINAL$, 1, CHOICES$, FLAGS)
+    RETURN MAKE_CHOICE(CONTROL, VALUE_AT, KIND_RADIO)
+  END FUNCTION
+
   ' Returns the screen column of CONTROL's field, as SAYGET gives it.
   FUNCTION FIELD_COLUMN(CONTROL AS UBYTE) AS UBYTE
     DIM GAP AS UBYTE, SECTION AS UBYTE
@@ -589,8 +626,69 @@ NAMESPACE GUI
     RETURN CONTROL_COLUMN(CONTROL) + GAP
   END FUNCTION
 
-  ' Runs INPUT2 on the field CONTROL, its FLAGS with MORE_FLAGS added, and returns INPUT2's key.
-  ' The field takes the FIELD_FOCUS color, or the FIELD color when MORE_FLAGS is DRAW_ONLY.
+  ' Draws the choices of CONTROL, a CHECK or a RADIO, from COLUMN. With MORE_FLAGS DRAW_ONLY it
+  ' returns DRAW_ONLY. Else it changes the choice by the keys CHECK and RADIO give, and returns
+  ' any other key.
+  FUNCTION PICK_CHOICE(CONTROL AS UBYTE, COLUMN AS UBYTE, MORE_FLAGS AS UBYTE) AS UWORD
+    DIM VALUE_AT AS UWORD, CHOICES_AT AS UWORD, PRESSED AS UWORD
+    DIM VALUE AS UBYTE, FIRST AS UBYTE, ITEM AS UBYTE, SPOT AS UBYTE
+    DIM CHARACTER AS UBYTE, OPENING AS UBYTE, CLOSING AS UBYTE, CHOSEN AS UBYTE, MARK AS UBYTE
+    DIM CURSOR AS UBYTE
+    VALUE_AT = CONTROL_TEXT_AT(CONTROL)
+    CHOICES_AT = CONTROL_MASK_AT(CONTROL)
+    ' A RADIO's choices count from 0, and a CHECK's one choice is 1: the choice whose number is
+    ' the UBYTE is marked, and the UBYTE runs from 0 to the last number.
+    FIRST = 0
+    OPENING = ASC("(")
+    CLOSING = ASC(")")
+    CHOSEN = ASC("*")
+    IF CONTROL_KIND(CONTROL) = KIND_CHECK THEN
+      FIRST = 1
+      OPENING = ASC("[")
+      CLOSING = ASC("]")
+      CHOSEN = ASC("X")
+    ENDIF
+    DO
+      VALUE = ContentsAt(VALUE_AT)
+      POS(1) = CONTROL_ROW(CONTROL)
+      POS(0) = COLUMN
+      CURSOR = COLUMN + 1
+      ' The loop takes a | before the first character, which starts the first choice.
+      ITEM = FIRST - 1
+      CHARACTER = ASC("|")
+      SPOT = 2
+      REPEAT ContentsAt(CHOICES_AT + 1) + 1
+        IF CHARACTER = ASC("|") THEN
+          ITEM = ITEM + 1
+          IF ITEM <> FIRST THEN PRINT " ";
+          MARK = 32
+          IF ITEM = VALUE THEN
+            MARK = CHOSEN
+            CURSOR = POS(0) + 1
+          ENDIF
+          PRINT CHR$(OPENING); CHR$(MARK); CHR$(CLOSING); " ";
+        ELSE
+          PRINT CHR$(CHARACTER);
+        ENDIF
+        CHARACTER = ContentsAt(CHOICES_AT + SPOT)
+        SPOT = SPOT + 1
+      END REPEAT
+      IF MORE_FLAGS <> 0 THEN RETURN MORE_FLAGS
+      POS(0) = CURSOR
+      PRESSED = WAITKEY()
+      ' ITEM is the last choice's number, so adding ITEM + 1 wraps to the same choice, and
+      ' adding ITEM to the choice before.
+      IF PRESSED = KEYS.KEY_LEFT THEN VALUE = VALUE + ITEM
+      IF PRESSED = 32 OR PRESSED = KEYS.KEY_RIGHT THEN VALUE = VALUE + 1
+      IF VALUE = ContentsAt(VALUE_AT) THEN RETURN PRESSED
+      IF VALUE > ITEM THEN VALUE = VALUE - ITEM - 1
+      ContentsAt(VALUE_AT) = VALUE
+    LOOP
+  END FUNCTION
+
+  ' Runs INPUT2 on the field CONTROL, its FLAGS with MORE_FLAGS added, and returns INPUT2's key;
+  ' a CHECK or a RADIO runs PICK_CHOICE in its place. The control takes the FIELD_FOCUS color,
+  ' or the FIELD color when MORE_FLAGS is DRAW_ONLY.
   FUNCTION EDIT_FIELD(CONTROL AS UBYTE, MORE_FLAGS AS UBYTE) AS UWORD
     DIM TARGET_AT AS UWORD, MASK_AT AS UWORD, COLUMN AS UBYTE
     IF MORE_FLAGS = 0 THEN
@@ -600,6 +698,7 @@ NAMESPACE GUI
     ENDIF
     ' Trap: FIELD_COLUMN called among INPUT2's arguments costs 48 bytes more than this.
     COLUMN = FIELD_COLUMN(CONTROL)
+    IF CONTROL_KIND(CONTROL) <> KIND_FIELD THEN RETURN PICK_CHOICE(CONTROL, COLUMN, MORE_FLAGS)
     TARGET_AT = CONTROL_TEXT_AT(CONTROL)
     MASK_AT = CONTROL_MASK_AT(CONTROL)
     RETURN INPUT2(CONTROL_ROW(CONTROL), COLUMN, StringAt(TARGET_AT), CONTROL_WIDTH(CONTROL), StringAt(MASK_AT), CONTROL_FLAGS(CONTROL) OR MORE_FLAGS)
@@ -618,7 +717,7 @@ NAMESPACE GUI
     PRINT LEFT$(MESSAGE$, SPAN_LENGTH);
   END SUB
 
-  ' Shows the form HANDLE and lets the user edit its fields, then returns an event. A form new
+  ' Shows the form HANDLE and lets the user edit its controls, then returns an event. A form new
   ' to SHOW is drawn with its captions and fields, and the focus goes to its first control. Tab,
   ' Down and Enter move the focus to the next control, and Shift+Tab and Up to the one before;
   ' the focus wraps from the last control to the first and back, and skips each SAY. Enter on

@@ -1,0 +1,51 @@
+' GUICHECK: GUI.CHECK and GUI.RADIO beside a SAYGET. The last lines give the string, then the
+' control numbers, each control's column, and after each SHOW its event and the three choices.
+' A section holds a SAYGET, a CHECK and a RADIO, which line up a space after "Color", at
+' column 9; a CHECK at an explicit place starts at its own column, 2.
+' Round 1: "Al" and Tab; on the CHECK, Space three times and Down; on the RADIO, Right twice
+' wraps to Red, Left wraps to Blue, Space wraps to Red, "q" does nothing, and Tab; on the last
+' CHECK, Left, Space and Space clear it, and Esc returns EV_CANCEL.
+' Round 2: Enter on each control; the last CHECK is VALIDATE, so SHOW returns EV_LEAVE, and the
+' next SHOW returns EV_DONE.
+#INCLUDE "KEYS.UXI"
+#INCLUDE "GUI.UXI"
+DIM KEPT(24) AS UBYTE, AT AS UBYTE, H AS UBYTE, N AS UBYTE
+DIM LOGIN AS UBYTE, HUE AS UBYTE, BEEP AS UBYTE
+DIM N$ * 6
+
+SUB KEEP(VALUE AS UBYTE)
+  KEPT(AT) = VALUE
+  AT = AT + 1
+END SUB
+
+SUB KEEP_SHOW()
+  KEEP(GUI.SHOW(H))
+  KEEP(LOGIN)
+  KEEP(HUE)
+  KEEP(BEEP)
+END SUB
+
+AT = 0
+LOGIN = 0
+HUE = 1
+BEEP = 1
+H = GUI.CREATEFORM("Pick", 2, 0, 40, 9, GUI.FRAMED)
+GUI.STARTSECTION(H, "Who", GUI.FRAMED)
+KEEP(GUI.SAYGET(GUI.AUTO, GUI.AUTO, "Name", N$, 6))
+KEEP(GUI.CHECK(GUI.AUTO, GUI.AUTO, "Auto login", @LOGIN))
+KEEP(GUI.RADIO(GUI.AUTO, GUI.AUTO, "Color", "Red|Green|Blue", @HUE))
+GUI.ENDSECTION()
+KEEP(GUI.CHECK(7, 2, "Beep", @BEEP, GUI.VALIDATE))
+FOR N = 1 TO 4
+  KEEP(GUI.FIELD_COLUMN(N))
+NEXT N
+KEEP_SHOW()
+KEEP_SHOW()
+KEEP_SHOW()
+POS(1) = 24
+POS(0) = 0
+PRINT "["; N$; "]"
+FOR N = 0 TO AT - 1
+  PRINT KEPT(N);
+NEXT N
+PRINT

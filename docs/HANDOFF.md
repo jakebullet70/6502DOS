@@ -4001,7 +4001,38 @@
             columns, Up and Tab wrapping past the SAY, a form of one SAY) ok 0.6 s, golden
             traced by hand; GUISHOW ok 0.5 s, GUISECT ok 0.4 s. No build. Owed to the doc
             batch: GUI.PLAN.md 3a (GET in SAYGET, WIDTH required, the field column rule).
-            Next: phase 3, step 3b, `GUI.CHECK` and `GUI.RADIO`.
+          - The user (2026-10-22): a second region for the GUI is ok.
+          - Done (2026-10-22), 3b, in `lib/GUI.UXI`: `GUI.CHECK(ROW, COLUMN, CAPTION$ AS CONST,
+            VALUE_AT AS UWORD, FLAGS = 0) AS UBYTE` draws `[X] Caption`; the UBYTE at VALUE_AT
+            (`@NAME`) is 0 or 1. `GUI.RADIO(ROW, COLUMN, CAPTION$ AS CONST, CHOICES$ AS CONST,
+            VALUE_AT AS UWORD, FLAGS = 0) AS UBYTE` is one control for a whole set: CHOICES$
+            is `"Red|Green|Blue"`, drawn `(*) Red ( ) Green ( ) Blue`, the UBYTE the chosen
+            one from 0. Both are SAYGET (CHECK with the caption "" and its caption in the mask
+            slot, RADIO with the choices in the mask slot), then `MAKE_CHOICE` puts VALUE_AT in
+            CONTROL_TEXT_AT and the kind in the new array CONTROL_KIND (CONSTs KIND_FIELD 0,
+            KIND_CHECK 1, KIND_RADIO 2). So a CHECK's box lines up with a section's fields, and
+            a RADIO's choices start where SAYGET's field would. EDIT_FIELD runs the new
+            `PICK_CHOICE(CONTROL, COLUMN, MORE_FLAGS)` for a CHECK or a RADIO: Space and Right
+            choose the next, wrapping, Left the one before; a CHECK is one choice numbered 1, so
+            the same code toggles it. PICK_CHOICE returns every other key; SHOW redraws and
+            re-enters on a key it does not know. The cursor sits on the chosen mark. VALIDATE
+            works on both. My choices, not in GUI.PLAN.md: RADIO is one control with `|`
+            choices (as the CBO's items), not one control a button; Left and Right also toggle
+            a CHECK; Esc does not put back a choice (it cost 51 bytes; INPUT2 still puts back
+            its text); the whole control takes the field color, the caption of a CHECK too.
+            Region 1 on GUISHOW 5932 to 6556 (+624): CONTROL_KIND 49, PICK_CHOICE and its
+            dispatch about 560, SAYGET's kind store about 15. CHECK, RADIO and MAKE_CHOICE
+            about 124 more when called. Savings applied: plain IFs for the keys in place of a
+            SELECT CASE that returned only Enter, Tab, Esc and extended keys (-72 with the
+            Esc change). Tried and worse: the marks from MID$ of one string (+75, pulls in
+            runtime), walking the choices by pointer (+4). Region 1 left: GUICHECK 1512 free,
+            GUISAY 1612. BUTTON and CBO will not both fit; they or PICK_CHOICE move to
+            region 2 then. New `tests/GUICHECK.UXB` and `.IN` (a section of a SAYGET, a CHECK
+            and a RADIO, an explicit VALIDATE CHECK; the columns; Space, Left, Right and their
+            wraps; a stray key; Esc; EV_LEAVE on the CHECK) ok 0.4 s, golden traced by hand;
+            GUISAY ok 0.4 s, GUISHOW ok 0.5 s, GUISECT ok 0.4 s. No build. Owed to the doc
+            batch: GUI.PLAN.md 3b (RADIO's form, the keys, Esc).
+            Next: phase 3, step 3c, `GUI.BUTTON`.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
