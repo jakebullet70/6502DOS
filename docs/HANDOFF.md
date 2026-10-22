@@ -3677,7 +3677,12 @@
             written: 0 bytes, 0 cycles. Tests ok: `SUBDEF` 0.5 s, `ERRDEFORDER`, `ERRDEFFEW`,
             `ERRDEFCONST` 0.0 s, `ERRSUBARGS` 0.0, `ENUMAS` 0.5, `LOCALPOOL` 0.5. Docs owed:
             `help/UXC-HELP.md` SUB section, pyuxc README. Steps since the full suite: 1. Next:
-            GUI step 0b.
+            GUI step 0b, a test program and no compiler change: each kernel call gives back
+            the RAM bank it was called with, `write` of a buffer at `$A000` reads the caller's
+            bank, and a `DOS.EXEC` child starts with the parent's bank, which the parent has
+            again after. First check what the `BANKCHK` test covers. Steps 0c to 0e look done
+            by the region work (`bank_call`, `lib/BANK.UXI`, `#REGION_SLOT`); check them
+            against `UXCBASIC/docs/GUI.PLAN.md` before step 1.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
