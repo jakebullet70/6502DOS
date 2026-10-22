@@ -17,7 +17,7 @@ import uxc_ramreg
 import uxc_rombank
 from uxc_code import cb_add, cb_get, cb_put, emit
 from uxc_defs import K_F_HI, K_F_LO, K_FRAME_BASE, K_SEC_BSS, K_SEC_CODE, K_SEC_CONST, \
-    K_SEC_LABEL, K_SEC_REC, K_SEC_STR, K_SEC_TEMP, K_SEC_VAR, K_SK_LABEL, K_TOP
+    K_SEC_LABEL, K_SEC_REC, K_SEC_RGDATA, K_SEC_STR, K_SEC_TEMP, K_SEC_VAR, K_SK_LABEL, K_TOP
 import uxc_str
 import uxc_sub
 import uxc_sym
@@ -56,6 +56,7 @@ def lk_link():
     uxc_dead.ds_strip()
     uxc_ramreg.rg_ranges()
     if g.rg_on != 0:
+        uxc_ramreg.rg_data()
         uxc_ramreg.rg_split()
     if g.rb_on != 0:
         uxc_rombank.rb_ranges()
@@ -191,6 +192,8 @@ def lk_fix():
     if g.fx_s == K_SEC_TEMP:
         uxc_sub.sb_pool_of()
         g.lk_v = g.lk_bss + g.sb_pool + g.fx_v
+    if g.fx_s == K_SEC_RGDATA:
+        g.lk_v = uxc_ramreg.K_RG_ORG + g.rg_data_at + g.fx_v
     if g.fx_s == K_SEC_LABEL:
         g.sy_r = g.fx_v
         uxc_sym.sy_get()

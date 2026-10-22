@@ -424,8 +424,23 @@ def dv_strip():
         return
     dv_fixups()
     dv_records()
+    dv_log_cut()
     g.vr_n = g.vr_n - g.dv_total[0]
     g.bs_n = g.bs_n - g.dv_total[1]
+
+
+def dv_log_cut():
+    """DV.LOG.CUT. Drop each variable left out from the log, and move the others' starts down,
+    so that the log holds the new offsets for uxc_ramreg."""
+    for g.dv_s in range(2):
+        g.dv_base = g.dv_s * K_DV_MAX
+        g.dv_n = 0
+        for g.dv_i in range(g.dv_count[g.dv_s]):
+            g.dv_k = g.dv_base + g.dv_i
+            if g.dv_used[g.dv_k] != 0:
+                g.dv_at[g.dv_base + g.dv_n] = g.dv_at[g.dv_k] - g.dv_cut[g.dv_k]
+                g.dv_n = g.dv_n + 1
+        g.dv_count[g.dv_s] = g.dv_n
 
 
 def dv_section():
@@ -507,19 +522,25 @@ def dv_records():
     for g.dd_record in range(1, g.sy_n + 1):
         g.sy_r = g.dd_record
         uxc_sym.sy_get()
-        g.dv_s = -1
-        if g.sy_kind == K_SK_VAR:
-            g.dv_s = 0
-            if (g.sy_flags & K_SY_BLOCK) != 0 or g.sy_type == K_TY_STR:
-                g.dv_s = 1
-            if (g.sy_flags & K_SY_TEMP) != 0:
-                g.dv_s = -1
-        if g.sy_kind == K_SK_ARRAY:
-            g.dv_s = 1
-        if (g.sy_flags & K_SY_FIXED) != 0 or g.sy_val >= K_FRAME_BASE:
-            g.dv_s = -1
+        dv_kind()
         if g.dv_s >= 0:
             dv_record()
+
+
+def dv_kind():
+    """DV.KIND. g.dv_s for the record in g.sy_*: 0 a global variable, 1 a global in the array
+    space, -1 anything else."""
+    g.dv_s = -1
+    if g.sy_kind == K_SK_VAR:
+        g.dv_s = 0
+        if (g.sy_flags & K_SY_BLOCK) != 0 or g.sy_type == K_TY_STR:
+            g.dv_s = 1
+        if (g.sy_flags & K_SY_TEMP) != 0:
+            g.dv_s = -1
+    if g.sy_kind == K_SK_ARRAY:
+        g.dv_s = 1
+    if (g.sy_flags & K_SY_FIXED) != 0 or g.sy_val >= K_FRAME_BASE:
+        g.dv_s = -1
 
 
 def dv_record():

@@ -30,6 +30,7 @@ import uxc_expr
 import uxc_fold
 import uxc_lex
 import uxc_name
+import uxc_ramreg
 import uxc_record
 import uxc_stmt
 import uxc_sub
@@ -1148,6 +1149,7 @@ def sg_maxes():
     while g.sg_record <= g.sy_n:
         g.sy_r = g.sg_record
         uxc_sym.sy_get()
+        uxc_ramreg.rg_image_of()
         if (g.sy_kind == K_SK_VAR or g.sy_kind == K_SK_ARRAY) and g.sy_type >= K_TY_RECORD:
             uxc_record.rd_maxes()
         elif g.sy_kind != K_SK_VAR or g.sy_type != K_TY_STR or g.sy_cnt == 0:
@@ -1157,9 +1159,13 @@ def sg_maxes():
         elif g.sy_val < K_FRAME_BASE:
             sg_max()
         g.sg_record = g.sg_record + 1
+    g.rg_image = 0
 
 
 def sg_max():
+    if g.rg_image != 0:
+        uxc_ramreg.rg_max(g.sy_val, g.sy_cnt, 0, 0)
+        return
     g.sl_s[0] = K_SEC_CONST
     g.sl_v[0] = g.sy_cnt
     if g.sy_cnt != g.sg_loaded:

@@ -3,29 +3,41 @@
     #REGION_SLOT n   n is 1 or 0. Each SUB or FUNCTION after #REGION_SLOT 1 goes to region 1,
                      a RAM bank that the program takes at startup. After #REGION_SLOT 0 they
                      stay in low RAM. An included file starts in its includer's slot, and the
-                     includer's slot holds again after it. The main code stays in low RAM, and
-                     so do the variables and the strings of every SUB.
+                     includer's slot holds again after it. The main code stays in low RAM.
+                     A string literal or a global variable that only the region's code names
+                     moves into the region; the others, the locals and the temps stay in low
+                     RAM.
 
     rg_line()     dd_keep_line's #REGION_SLOT, with the token at REGION_SLOT
     rg_sub()      in sb_sub, with the SUB's record in g.sb_current: the SUB joins the region
                   when its slot is 1
+    rg_pin_from(), rg_pin_to()  around the load of a STRING FUNCTION's result: what the code
+                  between names stays in low RAM
     rg_store()    sm_store to the constant address 0: stops the compile in a SUB of the region
     rg_asm()      in as_instruction, after as_choose: a write to $00 stops the compile in a SUB
                   of the region
     rg_ranges()   at the start of the link step, after UXC-DEAD.BL: the code range of each SUB
                   of the region, before SB.POOLS writes over K_SY_END. g.rg_on is 1 when one is
                   left in
+    rg_data()     then: move the literals and the variables that only the region names into
+                  g.rg_data
     rg_split()    then: cut the region's SUBs out of the code into g.rg_code and their fixups
                   into g.rg_fix, then add the veneers in low RAM
+    rg_image_of(), rg_max()  in sg_maxes: a moved variable's string maxes go into g.rg_data
     rg_load()     first in the startup work: T_RGLOAD
-    rg_place()    after the variables: append the region's code and its veneers
+    rg_place()    after the variables: append the region's code, its veneers and its data
     rg_code_address()  in lk_fix: the address of code offset g.lk_v
 
 $00 selects the RAM bank at $A000. The file holds the region's image after the variables, where
 the array space starts. T_RGLOAD, first in the startup work, takes a free RAM bank, copies the
 image to $A000 there, and keeps the bank in R_RGBANK. The array space, the temps and the data
 records then cover the image. A code offset from g.rg_base on is in the region, at $A000 + the
-offset - g.rg_base.
+offset - g.rg_base. A K_SEC_RGDATA value is at $A000 + g.rg_data_at + the value.
+
+A low SUB that region code calls runs with the region's bank selected, so it reads a STRING
+argument moved into the region.
+Trap: a low SUB that selects another bank, and then reads an address passed from the region,
+reads the wrong bank.
 
 A call across the edge goes to a veneer on the caller's side, a T_FARCALL, one per SUB. It
 loads the SUB's address and jumps to T_RGCALL, which calls the SUB through bank_call with the
@@ -39,8 +51,9 @@ the ranges of the SUBs moved.
 """
 
 from uxc_code import cb_add, cb_get, emit, fx_put, fx_read, rt_use
-from uxc_defs import K_F_ABS, K_FX_MAX, K_SEC_BSS, K_SEC_CODE, K_SEC_CONST, K_SEC_LABEL, \
-    K_SEC_REC, K_SK_LABEL, K_SK_SUB, K_SY_END, K_TOP, K_TT_EOL, K_TT_NUM
+from uxc_defs import K_DV_MAX, K_F_ABS, K_FX_MAX, K_SEC_BSS, K_SEC_CODE, K_SEC_CONST, \
+    K_SEC_LABEL, K_SEC_REC, K_SEC_RGDATA, K_SEC_STR, K_SK_LABEL, K_SK_SUB, K_SY_END, K_TOP, \
+    K_TT_EOL, K_TT_NUM
 import uxc_dead
 import uxc_lex
 import uxc_rombank
@@ -67,8 +80,22 @@ def rg_line():
 
 
 def rg_sub():
+    g.rg_sub_start = g.sy_val
     if g.rg_slot != 0:
         g.rg_subs.append(g.sb_current)
+
+
+def rg_pin_from():
+    g.rg_pin_from = g.cb_n
+
+
+def rg_pin_to():
+    """RG.PIN.TO. In a SUB of the region, the code since rg_pin_from loads the address that a
+    STRING FUNCTION returns. A caller in low RAM reads it with its own bank selected, so what
+    a fixup there names stays in low RAM."""
+    if rg_in_region() != 0:
+        g.rg_pins.append((g.sb_current, g.rg_pin_from - g.rg_sub_start,
+                          g.cb_n - g.rg_sub_start))
 
 
 def rg_in_region():
@@ -149,9 +176,167 @@ def rg_side_of(at):
     return 0, g.dd_at
 
 
+def rg_named_low(at):
+    """RG.NAMED.LOW. 1 when a fixup at code offset at keeps what it names in low RAM: it is
+    outside the body of every SUB of the region, or in a pin."""
+    j = rg_find(at)
+    if j < 0 or at < g.rg_from[j] + 3 or at >= g.rg_to[j]:
+        return 1
+    for pin_from, pin_to in g.rg_pin_at:
+        if pin_from <= at < pin_to:
+            return 1
+    return 0
+
+
+def rg_data():
+    """RG.DATA. Move into the region each string literal and each global variable that only the
+    region's code names. Out: g.rg_data, the region's data, the literals then the variables,
+    and g.rg_banked, 1 for each variable's record moved. A fixup to one becomes K_SEC_RGDATA.
+    A variable's bytes are 0 but for the string maxes, which sg_maxes writes in through
+    rg_max. Without a full log of the variables, only the literals move."""
+    g.rg_data = bytearray()
+    g.rg_banked = [0] * (g.sy_n + 1)
+    g.rg_pin_at = []
+    for g.sy_r, pin_from, pin_to in g.rg_pins:
+        uxc_sym.sy_get()
+        if g.sy_kind == K_SK_SUB and (g.sy_flags & 1) != 0:
+            g.rg_pin_at.append((g.sy_val + pin_from, g.sy_val + pin_to))
+    rg_strings()
+    if g.dv_full == 0:
+        rg_vars()
+
+
+def rg_strings():
+    """RG.STRINGS. g.rg_mark of each literal: 0 named by no fixup, 1 named in low RAM, 2 named
+    by the region alone, which moves."""
+    uxc_dead.ds_index()
+    g.rg_mark = [0] * g.ds_count
+    for g.fx_i in range(g.fx_n):
+        fx_read()
+        if g.fx_s == K_SEC_STR:
+            g.ds_off = g.fx_v
+            uxc_dead.ds_find()
+            rg_mark_by(g.ds_k)
+    g.rg_moved_at = [0] * g.ds_count
+    g.ram = g.sp_bank
+    for g.ds_i in range(g.ds_count):
+        g.ds_used[g.ds_i] = 1
+        if g.rg_mark[g.ds_i] == 2:
+            g.ds_used[g.ds_i] = 0
+            g.rg_moved_at[g.ds_i] = len(g.rg_data)
+            g.ds_from = g.ds_at[g.ds_i]
+            g.rg_data.extend(g.ram[g.ds_from:g.ds_from + g.ram[g.ds_from] + 2])
+    for g.fx_i in range(g.fx_n):
+        fx_read()
+        if g.fx_s == K_SEC_STR:
+            g.ds_off = g.fx_v
+            uxc_dead.ds_find()
+            if g.rg_mark[g.ds_k] == 2:
+                g.fx_s = K_SEC_RGDATA
+                g.fx_v = g.fx_v - g.ds_at[g.ds_k] + g.rg_moved_at[g.ds_k]
+                fx_put()
+    # The pool closes up over the literals moved, as over those UXC-DEAD.BL leaves out.
+    saved_bytes = g.ds_bytes
+    saved_strings = g.ds_strings
+    g.ds_bytes = 0
+    g.ds_strings = 0
+    uxc_dead.ds_cuts()
+    if g.ds_bytes > 0:
+        uxc_dead.ds_fixups()
+        uxc_dead.ds_pool()
+    g.ds_bytes = saved_bytes
+    g.ds_strings = saved_strings
+
+
+def rg_mark_by(k):
+    """RG.MARK.BY. Mark entry k of g.rg_mark for the fixup read."""
+    if rg_named_low(g.fx_at) != 0:
+        g.rg_mark[k] = 1
+    elif g.rg_mark[k] == 0:
+        g.rg_mark[k] = 2
+
+
+def rg_vars():
+    """RG.VARS. The same for the global variables, through UXC-DEAD.BL's log, which dv_strip
+    left in the new offsets: g.rg_mark of each log entry, then the variables, then the array
+    space close up over those moved."""
+    g.rg_mark = [0] * (2 * K_DV_MAX)
+    for g.fx_i in range(g.fx_n):
+        fx_read()
+        uxc_dead.dv_section()
+        if g.dv_s >= 0:
+            g.dv_off = g.fx_v
+            uxc_dead.dv_find()
+            if g.dv_k >= 0:
+                rg_mark_by(g.dv_k)
+    g.rg_moved_at = [0] * (2 * K_DV_MAX)
+    for g.dv_s in range(2):
+        g.dv_end = g.vr_n
+        if g.dv_s == 1:
+            g.dv_end = g.bs_n
+        g.dv_base = g.dv_s * K_DV_MAX
+        for g.dv_i in range(g.dv_count[g.dv_s]):
+            g.dv_k = g.dv_base + g.dv_i
+            g.dv_used[g.dv_k] = 1
+            if g.rg_mark[g.dv_k] == 2:
+                g.dv_used[g.dv_k] = 0
+                g.rg_moved_at[g.dv_k] = len(g.rg_data)
+                g.dv_next = g.dv_end
+                if g.dv_i + 1 < g.dv_count[g.dv_s]:
+                    g.dv_next = g.dv_at[g.dv_k + 1]
+                g.rg_data.extend(bytes(g.dv_next - g.dv_at[g.dv_k]))
+        uxc_dead.dv_cuts()
+    for g.fx_i in range(g.fx_n):
+        fx_read()
+        uxc_dead.dv_section()
+        if g.dv_s >= 0:
+            g.dv_off = g.fx_v
+            uxc_dead.dv_find()
+            if g.dv_k >= 0 and g.rg_mark[g.dv_k] == 2:
+                g.fx_s = K_SEC_RGDATA
+                g.fx_v = g.fx_v - g.dv_at[g.dv_k] + g.rg_moved_at[g.dv_k]
+                fx_put()
+    uxc_dead.dv_fixups()
+    for g.rg_r in range(1, g.sy_n + 1):
+        g.sy_r = g.rg_r
+        uxc_sym.sy_get()
+        uxc_dead.dv_kind()
+        if g.dv_s >= 0:
+            g.dv_off = g.sy_val
+            uxc_dead.dv_find()
+            if g.dv_k >= 0 and g.rg_mark[g.dv_k] == 2:
+                g.sy_val = g.sy_val - g.dv_at[g.dv_k] + g.rg_moved_at[g.dv_k]
+                g.rg_banked[g.rg_r] = 1
+                uxc_sym.sy_set()
+            elif g.dv_k >= 0:
+                g.sy_val = g.sy_val - g.dv_cut[g.dv_k]
+                uxc_sym.sy_set()
+    g.vr_n = g.vr_n - g.dv_total[0]
+    g.bs_n = g.bs_n - g.dv_total[1]
+
+
+def rg_image_of():
+    """RG.IMAGE.OF. In sg_maxes, with a record in g.sy_*: g.rg_image is 1 when it is a
+    variable moved into the region, whose maxes go into the image."""
+    g.rg_image = 0
+    if g.rg_on != 0 and g.sy_r < len(g.rg_banked) and g.rg_banked[g.sy_r] != 0:
+        g.rg_image = 1
+
+
+def rg_max(at, value, size, count):
+    """RG.MAX. Put max value at offset at of the region's data, or with count, in each of
+    count records of size bytes from there."""
+    if count == 0:
+        g.rg_data[at] = value
+        return
+    for i in range(count):
+        g.rg_data[at + i * size] = value
+
+
 def rg_split():
     """RG.SPLIT. Cut the region's SUBs out of the code into g.rg_code and their fixups into
-    g.rg_fix, then add the veneers in low RAM. Out: g.rg_size, the bytes of the region."""
+    g.rg_fix, then add the veneers in low RAM. Out: g.rg_size, the bytes of the region, and
+    g.rg_data_at, the offset of its data in it."""
     g.rg_at = [0] * g.rg_n
     g.rg_code = bytearray()
     g.dd_n = 0
@@ -177,7 +362,8 @@ def rg_split():
         er_stop("REGION CUT LOST BYTES")
     for g.rg_r in g.rg_veneers[0]:
         rg_veneer()
-    g.rg_size = len(g.rg_code) + len(g.rg_veneers[1]) * g.rg_veneer_length
+    g.rg_data_at = len(g.rg_code) + len(g.rg_veneers[1]) * g.rg_veneer_length
+    g.rg_size = g.rg_data_at + len(g.rg_data)
     if g.rg_size > K_RG_ROOM:
         er_stop("REGION 1 FULL")
 
@@ -202,6 +388,8 @@ def rg_fixups():
                 er_stop("JUMP ACROSS THE REGION")
         if g.fx_s == K_SEC_LABEL:
             rg_label(side, at)
+        if g.fx_s == K_SEC_RGDATA and side == 0:
+            er_stop("REGION DATA NAMED OUTSIDE")
         if side == 1:
             g.rg_fix.append((g.fx_at, g.fx_k, g.fx_s, g.fx_v, g.fx_ow))
             continue
@@ -290,6 +478,8 @@ def rg_place():
         uxc_sym.sy_set()
     for g.rg_r in g.rg_veneers[1]:
         rg_veneer()
+    for g.cb_b in g.rg_data:
+        cb_add()
     if g.cb_n - g.rg_base != g.rg_size:
         er_stop("REGION SIZE CHANGED")
     if g.lk_org + g.cb_n > K_TOP:

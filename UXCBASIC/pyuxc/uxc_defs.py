@@ -82,7 +82,8 @@ K_FRAME_MAX = 16384
 # Sections: what a slot value or a fixup value is counted from. CONST is a plain number and
 # is never left for the link step. BSS is the array space after the end of the PRG. TEMP is
 # a string temp, counted from the start of its owner's pool, which the link step places
-# after the array space.
+# after the array space. RGDATA is a literal or a global variable moved into region 1, counted
+# from the start of the region's data, after its code.
 K_SEC_CONST = 0
 K_SEC_CODE = 1
 K_SEC_REC = 2
@@ -91,6 +92,7 @@ K_SEC_VAR = 4
 K_SEC_LABEL = 5
 K_SEC_BSS = 6
 K_SEC_TEMP = 7
+K_SEC_RGDATA = 8
 
 # The value of a K.SEC.TEMP entry for a part of a PRINT item already printed (UXC-STR.BL).
 K_TEMP_PRINTED = 65535

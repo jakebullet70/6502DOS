@@ -1,0 +1,47 @@
+' RGDATA: region 1 holds the string literals and the global variables that only its code names:
+' a UWORD, a LONG, a string with its max, an array, a record with a string field and an array
+' of records. A variable that low code names stays in low RAM, and so does a variable or a
+' literal that a STRING FUNCT returns.
+TYPE ITEM
+  COUNT AS UBYTE
+  NAME AS STRING * 6
+END TYPE
+DIM TALLY AS UWORD, BIG AS LONG, TEXT AS STRING * 10, TABLE(4) AS UBYTE
+DIM ONE AS ITEM, MANY(3) AS ITEM
+DIM SHARED_WORD AS UWORD, LABEL AS STRING * 8
+
+#REGION_SLOT 1
+SUB FILL()
+  TALLY = 1234
+  BIG = 100000
+  TEXT = "IN THE BANK, CUT"
+  TABLE(3) = 77
+  ONE.COUNT = 5
+  ONE.NAME = "ONE NAME"
+  MANY(2).COUNT = 9
+  MANY(2).NAME = "MANYXYZ"
+  SHARED_WORD = 42
+  LABEL = "LABEL"
+END SUB
+
+SUB SHOW()
+  PRINT TALLY; BIG; TEXT; TABLE(3); ONE.COUNT; ONE.NAME; MANY(2).COUNT; MANY(2).NAME
+  PRINT "LITERAL IN THE BANK"
+  PRINT @TALLY >= $A000; @TEXT >= $A000; @TABLE >= $A000; @ONE >= $A000; @MANY >= $A000
+  PRINT @SHARED_WORD < $A000; @LABEL < $A000
+END SUB
+
+FUNCT GREETING() AS STRING
+  RETURN "HELLO FROM 1"
+END FUNCT
+
+FUNCT LABEL_OF() AS STRING
+  RETURN LABEL
+END FUNCT
+#REGION_SLOT 0
+
+FILL()
+SHOW()
+PRINT SHARED_WORD
+PRINT GREETING(); " "; LABEL_OF()
+END

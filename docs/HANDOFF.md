@@ -3558,6 +3558,30 @@
             INCLUDE ok. Steps since the full suite: 6. Next: 0e2, a region's variables and
             literals in the bank. Idea to propose: put `T_RGLOAD`, or all of `%INIT`, in the
             space the array space covers after startup (saves up to 71 bytes resident).
+          - Done, 0e2 (2026-10-22): a string literal or a global variable that only the
+            region's code names moves into the region, after its code and veneers; section
+            `K_SEC_RGDATA` (8), at `$A000 + g.rg_data_at + value`. No asm. `rg_data` runs
+            between `rg_ranges` and `rg_split`: `rg_strings` closes the pool up with
+            `ds_cuts`/`ds_fixups`/`ds_pool`; `rg_vars` uses the dv log, which `dv_strip` now
+            leaves in the new offsets (`dv_log_cut`), and `dv_cuts`/`dv_fixups`;
+            `dv_records`' test is now `dv_kind`. A moved variable's bytes are 0 in the image;
+            `sg_maxes` and `rd_string_max` write its string maxes into the image (`rg_image_of`,
+            `rg_max`), so it costs no startup code. Kept in low RAM: what low code names, the
+            DIM AT variables, the locals and temps, all variables when the dv log is full, and
+            what a fixup names in a pin: the load of a STRING FUNCT's RETURN value or its
+            empty fall-out value in a region SUB (`rg_pin_from`/`rg_pin_to` in `sb_return`
+            and `sb_fall_out`), as a low caller reads it with its own bank. Trap (for 0f): a
+            low SUB that selects another bank, then reads an address passed from the region.
+            The REGION line is now `REGION 1: n BYTES, d OF DATA, m FREE`. Low RAM saved: every
+            byte moved, plus 5 to 7 bytes of startup code a moved string. New test `RGDATA`
+            (`tests/`, golden local): a UWORD, a LONG, a string, an array, a record and an
+            array of records moved, the maxes cut the text, `@` of each `>= $A000`, a shared
+            variable and a returned one `< $A000`, both STRING FUNCT results right. Build 7134
+            ms (every program recompiled), the new baseline. RGDATA ok 0.4 s, RGCALL 0.4 s,
+            RGERR 0.5 s; DEADVAR, RECORD3, RECSTR, DEADSTR, STRRET, FUNC1 ok 0.5 to 0.6 s.
+            Steps since the full suite: 7; the full suite waits for the regions to be done
+            (the user's rule). Next: 0f, more regions (`#REGION_SLOT 2` up) and addresses
+            passed across.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

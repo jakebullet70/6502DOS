@@ -305,7 +305,9 @@ def sb_fall_out():
         emit(T.T_LDW_C)
         emit(T.T_LWIDEN)
     if g.sy_type == K_TY_STR:
+        uxc_ramreg.rg_pin_from()
         uxc_str.sg_return_empty()
+        uxc_ramreg.rg_pin_to()
     emit(T.T_RTS)
 
 
@@ -333,7 +335,9 @@ def sb_return():
     if g.sb_type == K_TY_LONG:
         uxc_expr.ex_tol()
     if g.sb_type == K_TY_STR:
+        uxc_ramreg.rg_pin_from()
         uxc_str.sg_tos()
+        uxc_ramreg.rg_pin_to()
     g.sb_has_value = 1
     emit(T.T_RTS)
 

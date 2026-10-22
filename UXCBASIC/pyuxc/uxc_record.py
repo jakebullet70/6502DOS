@@ -38,6 +38,7 @@ from uxc_defs import K_EK_ADDR, K_EK_CONST, K_EK_MEM, K_EK_REG, K_EO_PAR, K_FRAM
 import uxc_expr
 import uxc_lex
 import uxc_name
+import uxc_ramreg
 import uxc_stmt
 import uxc_str
 import uxc_sub
@@ -307,6 +308,9 @@ def rd_string_max():
     g.rd_maxes_at = g.rd_maxes_value + g.sy_val
     if g.rd_maxes_at > 65535:
         g.rd_maxes_at = g.rd_maxes_at - 65536
+    if g.rg_image != 0:
+        uxc_ramreg.rg_max(g.rd_maxes_at, g.sy_cnt, g.rd_maxes_size, g.rd_maxes_count)
+        return
     if g.rd_maxes_count > 0:
         g.sl_s[0] = g.rd_maxes_section
         g.sl_v[0] = g.rd_maxes_at
