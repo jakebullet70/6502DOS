@@ -94,7 +94,8 @@ NAMESPACE GUI
   ' one of the KIND_ CONSTs below.
   ' CONTROL_LABEL_AT, CONTROL_TEXT_AT and CONTROL_MASK_AT are the addresses of the caller's
   ' caption, target and mask strings. For a CHECK or a RADIO, CONTROL_TEXT_AT is the address
-  ' of the caller's UBYTE, and CONTROL_MASK_AT of its choices.
+  ' of the caller's UBYTE, and CONTROL_MASK_AT of its choices. For a BUTTON, CONTROL_TEXT_AT is
+  ' its id, and CONTROL_MASK_AT the address of its caption.
   ' Checklist: the arrays hold MOST_CONTROLS + 1 elements.
   CONST MOST_CONTROLS AS UBYTE = 48
   DIM CONTROL_OWNER(49) AS UBYTE, CONTROL_ROW(49) AS UBYTE, CONTROL_COLUMN(49) AS UBYTE
@@ -103,6 +104,7 @@ NAMESPACE GUI
   DIM CONTROL_LABEL_AT(49) AS UWORD, CONTROL_TEXT_AT(49) AS UWORD, CONTROL_MASK_AT(49) AS UWORD
   ' The kinds of control. A SAY is a KIND_FIELD of WIDTH 0.
   CONST KIND_FIELD AS UBYTE = 0, KIND_CHECK AS UBYTE = 1, KIND_RADIO AS UBYTE = 2
+  CONST KIND_BUTTON AS UBYTE = 3
   ' SHOW's events. A button's id is below them.
   CONST EV_DONE AS UBYTE = 253, EV_LEAVE AS UBYTE = 254, EV_CANCEL AS UBYTE = 255
   ' The form SHOW runs, 0 when the next SHOW starts a form afresh. The control SHOW gives the
@@ -615,6 +617,18 @@ NAMESPACE GUI
     RETURN MAKE_CHOICE(CONTROL, VALUE_AT, KIND_RADIO)
   END FUNCTION
 
+  ' Makes a button of the current form, < CAPTION$ >, and returns its control number, as SAYGET
+  ' does. Enter on the button, or its hot key from any control of the form, makes SHOW return
+  ' ID, which is below EV_DONE; the next SHOW gives the button the focus. An & in CAPTION$ marks
+  ' the letter after it, and Alt with that letter is the hot key: "&Save" draws < Save >, its S
+  ' in the HOT_KEY color, and Alt+S presses it. ROW and COLUMN place the button as SAYGET
+  ' places a field with no caption. The form keeps the address of CAPTION$, not a copy.
+  FUNCTION BUTTON(ROW AS UBYTE, COLUMN AS UBYTE, CAPTION$ AS CONST, ID AS UBYTE) AS UBYTE
+    DIM CONTROL AS UBYTE
+    CONTROL = SAYGET(ROW, COLUMN, "", ORIGINAL$, 1, CAPTION$)
+    RETURN MAKE_CHOICE(CONTROL, ID, KIND_BUTTON)
+  END FUNCTION
+
   ' Returns the screen column of CONTROL's field, as SAYGET gives it.
   FUNCTION FIELD_COLUMN(CONTROL AS UBYTE) AS UBYTE
     DIM GAP AS UBYTE, SECTION AS UBYTE
@@ -686,9 +700,62 @@ NAMESPACE GUI
     LOOP
   END FUNCTION
 
+  ' Draws CONTROL, a BUTTON, at COLUMN in the BUTTON_FOCUS color, or the BUTTON color when
+  ' MORE_FLAGS is DRAW_ONLY. The & is not drawn, and the letter after it takes the button's
+  ' background and the HOT_KEY color's foreground. With MORE_FLAGS DRAW_ONLY it returns
+  ' DRAW_ONLY; else it returns the next key.
+  FUNCTION PUSH_BUTTON(CONTROL AS UBYTE, COLUMN AS UBYTE, MORE_FLAGS AS UBYTE) AS UWORD
+    DIM CAPTION_AT AS UWORD, WHICH AS ENUM.ROLE, HOT AS UBYTE, CHARACTER AS UBYTE, SPOT AS UBYTE
+    CAPTION_AT = CONTROL_MASK_AT(CONTROL)
+    WHICH = ROLE.BUTTON_FOCUS
+    IF MORE_FLAGS <> 0 THEN WHICH = ROLE.BUTTON
+    HOT = (ContentsAt(@COLORS$ + 2 + WHICH) AND $F0) OR (ContentsAt(@COLORS$ + 2 + ROLE.HOT_KEY) AND 15)
+    USE_COLOR(WHICH)
+    POS(1) = CONTROL_ROW(CONTROL)
+    POS(0) = COLUMN
+    PRINT "< ";
+    SPOT = 2
+    REPEAT ContentsAt(CAPTION_AT + 1)
+      CHARACTER = ContentsAt(CAPTION_AT + SPOT)
+      SPOT = SPOT + 1
+      IF CHARACTER = ASC("&") THEN
+        CONTROL_WIDTH(CONTROL) = ContentsAt(CAPTION_AT + SPOT) OR $A0
+        CALL_A = HOT
+        CALL_P = 0
+        SYS CON_COLOR_CALL
+      ELSE
+        PRINT CHR$(CHARACTER);
+        USE_COLOR(WHICH)
+      ENDIF
+    END REPEAT
+    PRINT " >";
+    IF MORE_FLAGS <> 0 THEN RETURN MORE_FLAGS
+    POS(0) = COLUMN + 2
+    RETURN WAITKEY()
+  END FUNCTION
+
+  ' Returns the button of the form HANDLE whose hot key is PRESSED, as WAITKEY() gives it, or 0.
+  ' The form is drawn. LETTERS$ is the letter of each Alt+letter key, from scan code $10; the
+  ' console gives no Alt key at a -.
+  FUNCTION HOT_BUTTON(HANDLE AS UBYTE, PRESSED AS UWORD, LETTERS$ AS CONST = "qwertyuiop----asdfghjkl-----zxcvbnm") AS UBYTE
+    DIM CONTROL AS UBYTE, LETTER AS UBYTE
+    ' The scan code is the high byte. A plain key's is 0, which wraps past 34.
+    CONTROL = ContentsAt(@PRESSED + 1) - $10
+    IF CONTROL > 34 THEN RETURN 0
+    ' PUSH_BUTTON keeps a button's hot letter in its CONTROL_WIDTH, in lower case, with bit 7
+    ' set. A field is never that wide.
+    LETTER = ContentsAt(AddrOf(LETTERS$) + 2 + CONTROL) OR $80
+    CONTROL = MOST_CONTROLS
+    REPEAT MOST_CONTROLS
+      IF CONTROL_OWNER(CONTROL) = HANDLE AND CONTROL_WIDTH(CONTROL) = LETTER THEN RETURN CONTROL
+      CONTROL = CONTROL - 1
+    END REPEAT
+    RETURN 0
+  END FUNCTION
+
   ' Runs INPUT2 on the field CONTROL, its FLAGS with MORE_FLAGS added, and returns INPUT2's key;
-  ' a CHECK or a RADIO runs PICK_CHOICE in its place. The control takes the FIELD_FOCUS color,
-  ' or the FIELD color when MORE_FLAGS is DRAW_ONLY.
+  ' a CHECK or a RADIO runs PICK_CHOICE in its place, and a BUTTON PUSH_BUTTON. A field, CHECK
+  ' or RADIO takes the FIELD_FOCUS color, or the FIELD color when MORE_FLAGS is DRAW_ONLY.
   FUNCTION EDIT_FIELD(CONTROL AS UBYTE, MORE_FLAGS AS UBYTE) AS UWORD
     DIM TARGET_AT AS UWORD, MASK_AT AS UWORD, COLUMN AS UBYTE
     IF MORE_FLAGS = 0 THEN
@@ -698,6 +765,7 @@ NAMESPACE GUI
     ENDIF
     ' Trap: FIELD_COLUMN called among INPUT2's arguments costs 48 bytes more than this.
     COLUMN = FIELD_COLUMN(CONTROL)
+    IF CONTROL_KIND(CONTROL) = KIND_BUTTON THEN RETURN PUSH_BUTTON(CONTROL, COLUMN, MORE_FLAGS)
     IF CONTROL_KIND(CONTROL) <> KIND_FIELD THEN RETURN PICK_CHOICE(CONTROL, COLUMN, MORE_FLAGS)
     TARGET_AT = CONTROL_TEXT_AT(CONTROL)
     MASK_AT = CONTROL_MASK_AT(CONTROL)
@@ -722,12 +790,12 @@ NAMESPACE GUI
   ' Down and Enter move the focus to the next control, and Shift+Tab and Up to the one before;
   ' the focus wraps from the last control to the first and back, and skips each SAY. Enter on
   ' the last control returns EV_DONE, and so does a form with no control but SAYs. Esc returns
-  ' EV_CANCEL. Leaving a VALIDATE
+  ' EV_CANCEL. A button pressed returns its id, as BUTTON gives. Leaving a VALIDATE
   ' field returns EV_LEAVE, with the field in LEFT_FIELD; the next SHOW moves the focus on, or
   ' back to the field after REFUSE. A form is new to SHOW after EV_DONE, EV_CANCEL or FREE, and
   ' when another form was shown last. SHOW(0) returns EV_CANCEL.
   FUNCTION SHOW(HANDLE AS UBYTE) AS UBYTE
-    DIM FOCUS AS UBYTE, DIRECTION AS UBYTE, PRESSED AS UWORD, LABEL_AT AS UWORD
+    DIM FOCUS AS UBYTE, DIRECTION AS UBYTE, PUSHED AS UBYTE, PRESSED AS UWORD, LABEL_AT AS UWORD
     IF HANDLE = 0 THEN RETURN EV_CANCEL
     IF HANDLE <> SHOWN_FORM THEN
       SHOWN_FORM = HANDLE
@@ -755,6 +823,13 @@ NAMESPACE GUI
         STATUS_LINE("")
       ENDIF
       DIRECTION = 1
+      ' Enter on a button, or a button's hot key, presses it. Control 0 is a KIND_FIELD.
+      PUSHED = FOCUS
+      IF PRESSED <> KEYS.ENTER THEN PUSHED = HOT_BUTTON(HANDLE, PRESSED)
+      IF CONTROL_KIND(PUSHED) = KIND_BUTTON THEN
+        NEXT_FOCUS = PUSHED
+        RETURN CONTROL_TEXT_AT(PUSHED)
+      ENDIF
       SELECT CASE PRESSED
         CASE KEYS.ESC
           SHOWN_FORM = 0

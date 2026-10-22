@@ -4032,7 +4032,34 @@
             wraps; a stray key; Esc; EV_LEAVE on the CHECK) ok 0.4 s, golden traced by hand;
             GUISAY ok 0.4 s, GUISHOW ok 0.5 s, GUISECT ok 0.4 s. No build. Owed to the doc
             batch: GUI.PLAN.md 3b (RADIO's form, the keys, Esc).
-            Next: phase 3, step 3c, `GUI.BUTTON`.
+          - Done (2026-10-22), 3c, in `lib/GUI.UXI`: `GUI.BUTTON(ROW, COLUMN, CAPTION$ AS
+            CONST, ID AS UBYTE) AS UBYTE` draws `< Save >` for `"&Save"`. It is SAYGET with the
+            caption "" and its caption in the mask slot, then MAKE_CHOICE with ID in
+            CONTROL_TEXT_AT and KIND_BUTTON 3. EDIT_FIELD runs the new `PUSH_BUTTON(CONTROL,
+            COLUMN, MORE_FLAGS)`: colors BUTTON_FOCUS, or BUTTON with DRAW_ONLY; the & is not
+            drawn, the letter after it takes the button's background and HOT_KEY's foreground;
+            it returns WAITKEY(), the cursor on the caption. As it draws, PUSH_BUTTON keeps the
+            hot letter in the button's CONTROL_WIDTH, lower case OR $80 (a field is never that
+            wide). SHOW, before its SELECT: Enter on a button, or `HOT_BUTTON(HANDLE, PRESSED)`
+            (Alt+letter's scan code to a letter through the default CONST parameter
+            `"qwertyuiop----asdfghjkl-----zxcvbnm"`, from scan $10, then the form's control of
+            that CONTROL_WIDTH), sets NEXT_FOCUS to the button and returns its ID. My choices,
+            not in GUI.PLAN.md: the next SHOW keeps the form drawn and the focus on the
+            button; a hot key presses from a VALIDATE field without EV_LEAVE; hot keys are
+            letters only; Space does not press. Region 1 on GUISHOW 6556 to 7165 (+609):
+            PUSH_BUTTON and its dispatch about 325 (the hot letter's color 56 of it), HOT_BUTTON
+            and its 37-byte table about 220, SHOW's test about 40. Savings applied: the hot
+            letter kept at draw time in place of a caption scan in HOT_BUTTON (-111),
+            `ContentsAt(@PRESSED + 1)` for `PRESSED >> 8` (-33), RETURN of the array element
+            (-6). Not applied: the hot letter in HOT_KEY's own color (-56; DARK's is black on a
+            white button). Region 1 left: GUICHECK 903 free, GUIBTN 995. CBO (about 700) goes
+            to region 2. New `tests/GUIBTN.UXB` and `.IN` (a SAYGET; a section of "&Save" id 1
+            and "E&xit" id 7; "&Help" id 9 at column 20; Alt+X from the field, a stray key and
+            Alt+Z do nothing, Alt+S, Tab to Help and Enter, Down wraps, Enter through the field
+            to Save, Esc, a redraw and Alt+H) ok 0.4 s, golden traced by hand; GUICHECK,
+            GUISHOW, GUISAY, GUISECT ok 0.4 s. No build. Owed to the doc batch: GUI.PLAN.md 3c
+            (the next SHOW, the hot key's color, letters only).
+            Next: phase 3, step 3d, `GUI.CBO`, in region 2; agree where the split goes first.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

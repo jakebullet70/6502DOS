@@ -1,0 +1,38 @@
+' GUIBTN: GUI.BUTTON. The last lines give the string, then the control numbers, each control's
+' column, and the event of each SHOW.
+' A SAYGET, then a section of two buttons, "&Save" (id 1) and "E&xit" (id 7), which start at
+' column 3, as their captions are empty; then "&Help" (id 9) at column 20.
+' 1: "Al", Alt+X from the field returns 7. 2: on Exit, "q" and Alt+Z do nothing, Alt+S returns
+' 1. 3: on Save, Tab, Tab, Enter on Help returns 9. 4: Down wraps to the field, Enter, Enter on
+' Save returns 1. 5: Esc returns EV_CANCEL. 6: the form is drawn again, and Alt+H returns 9.
+#INCLUDE "KEYS.UXI"
+#INCLUDE "GUI.UXI"
+DIM KEPT(16) AS UBYTE, AT AS UBYTE, H AS UBYTE, N AS UBYTE
+DIM N$ * 6
+
+SUB KEEP(VALUE AS UBYTE)
+  KEPT(AT) = VALUE
+  AT = AT + 1
+END SUB
+
+AT = 0
+H = GUI.CREATEFORM("Act", 2, 0, 40, 10, GUI.FRAMED)
+KEEP(GUI.SAYGET(GUI.AUTO, GUI.AUTO, "Name", N$, 6))
+GUI.STARTSECTION(H, "Do", GUI.FRAMED)
+KEEP(GUI.BUTTON(GUI.AUTO, GUI.AUTO, "&Save", 1))
+KEEP(GUI.BUTTON(GUI.AUTO, GUI.AUTO, "E&xit", 7))
+GUI.ENDSECTION()
+KEEP(GUI.BUTTON(8, 20, "&Help", 9))
+FOR N = 1 TO 4
+  KEEP(GUI.FIELD_COLUMN(N))
+NEXT N
+FOR N = 1 TO 6
+  KEEP(GUI.SHOW(H))
+NEXT N
+POS(1) = 24
+POS(0) = 0
+PRINT "["; N$; "]"
+FOR N = 0 TO AT - 1
+  PRINT KEPT(N);
+NEXT N
+PRINT
