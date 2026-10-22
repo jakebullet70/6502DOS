@@ -1,0 +1,36 @@
+' SUBCONST: STRING parameters AS CONST. KEEP keeps the address its parameter holds. Two literals
+' and a global each still read as their own text after the calls that follow. ONWARD passes its
+' AS CONST parameter on to CHANGE, which writes into a copy, so the literal is unchanged; and on
+' to KEEP, AS CONST again, as it is. ONWARD() passes its default.
+DIM AT(5) AS UWORD, N AS UBYTE, SPOT AS UBYTE, G$ * 8
+
+SUB KEEP(T$ AS CONST)
+  AT(N) = AddrOf(T$)
+  N = N + 1
+END SUB
+
+SUB CHANGE(T$)
+  T$ = "changed"
+  PRINT T$
+END SUB
+
+SUB ONWARD(T$ AS CONST = "dflt")
+  CHANGE(T$)
+  PRINT T$
+  KEEP(T$)
+END SUB
+
+N = 0
+G$ = "glob"
+KEEP("one")
+KEEP("two")
+KEEP(G$)
+G$ = "new"
+ONWARD("lit")
+ONWARD()
+FOR N = 0 TO 4
+  FOR SPOT = 1 TO ContentsAt(AT(N) + 1)
+    PRINT CHR$(ContentsAt(AT(N) + SPOT + 1));
+  NEXT SPOT
+  PRINT
+NEXT N

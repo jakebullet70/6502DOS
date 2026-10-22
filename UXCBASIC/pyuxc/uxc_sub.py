@@ -16,7 +16,7 @@ from uxc_code import emit
 from uxc_defs import K_EK_CONST, K_EK_REG, K_EX_DEPTH, K_FRAME_MAX, K_JP_LIST, K_NS_IFL, K_NS_MAX, \
     K_SB_DEFAULTS, K_SB_DEPTH, K_SEC_BSS, K_SEC_CONST, K_SEC_LABEL, K_SEC_VAR, K_SK_CALL, K_SK_SUB, \
     K_SK_VAR, K_SY_END, K_SY_ENUM_PARAMETER, K_SY_ENUM_TYPE, \
-    K_SY_LEVEL, K_SY_LIVE, K_SY_POOL, K_SY_SIGNED, K_SY_TEMP, K_SY_TEMPS, K_TT_EOL, K_TT_NAME, K_TT_OP, \
+    K_SY_LEVEL, K_SY_LIVE, K_SY_POOL, K_SY_READ_ONLY, K_SY_SIGNED, K_SY_TEMP, K_SY_TEMPS, K_TT_EOL, K_TT_NAME, K_TT_OP, \
     K_TT_STR, K_TY_BYTE, K_TY_LONG, K_TY_STR, K_TY_WORD
 import uxc_cond
 import uxc_dead
@@ -139,10 +139,10 @@ def sb_header():
 
 
 def sb_parameter():
-    """SB.PARAMETER. One parameter of SUB g.sb_record: name$ or name AS type, then = default.
-    It becomes the next record, a variable owned by the SUB. A STRING parameter is a WORD that
-    holds the address of the caller's block, and its element count is 0. After a parameter
-    with a default, each parameter needs one."""
+    """SB.PARAMETER. One parameter of SUB g.sb_record: name$, name$ AS CONST or name AS type,
+    then = default. It becomes the next record, a variable owned by the SUB. A STRING parameter
+    is a WORD that holds the address of the caller's block, and its element count is 0. After a
+    parameter with a default, each parameter needs one."""
     if g.tk_t != K_TT_NAME:
         er_syntax()
     g.sb_parameter_name = g.tk_s
@@ -150,6 +150,13 @@ def sb_parameter():
     g.sm_n = g.sb_parameter_name
     uxc_name.nm_reserved()
     uxc_lex.lx_next()
+    g.sb_read_only = 0
+    if g.sb_type == K_TY_STR and g.tk_t == K_TT_NAME and g.tk_s == "AS":
+        uxc_lex.lx_next()
+        if g.tk_t != K_TT_NAME or g.tk_s != "CONST":
+            er_stop("A MARK AND AS")
+        g.sb_read_only = K_SY_READ_ONLY
+        uxc_lex.lx_next()
     sb_as()
     if g.sb_type == 0:
         er_missing_as()
@@ -171,7 +178,7 @@ def sb_parameter():
     g.sy_kind = K_SK_VAR
     g.sy_type = g.sb_type
     g.sy_val = g.sb_place
-    g.sy_flags = g.sb_signed * K_SY_SIGNED
+    g.sy_flags = g.sb_signed * K_SY_SIGNED + g.sb_read_only
     g.sy_cnt = 0
     uxc_sym.sy_add()
     g.sy_np = g.sb_default
@@ -442,8 +449,8 @@ def sb_call():
 
     WARNING: an argument with a call in it can run this same SUB before this call's JSR, as
     MAX%(A%, MAX%(B%, C%)) does, and that would overwrite the parameters already stored. So
-    when a ( comes anywhere in the arguments, each argument but the last is pushed, and the
-    pushes are popped into the parameters just before the JSR.
+    when an argument calls a SUB or FUNCTION (sb_look_ahead), each argument but the last is
+    pushed, and the pushes are popped into the parameters just before the JSR.
 
     An argument is an expression, and it can hold a call, so sb_call runs inside itself.
     What it keeps across an argument is in the g.sb_call_* arrays, one entry per depth."""
@@ -507,6 +514,7 @@ def sb_call_argument():
     uxc_sym.sy_get()
     g.sb_parameter_type = g.sy_type
     g.sb_parameter_address = g.sy_val
+    g.sg_read_only = g.sy_flags & K_SY_READ_ONLY
     if g.sb_filling != 0 and g.sb_parameter_type != K_TY_STR and g.ex_vk[g.ex_vn - 1] != K_EK_CONST:
         sb_error_default()
     g.sb_word = g.sb_call_enum[d]
@@ -664,21 +672,36 @@ def sb_call_pop():
 
 
 def sb_look_ahead():
-    """SB.LOOK.AHEAD. g.sb_nested = 1 when a ( comes before the first ) after the call's own
-    (. The token is at that ( and is put back after, with g.lx_p."""
+    """SB.LOOK.AHEAD. g.sb_nested = 1 when the arguments, up to the call's own ), call a SUB or
+    FUNCTION: a name before a ( that is a SUB's. An array or a built-in function before a ( is
+    no call. The token is at the call's ( and is put back after, with g.lx_p. Clobbers g.sy_*
+    and g.nm_*."""
     g.sb_saved_position = g.lx_p
+    g.sb_saved_name = g.sm_n
     g.sb_nested = 0
-    while True:
+    g.sb_look_depth = 0
+    g.sb_look_name = ""
+    while g.sb_nested == 0:
         uxc_lex.lx_next()
         if g.tk_t == K_TT_EOL:
             break
-        if g.tk_t != K_TT_OP:
-            continue
-        if g.tk_k == 41:
-            break
-        if g.tk_k == 40:
-            g.sb_nested = 1
-            break
+        if g.tk_t == K_TT_OP and g.tk_k == 41:
+            if g.sb_look_depth == 0:
+                break
+            g.sb_look_depth = g.sb_look_depth - 1
+        if g.tk_t == K_TT_OP and g.tk_k == 40:
+            g.sb_look_depth = g.sb_look_depth + 1
+            if g.sb_look_name != "":
+                g.sm_n = g.sb_look_name
+                g.nm_find_quiet = 1
+                uxc_name.nm_find()
+                g.nm_find_quiet = 0
+                if g.sy_r != 0 and g.sy_kind == K_SK_SUB:
+                    g.sb_nested = 1
+        g.sb_look_name = ""
+        if g.tk_t == K_TT_NAME:
+            g.sb_look_name = g.tk_s
+    g.sm_n = g.sb_saved_name
     g.lx_p = g.sb_saved_position
     g.tk_t = K_TT_OP
     g.tk_k = 40

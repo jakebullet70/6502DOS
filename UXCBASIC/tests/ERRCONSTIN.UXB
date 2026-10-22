@@ -1,0 +1,4 @@
+SUB ASK(T$ AS CONST)
+  LINPUT T$
+END SUB
+ASK("a")

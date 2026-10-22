@@ -23,7 +23,7 @@ UXC-STR.BL has the layout of a string block, the temps, and when a + skips its t
 from uxc_code import emit, sp_add
 from uxc_defs import K_EK_ADDR, K_EK_CMP, K_EK_CONST, K_EK_MEM, K_EK_REG, K_EO_ADD, K_EO_EQ, \
     K_EO_GE, K_EO_GT, K_EO_LE, K_EO_LT, K_EO_NE, K_EX_DEPTH, K_FRAME_BASE, K_OP_GE, K_OP_NE, \
-    K_SEC_BSS, K_SEC_CONST, K_SEC_STR, K_SEC_TEMP, K_SEC_VAR, K_SK_ARRAY, K_SK_VAR, K_SY_TEMP, \
+    K_SEC_BSS, K_SEC_CONST, K_SEC_STR, K_SEC_TEMP, K_SEC_VAR, K_SK_ARRAY, K_SK_VAR, K_SY_READ_ONLY, K_SY_TEMP, \
     K_TEMP_PRINTED, K_TT_EOL, K_TT_NAME, K_TT_NUM, K_TT_OP, K_TT_STR, K_TY_BYTE, K_TY_LONG, \
     K_TY_RECORD, K_TY_STR, K_TY_WORD
 import uxc_expr
@@ -86,6 +86,7 @@ def sg_empty_local():
 def sg_let():
     """SG.LET. The text is copied into the block, cut at its max. A$ = A$ copies nothing.
     A$ = "" stores 0 in the length byte."""
+    sg_writable()
     uxc_record.rd_section()
     g.sg_destination = g.sy_val
     g.sg_section = g.rd_sec
@@ -124,6 +125,12 @@ def sg_let():
     g.sl_s[0] = g.sg_section
     g.sl_v[0] = g.sg_destination
     emit(g.sg_template)
+
+
+def sg_writable():
+    """SG.WRITABLE. The variable in g.sy_* may be written: it is not an AS CONST parameter."""
+    if g.sy_cnt == 0 and (g.sy_flags & K_SY_READ_ONLY) != 0:
+        er_stop("CONST PARAMETER: " + g.sm_n)
 
 
 def sg_is_destination():
@@ -881,18 +888,41 @@ def sg_tos():
 def sg_pass():
     """SG.PASS. A literal or a STRING result is copied into a temp first, so that the SUB
     cannot write into it. The literal "" is passed as it is: its max is 0, so a write into it
-    stores no character."""
+    stores no character. With g.sg_read_only set, for an AS CONST parameter, a literal is passed
+    as it is. An AS CONST parameter passed on to another STRING parameter is copied as a literal
+    is."""
     g.ex_i = g.ex_vn - 1
     if g.ex_vt[g.ex_i] != K_TY_STR:
         er_mismatch()
     sg_is_empty()
-    if g.ex_vs[g.ex_i] == K_SEC_STR and g.sg_empty == 0:
+    if g.ex_vs[g.ex_i] == K_SEC_STR and g.sg_empty == 0 and g.sg_read_only == 0:
         sg_copy()
+    if g.sg_read_only == 0:
+        sg_is_read_only()
+        if g.sg_read_only_found == 1:
+            sg_copy()
     g.ex_i = g.ex_vn - 1
     sg_is_result()
     if g.sg_result_found == 1:
         sg_copy()
     sg_tos()
+
+
+def sg_is_read_only():
+    """SG.IS.READ.ONLY. g.sg_read_only_found = 1 when entry g.ex_i is an AS CONST parameter of
+    the SUB being compiled. Clobbers g.sy_*."""
+    g.sg_read_only_found = 0
+    if g.sb_current == 0 or g.ex_vk[g.ex_i] != K_EK_MEM or g.ex_vs[g.ex_i] != K_SEC_VAR:
+        return
+    g.sy_r = g.sb_current
+    uxc_sym.sy_get()
+    g.sg_result_i = g.sy_np
+    while g.sg_result_i > 0:
+        g.sy_r = g.sb_current + g.sg_result_i
+        uxc_sym.sy_get()
+        if g.sy_val == g.ex_vv[g.ex_i] and (g.sy_flags & K_SY_READ_ONLY) != 0:
+            g.sg_read_only_found = 1
+        g.sg_result_i = g.sg_result_i - 1
 
 
 def sg_result():
@@ -1041,6 +1071,8 @@ def sg_input():
             er_syntax()
         g.sm_n = g.tk_s
         uxc_stmt.sm_var()
+        if g.sy_type == K_TY_STR:
+            sg_writable()
         uxc_record.rd_section_value()
         g.sg_input_type = g.sy_type
         g.sg_input_value = g.sy_val

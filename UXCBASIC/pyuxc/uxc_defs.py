@@ -41,6 +41,9 @@ K_SK_FIELD = 11
 # A SUB that UXC-DEAD.BL left out, and the call records and temps it owned.
 K_SK_DEAD = 12
 
+# A symbol flag of a STRING parameter: it is AS CONST. A literal argument is passed with no copy,
+# and the SUB may not assign to it.
+K_SY_READ_ONLY = 1
 # A symbol flag: the variable is DIM ... AT, and its value is its address.
 K_SY_FIXED = 2
 # A symbol flag: the variable is a string temp, and its value is its offset in its owner's

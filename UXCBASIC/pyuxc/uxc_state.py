@@ -92,7 +92,8 @@ def dim():
                  "sg_last_new", "sg_empty_offset", "sg_empty_known", "sg_appending",
                  "sg_chr_temp", "sg_chr_start", "sg_chr_fixups", "cs_jo", "sm_last_jump",
                  "dd_keep_subs", "dd_region_line", "dv_keep_vars", "dv_full", "ex_const_record",
-                 "nm_type_enum", "sb_enum", "sb_default_count", "sb_filling"):
+                 "nm_type_enum", "sb_enum", "sb_default_count", "sb_filling", "sb_read_only",
+                 "sg_read_only"):
         setattr(g, name, 0)
     g.sg_last_text = ""
     g.dd_region_text = ""

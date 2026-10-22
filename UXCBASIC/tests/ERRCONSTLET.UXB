@@ -1,0 +1,4 @@
+SUB SET(T$ AS CONST)
+  T$ = "x"
+END SUB
+SET("a")
