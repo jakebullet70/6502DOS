@@ -3688,8 +3688,21 @@
             `DOS.EXEC` with a literal pinned to low RAM. The child starts in the caller's bank
             (the region's bank from the SUB), the caller has that bank after, and the main code
             has its own bank after the SUB. `BANKEXEC` ok 0.4 s. Steps since the full suite: 2.
-            Next: GUI step 1a, INPUT2 editing (`UXCBASIC/docs/GUI.PLAN.md`). The `GUI.PLAN.md`
-            names are still to fix.
+          - Done (2026-10-22): GUI step 1a, `lib/GUI.UXI` with `GUI.INPUT2(ROW, COLUMN,
+            TARGET$, WIDTH) AS UWORD` in region 1, UXCBASIC only. `MASK$` and `FLAGS` come with
+            1b and 1c as defaulted parameters. Left, Right, Home, End, Backspace, Delete, Insert
+            (mode in `GUI.OVERWRITE_MODE`, kept across calls); the text scrolls in the field;
+            `ContentsAt(@TARGET$)` gives the caller's string size (D3's check holds). Enter,
+            Tab, Esc and any other extended key end it; Esc puts back `GUI.ORIGINAL$`; other
+            control characters are dropped. Shift+Tab is Tab with `KEYMODS()` Shift. Size: region
+            1 1539 bytes (1037 code and literals, 258 data, 244 runtime), 6653 free; low RAM
+            +289 bytes against a program without it (loader, region, veneer, runtime). The plan
+            said about 600 bytes. Measured: a string splice `LEFT$ + CHR$ + RIGHT$` about 100
+            bytes; `AND`/`OR` in an `IF` about 17 bytes a term, `ADDED <= OVERWRITE_MODE` in
+            place of `(ADDED = 0 OR OVERWRITE_MODE <> 0)` saved 36. Test `tests/GUIEDIT.UXB`
+            and `.IN` (6502DOS runner; the UXCBASIC runner sees no `lib/`), ok 0.5 s. Steps
+            since the full suite: 3. Next: step 1b, flags. The `GUI.PLAN.md` names are still to
+            fix, and its tests line says `UXCBASIC/tests`.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

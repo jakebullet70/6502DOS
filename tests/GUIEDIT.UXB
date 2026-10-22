@@ -1,0 +1,28 @@
+' GUIEDIT: GUI.INPUT2's editing keys. Each call prints the text and the key that ended it.
+' 1: Home, Delete, Right, Backspace, overwrite, then insert again.
+' 2: the string's size stops the typing, and the text scrolls in a field 3 wide.
+' 3: Esc puts back the text. 4: Up ends the edit at once. 5: Tab ends it. 6: Enter at once.
+#INCLUDE "KEYS.UXI"
+#INCLUDE "GUI.UXI"
+DIM NAME$ * 12, SHORT$ * 4, ENDED AS UWORD
+
+SUB SHOW()
+  PRINT
+  PRINT "["; NAME$; "]"; ENDED
+END SUB
+
+NAME$ = "ADA"
+ENDED = GUI.INPUT2(2, 10, NAME$, 6)
+SHOW()
+ENDED = GUI.INPUT2(4, 10, SHORT$, 3)
+PRINT
+PRINT "["; SHORT$; "]"; ENDED
+NAME$ = "KEEP"
+ENDED = GUI.INPUT2(6, 10, NAME$, 6)
+SHOW()
+ENDED = GUI.INPUT2(8, 10, NAME$, 6)
+SHOW()
+ENDED = GUI.INPUT2(10, 10, NAME$, 6)
+SHOW()
+ENDED = GUI.INPUT2(12, 10, NAME$, 6)
+SHOW()

@@ -1,0 +1,85 @@
+' GUI.UXI: GUI Forms, the text-mode user interface library of 6502DOS's utilities.
+'
+' A program includes KEYS.UXI, then GUI.UXI. The code runs from region 1, a RAM bank of its
+' own at $A000, and a SUB or FUNCTION adds bytes only when called.
+
+#REGION_SLOT 1
+NAMESPACE GUI
+  ' INPUT2's mode: 0 inserts a typed character, 1 types over the character at the cursor.
+  ' Insert switches it, and it holds from one call to the next.
+  DIM OVERWRITE_MODE AS UBYTE
+
+  ' The text INPUT2 started with, put back by Esc.
+  DIM ORIGINAL$ * 255
+
+  ' Edits TARGET$ in a field at ROW and COLUMN, counted from 0, WIDTH characters wide.
+  ' TARGET$ takes at most its own size in characters. The text scrolls inside the field when it
+  ' is longer than WIDTH. Left, Right, Home, End, Backspace, Delete and Insert edit. Enter, Tab,
+  ' Esc and every other extended key end the edit, and INPUT2 returns that key as WAITKEY()
+  ' gives it; KEYMODS() tells Shift+Tab from Tab. Esc puts back the text the field started
+  ' with. The field is drawn again from its first character at the end, and the cursor is left
+  ' after the field.
+  ' Trap: a field that ends in the screen's last column moves the cursor to the next line.
+  FUNCTION INPUT2(ROW AS UBYTE, COLUMN AS UBYTE, TARGET$, WIDTH AS UBYTE) AS UWORD
+    DIM MOST AS UBYTE, CURSOR AS UBYTE, FIRST AS UBYTE, SHOWN AS UBYTE, TAIL AS UBYTE
+    DIM ADDED AS UBYTE
+    DIM PRESSED AS UWORD, ENDING AS UWORD
+    MOST = ContentsAt(@TARGET$)
+    ORIGINAL$ = TARGET$
+    CURSOR = LEN(TARGET$)
+    FIRST = 0
+    ENDING = 0
+    DO
+      ' Scroll the text so that the cursor is inside the field, then draw the field.
+      IF CURSOR < FIRST THEN FIRST = CURSOR
+      IF CURSOR - FIRST >= WIDTH THEN FIRST = CURSOR - WIDTH + 1
+      POS(1) = ROW
+      POS(0) = COLUMN
+      SHOWN = LEN(TARGET$) - FIRST
+      IF SHOWN > WIDTH THEN SHOWN = WIDTH
+      PRINT MID$(TARGET$, FIRST + 1, SHOWN);
+      REPEAT WIDTH - SHOWN
+        PRINT " ";
+      END REPEAT
+      IF ENDING <> 0 THEN RETURN ENDING
+      POS(0) = COLUMN + CURSOR - FIRST
+      PRESSED = WAITKEY()
+      IF PRESSED = KEYS.BACKSPACE AND CURSOR > 0 THEN
+        CURSOR = CURSOR - 1
+        PRESSED = KEYS.KEY_DELETE
+      ENDIF
+      TAIL = LEN(TARGET$) - CURSOR
+      SELECT CASE PRESSED
+        CASE KEYS.KEY_LEFT
+          IF CURSOR > 0 THEN CURSOR = CURSOR - 1
+        CASE KEYS.KEY_RIGHT
+          IF TAIL > 0 THEN CURSOR = CURSOR + 1
+        CASE KEYS.KEY_HOME
+          CURSOR = 0
+        CASE KEYS.KEY_END
+          CURSOR = LEN(TARGET$)
+        CASE KEYS.KEY_INSERT
+          OVERWRITE_MODE = OVERWRITE_MODE XOR 1
+        CASE KEYS.KEY_DELETE, 32 TO 255
+          ' One splice deletes the character at the cursor, types over it, or inserts one.
+          ' ADDED is 0 for Delete and 1 for a character. ADDED <= OVERWRITE_MODE holds for
+          ' Delete and for a character typed over another: both drop the character at the cursor.
+          ADDED = 1
+          IF PRESSED > 255 THEN ADDED = 0
+          IF TAIL > 0 AND ADDED <= OVERWRITE_MODE THEN
+            TAIL = TAIL - 1
+          ELSEIF LEN(TARGET$) = MOST THEN
+            CONTINUE
+          ENDIF
+          TARGET$ = LEFT$(TARGET$, CURSOR) + LEFT$(CHR$(PRESSED), ADDED) + RIGHT$(TARGET$, TAIL)
+          CURSOR = CURSOR + ADDED
+        CASE ELSE
+          IF PRESSED > 255 OR PRESSED = KEYS.ENTER OR PRESSED = KEYS.TAB OR PRESSED = KEYS.ESC THEN
+            IF PRESSED = KEYS.ESC THEN TARGET$ = ORIGINAL$
+            ENDING = PRESSED
+            CURSOR = 0
+          ENDIF
+      END SELECT
+    LOOP
+  END FUNCTION
+END NAMESPACE
