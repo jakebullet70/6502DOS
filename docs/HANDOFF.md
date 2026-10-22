@@ -3529,6 +3529,35 @@
             at `$A000` and called, FREE twice (error 9), ALLOC(255) (error 8). Build 1830 ms,
             the new baseline. `BANKLIB` ok 0.4 s. Steps since the full suite: 5. Next: step
             0e, the `#RAMBANK` regions in pyuxc; agree the design first.
+          - The user (2026-10-22): no doc batch and no full suite until the regions (0e to 0g)
+            are done; the code may change as it is tested. HANDOFF is still updated each step.
+          - Done, 0e1 (2026-10-22): `#REGION_SLOT n`, n 0 or 1 (the user's name; it may be
+            renamed later). Each SUB or FUNCT after `#REGION_SLOT 1` runs from a RAM bank the
+            kernel hands out at startup, at `$A000`; its variables and literals stay in low RAM.
+            An include file starts in its includer's slot, which holds again after it. New
+            module `pyuxc/uxc_ramreg.py`, hooked in `dd_keep_line`, `sb_sub`, `sm_store`,
+            `as_instruction`, the include start and end, `lk_link`, `lk_fix` and `finish`. One
+            link: the region's code is cut out like `#ROMBANKS` does, placed in the file after
+            the variables, where the array space starts, and resolved at `$A000`.
+            `T_RGLOAD`, first in `%INIT`, takes the bank, copies the image, then sets
+            `R_RGBANK`; the array space, the temps and the data records cover the image after.
+            A call across the edge goes to a 7-byte `T_FARCALL` veneer on the caller's side,
+            then `T_RGCALL`, then `bank_call`. Calls out of the region use the same `T_RGCALL`
+            (no `T_RGOUT`: `$00` is always the region's bank inside the region). `R_ERRORB`
+            (the `error_body` segment of `R-ERROR.ASM` with bank 1) replaces `R_ERROR`: a site
+            in the region prints `$06:A018`. Refused: a write to `$00` in a region SUB (store,
+            `DIM AT 0`, ASM `sta`/`stz`/... `$00`), `#REGION_SLOT 2`, a region with `#ORG`,
+            `#DATA` or `#ROMBANKS`, a jump other than a SUB call across the edge, over 8192
+            bytes. pyuxc prints `REGION 1: n BYTES, m FREE` and adds `,REGION 1 n BYTES` to
+            the result line. Costs in low RAM: `T_RGLOAD` 71, `T_RGCALL` 10, `R_EMEM` 17,
+            `R_ERRORB` +16, `R_RGBANK` 1 byte of data; 7 per SUB called across. A call across
+            is about 145 cycles. New tests: `RGCALL`, `RGERR` (`tests/`), `ERRRGBANK`,
+            `ERRRGASM`, `ERRRGSLOT`, `ERRRGORG`, `ERRRGDIMAT` (`UXCBASIC/tests/`); goldens
+            local. Build 5062 ms (every program recompiled), the new baseline. RGCALL ok
+            0.4 s, RGERR ok 0.4 s, the five ERRRG ok 0.0 s; FILEERR, DEADSUB, ASMOPS and
+            INCLUDE ok. Steps since the full suite: 6. Next: 0e2, a region's variables and
+            literals in the bank. Idea to propose: put `T_RGLOAD`, or all of `%INIT`, in the
+            space the array space covers after startup (saves up to 71 bytes resident).
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

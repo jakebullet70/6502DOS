@@ -4,10 +4,8 @@
 ; that finds an error JMPs to the stub. User code called that routine with a JSR, so under the
 ; stub's return address the stack holds the error site.
 
-; Stop with ?<message> ERROR AT $<site>, where the site is the address of the user code's JSR,
-; and end the program as T_END does.
-R_ERROR .block
-        #tpl
+; R_ERROR's code. bank 1 prints a site at $A000 and up as $<RAM bank>:<site>.
+error_body .segment bank
         pla                     ; the message address, less 1
         sta ZP_PTR
         pla
@@ -34,6 +32,17 @@ msg     iny
         tax
         lda ZP_TMP+1
         sbc #0
+        .if \bank != 0
+        cmp #$a0
+        bcc low
+        pha
+        lda $00                 ; the RAM bank of a site in the region
+        #self jsr, hex
+        lda #":"
+        #rec jsr, S_CHROUT
+        pla
+low
+        .endif
         #self jsr, hex
         txa
         #self jsr, hex
@@ -64,6 +73,13 @@ head    .byte 13
         .byte 0
 tail    .text " ERROR AT $"
         .byte 0
+        .endsegment
+
+; Stop with ?<message> ERROR AT $<site>, where the site is the address of the user code's JSR,
+; and end the program as T_END does. R_ERRORB, in UXC.TPL.ASM, is R_ERROR with bank set.
+R_ERROR .block
+        #tpl
+        #error_body 0
         #endtpl
         .endblock
 

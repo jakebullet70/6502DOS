@@ -213,5 +213,95 @@ T_FARCALL .block
         #endtpl
         .endblock
 
+; #REGION_SLOT: the records below are 6502DOS only. The stock table assembles them with these
+; placeholders, and pyuxc never emits them for it.
+        .if UXDOS == 0
+API_R0  = $02
+API_BANK_ALLOC = 0
+API_BANK_CALL = 0
+        .endif
+
+; #REGION_SLOT: the RAM bank of the region, which T_RGLOAD takes at startup.
+R_RGBANK .block
+        #data 1, 0
+        .endblock
+
+; #REGION_SLOT: the gate between low RAM and the region. A T_FARCALL enters with the SUB's
+; address in A/Y. bank_call calls it with the region's bank selected, then selects the caller's
+; bank again. Keeps X; returns A, Y and C, and N and Z from A. A call out of the region to a SUB
+; in low RAM comes here too, so a SUB that selects another bank returns to the region.
+T_RGCALL .block
+        #tpl
+        sta API_R0
+        sty API_R0+1
+        #rec lda, R_RGBANK
+        jmp API_BANK_CALL
+        #endtpl
+        .endblock
+
+; #REGION_SLOT, first at startup: take a RAM bank and copy S1 bytes, 1 or more, of the region's
+; code from S0 to $A000 there, then set R_RGBANK. No bank free stops with OUT OF MEMORY. Keeps X
+; and the caller's bank.
+; Trap: the image lies where the array space, the temps and the data records go, R_RGBANK among
+; them, so nothing may write there before the copy ends.
+T_RGLOAD .block
+        #tpl
+        lda #1
+        jsr API_BANK_ALLOC
+        bcc got
+        #rec jsr, R_EMEM
+got     ldy $00
+        phy                     ; the caller's bank
+        sta $00
+        #lo lda, S0
+        sta ZP_PTR
+        #hi lda, S0
+        sta ZP_PTR+1
+        stz ZP_DST
+        lda #$a0
+        sta ZP_DST+1
+        phx
+        ldy #0
+        #hi ldx, S1             ; the whole pages
+page    beq part
+whole   lda (ZP_PTR),y
+        sta (ZP_DST),y
+        iny
+        bne whole
+        inc ZP_PTR+1
+        inc ZP_DST+1
+        dex
+        bra page
+part    #lo ldx, S1             ; the rest
+        beq done
+rest    lda (ZP_PTR),y
+        sta (ZP_DST),y
+        iny
+        dex
+        bne rest
+done    plx
+        lda $00
+        #rec sta, R_RGBANK
+        pla
+        sta $00
+        #endtpl
+        .endblock
+
+R_EMEM  .block
+        #tpl
+        #rec jsr, R_ERROR
+        .byte 13
+        .text "OUT OF MEMORY"
+        #endtpl
+        .endblock
+
+; R_ERROR for a program with #REGION_SLOT: a site in the region prints as $<bank>:<site>. pyuxc
+; places it in R_ERROR's stead.
+R_ERRORB .block
+        #tpl
+        #error_body 1
+        #endtpl
+        .endblock
+
 tpl_count = len(tpl_all)
 index   .word tpl_all

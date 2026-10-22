@@ -1,0 +1,6 @@
+' ERRRGORG -- a region in a program with #ORG
+#ORG $C000
+#REGION_SLOT 1
+SUB S()
+END SUB
+S()

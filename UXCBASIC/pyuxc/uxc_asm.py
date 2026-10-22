@@ -27,6 +27,7 @@ from uxc_defs import K_ASM_BRANCH, K_ASM_LABELS, K_ASM_WORD, K_EK_ADDR, K_EK_CON
 import uxc_expr
 import uxc_fold
 import uxc_lex
+import uxc_ramreg
 import uxc_tpl as T
 from uxc_state import er_mismatch, er_stop, er_syntax, g
 
@@ -304,6 +305,7 @@ def as_instruction():
         return
     as_operand()
     as_choose()
+    uxc_ramreg.rg_asm()
     g.cb_b = g.as_code
     cb_add()
     if g.as_mode == "A" or g.as_mode == "B":

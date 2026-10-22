@@ -5,8 +5,9 @@ that nothing names.
                  program does not reach through a chain of calls, and count the runtime
                  records again. Out: g.dd_subs, the SUBs left out, and g.dd_bytes, the bytes
                  of code and runtime records saved. g.dd_keep_subs set keeps every SUB.
-    dd_keep_line() a line that starts with #, with the token at the #: #KEEP or #ENDKEEP.
-                   #ORG, #DATA and #ROMBANKS lines are skipped; dd_place_scan read them
+    dd_keep_line() a line that starts with #, with the token at the #: #KEEP or #ENDKEEP,
+                   or #REGION_SLOT (uxc_ramreg). #ORG, #DATA and #ROMBANKS lines are
+                   skipped; dd_place_scan read them
     dd_place_scan() in sb_scan's pass, a line that starts with #: #ORG, #DATA or #ROMBANKS
     dd_open()      at the end of the source, a #KEEP without its #ENDKEEP is an error
     dv_log()       in g.dv_s, 0 for the variables or 1 for the array space, and g.sb_place:
@@ -54,6 +55,7 @@ from uxc_defs import K_DD_MAX, K_DS_MAX, K_DV_MAX, K_FRAME_BASE, K_RT_LIST, K_SE
     K_TP_DATA, K_TT_NUM, K_TT_OP, K_TY_STR
 import uxc_lex
 import uxc_name
+import uxc_ramreg
 import uxc_sym
 from uxc_state import er_stop, er_syntax, g
 
@@ -269,6 +271,9 @@ def dd_keep_line():
             er_stop("#ENDKEEP WITHOUT #KEEP")
         g.dd_region_line = 0
         uxc_lex.lx_next()
+        return
+    if g.tk_s == "REGION_SLOT":
+        uxc_ramreg.rg_line()
         return
     if g.tk_s == "ORG" or g.tk_s == "DATA" or g.tk_s == "ROMBANKS":
         while g.tk_t != K_TT_EOL:

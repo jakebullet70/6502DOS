@@ -22,6 +22,7 @@ import uxc_flow
 import uxc_lex
 import uxc_link
 import uxc_name
+import uxc_ramreg
 import uxc_record
 import uxc_rombank
 import uxc_sub
@@ -50,6 +51,11 @@ def start(tpl_folder):
     g.rb_on = 0
     g.rb_bank = [0, 0]
     g.rb_name = ""
+    g.rg_slot = 0
+    g.rg_slot_outer = 0
+    g.rg_subs = []
+    g.rg_on = 0
+    g.rg_base = 0
     g.vr_n = 0
     g.rt_n = 0
     g.bs_n = 0
@@ -90,6 +96,10 @@ def finish():
         put("ROM BANK " + str(g.rb_bank[0]) + " " + str(g.rb_used_first) + " BYTES, ROM BANK " +
             str(g.rb_bank[1]) + " " + str(g.rb_used) + " BYTES")
         g.ui_line = g.ui_line + ",SECOND " + g.rb_obj + " " + str(g.rb_size_second)
+    if g.rg_on != 0:
+        put("REGION 1: " + str(g.rg_size) + " BYTES, " + str(uxc_ramreg.K_RG_ROOM - g.rg_size) +
+            " FREE")
+        g.ui_line = g.ui_line + ",REGION 1 " + str(g.rg_size) + " BYTES"
     if g.dd_subs > 0:
         g.ui_line = g.ui_line + ",REMOVED " + str(g.dd_subs) + " SUBS " + str(g.dd_bytes) + \
             " BYTES"

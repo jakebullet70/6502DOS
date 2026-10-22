@@ -1,0 +1,6 @@
+' ERRRGBANK -- a write to $00, the RAM bank, in a SUB of the region
+#REGION_SLOT 1
+SUB S()
+  ContentsAt(0) = 1
+END SUB
+S()

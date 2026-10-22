@@ -17,9 +17,11 @@ API_IOCTL  = $035e      ; X handle, A 6: input status. r0 = $ff when a read give
 API_LINE   = $0385      ; con_line: r0 buffer [max][len][text], ended by CR; echoes CR LF
 API_STATUS = $0388      ; con_status: A = $ff when a key waits, else 0
 API_EXIT   = $038e      ; exit: A exit code. Does not return
+API_BANK_ALLOC = $0397  ; bank_alloc: A count. A = the first bank of the run
 API_IN     = $03bb      ; con_in: A = the next key, no echo
 API_CURSOR = $03be      ; con_cursor: C set gets the row in X and the column in Y; C clear sets them
 API_GETKEY = $03d0      ; con_getkey: C clear waits, C set does not. A character, X scan code, Y mods
+API_BANK_CALL = $03d9   ; bank_call: A bank, r0 address, X in. A, X, Y and C out; keeps the bank
 
 ; The handles every program starts with.
 STDOUT  = 1

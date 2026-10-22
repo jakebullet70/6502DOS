@@ -13,6 +13,7 @@ import os
 
 import uxc_code
 import uxc_dead
+import uxc_ramreg
 import uxc_rombank
 from uxc_code import cb_add, cb_get, cb_put, emit
 from uxc_defs import K_F_HI, K_F_LO, K_FRAME_BASE, K_SEC_BSS, K_SEC_CODE, K_SEC_CONST, \
@@ -53,6 +54,9 @@ def lk_link():
     uxc_dead.dd_strip()
     uxc_dead.dv_strip()
     uxc_dead.ds_strip()
+    uxc_ramreg.rg_ranges()
+    if g.rg_on != 0:
+        uxc_ramreg.rg_split()
     if g.rb_on != 0:
         uxc_rombank.rb_ranges()
     g.sy_r = g.lk_init_record
@@ -62,6 +66,8 @@ def lk_link():
     uxc_sym.sy_set()
     g.lk_start = g.cb_n
     uxc_code.rt_close()
+    if g.rg_on != 0:
+        uxc_ramreg.rg_load()
     if g.lk_apart != 0 and g.vr_n + g.bs_n > 0:
         g.sl_s[0] = K_SEC_VAR
         g.sl_v[0] = 0
@@ -97,7 +103,8 @@ def lk_link():
     g.lk_i = 0
     while g.lk_i < g.rt_n:
         uxc_code.rt_place()
-        if g.rt_dn == 0 and (g.rb_on == 0 or g.rb_need[g.rt_id] != 0):
+        if g.rt_dn == 0 and (g.rb_on == 0 or g.rb_need[g.rt_id] != 0) and \
+                (g.rg_on == 0 or g.rt_id != T.R_ERROR):
             emit(g.rt_id)
         g.lk_i = g.lk_i + 1
     # The strings, out of their own bank. With #DATA the startup copies them to its address.
@@ -122,6 +129,9 @@ def lk_link():
         for g.lk_i in range(1, g.vr_n + 1):
             g.cb_b = 0
             cb_add()
+    # The region's image follows, where the array space starts.
+    if g.rg_on != 0:
+        uxc_ramreg.rg_place()
     # The array space follows, outside the file.
     g.lk_bss = g.lk_var + g.vr_n
     if g.lk_bss + g.bs_n > K_TOP or g.lk_org + g.cb_n > 65536:
@@ -160,8 +170,11 @@ def lk_fix():
     """LK.FIX. Resolve fixup g.fx_i. g.lk_v is the address of the value."""
     uxc_code.fx_read()
     if g.fx_s == K_SEC_CODE:
-        g.lk_v = g.lk_org + g.fx_v
+        g.lk_v = g.fx_v
+        uxc_ramreg.rg_code_address()
     if g.fx_s == K_SEC_REC:
+        if g.rg_on != 0 and g.fx_v == T.R_ERROR:
+            g.fx_v = T.R_ERRORB
         uxc_code.rt_address()
     if g.fx_s == K_SEC_STR:
         g.lk_v = g.lk_str + g.fx_v
@@ -183,7 +196,8 @@ def lk_fix():
         uxc_sym.sy_get()
         if (g.sy_flags & 1) == 0:
             er_stop("LABEL NOT FOUND")
-        g.lk_v = g.lk_org + g.sy_val
+        g.lk_v = g.sy_val
+        uxc_ramreg.rg_code_address()
     g.lk_hi = g.lk_v // 256
     g.lk_lo = g.lk_v - g.lk_hi * 256
     if g.fx_k == K_F_LO:

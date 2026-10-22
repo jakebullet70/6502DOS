@@ -1,0 +1,7 @@
+' ERRRGDIMAT -- a store to a variable at $00 in a SUB of the region
+DIM BANK_NOW AS UBYTE AT 0
+#REGION_SLOT 1
+SUB S()
+  BANK_NOW = 3
+END SUB
+S()

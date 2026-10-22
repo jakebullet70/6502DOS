@@ -260,10 +260,12 @@ def lx_include_find():
 
 
 def lx_include_start():
-    """LX.INCLUDE.START. An included file may not include another."""
+    """LX.INCLUDE.START. An included file may not include another. It starts in the
+    includer's #REGION_SLOT, which LX.INCLUDE.END sets again."""
     if g.lx_including != 0:
         er_stop("#INCLUDE IN AN INCLUDED FILE")
     g.lx_source_name = g.lx_name
+    g.rg_slot_outer = g.rg_slot
     g.lx_source_no = g.lx_no + g.lx_join_skip
     close_2()
     g.lx_name = g.lx_include_name
@@ -277,6 +279,7 @@ def lx_include_end():
     g.lx_name = g.lx_source_name
     lx_open()
     g.lx_including = 0
+    g.rg_slot = g.rg_slot_outer
     for g.lx_i in range(1, g.lx_source_no + 1):
         g.lx_l, g.lx_st = linput_2(g.lx_delim)
     if (g.lx_st & 66) != 0:

@@ -24,6 +24,7 @@ import uxc_expr
 import uxc_flow
 import uxc_lex
 import uxc_name
+import uxc_ramreg
 import uxc_str
 import uxc_sym
 import uxc_tpl as T
@@ -237,6 +238,7 @@ def sb_sub():
     if g.dd_region_line != 0 and (g.sy_flags & K_SY_LIVE) == 0:
         g.sy_flags = g.sy_flags + K_SY_LIVE
     uxc_sym.sy_set()
+    uxc_ramreg.rg_sub()
     g.sb_field = K_SY_POOL
     sb_field_get()
     g.sb_frame = g.sb_word

@@ -1,0 +1,10 @@
+' RGERR: a run-time error in region 1 prints its site as $<RAM bank>:<address>.
+DIM ZERO AS UWORD
+#REGION_SLOT 1
+SUB DIVIDE()
+  PRINT "IN"
+  PRINT 10 / ZERO
+END SUB
+#REGION_SLOT 0
+DIVIDE()
+PRINT "NOT HERE"

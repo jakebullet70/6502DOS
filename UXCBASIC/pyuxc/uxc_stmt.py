@@ -25,6 +25,7 @@ import uxc_for
 import uxc_lex
 import uxc_asm
 import uxc_name
+import uxc_ramreg
 import uxc_record
 import uxc_select
 import uxc_str
@@ -395,6 +396,8 @@ def sm_let():
 
 def sm_store():
     """SM.STORE. The value on the expression stack into the g.sm_ty at g.sm_sec g.sm_ad."""
+    if g.sm_sec == K_SEC_CONST and g.sm_ad == 0:
+        uxc_ramreg.rg_store()
     if g.sm_ty == K_TY_LONG:
         uxc_expr.ex_tol()
         g.sl_s[0] = g.sm_sec
