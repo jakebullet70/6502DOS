@@ -3850,7 +3850,66 @@
             and reuse; FREE(0)), wrote golden 2.0 s, checked by hand; then GUIFORM ok 0.5 s,
             GUIBOX ok 0.4 s, GUITHEME ok 0.4 s. No build: the ROM and templates did not change.
             Owed to the doc batch: GUI.PLAN.md 2c (FRAMED, DRAW_FORM, the arrays).
-            Next: phase 2, step 2d, sections and automatic layout.
+          - Done (2026-10-22): GUI step 2d, sections and automatic layout, with two pyuxc
+            changes it needed.
+            - Bug found in 2c: pyuxc copied a literal STRING argument into a temp, so the form
+              kept the temp's address and every title read as the last literal passed. GUIFORM
+              missed it (each form drawn right after its CREATEFORM). The user chose a new
+              parameter form (asked, option 1 of 3).
+            - pyuxc `T$ AS CONST` (uxc_sub `sb_parameter`; flag `K_SY_READ_ONLY` = 1 on a
+              STRING parameter, bit 0 is free on a variable): a literal argument is passed by
+              its own address, no copy. `sg_writable` stops `T$ = ...`, INPUT and LINPUT into it
+              with `CONST PARAMETER: T$`. An AS CONST parameter passed on to a plain STRING
+              parameter is copied first (`sg_is_read_only` in `sg_pass`), as a literal is.
+              `CREATEFORM`, `STARTSECTION` take `TITLE$ AS CONST`; `INPUT2` takes
+              `MASK$ AS CONST = ""` (GUIMASK's PRG -99 bytes, 6 calls).
+            - pyuxc `sb_look_ahead`: a call's arguments are pushed and popped only when they
+              call a SUB or FUNCTION (a name before `(` that resolves to `K_SK_SUB`), not for
+              any `(`. Array reads, AddrOf, POS, ContentsAt and the other built-ins now store
+              straight into the parameters. GUI region -134 bytes; CMDSHELL -64, VIEW -46,
+              DATE -32, TIME -20, XCOPY -12, the other programs in src/ unchanged.
+            - `lib/GUI.UXI`: forms and sections share one table of panels, `MOST_PANELS` 12,
+              parallel arrays `PANEL_OWNER`, `_ROW`, `_COLUMN`, `_WIDTH`, `_HEIGHT`, `_FLAGS`,
+              `_LAYOUT` (a form's next automatic line, a section's longest caption), 13
+              elements, and `PANEL_TITLE_AT` (UWORD). A form's handle is its panel, counting
+              down from 12; PANEL_OWNER is the form's handle for the form and its sections, 0
+              free. `MOST_FORMS` and the `FORM_` arrays are gone. `NEW_PANEL` fills a panel
+              for CREATEFORM and STARTSECTION. `GUI.STARTSECTION(HANDLE, TITLE$ AS CONST,
+              FLAGS = 0)`: on the form's next line, 1 column in from each side, its top row
+              the title row (always, even with no frame and no title); ends an open section
+              first. `GUI.ENDSECTION()`: height to the form's next line, + 1 when FRAMED
+              (FRAMED is 1, added straight in), + 1 after a half-used TWO_COL line.
+              CREATEFORM ends an open section too and makes the new form current.
+              `GUI.AUTO` (254). Flags `GUI.ONE_COL` 0, `GUI.TWO_COL` 2. `GUI.PLACE(ROW, COLUMN,
+              CAPTION_LENGTH)` is the hook phase 3's controls call: puts `PLACED_ROW`,
+              `PLACED_COLUMN`, `PLACED_SECTION`; ROW and COLUMN count from the form's corner;
+              AUTO column is form column + 3, or the form's middle (WIDTH / 2) for TWO_COL's
+              right side; only an AUTO column joins the section and counts toward its longest
+              caption (`PANEL_LAYOUT` of the section). Phase 3 puts a field at PLACED_COLUMN +
+              that longest + 1. `DRAW_PANEL` draws a form (double lines) or a section (single
+              lines), or clears its area when not FRAMED, then the title; `DRAW_FORM` draws the
+              form, then each panel it owns. FREE frees every panel the form owns.
+            - Size on the same probe as 2c: region 1 3510 to 4423 bytes (+913) with
+              STARTSECTION, PLACE and ENDSECTION, 3769 free; forms alone are now 4047 (+537
+              over 2c: ENDSECTION comes with CREATEFORM, the section loop with DRAW_FORM,
+              NEW_PANEL, 12 panels). PRG 4187 to 5090 (+903). Arrays 117 bytes. The first 2d was
+              4678; one panel table -117, the look-ahead -134, `WIDTH / 2` -4.
+            - The array-store template (19 bytes for 9) would save about 10 bytes at each of
+              NEW_PANEL's 8 stores; still asm, still not asked.
+            - Tests: new `UXCBASIC/tests/SUBCONST.UXB` (two literals, a global, pass-on to a
+              plain parameter, AS CONST to AS CONST, a default) ok 0.6 s; `ERRCONSTLET` and
+              `ERRCONSTIN` ok 0.2 s each; new `tests/GUISECT.UXB` (two forms, sections with and
+              without frames, TWO_COL ending on a half line, explicit places, panels used up,
+              FREE and reuse), golden 2.1 s, every number and draw checked by hand; GUIFORM's
+              case 5 now uses up 12 panels, golden rewritten (handles 12 11 10 9 0 11, draws
+              unchanged). The 61 UXCBASIC tests with a SUB or a region all ok, slowest 0.8 s;
+              GUIBOX, GUITHEME, GUIEDIT, GUIMASK, GUIFLAGS, GUIFORM, GUISECT ok, 0.4 to 0.5 s.
+              No build: the ROM and the templates did not change.
+            - Owed to the doc batch: UXC-HELP `T$ AS CONST` (Subroutines, with an example, and
+              the CONST PARAMETER error); GUI.PLAN.md 2d (panels, PLACE, the title row, the
+              limits D8 now 12 panels in all); the pyuxc README if it names sb_look_ahead.
+              The HDIR goldens pending: CMDSHELL, VIEW, DATE, TIME and XCOPY shrank.
+            Next: phase 2, step 2e, GUI.SHOW and the focus loop.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

@@ -1,0 +1,71 @@
+' GUISECT: GUI.STARTSECTION, GUI.ENDSECTION, GUI.PLACE, and the sections GUI.DRAW_FORM draws.
+' The lines after the draws give each PLACE as row, column and section; then panels 12 to 7 as
+' row, height and layout; then the open section after the 7th, 8th and 9th of 9 sections when
+' 8 panels are free; then the handle of a form made after FREE.
+' Form 1 at 1, 0, 40 by 14, framed. Section "Page", no frame: two controls. Section "Opts",
+' framed, two columns: three controls, so it ends on a half line. Section "", no frame: an
+' automatic control, one at 2, 30 with no section, and one with an automatic row at column 10.
+' Form 2 at 20, 50, 20 by 6, no frame, ends the open section. Its framed section "": one
+' control; ENDSECTION twice; then a control on the form's own line.
+#INCLUDE "KEYS.UXI"
+#INCLUDE "GUI.UXI"
+DIM KEPT(64) AS UBYTE, AT AS UBYTE, H1 AS UBYTE, H2 AS UBYTE, PANEL AS UBYTE
+
+SUB KEEP(VALUE AS UBYTE)
+  KEPT(AT) = VALUE
+  AT = AT + 1
+END SUB
+
+SUB PUT(ROW AS UBYTE, COLUMN AS UBYTE, CAPTION_LENGTH AS UBYTE)
+  GUI.PLACE(ROW, COLUMN, CAPTION_LENGTH)
+  KEEP(GUI.PLACED_ROW)
+  KEEP(GUI.PLACED_COLUMN)
+  KEEP(GUI.PLACED_SECTION)
+END SUB
+
+AT = 0
+H1 = GUI.CREATEFORM("Setup", 1, 0, 40, 14, GUI.FRAMED)
+GUI.STARTSECTION(H1, "Page")
+PUT(GUI.AUTO, GUI.AUTO, 5)
+PUT(GUI.AUTO, GUI.AUTO, 8)
+GUI.ENDSECTION()
+GUI.STARTSECTION(H1, "Opts", GUI.FRAMED + GUI.TWO_COL)
+PUT(GUI.AUTO, GUI.AUTO, 3)
+PUT(GUI.AUTO, GUI.AUTO, 6)
+PUT(GUI.AUTO, GUI.AUTO, 2)
+GUI.ENDSECTION()
+GUI.STARTSECTION(H1, "")
+PUT(GUI.AUTO, GUI.AUTO, 4)
+PUT(2, 30, 3)
+PUT(GUI.AUTO, 10, 1)
+H2 = GUI.CREATEFORM("Two", 20, 50, 20, 6)
+GUI.STARTSECTION(H2, "", GUI.FRAMED)
+PUT(GUI.AUTO, GUI.AUTO, 2)
+GUI.ENDSECTION()
+GUI.ENDSECTION()
+PUT(GUI.AUTO, GUI.AUTO, 7)
+FOR PANEL = 12 TO 7 STEP -1
+  KEEP(GUI.PANEL_ROW(PANEL))
+  KEEP(GUI.PANEL_HEIGHT(PANEL))
+  KEEP(GUI.PANEL_LAYOUT(PANEL))
+NEXT PANEL
+GUI.DRAW_FORM(H1)
+GUI.DRAW_FORM(H2)
+GUI.FREE(H2)
+REPEAT 7
+  GUI.STARTSECTION(H1, "x")
+END REPEAT
+KEEP(GUI.OPEN_SECTION)
+GUI.STARTSECTION(H1, "x")
+KEEP(GUI.OPEN_SECTION)
+GUI.STARTSECTION(H1, "x")
+KEEP(GUI.OPEN_SECTION)
+GUI.FREE(H1)
+KEEP(GUI.CREATEFORM("Re", 0, 0, 6, 2))
+POS(1) = 26
+POS(0) = 0
+FOR PANEL = 0 TO AT - 1
+  PRINT KEPT(PANEL);
+  IF PANEL MOD 12 = 11 THEN PRINT
+NEXT PANEL
+PRINT

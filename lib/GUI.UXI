@@ -62,15 +62,27 @@ NAMESPACE GUI
 
   ' CREATEFORM's ROW or COLUMN that centers the form on the screen.
   CONST CENTER AS UBYTE = 255
-  ' CREATEFORM's FLAGS. FRAMED draws the form in a box of double lines.
-  CONST FRAMED AS UBYTE = 1
-  ' The forms, handles 1 to MOST_FORMS, one element a form. Element 0 is never used, and its
-  ' FORM_WIDTH stays 0. A form whose FORM_WIDTH is 0 is free. FORM_TITLE_AT is the address of
-  ' the caller's title string.
-  ' Checklist: the arrays hold MOST_FORMS + 1 elements.
-  CONST MOST_FORMS AS UBYTE = 4
-  DIM FORM_ROW(5) AS UBYTE, FORM_COLUMN(5) AS UBYTE, FORM_WIDTH(5) AS UBYTE
-  DIM FORM_HEIGHT(5) AS UBYTE, FORM_FLAGS(5) AS UBYTE, FORM_TITLE_AT(5) AS UWORD
+  ' PLACE's ROW or COLUMN that lays the control out on the form's next automatic line.
+  CONST AUTO AS UBYTE = 254
+  ' The FLAGS of CREATEFORM and STARTSECTION. FRAMED draws a form in a box of double lines, and
+  ' a section in a box of single lines. TWO_COL puts a section's automatic controls in two
+  ' columns, left then right.
+  CONST FRAMED AS UBYTE = 1, ONE_COL AS UBYTE = 0, TWO_COL AS UBYTE = 2
+  ' The forms and their sections, one panel each, 1 to MOST_PANELS. A form's handle is its
+  ' panel. PANEL_OWNER is the form's handle, for the form and for each of its sections, and 0
+  ' for a free panel; element 0 is never used. PANEL_TITLE_AT is the address of the caller's
+  ' title string. PANEL_LAYOUT is a form's next automatic line, and a section's longest
+  ' caption.
+  ' Checklist: the arrays hold MOST_PANELS + 1 elements.
+  CONST MOST_PANELS AS UBYTE = 12
+  DIM PANEL_OWNER(13) AS UBYTE, PANEL_ROW(13) AS UBYTE, PANEL_COLUMN(13) AS UBYTE
+  DIM PANEL_WIDTH(13) AS UBYTE, PANEL_HEIGHT(13) AS UBYTE, PANEL_FLAGS(13) AS UBYTE
+  DIM PANEL_LAYOUT(13) AS UBYTE, PANEL_TITLE_AT(13) AS UWORD
+  ' The form the controls go in, its open section or 0, and 1 when a TWO_COL section's next
+  ' control goes in the right column.
+  DIM CURRENT_FORM AS UBYTE, OPEN_SECTION AS UBYTE, LAYOUT_SIDE AS UBYTE
+  ' Where PLACE put the control: its screen row and column, and its section, 0 for none.
+  DIM PLACED_ROW AS UBYTE, PLACED_COLUMN AS UBYTE, PLACED_SECTION AS UBYTE
 
   ' Edits TARGET$ in a field at ROW and COLUMN, counted from 0, WIDTH characters wide.
   ' TARGET$ takes at most its own size in characters. The text scrolls inside the field when it
@@ -85,7 +97,7 @@ NAMESPACE GUI
   ' the mask's other characters. A masked field types over, and Delete and Backspace put a
   ' space. "(###)-###-####" is a phone number.
   ' Trap: a field that ends in the screen's last column moves the cursor to the next line.
-  FUNCTION INPUT2(ROW AS UBYTE, COLUMN AS UBYTE, TARGET$, WIDTH AS UBYTE, MASK$ = "", FLAGS AS UBYTE = 0) AS UWORD
+  FUNCTION INPUT2(ROW AS UBYTE, COLUMN AS UBYTE, TARGET$, WIDTH AS UBYTE, MASK$ AS CONST = "", FLAGS AS UBYTE = 0) AS UWORD
     DIM MOST AS UBYTE, CURSOR AS UBYTE, FIRST AS UBYTE, SHOWN AS UBYTE, TAIL AS UBYTE
     DIM ADDED AS UBYTE, CHANGE AS UBYTE, TYPED AS UBYTE
     DIM FIXED AS UBYTE, SPOT AS UBYTE, MASK_CHAR AS UBYTE, BACKWARD AS UBYTE
@@ -321,47 +333,127 @@ NAMESPACE GUI
   ' The forms' handles are not checked: a handle is one that CREATEFORM returned, or 0.
   ERRORS OFF
 
+  ' Takes a free panel and fills it. Its owner is CURRENT_FORM, or the panel itself when
+  ' CURRENT_FORM is 0, and CURRENT_FORM is then that owner. Returns the panel, or 0 when
+  ' MOST_PANELS panels are in use.
+  FUNCTION NEW_PANEL(TITLE_AT AS UWORD, ROW AS UBYTE, COLUMN AS UBYTE, WIDTH AS UBYTE, HEIGHT AS UBYTE, FLAGS AS UBYTE) AS UBYTE
+    DIM PANEL AS UBYTE
+    PANEL = MOST_PANELS
+    DO WHILE PANEL_OWNER(PANEL) <> 0
+      PANEL = PANEL - 1
+    LOOP
+    IF PANEL = 0 THEN RETURN 0
+    IF CURRENT_FORM = 0 THEN CURRENT_FORM = PANEL
+    PANEL_OWNER(PANEL) = CURRENT_FORM
+    PANEL_ROW(PANEL) = ROW
+    PANEL_COLUMN(PANEL) = COLUMN
+    PANEL_WIDTH(PANEL) = WIDTH
+    PANEL_HEIGHT(PANEL) = HEIGHT
+    PANEL_FLAGS(PANEL) = FLAGS
+    PANEL_LAYOUT(PANEL) = 0
+    PANEL_TITLE_AT(PANEL) = TITLE_AT
+    RETURN PANEL
+  END FUNCTION
+
+  ' Ends the open section: its height runs to the form's next automatic line, which moves below
+  ' the section. With no section open it does nothing.
+  SUB ENDSECTION()
+    DIM SECTION AS UBYTE, BELOW AS UBYTE
+    SECTION = OPEN_SECTION
+    IF SECTION = 0 THEN RETURN
+    ' FRAMED is 1: a framed section takes a row for its bottom line.
+    BELOW = PANEL_LAYOUT(CURRENT_FORM) + LAYOUT_SIDE + (PANEL_FLAGS(SECTION) AND FRAMED)
+    PANEL_LAYOUT(CURRENT_FORM) = BELOW
+    PANEL_HEIGHT(SECTION) = BELOW - PANEL_ROW(SECTION)
+    OPEN_SECTION = 0
+    LAYOUT_SIDE = 0
+  END SUB
+
   ' Makes a form WIDTH columns by HEIGHT rows, its top left corner at ROW and COLUMN, counted
   ' from 0, and returns its handle. CENTER as ROW or COLUMN centers the form on the screen.
-  ' FLAGS changes the form as the CONSTs above give. WIDTH is at least 4 and HEIGHT at least 2.
-  ' The form keeps the address of TITLE$, not a copy, so TITLE$ is a literal or a global
-  ' string. CREATEFORM returns 0 when MOST_FORMS forms are in use.
-  FUNCTION CREATEFORM(TITLE$, ROW AS UBYTE, COLUMN AS UBYTE, WIDTH AS UBYTE, HEIGHT AS UBYTE, FLAGS AS UBYTE = 0) AS UBYTE
+  ' FLAGS changes the form as the CONSTs above give. WIDTH is at least 6 and HEIGHT at least 2.
+  ' The form keeps the address of TITLE$, not a copy. A section still open is ended first, and
+  ' the controls laid out from now on go in the new form. CREATEFORM returns 0 when
+  ' MOST_PANELS panels are in use.
+  FUNCTION CREATEFORM(TITLE$ AS CONST, ROW AS UBYTE, COLUMN AS UBYTE, WIDTH AS UBYTE, HEIGHT AS UBYTE, FLAGS AS UBYTE = 0) AS UBYTE
     DIM HANDLE AS UBYTE
-    HANDLE = MOST_FORMS
-    DO WHILE FORM_WIDTH(HANDLE) <> 0
-      HANDLE = HANDLE - 1
-    LOOP
-    IF HANDLE = 0 THEN RETURN 0
+    ENDSECTION()
     IF ROW = CENTER THEN ROW = HALF_GAP(POS(2), HEIGHT)
     IF COLUMN = CENTER THEN COLUMN = HALF_GAP(POS(3), WIDTH)
-    FORM_ROW(HANDLE) = ROW
-    FORM_COLUMN(HANDLE) = COLUMN
-    FORM_WIDTH(HANDLE) = WIDTH
-    FORM_HEIGHT(HANDLE) = HEIGHT
-    FORM_FLAGS(HANDLE) = FLAGS
-    FORM_TITLE_AT(HANDLE) = AddrOf(TITLE$)
+    CURRENT_FORM = 0
+    HANDLE = NEW_PANEL(AddrOf(TITLE$), ROW, COLUMN, WIDTH, HEIGHT, FLAGS)
+    PANEL_LAYOUT(HANDLE) = ROW + 1
     RETURN HANDLE
   END FUNCTION
 
-  ' Frees the form HANDLE for the next CREATEFORM. A handle of 0 does nothing.
+  ' Frees the form HANDLE and its sections for the next CREATEFORM. A handle of 0 does nothing.
   SUB FREE(HANDLE AS UBYTE)
-    FORM_WIDTH(HANDLE) = 0
+    DIM PANEL AS UBYTE
+    PANEL = MOST_PANELS
+    REPEAT MOST_PANELS
+      IF PANEL_OWNER(PANEL) = HANDLE THEN PANEL_OWNER(PANEL) = 0
+      PANEL = PANEL - 1
+    END REPEAT
   END SUB
 
-  ' Draws the form HANDLE: the box in the theme's FRAME color when FRAMED, else the area
-  ' cleared in its PAGE color, then the title, between spaces, centered on the top row in its
-  ' TITLE color. A title too long for the row is cut. An empty title draws nothing.
-  SUB DRAW_FORM(HANDLE AS UBYTE)
-    DIM TITLE_AT AS UWORD, SHOWN AS UBYTE, SPOT AS UBYTE, TOP AS UBYTE
-    TOP = FORM_ROW(HANDLE)
+  ' Opens a section in the form HANDLE, on the form's next automatic line, 1 column in from each
+  ' side of the form. Its top row holds the title, and the controls laid out with AUTO until
+  ' ENDSECTION go below it. FLAGS changes the section as the CONSTs above give. A section still
+  ' open is ended first. The section keeps the address of TITLE$, as CREATEFORM does. With
+  ' MOST_PANELS panels in use, no section opens, and the controls go on the form's lines.
+  SUB STARTSECTION(HANDLE AS UBYTE, TITLE$ AS CONST, FLAGS AS UBYTE = 0)
+    DIM TOP AS UBYTE
+    ENDSECTION()
+    CURRENT_FORM = HANDLE
+    TOP = PANEL_LAYOUT(HANDLE)
+    OPEN_SECTION = NEW_PANEL(AddrOf(TITLE$), TOP, PANEL_COLUMN(HANDLE) + 1, PANEL_WIDTH(HANDLE) - 2, 1, FLAGS)
+    PANEL_LAYOUT(HANDLE) = TOP + 1
+  END SUB
+
+  ' Lays out a control of the current form whose caption is CAPTION_LENGTH characters, and puts
+  ' the place in PLACED_ROW, PLACED_COLUMN and PLACED_SECTION. ROW and COLUMN count from the
+  ' form's top left corner. AUTO as ROW takes the form's next automatic line and moves it down.
+  ' AUTO as COLUMN takes the column 3 in from the form's edge, or in a TWO_COL section that
+  ' column and the form's middle in turn; the control is then the open section's, and its
+  ' caption counts toward the section's longest. A control with another column has no section.
+  SUB PLACE(ROW AS UBYTE, COLUMN AS UBYTE, CAPTION_LENGTH AS UBYTE)
+    DIM FORM AS UBYTE, SECTION AS UBYTE
+    FORM = CURRENT_FORM
+    SECTION = OPEN_SECTION
+    PLACED_SECTION = 0
+    IF COLUMN = AUTO THEN
+      PLACED_SECTION = SECTION
+      COLUMN = 3
+      IF LAYOUT_SIDE <> 0 THEN COLUMN = PANEL_WIDTH(FORM) / 2
+      ' With no section open this sets element 0, which nothing reads.
+      IF CAPTION_LENGTH > PANEL_LAYOUT(SECTION) THEN PANEL_LAYOUT(SECTION) = CAPTION_LENGTH
+    ENDIF
+    PLACED_COLUMN = PANEL_COLUMN(FORM) + COLUMN
+    IF ROW = AUTO THEN
+      PLACED_ROW = PANEL_LAYOUT(FORM)
+      IF PANEL_FLAGS(SECTION) AND TWO_COL THEN LAYOUT_SIDE = LAYOUT_SIDE XOR 1
+      IF LAYOUT_SIDE = 0 THEN PANEL_LAYOUT(FORM) = PLACED_ROW + 1
+    ELSE
+      PLACED_ROW = PANEL_ROW(FORM) + ROW
+    ENDIF
+  END SUB
+
+  ' Draws PANEL: when FRAMED, its box in the theme's FRAME color, of double lines for a form and
+  ' single lines for a section; else its area cleared in the PAGE color. Then its title, between
+  ' spaces, centered on its top row in the TITLE color. A title too long for the row is cut. An
+  ' empty title draws nothing.
+  SUB DRAW_PANEL(PANEL AS UBYTE)
+    DIM TITLE_AT AS UWORD, SHOWN AS UBYTE, SPOT AS UBYTE, TOP AS UBYTE, STYLE AS ENUM.LINES
+    TOP = PANEL_ROW(PANEL)
     SPAN_ROW = TOP
-    SPAN_COLUMN = FORM_COLUMN(HANDLE)
-    SPAN_LENGTH = FORM_WIDTH(HANDLE)
-    SPOT = FORM_HEIGHT(HANDLE)
-    IF FORM_FLAGS(HANDLE) AND FRAMED THEN
+    SPAN_COLUMN = PANEL_COLUMN(PANEL)
+    SPAN_LENGTH = PANEL_WIDTH(PANEL)
+    SPOT = PANEL_HEIGHT(PANEL)
+    IF PANEL_FLAGS(PANEL) AND FRAMED THEN
       USE_COLOR(FRAME)
-      BOX(TOP, SPAN_COLUMN, SPAN_LENGTH, SPOT, DOUBLE)
+      STYLE = LINES.SINGLE
+      IF PANEL_OWNER(PANEL) = PANEL THEN STYLE = LINES.DOUBLE
+      BOX(TOP, SPAN_COLUMN, SPAN_LENGTH, SPOT, STYLE)
     ELSE
       USE_COLOR(PAGE)
       REPEAT SPOT
@@ -369,7 +461,7 @@ NAMESPACE GUI
       END REPEAT
     ENDIF
     ' The string's length byte is at +1, its characters from +2.
-    TITLE_AT = FORM_TITLE_AT(HANDLE)
+    TITLE_AT = PANEL_TITLE_AT(PANEL)
     SHOWN = ContentsAt(TITLE_AT + 1)
     SPOT = SPAN_LENGTH - 4
     IF SHOWN > SPOT THEN SHOWN = SPOT
@@ -385,6 +477,17 @@ NAMESPACE GUI
       END REPEAT
       PRINT " ";
     ENDIF
+  END SUB
+
+  ' Draws the form HANDLE, then its sections, each as DRAW_PANEL draws it.
+  SUB DRAW_FORM(HANDLE AS UBYTE)
+    DIM PANEL AS UBYTE
+    DRAW_PANEL(HANDLE)
+    PANEL = MOST_PANELS
+    REPEAT MOST_PANELS
+      IF PANEL_OWNER(PANEL) = HANDLE AND PANEL <> HANDLE THEN DRAW_PANEL(PANEL)
+      PANEL = PANEL - 1
+    END REPEAT
   END SUB
   ERRORS ON
 END NAMESPACE
