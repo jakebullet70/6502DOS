@@ -16,7 +16,7 @@ rewrite reports the error and ENDs at the same point.
 """
 
 from uxc_defs import K_ALIASES, K_ASM_LABELS, K_CODE_BANKS, K_DD_MAX, K_DS_MAX, K_DV_MAX, \
-    K_EX_MAX, K_FIX_BANKS, K_NS_MAX, K_SB_DEPTH, K_SYM_BANKS
+    K_EX_MAX, K_FIX_BANKS, K_NS_MAX, K_SB_DEFAULTS, K_SB_DEPTH, K_SYM_BANKS
 
 
 class State:
@@ -62,6 +62,7 @@ def dim():
                  "sb_saved_parentheses", "sb_saved_condition"):
         setattr(g, name, [0] * (K_SB_DEPTH + 1))
     g.sg_called = [""] * (K_SB_DEPTH + 1)
+    g.sb_default_text = [""] * (K_SB_DEFAULTS + 1)
     g.as_label_name = [""] * K_ASM_LABELS
     g.as_label_at = [0] * K_ASM_LABELS
     g.nm_alias_name = [""] * K_ALIASES
@@ -89,7 +90,7 @@ def dim():
                  "sg_last_new", "sg_empty_offset", "sg_empty_known", "sg_appending",
                  "sg_chr_temp", "sg_chr_start", "sg_chr_fixups", "cs_jo", "sm_last_jump",
                  "dd_keep_subs", "dd_region_line", "dv_keep_vars", "dv_full", "ex_const_record",
-                 "nm_type_enum", "sb_enum"):
+                 "nm_type_enum", "sb_enum", "sb_default_count", "sb_filling"):
         setattr(g, name, 0)
     g.sg_last_text = ""
     g.dd_region_text = ""

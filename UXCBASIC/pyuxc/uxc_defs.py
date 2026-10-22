@@ -210,6 +210,10 @@ K_JP_LABEL = 3
 # SUB calls nested inside the arguments of SUB calls, at most.
 K_SB_DEPTH = 8
 
+# Default parameter values in a source, at most. A parameter's record holds the number of its
+# default, 1 up, in the byte of a SUB's parameter count; 0 is none.
+K_SB_DEFAULTS = 255
+
 # BINDs to a word of the language, at most.
 K_ALIASES = 64
 

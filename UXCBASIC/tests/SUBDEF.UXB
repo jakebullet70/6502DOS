@@ -1,0 +1,19 @@
+' Default parameter values: a call may leave out the trailing arguments that have defaults.
+NAMESPACE BOX
+  CONST WIDE AS UBYTE = 40
+  SUB SHOW(ROW AS UBYTE, TEXT$ = "NONE", WIDTH AS UBYTE = WIDE, SHIFT AS WORD = -3)
+    PRINT ROW; " "; TEXT$; " "; WIDTH; " "; SHIFT
+  END SUB
+END NAMESPACE
+
+FUNCT TWICE(N AS UWORD, BY AS UWORD = 2) AS UWORD
+  RETURN N * BY
+END FUNCT
+
+BOX.SHOW(1)
+BOX.SHOW(2, "HI")
+BOX.SHOW(3, "HI", 7)
+BOX.SHOW(4, "HI", 7, 9)
+PRINT TWICE(21)
+PRINT TWICE(21, 3)
+PRINT TWICE(TWICE(5))

@@ -14,10 +14,10 @@
 
 from uxc_code import emit
 from uxc_defs import K_EK_CONST, K_EK_REG, K_EX_DEPTH, K_FRAME_MAX, K_JP_LIST, K_NS_IFL, K_NS_MAX, \
-    K_SB_DEPTH, K_SEC_BSS, K_SEC_CONST, K_SEC_LABEL, K_SEC_VAR, K_SK_CALL, K_SK_SUB, K_SK_VAR, \
-    K_SY_END, K_SY_ENUM_PARAMETER, K_SY_ENUM_TYPE, \
+    K_SB_DEFAULTS, K_SB_DEPTH, K_SEC_BSS, K_SEC_CONST, K_SEC_LABEL, K_SEC_VAR, K_SK_CALL, K_SK_SUB, \
+    K_SK_VAR, K_SY_END, K_SY_ENUM_PARAMETER, K_SY_ENUM_TYPE, \
     K_SY_LEVEL, K_SY_LIVE, K_SY_POOL, K_SY_SIGNED, K_SY_TEMP, K_SY_TEMPS, K_TT_EOL, K_TT_NAME, K_TT_OP, \
-    K_TY_BYTE, K_TY_LONG, K_TY_STR, K_TY_WORD
+    K_TT_STR, K_TY_BYTE, K_TY_LONG, K_TY_STR, K_TY_WORD
 import uxc_cond
 import uxc_dead
 import uxc_expr
@@ -102,6 +102,7 @@ def sb_header():
     g.sb_record = g.sy_r
     g.sb_count = 0
     g.sb_frame = 0
+    g.sb_header_default = 0
     uxc_lex.lx_next()
     if g.tk_t != K_TT_OP or g.tk_k != 40:
         sb_error_missing_open()
@@ -138,9 +139,10 @@ def sb_header():
 
 
 def sb_parameter():
-    """SB.PARAMETER. One parameter of SUB g.sb_record: name$ or name AS type. It becomes the
-    next record, a variable owned by the SUB. A STRING parameter is a WORD that holds the
-    address of the caller's block, and its element count is 0."""
+    """SB.PARAMETER. One parameter of SUB g.sb_record: name$ or name AS type, then = default.
+    It becomes the next record, a variable owned by the SUB. A STRING parameter is a WORD that
+    holds the address of the caller's block, and its element count is 0. After a parameter
+    with a default, each parameter needs one."""
     if g.tk_t != K_TT_NAME:
         er_syntax()
     g.sb_parameter_name = g.tk_s
@@ -151,6 +153,12 @@ def sb_parameter():
     sb_as()
     if g.sb_type == 0:
         er_missing_as()
+    g.sb_default = 0
+    if g.tk_t == K_TT_OP and g.tk_k == 61:
+        sb_default_read()
+        g.sb_header_default = 1
+    if g.sb_default == 0 and g.sb_header_default != 0:
+        er_stop("NO DEFAULT: " + g.sb_parameter_name)
     g.sy_name = g.sb_parameter_name
     g.sy_ow = g.sb_record
     uxc_sym.sy_find()
@@ -166,10 +174,42 @@ def sb_parameter():
     g.sy_flags = g.sb_signed * K_SY_SIGNED
     g.sy_cnt = 0
     uxc_sym.sy_add()
+    g.sy_np = g.sb_default
+    uxc_sym.sy_set()
     g.sb_field = K_SY_ENUM_TYPE
     g.sb_word = g.sb_enum
     sb_field_set()
     g.sb_count = g.sb_count + 1
+
+
+def sb_default_read():
+    """SB.DEFAULT.READ. The default of parameter g.sb_parameter_name, with the token at its =.
+    Its text, up to the , or ) after it, goes into g.sb_default_text. Out: g.sb_default, its
+    number, and the token at that , or ). A default has no (, so it holds no call. A STRING
+    parameter's default is one string literal."""
+    if g.sb_default_count >= K_SB_DEFAULTS:
+        er_stop("TOO MANY DEFAULTS")
+    g.sb_default_start = g.lx_p
+    g.sb_default_tokens = 0
+    while True:
+        g.sb_default_end = g.lx_p
+        uxc_lex.lx_next()
+        if g.tk_t == K_TT_EOL:
+            break
+        if g.tk_t == K_TT_OP and (g.tk_k == 44 or g.tk_k == 41):
+            break
+        if g.tk_t == K_TT_OP and g.tk_k == 40:
+            sb_error_default()
+        if g.sb_type == K_TY_STR and g.tk_t != K_TT_STR:
+            sb_error_default()
+        g.sb_default_tokens = g.sb_default_tokens + 1
+    if g.sb_default_tokens == 0:
+        sb_error_default()
+    if g.sb_type == K_TY_STR and g.sb_default_tokens != 1:
+        sb_error_default()
+    g.sb_default_count = g.sb_default_count + 1
+    g.sb_default = g.sb_default_count
+    g.sb_default_text[g.sb_default] = g.lx_l[g.sb_default_start - 1:g.sb_default_end - 1]
 
 
 def sb_as():
@@ -428,33 +468,7 @@ def sb_call():
             g.sb_call_argument[d] = g.sb_call_argument[d] + 1
             if g.sb_call_argument[d] > g.sb_call_parameters[d]:
                 sb_error_arguments()
-            g.sy_r = g.sb_call_record[d] + g.sb_call_argument[d]
-            g.sb_field = K_SY_ENUM_TYPE
-            sb_field_get()
-            g.sb_call_enum[d] = g.sb_word
-            g.ex_op_base = g.ex_on
-            g.ex_cm = 0
-            g.ex_const_record = 0
-            g.sb_call_pin[d] = g.cb_n
-            uxc_expr.ex_expr()
-            g.sy_r = g.sb_call_record[d] + g.sb_call_argument[d]
-            uxc_sym.sy_get()
-            g.sb_parameter_type = g.sy_type
-            g.sb_parameter_address = g.sy_val
-            g.sb_word = g.sb_call_enum[d]
-            if g.sb_word != 0:
-                sb_call_member()
-            if g.sb_parameter_type == K_TY_BYTE:
-                uxc_expr.ex_tob()
-            if g.sb_parameter_type == K_TY_WORD:
-                uxc_expr.ex_tow()
-            if g.sb_parameter_type == K_TY_LONG:
-                uxc_expr.ex_tol()
-            if g.sb_parameter_type == K_TY_STR:
-                uxc_str.sg_pass()
-                g.rg_pin_from = g.sb_call_pin[d]
-                uxc_ramreg.rg_pin_to(g.sb_call_record[d])
-            sb_call_pass()
+            sb_call_argument()
             if g.tk_t != K_TT_OP:
                 er_syntax()
             if g.tk_k == 41:
@@ -462,8 +476,9 @@ def sb_call():
             if g.tk_k != 44:
                 er_syntax()
             uxc_lex.lx_next()
-    if g.sb_call_argument[d] != g.sb_call_parameters[d]:
-        sb_error_arguments()
+    while g.sb_call_argument[d] < g.sb_call_parameters[d]:
+        g.sb_call_argument[d] = g.sb_call_argument[d] + 1
+        sb_call_default()
     sb_call_pop()
     g.sl_s[0] = K_SEC_LABEL
     g.sl_v[0] = g.sb_call_record[d]
@@ -472,6 +487,83 @@ def sb_call():
     g.sb_call_type = g.sb_call_result[d] - 256 * g.sb_call_signed
     sb_unnest()
     uxc_lex.lx_next()
+
+
+def sb_call_argument():
+    """SB.CALL.ARGUMENT. Argument g.sb_call_argument of the call at g.sb_depth, with the token
+    at its start, into its parameter. The token is left after it. In a default, a number must
+    be a constant."""
+    d = g.sb_depth
+    g.sy_r = g.sb_call_record[d] + g.sb_call_argument[d]
+    g.sb_field = K_SY_ENUM_TYPE
+    sb_field_get()
+    g.sb_call_enum[d] = g.sb_word
+    g.ex_op_base = g.ex_on
+    g.ex_cm = 0
+    g.ex_const_record = 0
+    g.sb_call_pin[d] = g.cb_n
+    uxc_expr.ex_expr()
+    g.sy_r = g.sb_call_record[d] + g.sb_call_argument[d]
+    uxc_sym.sy_get()
+    g.sb_parameter_type = g.sy_type
+    g.sb_parameter_address = g.sy_val
+    if g.sb_filling != 0 and g.sb_parameter_type != K_TY_STR and g.ex_vk[g.ex_vn - 1] != K_EK_CONST:
+        sb_error_default()
+    g.sb_word = g.sb_call_enum[d]
+    if g.sb_word != 0:
+        sb_call_member()
+    if g.sb_parameter_type == K_TY_BYTE:
+        uxc_expr.ex_tob()
+    if g.sb_parameter_type == K_TY_WORD:
+        uxc_expr.ex_tow()
+    if g.sb_parameter_type == K_TY_LONG:
+        uxc_expr.ex_tol()
+    if g.sb_parameter_type == K_TY_STR:
+        uxc_str.sg_pass()
+        g.rg_pin_from = g.sb_call_pin[d]
+        uxc_ramreg.rg_pin_to(g.sb_call_record[d])
+    sb_call_pass()
+
+
+def sb_call_default():
+    """SB.CALL.DEFAULT. Argument g.sb_call_argument, left out of the call, is its parameter's
+    default. The default's text is read in place of the line, with names looked for from the
+    namespace of the SUB called. The token is left at the call's ) again.
+    Trap: one saved line serves, as a default holds no call."""
+    d = g.sb_depth
+    g.sy_r = g.sb_call_record[d] + g.sb_call_argument[d]
+    uxc_sym.sy_get()
+    if g.sy_np == 0:
+        sb_error_arguments()
+    g.sb_default = g.sy_np
+    g.sb_parameter_name = ""
+    for g.sb_i in range(g.ram[g.sy_ad + 7]):
+        g.sb_parameter_name = g.sb_parameter_name + chr(g.ram[g.sy_ad + 8 + g.sb_i])
+    g.sy_r = g.sb_call_record[d]
+    uxc_sym.sy_get()
+    g.sb_filling_line = g.lx_l
+    g.sb_filling_position = g.lx_p
+    g.sb_filling_length = g.lx_n
+    g.sb_filling_scope = g.nm_scope
+    g.nm_scope = g.sy_owner
+    g.lx_l = g.sb_default_text[g.sb_default]
+    g.lx_p = 1
+    g.lx_n = len(g.lx_l)
+    g.sb_filling = 1
+    uxc_lex.lx_next()
+    sb_call_argument()
+    if g.tk_t != K_TT_EOL:
+        sb_error_default()
+    g.sb_filling = 0
+    g.nm_scope = g.sb_filling_scope
+    g.lx_l = g.sb_filling_line
+    g.lx_p = g.sb_filling_position
+    g.lx_n = g.sb_filling_length
+    g.tk_t = K_TT_OP
+    g.tk_k = 41
+    g.tk_s = ""
+    g.tk_m = 0
+    g.tk_v = 0
 
 
 def sb_call_member():
@@ -861,6 +953,10 @@ def sb_error_no_value():
 
 def sb_error_arguments():
     er_stop("WRONG NUMBER OF ARGUMENTS")
+
+
+def sb_error_default():
+    er_stop("BAD DEFAULT: " + g.sb_parameter_name)
 
 
 def sb_error_each_other():

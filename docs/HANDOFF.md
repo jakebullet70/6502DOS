@@ -3665,6 +3665,19 @@
             `HDIRARG` 1.2, `HDIRRED` 0.8, `TREE` 1.7. UXCBASIC `tests.py`: 191 tests, 0
             failed, 48 s; the slowest 0.6 s. Steps since the full suite: 0. Next: GUI step 0a
             (`UXCBASIC/docs/GUI.PLAN.md`).
+          - Done, GUI step 0a (2026-10-22): default parameter values in pyuxc.
+            `name AS type = default` or `name$ = "text"` in a `SUB` or `FUNCT` header. After a
+            parameter with a default, each parameter needs one (`NO DEFAULT: name`). A default
+            holds no `(`; a STRING default is one literal; a number must fold to a constant
+            (`BAD DEFAULT: name`). `K_SB_DEFAULTS` 255 texts in `g.sb_default_text`; a
+            parameter's record keeps its default's number in byte 27, the SUB's parameter count
+            byte. `sb_call_default` reads the text in place of the line, names looked for from
+            the called SUB's namespace, through the same `sb_call_argument` as a written
+            argument. A call with defaults left out compiles to the same bytes as one with them
+            written: 0 bytes, 0 cycles. Tests ok: `SUBDEF` 0.5 s, `ERRDEFORDER`, `ERRDEFFEW`,
+            `ERRDEFCONST` 0.0 s, `ERRSUBARGS` 0.0, `ENUMAS` 0.5, `LOCALPOOL` 0.5. Docs owed:
+            `help/UXC-HELP.md` SUB section, pyuxc README. Steps since the full suite: 1. Next:
+            GUI step 0b.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
