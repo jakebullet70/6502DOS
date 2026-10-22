@@ -3757,7 +3757,31 @@
             only: `GUIEDIT.COM`, `GUIFLAGS.COM`, `GUIMASK.COM` are new in the root, and the
             listing runs past one page; its sort passes on `C:\MANY`. HDIR, HDIRARG, HDIRRED and
             the other listing goldens wait for the full suite after the GUI work.
-            Next: phase 2, step 2a, themes.
+          - Done (2026-10-22): GUI step 2a, themes, in `lib/GUI.UXI`. `ENUM ROLE` (13 roles:
+            PAGE, FRAME, TITLE, TEXT, FIELD, FIELD_FOCUS, BUTTON, BUTTON_FOCUS, HOT_KEY,
+            DISABLED, MENU, MENU_SELECTED, STATUS), `ENUM THEMES` (DARK, LIGHT, GRAY, FILE).
+            The current theme is `COLORS$ * 13`, one byte a role; the built-ins are the string
+            CONSTs `DARK_COLORS$`, `LIGHT_COLORS$`, `GRAY_COLORS$`, from GPC's
+            `THEME.INC.BL` palettes (FIELD and BUTTON = GPC HILITE, the FOCUSes and
+            MENU_SELECTED = FOCUS, MENU and STATUS = BAR, DISABLED = DIMMED, HOT_KEY red on the
+            page). `GUI.THEME(KIND, FILE_NAME$ = "")`: FILE preloads DARK, then `READ`s up to 13
+            bytes over it; a missing file gives DARK. `GUI.USE_COLOR(WHICH AS ENUM.ROLE)` sets
+            the console color by `SYS $03CA` (CON_COLOUR), through `CALL_A`/`CALL_P` `DIM ... AT
+            $030C/$030F`, because GUI.UXI cannot include DOS.UXI; a checklist comment ties the
+            address to genapi's `API_CON_COLOUR`. Before any THEME, USE_COLOR loads DARK.
+            `READ` is a function only, so THEME keeps the count in a dummy local `COUNT`.
+            Size on top of one INPUT2 call: region 1 2370 to 3031 bytes (+661: about 226 of
+            code, 60 of data, 375 of runtime, mostly OPEN/READ/CLOSE and SYS), 5161 free; low
+            RAM +40. The plan said 150. INPUT2 is not themed yet; the form engine sets colors.
+            Test `tests/GUITHEME.UXB` (new; default color, the three themes, a 13-byte file, a
+            3-byte file, a missing file, USE_COLOR(TITLE)), wrote golden 2.0 s, checked by
+            hand; GUIEDIT ok 0.9 s; GUIFLAGS ok 0.4 s; GUIMASK ok 0.4 s. Build 1.33 s.
+            Proposed, not done: (1) `GUI.THEME_FILE(file$)` split from `GUI.THEME`, so a program
+            that loads no file drops OPEN/READ/CLOSE from region 1 (measured: 3031 to 2616
+            bytes, -415: 332 of runtime, 83 of code); (2) a
+            template for `ContentsAt(@X + B)`, B a BYTE variable: `ldy B`, `lda X,y`, in place of
+            the 16-bit add and pointer (about 20 bytes a use; asm, ask first).
+            Next: phase 2, step 2b, drawing.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

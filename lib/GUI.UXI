@@ -19,10 +19,36 @@ NAMESPACE GUI
   CONST PASSWORD AS UBYTE = 1, READ_ONLY AS UBYTE = 2, UPPER AS UBYTE = 4, LOWER AS UBYTE = 8
   CONST PROPER AS UBYTE = 16
 
+  ' The color roles of a theme, in the order of a theme's bytes. A color is the background
+  ' times 16 plus the foreground, as DOS.SET_COLOR takes it.
+  ENUM ROLE
+    PAGE, FRAME, TITLE, TEXT, FIELD, FIELD_FOCUS, BUTTON, BUTTON_FOCUS
+    HOT_KEY, DISABLED, MENU, MENU_SELECTED, STATUS
+  END ENUM
 
+  ' The themes THEME selects. FILE reads one from a file.
+  ENUM THEMES
+    DARK, LIGHT, GRAY, FILE
+  END ENUM
 
+  ' The current theme: one color a member of ROLE, in its order. It is empty until the first
+  ' THEME or USE_COLOR.
+  DIM COLORS$ * 13
 
+  ' The built-in themes, one color a role. As background, foreground:
+  ' DARK  0,0 0,11 0,1 0,15 15,0 7,0 15,0 7,0 0,2 0,12 6,1 7,0 6,1
+  ' LIGHT 1,1 1,11 1,6 1,0 0,1 7,0 0,1 7,0 1,2 1,12 15,0 7,0 15,0
+  ' GRAY  11,11 11,14 11,7 11,1 14,1 7,11 14,1 7,11 11,2 11,12 12,1 7,11 12,1
+  CONST DARK_COLORS$ = !"\&h00\&h0B\&h01\&h0F\&hF0\&h70\&hF0\&h70\&h02\&h0C\&h61\&h70\&h61"
+  CONST LIGHT_COLORS$ = !"\&h11\&h1B\&h16\&h10\&h01\&h70\&h01\&h70\&h12\&h1C\&hF0\&h70\&hF0"
+  CONST GRAY_COLORS$ = !"\&hBB\&hBE\&hB7\&hB1\&hE1\&h7B\&hE1\&h7B\&hB2\&hBC\&hC1\&h7B\&hC1"
 
+  ' The console color call.
+  ' Checklist: tools/genapi.py writes the same address into lib/DOS.UXI as API_CON_COLOUR.
+  ' Change this one when that one moves.
+  CONST CON_COLOR_CALL AS UWORD = $03CA
+  ' SYS loads A and P from these bytes before the call. DOS.UXI names them REG_A and REG_P.
+  DIM CALL_A AS UBYTE AT $030C, CALL_P AS UBYTE AT $030F
   ' Edits TARGET$ in a field at ROW and COLUMN, counted from 0, WIDTH characters wide.
   ' TARGET$ takes at most its own size in characters. The text scrolls inside the field when it
   ' is longer than WIDTH. Left, Right, Home, End, Backspace, Delete and Insert edit. Enter, Tab,
@@ -167,8 +193,29 @@ NAMESPACE GUI
     LOOP
   END FUNCTION
 
+  ' Makes KIND the current theme. FILE reads up to 13 bytes from the file FILE_NAME$, one color
+  ' a role in ROLE's order. A role past the file's end takes DARK's color, and so does every
+  ' role when the file cannot be opened.
+  SUB THEME(KIND AS ENUM.THEMES, FILE_NAME$ = "")
+    DIM HANDLE AS UWORD, COUNT AS UWORD
+    COLORS$ = DARK_COLORS$
+    IF KIND = THEMES.LIGHT THEN COLORS$ = LIGHT_COLORS$
+    IF KIND = THEMES.GRAY THEN COLORS$ = GRAY_COLORS$
+    IF KIND = THEMES.FILE THEN
+      HANDLE = OPEN(FILE_NAME$, O.READ)
+      IF HANDLE <> NOFILE THEN
+        COUNT = READ(HANDLE, @COLORS$ + 2, 13)
+        CLOSE HANDLE
+      ENDIF
+    ENDIF
+  END SUB
 
-
-
-
+  ' Sets the console color to the current theme's color for WHICH, for the characters written
+  ' from now on. Before the first THEME the theme is DARK.
+  SUB USE_COLOR(WHICH AS ENUM.ROLE)
+    IF LEN(COLORS$) = 0 THEN COLORS$ = DARK_COLORS$
+    CALL_A = ContentsAt(@COLORS$ + 2 + WHICH)
+    CALL_P = 0
+    SYS CON_COLOR_CALL
+  END SUB
 END NAMESPACE
