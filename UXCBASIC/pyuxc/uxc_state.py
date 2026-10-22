@@ -58,7 +58,7 @@ def dim():
         setattr(g, name, [0] * (K_NS_MAX + 1))
     g.ns_l = [""] * (K_NS_MAX + 1)
     for name in ("sb_call_record", "sb_call_parameters", "sb_call_result", "sb_call_argument",
-                 "sb_call_stacked", "sb_call_enum", "sb_saved_operators", "sb_saved_operator_base",
+                 "sb_call_stacked", "sb_call_enum", "sb_call_pin", "sb_saved_operators", "sb_saved_operator_base",
                  "sb_saved_parentheses", "sb_saved_condition"):
         setattr(g, name, [0] * (K_SB_DEPTH + 1))
     g.sg_called = [""] * (K_SB_DEPTH + 1)

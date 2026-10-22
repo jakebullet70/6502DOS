@@ -3608,6 +3608,22 @@
             ERRRGBANK, ERRRGDIMAT, ERRRGORG ok 0.0 s. Steps since the full suite: 8; the full
             suite waits for the regions to be done. Next: 0f2, pins for STRING arguments
             passed out of a region.
+          - Done, 0f2 (2026-10-22): in a SUB of a region, the code of a STRING argument is a
+            pin (`sb_call`, `g.sb_call_pin[d]` from before `ex_expr` to after `sg_pass`), so
+            what it names stays in low RAM. A pin is now `(sub, from, to, callee)`;
+            `rg_pin_to(callee)`, 0 for the RETURN pins. `rg_data` drops a pin whose callee is
+            in the same slot as its SUB (`rg_slot_of`), so an argument to a SUB of the same
+            region still moves. This closes the old trap of a low SUB that calls into another
+            region with a string from the region. Left trap: a WORD that holds an `@` address
+            moved into a region, passed out of it. No asm. Programs without regions compile
+            byte for byte the same (STRRET, FUNC1, RECSTR checked). New test `RGPASS`
+            (`tests/`, golden local): region 1 passes a literal and a global to region 2 and
+            to a low SUB, which passes it on to region 2; a global passed within region 1
+            moves (`@ >= $A000`). Before the fix 30 bytes of RGPASS's data went into region 1
+            and were read in the wrong bank; now they are low (file 1000 to 1041 bytes, region
+            1 data 80 to 50). Build 5199 ms, the new baseline. RGPASS ok 0.4 s, RGMULTI 0.4 s,
+            RGDATA 0.4 s, RGCALL 0.4 s, RGERR 0.4 s. Steps since the full suite: 9; the full
+            suite waits for the regions to be done. Next: 0g, runtime records in a region.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

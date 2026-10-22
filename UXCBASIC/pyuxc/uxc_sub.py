@@ -307,7 +307,7 @@ def sb_fall_out():
     if g.sy_type == K_TY_STR:
         uxc_ramreg.rg_pin_from()
         uxc_str.sg_return_empty()
-        uxc_ramreg.rg_pin_to()
+        uxc_ramreg.rg_pin_to(0)
     emit(T.T_RTS)
 
 
@@ -337,7 +337,7 @@ def sb_return():
     if g.sb_type == K_TY_STR:
         uxc_ramreg.rg_pin_from()
         uxc_str.sg_tos()
-        uxc_ramreg.rg_pin_to()
+        uxc_ramreg.rg_pin_to(0)
     g.sb_has_value = 1
     emit(T.T_RTS)
 
@@ -435,6 +435,7 @@ def sb_call():
             g.ex_op_base = g.ex_on
             g.ex_cm = 0
             g.ex_const_record = 0
+            g.sb_call_pin[d] = g.cb_n
             uxc_expr.ex_expr()
             g.sy_r = g.sb_call_record[d] + g.sb_call_argument[d]
             uxc_sym.sy_get()
@@ -451,6 +452,8 @@ def sb_call():
                 uxc_expr.ex_tol()
             if g.sb_parameter_type == K_TY_STR:
                 uxc_str.sg_pass()
+                g.rg_pin_from = g.sb_call_pin[d]
+                uxc_ramreg.rg_pin_to(g.sb_call_record[d])
             sb_call_pass()
             if g.tk_t != K_TT_OP:
                 er_syntax()

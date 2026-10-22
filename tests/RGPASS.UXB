@@ -1,0 +1,37 @@
+' RGPASS: STRING arguments passed out of a region. Region 1 passes a literal and a global that
+' only its code names to a SUB in region 2 and to a SUB in low RAM; both stay in low RAM. The low
+' SUB calls into region 2 with the string it was passed. A global passed only to a SUB of
+' region 1 itself moves into region 1.
+DIM OUT_GLOBAL AS STRING * 12, IN_GLOBAL AS STRING * 12
+
+#REGION_SLOT 1
+SUB ONE()
+  OUT_GLOBAL = "OUT GLOBAL"
+  IN_GLOBAL = "IN GLOBAL"
+  TWO("TO TWO")
+  TWO(OUT_GLOBAL)
+  SHOW("TO LOW")
+  SHOW(OUT_GLOBAL)
+  SAME(IN_GLOBAL)
+  SAME("SAME")
+  PRINT @OUT_GLOBAL < $A000; @IN_GLOBAL >= $A000
+END SUB
+
+SUB SAME(S AS STRING)
+  PRINT "SAME "; S; LEN(S)
+END SUB
+#REGION_SLOT 0
+
+SUB SHOW(S AS STRING)
+  PRINT "LOW "; S; LEN(S)
+  TWO(S)
+END SUB
+
+#REGION_SLOT 2
+SUB TWO(S AS STRING)
+  PRINT "TWO "; S; LEN(S)
+END SUB
+#REGION_SLOT 0
+
+ONE()
+END

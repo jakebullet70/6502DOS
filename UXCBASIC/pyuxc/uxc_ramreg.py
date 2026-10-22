@@ -11,8 +11,8 @@
     rg_line()     dd_keep_line's #REGION_SLOT, with the token at REGION_SLOT
     rg_sub()      in sb_sub, with the SUB's record in g.sb_current: the SUB joins the region of
                   the slot, when the slot is 1 or more
-    rg_pin_from(), rg_pin_to()  around the load of a STRING FUNCTION's result: what the code
-                  between names stays in low RAM
+    rg_pin_from(), rg_pin_to()  around the load of a STRING FUNCTION's result, or of a STRING
+                  argument: what the code between names stays in low RAM
     rg_store()    sm_store to the constant address 0: stops the compile in a SUB of a region
     rg_asm()      in as_instruction, after as_choose: a write to $00 stops the compile in a SUB
                   of a region
@@ -37,10 +37,10 @@ and the data records then cover the images. A code offset from g.rg_base[k] on i
 at $A000 + the offset - g.rg_base[k]. A K_SEC_RGDATA value is at $A000 + g.rg_data_at[k] + the
 value, where k is the region of the fixup's own code.
 
-A low SUB that region code calls runs with the region's bank selected, so it reads a STRING
-argument moved into the region.
-Trap: a low SUB that selects another bank, or calls into another region, and then reads an
-address passed from the region, reads the wrong bank.
+A STRING argument passes the address of the caller's string. In a call from a region to a SUB
+outside it, what the argument's code names stays in low RAM.
+Trap: a WORD that holds the address of a variable moved into a region, passed out of the
+region, points into the wrong bank.
 
 A call across an edge goes to a veneer on the caller's side, a T_FARCALL, one a SUB and side.
 It loads the SUB's address and jumps to a T_RGGATE in low RAM: the gate of the SUB's region, or
@@ -96,13 +96,21 @@ def rg_pin_from():
     g.rg_pin_from = g.cb_n
 
 
-def rg_pin_to():
+def rg_pin_to(callee):
     """RG.PIN.TO. In a SUB of a region, the code since rg_pin_from loads the address that a
-    STRING FUNCTION returns. A caller in low RAM reads it with its own bank selected, so what
-    a fixup there names stays in low RAM."""
+    STRING FUNCTION returns, callee 0, or a STRING argument to SUB callee. A caller in low RAM,
+    or a callee outside the region, reads it with another bank selected, so what a fixup there
+    names stays in low RAM. rg_data drops the pin of an argument to a SUB of the same region."""
     if rg_in_region() != 0:
         g.rg_pins.append((g.sb_current, g.rg_pin_from - g.rg_sub_start,
-                          g.cb_n - g.rg_sub_start))
+                          g.cb_n - g.rg_sub_start, callee))
+
+
+def rg_slot_of(record):
+    """RG.SLOT.OF. The slot of SUB record, 0 for one in low RAM."""
+    if record in g.rg_subs:
+        return g.rg_sub_slots[g.rg_subs.index(record)]
+    return 0
 
 
 def rg_in_region():
@@ -212,7 +220,9 @@ def rg_data():
     g.rg_data = [bytearray() for k in range(g.rg_count + 1)]
     g.rg_banked = [0] * (g.sy_n + 1)
     g.rg_pin_at = []
-    for g.sy_r, pin_from, pin_to in g.rg_pins:
+    for g.sy_r, pin_from, pin_to, callee in g.rg_pins:
+        if rg_slot_of(callee) == rg_slot_of(g.sy_r):
+            continue
         uxc_sym.sy_get()
         if g.sy_kind == K_SK_SUB and (g.sy_flags & 1) != 0:
             g.rg_pin_at.append((g.sy_val + pin_from, g.sy_val + pin_to))
