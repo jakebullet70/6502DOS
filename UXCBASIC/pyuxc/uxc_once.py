@@ -54,12 +54,13 @@ def start(tpl_folder):
     g.rg_slot = 0
     g.rg_slot_outer = 0
     g.rg_subs = []
+    g.rg_sub_slots = []
     g.rg_pins = []
     g.rg_sub_start = 0
     g.rg_pin_from = 0
     g.rg_image = 0
     g.rg_on = 0
-    g.rg_base = 0
+    g.rg_base = [0]
     g.vr_n = 0
     g.rt_n = 0
     g.bs_n = 0
@@ -101,9 +102,12 @@ def finish():
             str(g.rb_bank[1]) + " " + str(g.rb_used) + " BYTES")
         g.ui_line = g.ui_line + ",SECOND " + g.rb_obj + " " + str(g.rb_size_second)
     if g.rg_on != 0:
-        put("REGION 1: " + str(g.rg_size) + " BYTES, " + str(len(g.rg_data)) + " OF DATA, " +
-            str(uxc_ramreg.K_RG_ROOM - g.rg_size) + " FREE")
-        g.ui_line = g.ui_line + ",REGION 1 " + str(g.rg_size) + " BYTES"
+        for k in range(1, g.rg_count + 1):
+            slot = str(g.rg_slots[k - 1])
+            put("REGION " + slot + ": " + str(g.rg_size[k]) + " BYTES, " +
+                str(len(g.rg_data[k])) + " OF DATA, " +
+                str(uxc_ramreg.K_RG_ROOM - g.rg_size[k]) + " FREE")
+            g.ui_line = g.ui_line + ",REGION " + slot + " " + str(g.rg_size[k]) + " BYTES"
     if g.dd_subs > 0:
         g.ui_line = g.ui_line + ",REMOVED " + str(g.dd_subs) + " SUBS " + str(g.dd_bytes) + \
             " BYTES"

@@ -3582,6 +3582,32 @@
             Steps since the full suite: 7; the full suite waits for the regions to be done
             (the user's rule). Next: 0f, more regions (`#REGION_SLOT 2` up) and addresses
             passed across.
+          - 0f split (the user, 2026-10-22): 0f1 the regions 1 to 63, 0f2 the pins for STRING
+            arguments passed out of a region. The user agreed the asm of 0f1.
+          - Done, 0f1 (2026-10-22): `#REGION_SLOT n`, n 0 to 63; each slot used is a region
+            with a RAM bank of its own, numbered k = 1 up in slot order (`g.rg_slots`). Images
+            one after the other after the variables; `g.rg_code`, `g.rg_fix`, `g.rg_data`,
+            `g.rg_moved`, `g.rg_veneers`, `g.rg_base`, `g.rg_size`, `g.rg_data_at` are lists by
+            k. Templates: `R_RGBANK` and `T_RGCALL` gone; `T_RGGATE` (9 bytes, one a region,
+            in low RAM after the low code: `sta r0`, `sty r0+1`, `lda #bank`, `jmp
+            bank_call`; the bank at byte 5 is written at startup); `T_RGFROM` (8, `ZP_PTR` =
+            the images); `T_RGLOAD` (10 a region: `lda`/`ldy` size, `jsr R_RGLOAD`, `sta`
+            gate+5); `R_RGLOAD` (71: A/Y bytes from `ZP_PTR` into a new bank, A the bank out,
+            `ZP_PTR` past). A veneer goes through the gate of the SUB's region, or of the
+            caller's region for a low SUB; one veneer a SUB and side. A literal or global
+            named by one region only moves there (`rg_mark` -1 low or two regions, k the
+            region). A K_SEC_RGDATA value is resolved in the region of its fixup's own code
+            (`rg_data_address`); `rg_max` writes into `g.rg_data[g.rg_image]`. One REGION line
+            a region, `REGION <slot>: ...`; `REGION <slot> FULL`. Costs: one region +16 bytes
+            resident (file +17: RGDATA 1400 to 1417); each further region 19 (gate 9, load
+            10), plus 7 a SUB and side called across. A call is 2 cycles faster (`lda #`). New
+            test `RGMULTI` (`tests/`, golden local): slots 1 and 3, low to 1 and 3, 1 to 3, 1
+            to low to 3, a FUNCT in 3 from 1 and low, `$00` in each, the moved and shared
+            globals' `@`. `ERRRGSLOT` now `#REGION_SLOT 64`. Build 4929 ms, the new baseline.
+            RGMULTI ok 0.4 s, RGCALL 0.6 s, RGDATA 0.4 s, RGERR 0.4 s; ERRRGSLOT, ERRRGASM,
+            ERRRGBANK, ERRRGDIMAT, ERRRGORG ok 0.0 s. Steps since the full suite: 8; the full
+            suite waits for the regions to be done. Next: 0f2, pins for STRING arguments
+            passed out of a region.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

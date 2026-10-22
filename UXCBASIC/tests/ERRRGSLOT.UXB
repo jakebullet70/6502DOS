@@ -1,2 +1,2 @@
-' ERRRGSLOT -- region 1 is the only one
-#REGION_SLOT 2
+' ERRRGSLOT -- the slots are 0 to 63
+#REGION_SLOT 64

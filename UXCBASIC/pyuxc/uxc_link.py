@@ -193,7 +193,7 @@ def lk_fix():
         uxc_sub.sb_pool_of()
         g.lk_v = g.lk_bss + g.sb_pool + g.fx_v
     if g.fx_s == K_SEC_RGDATA:
-        g.lk_v = uxc_ramreg.K_RG_ORG + g.rg_data_at + g.fx_v
+        uxc_ramreg.rg_data_address()
     if g.fx_s == K_SEC_LABEL:
         g.sy_r = g.fx_v
         uxc_sym.sy_get()

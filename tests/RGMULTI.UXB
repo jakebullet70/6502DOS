@@ -1,0 +1,44 @@
+' RGMULTI: two regions, slots 1 and 3, each in a RAM bank of its own. Calls go from low RAM
+' into each, from one region into the other, and out of region 1 to low RAM and on into region
+' 3. A global that only one region names moves into that region; one that both name stays in
+' low RAM.
+DIM ONLY_ONE AS UWORD, ONLY_THREE AS UWORD, BOTH AS UWORD
+DIM BANK_ONE AS UBYTE, BANK_THREE AS UBYTE, BANK_LOW AS UBYTE
+
+#REGION_SLOT 1
+SUB ONE()
+  BANK_ONE = PEEK(0)
+  ONLY_ONE = 11
+  BOTH = BOTH + 1
+  THREE()
+  PRINT "ONE"; ONLY_ONE; TWICE(4); PEEK(0) = BANK_ONE
+  MIDDLE()
+  PRINT @ONLY_ONE >= $A000; @BOTH < $A000
+END SUB
+#REGION_SLOT 0
+
+SUB MIDDLE()
+  PRINT "MIDDLE"; PEEK(0) = BANK_ONE
+  THREE()
+  PRINT "MIDDLE"; PEEK(0) = BANK_ONE
+END SUB
+
+#REGION_SLOT 3
+SUB THREE()
+  BANK_THREE = PEEK(0)
+  ONLY_THREE = ONLY_THREE + 3
+  BOTH = BOTH + 1
+  PRINT "THREE"; ONLY_THREE; @ONLY_THREE >= $A000
+END SUB
+
+FUNCT TWICE(N AS UBYTE) AS UWORD
+  RETURN N * 2 + ONLY_THREE
+END FUNCT
+#REGION_SLOT 0
+
+BANK_LOW = PEEK(0)
+ONE()
+THREE()
+PRINT BANK_ONE <> BANK_THREE; BANK_ONE <> BANK_LOW; BANK_THREE <> BANK_LOW; PEEK(0) = BANK_LOW
+PRINT BOTH; TWICE(1)
+END

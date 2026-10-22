@@ -221,48 +221,66 @@ API_BANK_ALLOC = 0
 API_BANK_CALL = 0
         .endif
 
-; #REGION_SLOT: the RAM bank of the region, which T_RGLOAD takes at startup.
-R_RGBANK .block
-        #data 1, 0
-        .endblock
-
-; #REGION_SLOT: the gate between low RAM and the region. A T_FARCALL enters with the SUB's
-; address in A/Y. bank_call calls it with the region's bank selected, then selects the caller's
-; bank again. Keeps X; returns A, Y and C, and N and Z from A. A call out of the region to a SUB
-; in low RAM comes here too, so a SUB that selects another bank returns to the region.
-T_RGCALL .block
+; #REGION_SLOT: the gate between low RAM and one region, one a region, in low RAM. A T_FARCALL
+; enters with the SUB's address in A/Y. bank_call calls it with the region's bank selected, then
+; selects the caller's bank again. Keeps X; returns A, Y and C, and N and Z from A. A call out of
+; a region to a SUB in low RAM goes through the region's own gate, so a SUB that selects another
+; bank returns to the region.
+; Trap: the operand of the lda, at byte 5, is the region's bank, which T_RGLOAD writes at
+; startup.
+T_RGGATE .block
         #tpl
         sta API_R0
         sty API_R0+1
-        #rec lda, R_RGBANK
+        lda #0
         jmp API_BANK_CALL
         #endtpl
         .endblock
 
-; #REGION_SLOT, first at startup: take a RAM bank and copy S1 bytes, 1 or more, of the region's
-; code from S0 to $A000 there, then set R_RGBANK. No bank free stops with OUT OF MEMORY. Keeps X
-; and the caller's bank.
-; Trap: the image lies where the array space, the temps and the data records go, R_RGBANK among
-; them, so nothing may write there before the copy ends.
-T_RGLOAD .block
+; #REGION_SLOT, first at startup: ZP_PTR = S0, where the first region's image starts. The images
+; follow each other.
+T_RGFROM .block
         #tpl
-        lda #1
-        jsr API_BANK_ALLOC
-        bcc got
-        #rec jsr, R_EMEM
-got     ldy $00
-        phy                     ; the caller's bank
-        sta $00
         #lo lda, S0
         sta ZP_PTR
         #hi lda, S0
         sta ZP_PTR+1
+        #endtpl
+        .endblock
+
+; #REGION_SLOT, at startup, one a region after T_RGFROM: copy the region's S0 bytes into a RAM
+; bank, then put the bank at S1, the bank byte of the region's T_RGGATE.
+T_RGLOAD .block
+        #tpl
+        #lo lda, S0
+        #hi ldy, S0
+        #rec jsr, R_RGLOAD
+        #ab sta, S1
+        #endtpl
+        .endblock
+
+; #REGION_SLOT: take a RAM bank and copy A/Y bytes, 1 or more, from ZP_PTR to $A000 there.
+; Out: A the bank, ZP_PTR just past the bytes. No bank free stops with OUT OF MEMORY. Keeps X and
+; the caller's bank.
+; Trap: the images lie where the array space, the temps and the data records go, so nothing may
+; write there before the last copy ends.
+R_RGLOAD .block
+        #tpl
+        phx
+        ldx $00
+        phx                     ; the caller's bank
+        pha                     ; the rest
+        phy                     ; the whole pages
+        lda #1
+        jsr API_BANK_ALLOC
+        bcc got
+        #rec jsr, R_EMEM
+got     sta $00
         stz ZP_DST
         lda #$a0
         sta ZP_DST+1
-        phx
         ldy #0
-        #hi ldx, S1             ; the whole pages
+        plx                     ; the whole pages
 page    beq part
 whole   lda (ZP_PTR),y
         sta (ZP_DST),y
@@ -272,18 +290,24 @@ whole   lda (ZP_PTR),y
         inc ZP_DST+1
         dex
         bra page
-part    #lo ldx, S1             ; the rest
+part    plx                     ; the rest
         beq done
 rest    lda (ZP_PTR),y
         sta (ZP_DST),y
         iny
         dex
         bne rest
-done    plx
-        lda $00
-        #rec sta, R_RGBANK
-        pla
-        sta $00
+        tya                     ; ZP_PTR past the rest
+        clc
+        adc ZP_PTR
+        sta ZP_PTR
+        bcc done
+        inc ZP_PTR+1
+done    lda $00
+        plx
+        stx $00
+        plx
+        rts
         #endtpl
         .endblock
 
