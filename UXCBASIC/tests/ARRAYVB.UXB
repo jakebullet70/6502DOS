@@ -1,0 +1,16 @@
+' ARRAYVB: a store to a BYTE array element at a BYTE variable index, T_POKE_AB. With ERRORS
+' OFF; with ERRORS ON on an array of 300; at a SUB parameter; and with the array in the value.
+DIM B(10) AS UBYTE, BIG(300) AS UBYTE, I AS UBYTE, J AS UBYTE
+SUB SETAT(INDEX AS UBYTE, VALUE AS UBYTE)
+  B(INDEX) = VALUE
+END SUB
+ERRORS OFF
+I = 3
+B(I) = 7
+J = 4
+B(J) = B(I) + I
+SETAT(5, 9)
+ERRORS ON
+I = 255
+BIG(I) = 42
+PRINT B(3); B(4); B(5); BIG(255); BIG(254)

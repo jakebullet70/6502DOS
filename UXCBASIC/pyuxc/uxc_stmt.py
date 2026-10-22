@@ -13,7 +13,7 @@ each. The ASM, SYS, INPUT and WRITE statements are not ported yet.
 import sys
 
 from uxc_code import emit
-from uxc_defs import K_EK_ADDR, K_EK_CONST, K_SEC_BSS, K_SEC_CONST, K_SK_ARRAY, K_SK_LABEL, \
+from uxc_defs import K_EK_ADDR, K_EK_CONST, K_EK_MEM, K_SEC_BSS, K_SEC_CONST, K_SK_ARRAY, K_SK_LABEL, \
     K_SK_VAR, K_SY_SIGNED, K_TOP, K_TT_EOL, K_TT_NAME, K_TT_OP, K_TY_BYTE, K_TY_LONG, \
     K_TY_RECORD, K_TY_STR, K_TY_WORD
 import uxc_case
@@ -418,8 +418,11 @@ def sm_store():
 
 def sm_let_element():
     """SM.LET.ELEMENT. name(i) = expr, with the array's record in g.sy_*. A constant index is
-    a store to the element. A BYTE array with a BYTE index pushes the index; any other index
-    pushes the element's address."""
+    a store to the element. A BYTE array with a BYTE variable index, and no check, is
+    T_POKE_AB. A BYTE array with any other BYTE index pushes the index; any other index
+    pushes the element's address.
+    Trap: T_POKE_AB reads the index after the value, so a FUNCTION in the value that changes
+    the index moves the store."""
     g.sm_ty = g.sy_type
     g.sm_ad = g.sy_val
     g.sm_sec = K_SEC_BSS
@@ -442,6 +445,20 @@ def sm_let_element():
         uxc_lex.lx_next()
         uxc_expr.ex_expr()
         sm_store()
+        return
+    if g.sm_ty == K_TY_BYTE and g.ex_vk[g.ex_i] == K_EK_MEM and g.ex_vt[g.ex_i] == K_TY_BYTE \
+            and (g.sm_errors_on == 0 or g.sm_cnt >= 256):
+        g.sm_vb_bs = g.ex_vs[g.ex_i]
+        g.sm_vb_bv = g.ex_vv[g.ex_i]
+        g.ex_vn = g.ex_vn - 1
+        uxc_lex.lx_next()
+        uxc_expr.ex_expr()
+        uxc_expr.ex_tob()
+        g.sl_s[0] = K_SEC_BSS
+        g.sl_v[0] = g.sm_ad
+        g.sl_s[1] = g.sm_vb_bs
+        g.sl_v[1] = g.sm_vb_bv
+        emit(T.T_POKE_AB)
         return
     if g.sm_ty == K_TY_BYTE and g.ex_vt[g.ex_i] != K_TY_WORD and g.ex_vt[g.ex_i] != K_TY_LONG:
         uxc_expr.ex_tob()

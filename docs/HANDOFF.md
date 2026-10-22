@@ -3894,8 +3894,14 @@
               over 2c: ENDSECTION comes with CREATEFORM, the section loop with DRAW_FORM,
               NEW_PANEL, 12 panels). PRG 4187 to 5090 (+903). Arrays 117 bytes. The first 2d was
               4678; one panel table -117, the look-ahead -134, `WIDTH / 2` -4.
-            - The array-store template (19 bytes for 9) would save about 10 bytes at each of
-              NEW_PANEL's 8 stores; still asm, still not asked.
+            - Done after 2d: `B(I) = v`, a BYTE array at an unsigned or signed BYTE variable
+              index, with ERRORS OFF or an array of 256 or more, is T_POKE_AB (`ldy I`,
+              `sta B,y`): 9 bytes for 19 with a variable value. No new asm; `sm_let_element` in
+              `uxc_stmt.py`. Trap, as T_POKE_AB's: the index is read after the value. Region 1
+              on the probe 4423 to 4283 (-140), 3909 free; PRG 5090 to 4950. GREP -80 bytes,
+              GUIFORM -110, GUISECT -140. New `UXCBASIC/tests/ARRAYVB.UXB` ok 0.5 s; RUNSUB's
+              error address moved (golden rewritten) ok 0.5 s; GUISECT, GUIFORM, GUIBOX,
+              GUIEDIT, GUIFLAGS, GUIMASK, GUITHEME ok 0.4 to 0.5 s.
             - Tests: new `UXCBASIC/tests/SUBCONST.UXB` (two literals, a global, pass-on to a
               plain parameter, AS CONST to AS CONST, a default) ok 0.6 s; `ERRCONSTLET` and
               `ERRCONSTIN` ok 0.2 s each; new `tests/GUISECT.UXB` (two forms, sections with and
@@ -3908,7 +3914,7 @@
             - Owed to the doc batch: UXC-HELP `T$ AS CONST` (Subroutines, with an example, and
               the CONST PARAMETER error); GUI.PLAN.md 2d (panels, PLACE, the title row, the
               limits D8 now 12 panels in all); the pyuxc README if it names sb_look_ahead.
-              The HDIR goldens pending: CMDSHELL, VIEW, DATE, TIME and XCOPY shrank.
+              The HDIR goldens pending: CMDSHELL, VIEW, DATE, TIME, XCOPY and GREP shrank.
             Next: phase 2, step 2e, GUI.SHOW and the focus loop.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
