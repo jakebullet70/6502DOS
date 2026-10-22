@@ -10,9 +10,9 @@
 .include "mem.inc"
 .include "api.inc"
 
-.export api_bank_alloc, api_bank_free, bank_init, bank_exit
+.export api_bank_alloc, api_bank_free, api_bank_call, bank_init, bank_exit
 .import bank0
-.importzp exec_depth, saved_bank
+.importzp exec_depth, saved_bank, gate_a
 
 .segment "KERNELRAM"
 
@@ -132,6 +132,22 @@ api_bank_free:
         lda #ERR_BAD_BLOCK
         sec
         bra bank_done
+
+; api_bank_call: calls the routine at r0 with RAM bank A selected, then selects the caller's RAM
+; bank again. X goes in; A, X, Y and carry come out, N and Z from A. Y does not go in. The
+; caller's bank waits on the stack, so the routine may make calls, bank_call among them.
+api_bank_call:
+        ldy RAM_BANK
+        phy                     ; the caller's bank
+        sta RAM_BANK
+        jsr @call
+        sta gate_a
+        pla
+        sta RAM_BANK
+        lda gate_a              ; keeps carry
+        rts
+@call:
+        jmp (r0)
 
 ; bank_exit: gives the banks of the program at exec_depth to owner Y: 0 frees them, BANK_KEPT keeps
 ; them. Selects RAM bank 0. Changes A and X.

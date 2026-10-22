@@ -355,6 +355,13 @@ CALLS = [
           "handle 0 is a file, the call is `con_line`."),
          in_=[("r0", "buffer")],
          written=True),
+    call(51, "bank_call", None, ("Calls the routine at r0 with RAM bank A selected, then selects "
+          "the caller's RAM bank again. The routine gets X, and its A, X, Y and carry come back. "
+          "The routine may make calls, `bank_call` among them."),
+         in_=[("A", "RAM bank"), ("r0", "routine"), ("X", "the routine's X")],
+         out=[("A", "the routine's A"), ("X", "the routine's X"), ("Y", "the routine's Y"),
+              ("carry", "the routine's carry")],
+         written=True),
 ]
 
 # The break modes of con_break: (number, name). The name becomes BREAK_NAME in asm.

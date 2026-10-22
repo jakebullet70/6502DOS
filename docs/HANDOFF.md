@@ -3506,6 +3506,17 @@
             ahead; the program typed in runs from `$1000` to about `$1283`, so the results go
             at `$1400`. Build 2861 ms, the new baseline. `BANKTRAP` ok 0.5 s. Steps since the
             full suite: 3. Next: step 0c, the asm agreed above.
+          - Done, 0c (2026-10-22): call 51 `bank_call`, `$03D9`, in `src/asm/banks.s` (19 bytes
+            of ROM bank 0, 3 of `api_table`, 3 of page 3; 12 calls left in the page). Added
+            through `tools/api.py`; the build wrote `API.md` and `API_BANK_CALL` in
+            `lib/DOS.UXI`. New test `BANKCALL` (`tests/BANKCALL.S`; `.IN` and golden local)
+            takes banks 1 and 2, selects 1, and calls: a routine at `$A000` in bank 2 (A 02,
+            X $41 + 1, Y $5A, carry set); a routine in bank 2 that makes a `bank_call` to low
+            RAM with bank 1 (inner A 01, X 02 after it); the low RAM routine with bank 0 (A 0,
+            Z set). `$00` is 1 after each. The test's image uses `.org $A000` and `.reloc`.
+            Build 4849 ms, the new baseline: `DOS.UXI` changed, so every UXCBASIC program
+            recompiled. `BANKCALL` ok 2.1 s, `BANKTRAP` ok 0.6 s. Steps since the full suite:
+            4. Next: step 0d, `lib/BANK.UXI`.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
