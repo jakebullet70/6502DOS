@@ -1235,15 +1235,22 @@ To do, not designed yet:
   - Still to decide: which programs, how run time is measured (the jiffy clock `TI` in the
     program, or a cycle count from the emulator), and whether the suite runs in `tests.py` or
     in its own script.
-- **Banked code that calls banked code** (user, 2026-10-10). A compiled program can put code
-  in banked RAM at `$A000`, and code in one bank can call code in another bank.
+- **Banked code that calls banked code** (user, 2026-10-10). Done in pyuxc for 6502DOS,
+  `uxc_ramreg.py`. `#REGION_SLOT n`, n 1 to 63, puts the `SUB`s after it in region n, a RAM
+  bank of its own at `$A000`; `#REGION_SLOT 0` puts them back in low RAM. Help topic: Code in
+  RAM banks.
 
-  - The call saves the current bank, switches to the target bank, calls, and restores the
-    bank on return.
-  - Review how GPC does this first. The compiler itself already runs from banks 20–22 in
-    UXC.OVL through GPC's banked regions.
-  - Still to decide: the syntax that puts a `SUB` in a bank, the cost of a cross-bank call in
-    bytes and cycles, and whether a call within the same bank skips the switch.
+  - The startup takes a bank for each region with `bank_alloc` and copies the region's image
+    there from the file (`T_RGLOAD`, `R_RGLOAD`).
+  - A call across an edge goes to a 7-byte veneer on the caller's side, then to the region's
+    9-byte gate, which calls the kernel's `bank_call`: the bank is saved, selected, and
+    restored on return. About 145 cycles. A call within a side is a `JSR`.
+  - A literal, a global or a runtime record that only one region names moves into it.
+  - Code in a region may not write `$00`.
+  - Left: a WORD that holds an `@` address moved into a region, passed out of it, points into
+    the wrong bank.
+  - Possible later: copies of a shared runtime record in each region; `R_RGLOAD` or all of
+    `%INIT` in the space the array space covers after startup (up to 71 bytes resident).
 - **`INSTRREV`** (user, 2026-10-10). `INSTRREV(S$, F$)` gives the position of the last `F$`
   in `S$`, or 0 when there is none. It searches from the end, where `INSTR` searches from the
   start.
@@ -1406,12 +1413,12 @@ To do, not designed yet:
     - GPC has only the statement `BANK n`, and its `PEEK` selects and restores the bank around
       each access. `STASH.INC.BL` reads the old bank with a `GP.ASM` block, `LDA $00`.
   - 6502DOS has its own bank allocator. It records the program that owns each bank and frees a
-    program's banks when the program exits. The built-in manager must not fight it. The
-    `BANK.*` names come in two versions: one for the stock ROM, and one that calls the 6502DOS
-    allocator, as 6502DOS's `DOS.UXI` does. Settle the two versions before the manager is built.
-  - Still to decide: the raw names; which banks a compiled program reserves besides bank 0;
-    whether the startup code runs `INIT` or the first call does; and whether `SPACE` is in the
-    first version.
+    program's banks when the program exits.
+  - Done for 6502DOS, as UXCBASIC: `lib/BANK.UXI`, namespace `BANK`, on the kernel's calls
+    through `SYS`. `ALLOC`, `FREE`, `FREE_COUNT`, `USE`, `CURRENT`, `GET_BYTE`, `PUT_BYTE`,
+    `FAR_CALL`. A routine adds bytes only when called. `PEEK`, `POKE`, `SELECT` and `CALL` are
+    reserved words in pyuxc and cannot name a routine there. The raw names,
+    `BANK.SELECT` inline and `SPACE` above are not built.
 - **Relocatable output** (user, 2026-10-13). The compiler can emit a program that runs at any
   load address, not only at its `UXC.ORG`.
 
@@ -1436,6 +1443,8 @@ To do, not designed yet:
   literals, then the variables, then the array space, at a RAM address outside the file. The
   startup copies the literals there from the file with `T_LITCOPY` and clears the rest. The
   runtime's data records follow the array space. Help topic: Placing the code and the variables.
+  `#ROMBANKS first, second [, NAME]` splits such a program across two ROM banks
+  (`uxc_rombank.py`); help topic: Two ROM banks.
 
   - Code in ROM cannot be written, so nothing in the code may be a variable. No runtime
     template writes its own code or a source string.

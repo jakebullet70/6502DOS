@@ -1,8 +1,9 @@
 ' BANK.UXI: the RAM bank calls of the 6502DOS API (docs/API.md), in namespace BANK.
 ' Include DOS.UXI first.
 '
-' $00 selects the RAM bank at $A000 to $BFFF. The kernel's calls keep $00. A program's code,
-' variables and strings are in low RAM, so USE changes only what $A000 to $BFFF reads.
+' $00 selects the RAM bank at $A000 to $BFFF. The kernel's calls keep $00. USE changes what
+' $A000 to $BFFF reads. Called from a SUB of a #REGION_SLOT region, USE is undone when the call
+' returns, as the region's bank is selected again.
 ' A SUB or FUNCT adds bytes only when called.
 '
 ' DIM B AS UBYTE

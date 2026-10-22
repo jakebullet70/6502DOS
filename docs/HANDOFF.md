@@ -3644,6 +3644,19 @@
             RGCALL 0.5 s, RGMULTI 0.4 s, RGPASS 0.4 s. Steps since the full suite: 10. The
             regions (0e to 0g) are done. Next: the doc batch (UXC-HELP, the pyuxc README,
             PLAN), then the full suite.
+          - Done, the doc batch (2026-10-22; the user said go), with the `#ROMBANKS` docs owed
+            from 3d2 to 3d5. UXC-HELP: new topics Two ROM banks (`#ROMBANKS`) and Code in RAM
+            banks (`#REGION_SLOT`), each with sections; Compiling gains `BANK.UXI` and the
+            `ROM BANK`, `SECOND`, `REGION` output; `MKHELP.PY` 0.24 s, 42 topics. pyuxc
+            README: the result line, `uxc_rombank`, `uxc_ramreg`, and `#ORG`/`#DATA`,
+            `#ROMBANKS`, `#REGION_SLOT` under pyuxc only. UXCBASIC PLAN: banked code done, the
+            bank manager as `BANK.UXI`, `#ROMBANKS` under ROM-able output. PLAN section 3: ROM
+            banks 3 and 4, the kernel's calls with a caller's bank, `bank_call`, `BANK.UXI`;
+            section 8: `ROMSHELL` boots, `CMDSHELL.COM` the RAM build; section 10: the card
+            root, banks 3 and 4, 81920 bytes, `src/bank3`; section 11 step 8; section 12:
+            `#ROMBANKS`, `#REGION_SLOT`; section 13: past bank 4, the ROM shell question gone.
+            `lib/BANK.UXI`'s head comment: `USE` from a region is undone on return. No docs are
+            owed. Steps since the full suite: 10. Next: the full suite.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

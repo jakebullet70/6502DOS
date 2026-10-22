@@ -111,8 +111,8 @@ The UXCBASIC library is the folder `lib/`. Each file holds one namespace of the 
 | `$C000–$FFFF` ROM bank 0 | kernel core and the vectors. `$FFCF` and `$FFD2` jump to `con_in` and `con_out`, and `$FFF6–$FFF9` hold `MIST` (section 10) |
 | `$C000–$FFFF` ROM bank 1 | the FAT32 library, the kernel's file calls on it, and its glue to the SD driver |
 | `$C000–$FFFF` ROM bank 2 | MSBASIC, started by `MSBASIC.COM` |
-| `$C000–$FFFF` ROM bank 3 | the one UXCBASIC program in `src/bank3`, started by its `.COM` stub |
-| `$C000–$FFFF` ROM banks 4 and up | not in the image yet |
+| `$C000–$FFFF` ROM banks 3 and 4 | the one UXCBASIC program in `src/bank3`, the shell `ROMSHELL`, started by its `.COM` stub |
+| `$C000–$FFFF` ROM banks 5 and up | not in the image yet |
 
 VRAM:
 
@@ -164,6 +164,13 @@ that it selects itself.
 - `bank_free`, call 30, frees the run whose first bank is in A. A bank that is not the first
   bank of a run of the running program gives error 9.
 - The program selects a bank by writing `$00`.
+- The kernel's calls keep `$00`. A call reads and writes the caller's buffers with the
+  caller's bank selected, so a path or a buffer may lie at `$A000–$BFFF`.
+- `bank_call`, call 51, calls the routine at `r0` with RAM bank A selected, then selects the
+  caller's bank again. X goes in; A, X, Y and carry come back. UXCBASIC's
+  `#REGION_SLOT` runs code from RAM banks through it.
+- `lib/BANK.UXI` names the bank calls for UXCBASIC: `BANK.ALLOC`, `FREE`, `FREE_COUNT`, `USE`,
+  `CURRENT`, `GET_BYTE`, `PUT_BYTE`, `FAR_CALL`.
 - `exit` frees each bank whose owner is the ending program's exec depth plus 1. The scan of 256
   bytes takes about 4400 cycles.
 - `exec`'s saves are runs from `bank_alloc` (section 7).
@@ -562,11 +569,12 @@ KERNAL entries:
 
 ## 8. The shell
 
-- `CMDSHELL.COM` is the one shell: a UXCBASIC program on the boot drive. `SHELL=` in
-  `CONFIG.SYS` names another.
-- After the banner the ROM runs `C:\CMDSHELL.COM` with an empty tail, and runs it again each
-  time it ends. When `exec` fails, as with no `C:\CMDSHELL.COM`, the ROM goes to the monitor and
-  prints nothing.
+- The shell is one UXCBASIC program, `src/bas/CMDSHELL.UXI`. `ROMSHELL` runs it from ROM banks
+  3 and 4. `CMDSHELL.COM`, on the boot drive, is the same shell built to run from RAM.
+  `SHELL=` in `CONFIG.SYS` names another.
+- After the banner the ROM runs `C:\ROMSHELL.COM`, a 9-byte stub that starts the shell in ROM
+  bank 3, with an empty tail, and runs it again each time it ends. When `exec` fails, as with
+  no `C:\ROMSHELL.COM`, the ROM goes to the monitor and prints nothing.
 - It calls the API through `DOS.UXI` (section 2).
 - Its language is a small BASIC, not MS-DOS's command language.
 - The prompt and a script take the same language. A line typed at the prompt runs as a script of
@@ -1171,19 +1179,21 @@ Folders:
 
 - `build.py` runs ca65 and ld65 from `tools/cc65/bin` only, never from `PATH`.
 - `build.py` assembles the ROM, compiles each `src/bas/NAME.UXB` to `build/bas/NAME.COM` with
-  `tools/uxb.py`, and puts `CMDSHELL.COM` in the root of the SD card image and the others in
-  `\TEST`. A compile takes under
-  0.1 s.
+  `tools/uxb.py`, and puts `CMDSHELL.COM` and `ROMSHELL.COM` in the root of the SD card image
+  and the others in `\TEST`. A compile takes under 0.1 s.
 - `uxb.py` compiles with pyuxc for its default target, 6502DOS. A source compiles again when its
   COM file is older than the source, than `UXCBASIC/tpl/UXDOS/UXC.TPL.BIN`, or than a
   file the source includes, or than a file of pyuxc. `#INCLUDE` looks in the source's folder,
   then `lib/`.
 - `src/asm/rom.cfg` links ROM banks 0 and 1. `build.py` appends MSBASIC's 6502dos target as
-  bank 2 and the program of `src/bank3` as bank 3, so `build/6502DOS.ROM` is 65536 bytes.
-- `src/bank3` holds one `NAME.UXB` with `#ORG $C000`, `bank3.s` and `bank3.cfg`, which put it
-  at `$C000` with the IRQ entry and the vectors, and `stub.s`, which assembles to
-  `build/bas/NAME.COM`: it selects bank 3 and jumps to `$C000`. ld65 stops the link when the
-  code reaches `$FFA0`.
+  bank 2 and the program of `src/bank3` as banks 3 and 4, so `build/6502DOS.ROM` is 81920
+  bytes.
+- `src/bank3` holds one `NAME.UXB`, now `ROMSHELL.UXB`, with `#ORG $C000`, `#DATA $0801` and
+  `#ROMBANKS 3, 4`; it includes `DOS.UXI`, `HEAP.UXI` and `../bas/CMDSHELL.UXI`. pyuxc compiles
+  it to `build/bank3/BANK3.BIN` and `BANK4.BIN`, empty when the program fits bank 3.
+  `bank.s` and `bank.cfg`, assembled once a bank with `-D BANK=3` and `-D BANK=4`, put each at
+  `$C000` with the IRQ entry and the vectors. `stub.s` assembles to `build/bas/NAME.COM`: it
+  selects bank 3 and jumps to `$C000`. ld65 stops the link when the code reaches `$FFA0`.
 - `tools/mksd.py` writes an SD card image from a folder: an MBR, one partition of type `$0C` at
   sector 2048, and FAT32. A name that is 8.3 goes in as its 8.3 name in capitals. Any other
   name, up to 255 characters, goes in as a long name as typed, with an 8.3 alias `BASE~N.EXT`.
@@ -1331,7 +1341,7 @@ Each step boots and shows something, and each has a test.
        7i4 `WHERE`, 7i5 `HELP`, 7i6 `DATE`, `TIME` and `UPTIME` on the clock calls. `MEM`
        comes with step 10. The DOS utilities `VIEW`, `TREE`, `MORE`, `HEAD`, `TAIL`,
        `GREP`, `XCOPY` and `HELPBAS`, and the utility `HDIR`, follow, one a part.
-8. `SYSINIT.COM` with `CONFIG.SYS` and `DEVICE=`. Until then the ROM runs `C:\CMDSHELL.COM`
+8. `SYSINIT.COM` with `CONFIG.SYS` and `DEVICE=`. Until then the ROM runs `C:\ROMSHELL.COM`
    itself (section 8).
 9. Layer 1 moves to UXCBASIC, one part at a time, as the compiler features land. The parts that
    need nothing new (section 2) are written as `.UXI` libraries first and tested on 6502DOS.
@@ -1368,9 +1378,13 @@ the UXCBASIC plan, section 5, in this order:
    array space at a RAM address outside the file. The startup copies the literals there and
    clears the rest. The runtime's writable bytes are data
    records after the array space. No runtime template writes its own code or a source string.
+   `#ROMBANKS first, second` splits a program across two ROM banks.
 7. **Relocatable output.**
 
 `LONG` and records are the features being written in UXCBASIC now.
+
+pyuxc's `#REGION_SLOT n` runs a program's `SUB`s from RAM banks at `$A000`, a bank a region,
+through `bank_call` (section 3).
 
 Layer 1 does not need arrays that span RAM banks, in the UXCBASIC plan section 5. Programs use
 them for data larger than 8 KB, and on 6502DOS their banks come from one extended memory block
@@ -1388,13 +1402,12 @@ run on 6502DOS.
 ## 13. Still to decide
 
 - The rest of the PSP: the handlers, the environment's bank.
-- Which ROM bank holds which part past banks 0 and 1.
+- Which ROM bank holds which part past bank 4.
 - Whether `A:` and `B:` stay free, or go to IEC drives.
 - FAT12 and FAT16: the kernel reads FAT32 only.
 - Whether an API string pointer points at UXCBASIC's max byte or at its length byte.
   `tpl/R-FILE.ASM` passes the max byte, with the length at offset 1.
-- Whether `CMDSHELL` moves into ROM once UXCBASIC output is ROM-able.
-- What the ROM prints when it cannot run `C:\CMDSHELL.COM`.
+- What the ROM prints when it cannot run `C:\ROMSHELL.COM`.
 - The shell (section 8):
   - Whether a child program sees `PATH$` and the other system variables, through the
     environment (section 7).

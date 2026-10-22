@@ -1308,7 +1308,7 @@ python pyuxc/pyuxc.py HELLO.UXB -I ../lib
 ```
 
 - -I FOLDER adds an include folder. It may be given more than once. lib/ at the
-  repo root holds CONS.UXI, DOS.UXI, HEAP.UXI, KEYS.UXI and STR.UXI.
+  repo root holds BANK.UXI, CONS.UXI, DOS.UXI, HEAP.UXI, KEYS.UXI and STR.UXI.
 - -o FOLDER is the folder of the PRG. The folder must exist. The default is
   the source's folder.
 - --result FILE writes the result line to FILE as well.
@@ -1335,6 +1335,11 @@ lines start with UXCBASIC 0.1 and COMPILING NAME.UXB.
   space.
 - The string literals that no code names are left out. The result line then
   gets REMOVED n STRINGS m BYTES.
+- With #ROMBANKS it prints ROM BANK a n BYTES, ROM BANK b m BYTES, the bytes
+  each bank uses. The result line gets SECOND NAME.PR2 size after the size.
+- With #REGION_SLOT it prints REGION s: n BYTES, d OF DATA, r OF RUNTIME, m
+  FREE for each region, s its slot. The result line gets REGION s n BYTES for
+  each, after the size.
 - On an error it prints ?MESSAGE IN N and the source line, then
   ERROR,N,MESSAGE. N is the line number. The exit status is 1. The first error
   stops the compile.
@@ -1417,7 +1422,94 @@ COUNT = COUNT + 1
 - Code past $FFFF stops the compile with PROGRAM TOO BIG. Variables or array
   space that meet the code stop it with #DATA OVERLAPS THE CODE.
 
-See [[Targets]], [[Compiling]].
+See [[Targets]], [[Compiling]], [[Two ROM banks]].
+
+## Two ROM banks
+
+#ROMBANKS first, second splits a program for ROM across two ROM banks. It
+needs #ORG and #DATA. The program runs from ROM bank first at the #ORG
+address, and the SUBs at its tail run from ROM bank second at the same
+address.
+
+```
+#ORG $C000
+#DATA $0801
+#ROMBANKS 3, 4
+```
+
+- The compile moves the fewest SUBs at the tail, in code order, that let the
+  first bank fit. #ROMBANKS 3, 4, NAME moves the SUB or FUNCTION NAME and each
+  SUB after it, and more before it when the first bank needs.
+- The first bank holds the main code, the SUBs not moved, the startup and the
+  string literals. Each bank holds its own copy of the run-time routines its
+  code calls.
+- NAME.PRG holds the first bank, NAME.PR2 the second. Each file runs from the
+  #ORG address to $FFA0, filled with $FF, and ends with a 23-byte bank switch
+  at $FF89. The ROM build adds the IRQ entry and the vectors from $FFA0.
+- A call to a SUB in the other bank goes through a 7-byte veneer, one for each
+  SUB called across, and takes about 50 cycles.
+- The banks are 0 to 255 and differ. #ROMBANKS is given once: a second stops
+  the compile with #ROMBANKS TWICE.
+
+### Errors in two ROM banks
+
+Without #ORG and #DATA the compile stops with #ROMBANKS NEEDS #ORG AND #DATA.
+#ORG PAST THE ROM BANK when #ORG is
+$FF89 or more. #ROMBANKS SUB NOT FOUND when NAME is not a SUB left in. GOTO
+ACROSS ROM BANKS and JUMP ACROSS ROM BANKS for a jump other than a SUB call
+into the other bank. PROGRAM TOO BIG FOR TWO ROM BANKS, ROM BANK FULL.
+
+See [[Placing the code and the variables]], [[Code in RAM banks]].
+
+## Code in RAM banks
+
+#REGION_SLOT n puts the SUBs and FUNCTIONs after it in region n, which runs
+from a RAM bank of its own at $A000. n is 1 to 63. After #REGION_SLOT 0 they
+stay in low RAM. The main program stays in low RAM.
+
+```
+#REGION_SLOT 1
+SUB SHOW(N AS UWORD)
+  PRINT N * 3
+END SUB
+#REGION_SLOT 0
+SHOW(14)
+```
+
+- At its start the program takes a free RAM bank for each region and copies
+  the region there from the file. No free bank stops it with OUT OF MEMORY.
+  The banks are freed when the program ends.
+
+### Calls and memory in regions
+
+- A call between low RAM and a region, or between two regions, goes through
+  the kernel's bank_call, which selects the caller's bank again after. It
+  takes about 145 cycles. A call within a region is a JSR.
+- A string literal, a global variable or a run-time routine that only one
+  region's code names moves into that region. The rest, the locals and the
+  temps stay in low RAM.
+- A region holds 8192 bytes. The file holds each region after the variables,
+  so the file must fit low RAM with them.
+- An included file starts in its includer's slot, and the includer's slot
+  holds again after it.
+- A run-time error in a region prints the bank with the address:
+  ?DIVISION BY ZERO ERROR AT $07:A06E.
+- Low RAM: 79 bytes for the loader, 19 for each region, 7 for each SUB called
+  across from each side, and the run-time error routine.
+- Trap: a WORD that holds the @ of a variable moved into a region points into
+  that region's bank. Passed out of the region, it reads the wrong bank.
+
+### Errors in regions
+
+- RAM BANK WRITE IN A REGION: a SUB of a region writes $00, by a store to
+  address 0 or an ASM write to $00.
+- GOTO ACROSS THE REGION, JUMP ACROSS THE REGION: a jump other than a SUB
+  call goes across an edge.
+- REGION n FULL: region n passes 8192 bytes.
+- #REGION_SLOT IS 0 TO 63.
+- #REGION_SLOT WITH #ORG, #DATA OR #ROMBANKS: a region in a program for ROM.
+
+See [[Subroutines]], [[Two ROM banks]].
 
 ## Options
 
