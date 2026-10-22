@@ -19,24 +19,63 @@ NAMESPACE GUI
   CONST PASSWORD AS UBYTE = 1, READ_ONLY AS UBYTE = 2, UPPER AS UBYTE = 4, LOWER AS UBYTE = 8
   CONST PROPER AS UBYTE = 16
 
+
+
+
+
   ' Edits TARGET$ in a field at ROW and COLUMN, counted from 0, WIDTH characters wide.
   ' TARGET$ takes at most its own size in characters. The text scrolls inside the field when it
   ' is longer than WIDTH. Left, Right, Home, End, Backspace, Delete and Insert edit. Enter, Tab,
   ' Esc and every other extended key end the edit, and INPUT2 returns that key as WAITKEY()
   ' gives it; KEYMODS() tells Shift+Tab from Tab. Esc puts back the text the field started
   ' with. The field is drawn again from its first character at the end, and the cursor is left
-  ' after the field. FLAGS changes the field as the CONSTs above give. MASK$ is not used.
+  ' after the field. FLAGS changes the field as the CONSTs above give.
+  ' MASK$ fixes the field's length, at most TARGET$'s size. In the mask, # takes a digit, A a
+  ' letter and X any character. TARGET$ is cut or padded to the mask's length. The padding is
+  ' the mask's other characters, and a space where the mask takes a character. The cursor skips
+  ' the mask's other characters. A masked field types over, and Delete and Backspace put a
+  ' space. "(###)-###-####" is a phone number.
   ' Trap: a field that ends in the screen's last column moves the cursor to the next line.
   FUNCTION INPUT2(ROW AS UBYTE, COLUMN AS UBYTE, TARGET$, WIDTH AS UBYTE, MASK$ = "", FLAGS AS UBYTE = 0) AS UWORD
     DIM MOST AS UBYTE, CURSOR AS UBYTE, FIRST AS UBYTE, SHOWN AS UBYTE, TAIL AS UBYTE
     DIM ADDED AS UBYTE, CHANGE AS UBYTE, TYPED AS UBYTE
-    DIM PRESSED AS UWORD, ENDING AS UWORD
-    MOST = ContentsAt(@TARGET$)
+    DIM FIXED AS UBYTE, SPOT AS UBYTE, MASK_CHAR AS UBYTE, BACKWARD AS UBYTE
+    DIM PRESSED AS UWORD, ENDING AS UWORD, MASK_AT AS UWORD, TEXT_AT AS UWORD
+    MOST = ContentsAt(AddrOf(TARGET$))
     ORIGINAL$ = TARGET$
     CURSOR = LEN(TARGET$)
     FIRST = 0
     ENDING = 0
+    BACKWARD = 0
+    ' With no mask, MASK_CHAR stays X.
+    MASK_CHAR = ASC("X")
+    MASK_AT = AddrOf(MASK$) + 2
+    TEXT_AT = AddrOf(TARGET$) + 2
+    FIXED = LEN(MASK$)
+    IF FIXED > MOST THEN FIXED = MOST
+    SPOT = CURSOR
+    DO WHILE SPOT < FIXED
+      MASK_CHAR = ContentsAt(MASK_AT + SPOT)
+      IF MASK_CHAR = ASC("#") OR MASK_CHAR = ASC("A") OR MASK_CHAR = ASC("X") THEN MASK_CHAR = 32
+      ContentsAt(TEXT_AT + SPOT) = MASK_CHAR
+      SPOT = SPOT + 1
+    LOOP
+    ' The length byte is before the characters.
+    IF FIXED > 0 THEN ContentsAt(TEXT_AT - 1) = FIXED
     DO
+      ' In a masked field the cursor moves off the mask's own characters: back after Left or
+      ' Backspace while there is a character to type before it, else forward. BACKWARD is 1
+      ' after Left and 2 after Backspace, and 2 still set below deletes at the cursor.
+      DO WHILE CURSOR < FIXED
+        MASK_CHAR = ContentsAt(MASK_AT + CURSOR)
+        IF MASK_CHAR = ASC("#") OR MASK_CHAR = ASC("A") OR MASK_CHAR = ASC("X") THEN EXIT DO
+        IF BACKWARD > 0 AND CURSOR > 0 THEN
+          CURSOR = CURSOR - 1
+        ELSE
+          BACKWARD = 0
+          CURSOR = CURSOR + 1
+        ENDIF
+      LOOP
       ' Scroll the text so that the cursor is inside the field, then draw the field.
       IF CURSOR < FIRST THEN FIRST = CURSOR
       IF CURSOR - FIRST >= WIDTH THEN FIRST = CURSOR - WIDTH + 1
@@ -56,15 +95,20 @@ NAMESPACE GUI
       END REPEAT
       IF ENDING <> 0 THEN RETURN ENDING
       POS(0) = COLUMN + CURSOR - FIRST
-      PRESSED = WAITKEY()
+      PRESSED = KEYS.KEY_DELETE
+      IF BACKWARD < 2 THEN PRESSED = WAITKEY()
+      BACKWARD = 0
+      ' Backspace moves left, then deletes once the cursor is off the mask's own characters.
       IF PRESSED = KEYS.BACKSPACE AND CURSOR > 0 THEN
         CURSOR = CURSOR - 1
-        PRESSED = KEYS.KEY_DELETE
+        BACKWARD = 2
+        CONTINUE
       ENDIF
       TAIL = LEN(TARGET$) - CURSOR
       SELECT CASE PRESSED
         CASE KEYS.KEY_LEFT
           IF CURSOR > 0 THEN CURSOR = CURSOR - 1
+          BACKWARD = 1
         CASE KEYS.KEY_RIGHT
           IF TAIL > 0 THEN CURSOR = CURSOR + 1
         CASE KEYS.KEY_HOME
@@ -81,8 +125,7 @@ NAMESPACE GUI
             CHANGE = FLAGS
             IF FLAGS AND PROPER THEN
               CHANGE = LOWER
-              ' The string's block is the size byte, the length byte, then the characters.
-              IF CURSOR = 0 OR ContentsAt(@TARGET$ + CURSOR + 1) = 32 THEN CHANGE = UPPER
+              IF CURSOR = 0 OR ContentsAt(TEXT_AT + CURSOR - 1) = 32 THEN CHANGE = UPPER
             ENDIF
             ' A letter OR 32 is its lower case, 97 to 122.
             TYPED = PRESSED OR 32
@@ -90,6 +133,17 @@ NAMESPACE GUI
               IF CHANGE AND UPPER THEN PRESSED = TYPED - 32
               IF CHANGE AND LOWER THEN PRESSED = TYPED
             ENDIF
+            IF MASK_CHAR = ASC("#") AND PRESSED - 48 >= 10 THEN CONTINUE
+            IF MASK_CHAR = ASC("A") AND TYPED - 97 >= 26 THEN CONTINUE
+          ENDIF
+          IF FIXED > 0 THEN
+            ' A masked field keeps its length: a character types over the one at the cursor,
+            ' and Delete puts a space.
+            IF TAIL = 0 THEN CONTINUE
+            IF ADDED = 0 THEN PRESSED = 32
+            ContentsAt(TEXT_AT + CURSOR) = PRESSED
+            CURSOR = CURSOR + ADDED
+            CONTINUE
           ENDIF
           ' One splice deletes the character at the cursor, types over it, or inserts one.
           ' ADDED is 0 for Delete and 1 for a character. ADDED <= OVERWRITE_MODE holds for
@@ -106,8 +160,15 @@ NAMESPACE GUI
             IF PRESSED = KEYS.ESC THEN TARGET$ = ORIGINAL$
             ENDING = PRESSED
             CURSOR = 0
+            ' The cursor stays at 0 for the last draw.
+            FIXED = 0
           ENDIF
       END SELECT
     LOOP
   END FUNCTION
+
+
+
+
+
 END NAMESPACE

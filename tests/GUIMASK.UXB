@@ -1,0 +1,34 @@
+' GUIMASK: GUI.INPUT2's MASK$. Each call prints the text and the key that ended it.
+' 1: a phone number; a letter and a digit past the end are refused. 2: Backspace over a mask
+' character deletes the digit before it; Left stops at the first digit. 3: the text is padded
+' with the mask's - and spaces; X takes any character, A refuses a digit, Delete puts a space.
+' 4: Esc puts back "". 5: Home skips the (; Backspace and Left there do nothing. 6: a mask
+' longer than the string's size stops at the size.
+#INCLUDE "KEYS.UXI"
+#INCLUDE "GUI.UXI"
+DIM NAME$ * 14, SHORT$ * 3, ENDED AS UWORD
+
+SUB SHOW()
+  PRINT
+  PRINT "["; NAME$; "]"; ENDED
+END SUB
+
+NAME$ = ""
+ENDED = GUI.INPUT2(2, 10, NAME$, 14, "(###)-###-####")
+SHOW()
+NAME$ = ""
+ENDED = GUI.INPUT2(4, 10, NAME$, 6, "##-##")
+SHOW()
+NAME$ = "A"
+ENDED = GUI.INPUT2(6, 10, NAME$, 6, "A-XX")
+SHOW()
+NAME$ = ""
+ENDED = GUI.INPUT2(8, 10, NAME$, 6, "###")
+SHOW()
+NAME$ = "(12)"
+ENDED = GUI.INPUT2(10, 10, NAME$, 6, "(##)")
+SHOW()
+SHORT$ = ""
+ENDED = GUI.INPUT2(12, 10, SHORT$, 6, "#####")
+PRINT
+PRINT "["; SHORT$; "]"; ENDED

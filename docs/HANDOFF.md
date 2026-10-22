@@ -3723,6 +3723,25 @@
             the runtime was low anyway: the cost was 26 a call plus 2. `UXCBASIC/tests/STRSUB`
             gains `FILL("")`, `SHOUT("")`, `SHOW("")`, ok 0.7 s; GUIFLAGS ok 0.7 s; BANKEXEC
             ok 0.5 s. Next: step 1c, masks.
+          - Done (2026-10-22): GUI step 1c, masks. `#` a digit, `A` a letter, `X` any
+            character. The field's length `FIXED` is `LEN(MASK$)`, at most TARGET$'s size;
+            TARGET$ is cut or padded to it. The padding is the mask's other characters, and a
+            space where the mask takes one; text already there is not reformatted. The cursor
+            starts after the caller's text and skips the mask's other characters: back after
+            Left or Backspace (`BACKWARD` 1 or 2) while a typeable position is before it, else
+            forward. Backspace now moves left and `CONTINUE`s, and the Delete runs on the next
+            pass (one more field draw: GUIEDIT and GUIFLAGS goldens updated, local). A masked
+            field types over; Delete and Backspace put a space. Esc puts back the caller's text;
+            the last draw sets `FIXED = 0` so the cursor stays at 0. GPC (attic) has no picture
+            mask, only a password `*` and `ALLOW$`/`DENY$` by `INSTR`. Size, one call: region 1
+            1872 to 2457 bytes (+585; the plan said 300), 5735 free. Measured: a `ContentsAt`
+            at a computed address costs 37 bytes to read and 41 to write (hand code about 15);
+            `INSTR("#AX", CHR$(...))` +161 over three compares; a pad by `TARGET$ + MID$(MASK$,
+            ...)` +27 over the pad loop; `UWORD` pointers `MASK_AT`, `TEXT_AT` saved 6. Test
+            `tests/GUIMASK.UXB` and `.IN` (6 cases), ok 0.4 s; GUIFLAGS ok 0.4 s; GUIEDIT ok
+            0.5 s. The user's own edit to GUI.UXI (`AddrOf` in place of `@`, blank lines) went
+            in with this step. Proposed, not done: a pyuxc codegen form for `ContentsAt(P + B)`.
+            Next: phase 2, step 2a, themes.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
