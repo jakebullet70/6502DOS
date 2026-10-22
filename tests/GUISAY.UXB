@@ -1,0 +1,41 @@
+' GUISAY: GUI.SAY and GUI.SAYGET, with a GET beside them. The last lines give the strings, then
+' the control numbers, each field's column, SHOW's event, and the control and event of a form of
+' one SAY.
+' The form holds a SAY, a section of two SAYGETs and a GET, and a SAYGET at an explicit place.
+' The section's fields line up a space after its longest caption, "Phone", at column 9; the
+' explicit field a space after its own caption, at column 5. Keys: "Al" and Up wrap past the SAY
+' to the last field; "q" and Tab wrap past the SAY to the first; Enter; "9" and Enter; "zz" and
+' Enter; Enter on the last field returns EV_DONE. A form of one SAY returns EV_DONE at once.
+#INCLUDE "KEYS.UXI"
+#INCLUDE "GUI.UXI"
+DIM KEPT(24) AS UBYTE, AT AS UBYTE, H AS UBYTE, N AS UBYTE
+DIM N$ * 8, P$ * 6, Z$ * 4, A$ * 4
+
+SUB KEEP(VALUE AS UBYTE)
+  KEPT(AT) = VALUE
+  AT = AT + 1
+END SUB
+
+AT = 0
+H = GUI.CREATEFORM("Say", 2, 0, 30, 10, GUI.FRAMED)
+KEEP(GUI.SAY(GUI.AUTO, GUI.AUTO, "Header text"))
+GUI.STARTSECTION(H, "Who", GUI.FRAMED)
+KEEP(GUI.SAYGET(GUI.AUTO, GUI.AUTO, "Name", N$, 8))
+KEEP(GUI.SAYGET(GUI.AUTO, GUI.AUTO, "Phone", P$, 6))
+KEEP(GUI.GET(GUI.AUTO, GUI.AUTO, Z$, 4))
+GUI.ENDSECTION()
+KEEP(GUI.SAYGET(8, 2, "At", A$, 4))
+FOR N = 2 TO 5
+  KEEP(GUI.FIELD_COLUMN(N))
+NEXT N
+KEEP(GUI.SHOW(H))
+H = GUI.CREATEFORM("One", 20, 40, 10, 3)
+KEEP(GUI.SAY(1, 1, "Hi"))
+KEEP(GUI.SHOW(H))
+POS(1) = 24
+POS(0) = 0
+PRINT "["; N$; "]["; P$; "]["; Z$; "]["; A$; "]"
+FOR N = 0 TO AT - 1
+  PRINT KEPT(N);
+NEXT N
+PRINT

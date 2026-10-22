@@ -3979,7 +3979,29 @@
             GUIMASK ok 0.4 s, GUIFORM ok 0.4 s. No build. Untested: Shift+Tab (tests cannot
             type it). Owed to the doc batch: GUI.PLAN.md 2e (GET moved, the events, LEFT_FIELD,
             REFUSE's status line).
-            Next: phase 3, step 3a, `GUI.SAY` and `GUI.SAYGET`.
+          - Done (2026-10-22), 3a, in `lib/GUI.UXI`: `GUI.SAYGET(ROW, COLUMN, CAPTION$ AS CONST,
+            TARGET$, WIDTH, MASK$ = "", FLAGS = 0) AS UBYTE`, a caption and a field; GET is
+            SAYGET with the caption ""; `GUI.SAY(ROW, COLUMN, CAPTION$) AS UBYTE` is SAYGET with
+            WIDTH 0 (ORIGINAL$ stands in for the target), a control that takes no focus
+            (NEXT_CONTROL skips WIDTH 0 unless HANDLE is 0). New arrays CONTROL_SECTION and
+            CONTROL_LABEL_AT (UWORD); CONTROL_ROW and CONTROL_COLUMN are the caption's place.
+            `FIELD_COLUMN(CONTROL)`: the field starts a space after the caption, or in a section
+            (AUTO column) a space after the section's longest caption, so a GET in a section
+            lines up with the SAYGETs; no caption, no space. A SAY's caption does not count
+            toward the longest. SHOW's first draw prints each caption in the TEXT color, then
+            the field. My choices, not in GUI.PLAN.md: WIDTH is required (the plan's example
+            leaves it out), one space between caption and field, captions left-aligned, SAY
+            returns its control number. Region 1 on GUISHOW 5454 to 5932 (+478): tables +147,
+            caption draw 67, FIELD_COLUMN and its call about 108, NEXT_CONTROL 23, SAYGET's
+            new stores and the GET wrapper about 133. Saving applied: FIELD_COLUMN into a local
+            before INPUT2's call, not among its arguments, 48 bytes (a trap comment marks it).
+            Inlining FIELD_COLUMN saves 10 more but the test calls it; not done. A program with
+            the whole GUI: about 6.7 KB of region 1, about 1.4 KB free. New `tests/GUISAY.UXB`
+            and `.IN` (a SAY, a section of two SAYGETs and a GET, an explicit SAYGET, the field
+            columns, Up and Tab wrapping past the SAY, a form of one SAY) ok 0.6 s, golden
+            traced by hand; GUISHOW ok 0.5 s, GUISECT ok 0.4 s. No build. Owed to the doc
+            batch: GUI.PLAN.md 3a (GET in SAYGET, WIDTH required, the field column rule).
+            Next: phase 3, step 3b, `GUI.CHECK` and `GUI.RADIO`.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
