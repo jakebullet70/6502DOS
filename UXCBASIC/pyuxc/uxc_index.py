@@ -2,14 +2,19 @@
 
     ex_peek()     PEEK(a) or ContentsAt(a), the BYTE at the top entry; ContentsAtW(a), the
                   WORD. The operator is g.ex_op[g.ex_on].
+    ex_vb_test()  whether the + about to be applied is P + B inside ( ), for T_PEEK_VB and
+                  T_POKE_VB
+    ex_peek_vb()  ContentsAt(P + B), a WORD variable plus a BYTE variable
     ex_index()    array g.ex_oa[g.ex_on], element of the top entry
 """
 
 from uxc_code import emit
-from uxc_defs import K_EK_ADDR, K_EK_CONST, K_EK_MEM, K_EK_REG, K_EO_WORDPEEK, K_SEC_BSS, \
-    K_SEC_CONST, K_SY_SIGNED, K_TY_BYTE, K_TY_LONG, K_TY_RECORD, K_TY_STR, K_TY_WORD
+from uxc_defs import K_EK_ADDR, K_EK_CONST, K_EK_MEM, K_EK_REG, K_EO_ADD, K_EO_PAR, \
+    K_EO_WORDPEEK, K_SEC_BSS, K_SEC_CONST, K_SY_SIGNED, K_TY_BYTE, K_TY_LONG, K_TY_RECORD, \
+    K_TY_STR, K_TY_WORD
 import uxc_expr
 import uxc_fold
+import uxc_lex
 import uxc_record
 import uxc_sym
 import uxc_tpl as T
@@ -43,6 +48,56 @@ def ex_peek():
         emit(T.T_PEEKW)
     g.ex_vk[g.ex_i] = K_EK_REG
     g.ex_vt[g.ex_i] = g.ex_peek_type
+
+
+def ex_vb_test():
+    """EX.VB.TEST. g.ex_vb = 1 when the top operator is + with a ( under it, and the two top
+    entries are a WORD variable and an unsigned BYTE variable, in either order. g.ex_vb_w and
+    g.ex_vb_b are their entries."""
+    g.ex_vb = 0
+    if g.ex_on - 2 < g.ex_op_base or g.ex_vn < 2:
+        return
+    if g.ex_op[g.ex_on - 1] != K_EO_ADD or g.ex_op[g.ex_on - 2] != K_EO_PAR:
+        return
+    g.ex_vb_w = g.ex_vn - 2
+    g.ex_vb_b = g.ex_vn - 1
+    if g.ex_vt[g.ex_vb_w] == K_TY_BYTE:
+        g.ex_vb_w = g.ex_vn - 1
+        g.ex_vb_b = g.ex_vn - 2
+    if g.ex_vk[g.ex_vb_w] != K_EK_MEM or g.ex_vt[g.ex_vb_w] != K_TY_WORD:
+        return
+    if g.ex_vk[g.ex_vb_b] != K_EK_MEM or g.ex_vt[g.ex_vb_b] != K_TY_BYTE:
+        return
+    if g.ex_vg[g.ex_vb_b] != 0:
+        return
+    g.ex_vb = 1
+
+
+def ex_vb_slots():
+    """EX.VB.SLOTS. The WORD variable into slot 0 and the BYTE variable into slot 1."""
+    g.sl_s[0] = g.ex_vs[g.ex_vb_w]
+    g.sl_v[0] = g.ex_vv[g.ex_vb_w]
+    g.sl_s[1] = g.ex_vs[g.ex_vb_b]
+    g.sl_v[1] = g.ex_vv[g.ex_vb_b]
+
+
+def ex_peek_vb():
+    """EX.PEEK.VB. ContentsAt(P + B), with the ) as the token: the operators +, ( and PEEK
+    come off, and the two entries become the BYTE in A."""
+    g.ex_fb = g.ex_vn - 2
+    uxc_expr.ex_flush()
+    ex_vb_slots()
+    emit(T.T_PEEK_VB)
+    g.ex_vn = g.ex_vn - 1
+    g.ex_i = g.ex_vn - 1
+    g.ex_vk[g.ex_i] = K_EK_REG
+    g.ex_vt[g.ex_i] = K_TY_BYTE
+    g.ex_vs[g.ex_i] = K_SEC_CONST
+    g.ex_vv[g.ex_i] = 0
+    g.ex_vg[g.ex_i] = 0
+    g.ex_on = g.ex_on - 3
+    g.ex_pd = g.ex_pd - 1
+    uxc_lex.lx_next()
 
 
 def ex_index():

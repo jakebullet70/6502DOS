@@ -1,0 +1,35 @@
+' POINTERVB -- ContentsAt(P + I), a UWORD pointer plus a UBYTE index, read and assigned
+DIM P AS UWORD, I AS UBYTE, J AS UBYTE, X AS UBYTE, S AS BYTE
+DIM B(5) AS UBYTE
+B(1) = 11
+B(2) = 22
+P = AddrOf(B)
+I = 1
+J = 2
+PRINT ContentsAt(P + I); ContentsAt(I + P)
+ContentsAt(P + I) = 31
+ContentsAt(J + P) = 32
+PRINT B(1); B(2)
+' both in one expression, and one stored from the other
+X = ContentsAt(P + I) + ContentsAt(P + J)
+PRINT X
+ContentsAt(P + J) = ContentsAt(P + I) + 1
+PRINT B(2)
+' the index carries into the pointer's high byte
+ContentsAt($9E01) = 77
+P = $9DFE
+I = 3
+PRINT ContentsAt(P + I)
+ContentsAt(P + I) = 78
+PRINT PEEK($9E01)
+' forms that take the general path
+P = AddrOf(B)
+I = 1
+ContentsAt((P + I)) = 41
+ContentsAt(P + I + 1) = 42
+PRINT B(1); B(2)
+S = 3
+ContentsAt(P + S) = 43
+PRINT ContentsAt(P + S); B(3)
+ContentsAtW(P + I) = $2C2D
+PRINT ContentsAtW(P + I); B(1); B(2)

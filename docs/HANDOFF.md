@@ -3740,7 +3740,23 @@
             ...)` +27 over the pad loop; `UWORD` pointers `MASK_AT`, `TEXT_AT` saved 6. Test
             `tests/GUIMASK.UXB` and `.IN` (6 cases), ok 0.4 s; GUIFLAGS ok 0.4 s; GUIEDIT ok
             0.5 s. The user's own edit to GUI.UXI (`AddrOf` in place of `@`, blank lines) went
-            in with this step. Proposed, not done: a pyuxc codegen form for `ContentsAt(P + B)`.
+            in with this step.
+          - Done (2026-10-22): pyuxc `ContentsAt(P + B)`, P a WORD variable and B an unsigned
+            BYTE variable, in either order. New templates `T_PEEK_VB` and `T_POKE_VB` (ids 281,
+            282), 15 bytes each: P into `ZP_PTR`, `ldy B`, `lda`/`sta (ZP_PTR),y`. `ex_close`
+            matches a `+` with `(` under it (`uxc_index.ex_vb_test`); under the `(` a `PEEK` is
+            the read (`ex_peek_vb`). For the write, `sm_contents` now starts the expression at
+            its `(` and sets `g.ex_poke_at` to the operator base; `ex_close` stops at that `(`
+            and, for `ContentsAt` (not `ContentsAtW`), leaves P and B on the stack. The write
+            reads P and B after the value (trap noted in `sm_contents`). Other forms take the
+            old path: `(P + B)`, `P + B + 1`, a signed BYTE, `ContentsAtW`. GUI region 1, one
+            call: 2457 to 2370 bytes (-87), 5822 free. Test `UXCBASIC/tests/POINTERVB.UXB` (new),
+            ok 0.7 s; POINTERS ok 0.5 s; ERRCONTENTS ok 0.0 s; GUIMASK ok 0.4 s; GUIEDIT ok 0.4 s;
+            GUIFLAGS ok 0.5 s. Build 5.8 s, the templates changed so every program compiled, the
+            new baseline. TED (uses the form) ok 2.0 s. HDIR fails on the card's root listing
+            only: `GUIEDIT.COM`, `GUIFLAGS.COM`, `GUIMASK.COM` are new in the root, and the
+            listing runs past one page; its sort passes on `C:\MANY`. HDIR, HDIRARG, HDIRRED and
+            the other listing goldens wait for the full suite after the GUI work.
             Next: phase 2, step 2a, themes.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.

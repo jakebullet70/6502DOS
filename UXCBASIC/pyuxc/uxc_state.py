@@ -49,6 +49,8 @@ def dim():
     g.em_b = [0] * 256
     g.sl_s = [0] * 4
     g.sl_v = [0] * 4
+    g.ex_poke_at = -1
+    g.ex_poke_vb = 0
     for name in ("ex_op", "ex_vk", "ex_vs", "ex_vt", "ex_vv", "ex_jt", "ex_jf", "ex_oa", "ex_vg"):
         setattr(g, name, [0] * (K_EX_MAX + 1))
     for name in ("ns_k", "ns_no", "ns_p", "ns_sn", "ns_top", "ns_ex", "ns_ct", "ns_fl", "ns_el",

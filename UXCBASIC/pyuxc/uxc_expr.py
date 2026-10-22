@@ -379,10 +379,23 @@ def ex_close():
             return ex_end()
         if g.ex_op[g.ex_on - 1] == K_EO_PAR:
             break
+        uxc_index.ex_vb_test()
+        if g.ex_vb == 1 and g.ex_poke_vb == 1 and g.ex_on - 2 == g.ex_poke_at:
+            # ContentsAt(P + B) = v: sm_contents takes the two entries.
+            g.ex_vb = 2
+            g.ex_on = g.ex_on - 2
+            g.ex_pd = g.ex_pd - 1
+            uxc_lex.lx_next()
+            return _DONE
+        if g.ex_vb == 1 and g.ex_on - 3 >= g.ex_op_base and g.ex_op[g.ex_on - 3] == K_EO_PEEK:
+            uxc_index.ex_peek_vb()
+            return _OPERATOR
         ex_reduce()
     g.ex_on = g.ex_on - 1
     g.ex_pd = g.ex_pd - 1
     uxc_lex.lx_next()
+    if g.ex_on == g.ex_poke_at:
+        return _DONE
     if g.ex_on == g.ex_op_base:
         return _OPERATOR
     if g.ex_op[g.ex_on - 1] == K_EO_PEEK or g.ex_op[g.ex_on - 1] == K_EO_WORDPEEK:

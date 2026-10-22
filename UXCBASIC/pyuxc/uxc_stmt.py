@@ -496,20 +496,40 @@ def sm_store_through():
 
 def sm_contents():
     """SM.CONTENTS. ContentsAt(a) = v stores a BYTE, as POKE a, v does. ContentsAtW(a) = v
-    stores a WORD."""
+    stores a WORD. The expression starts at the (, and ex_close stops it at the matching ).
+    ContentsAt(P + B) = v, a WORD variable plus an unsigned BYTE variable, is T_POKE_VB.
+    Trap: T_POKE_VB reads P and B after v, so a FUNCTION in v that changes P or B moves the
+    store."""
     g.sm_ty = K_TY_BYTE
     if g.sm_w == "CONTENTSATW":
         g.sm_ty = K_TY_WORD
     uxc_lex.lx_next()
     if g.tk_t != K_TT_OP or g.tk_k != 40:
         er_stop("MISSING ( AFTER " + g.sm_w)
-    uxc_lex.lx_next()
+    g.ex_poke_at = g.ex_op_base
+    g.ex_poke_vb = 0
+    if g.sm_ty == K_TY_BYTE:
+        g.ex_poke_vb = 1
+    g.ex_vb = 0
     uxc_expr.ex_expr()
-    if g.tk_t != K_TT_OP or g.tk_k != 41:
-        er_stop("MISSING )")
-    uxc_lex.lx_next()
+    g.ex_poke_at = -1
     if g.tk_t != K_TT_OP or g.tk_k != 61:
         er_syntax()
+    if g.ex_vb == 2:
+        g.sm_vb_ws = g.ex_vs[g.ex_vb_w]
+        g.sm_vb_wv = g.ex_vv[g.ex_vb_w]
+        g.sm_vb_bs = g.ex_vs[g.ex_vb_b]
+        g.sm_vb_bv = g.ex_vv[g.ex_vb_b]
+        g.ex_vn = g.ex_vn - 2
+        uxc_lex.lx_next()
+        uxc_expr.ex_expr()
+        uxc_expr.ex_tob()
+        g.sl_s[0] = g.sm_vb_ws
+        g.sl_v[0] = g.sm_vb_wv
+        g.sl_s[1] = g.sm_vb_bs
+        g.sl_v[1] = g.sm_vb_bv
+        emit(T.T_POKE_VB)
+        return
     sm_poke_address()
 
 

@@ -327,5 +327,31 @@ R_ERRORB .block
         #endtpl
         .endblock
 
+; A = the BYTE at the address in the WORD variable S0, plus the BYTE variable S1:
+; ContentsAt(P + B).
+T_PEEK_VB .block
+        #tpl
+        #ab lda, S0
+        sta ZP_PTR
+        #ab lda, S0, 1
+        sta ZP_PTR+1
+        #ab ldy, S1
+        lda (ZP_PTR),y
+        #endtpl
+        .endblock
+
+; The BYTE at the address in the WORD variable S0, plus the BYTE variable S1, = A:
+; ContentsAt(P + B) = A.
+T_POKE_VB .block
+        #tpl
+        #ab ldy, S0
+        sty ZP_PTR
+        #ab ldy, S0, 1
+        sty ZP_PTR+1
+        #ab ldy, S1
+        sta (ZP_PTR),y
+        #endtpl
+        .endblock
+
 tpl_count = len(tpl_all)
 index   .word tpl_all
