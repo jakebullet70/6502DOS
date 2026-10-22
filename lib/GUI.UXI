@@ -12,17 +12,24 @@ NAMESPACE GUI
   ' The text INPUT2 started with, put back by Esc.
   DIM ORIGINAL$ * 255
 
+  ' INPUT2's FLAGS, added together. PASSWORD shows each character as *. READ_ONLY lets the
+  ' cursor move and the field end, but not the text change. UPPER and LOWER set the case of a
+  ' typed letter. PROPER makes a typed letter upper case at the start of the text or after a
+  ' space, and lower case elsewhere.
+  CONST PASSWORD AS UBYTE = 1, READ_ONLY AS UBYTE = 2, UPPER AS UBYTE = 4, LOWER AS UBYTE = 8
+  CONST PROPER AS UBYTE = 16
+
   ' Edits TARGET$ in a field at ROW and COLUMN, counted from 0, WIDTH characters wide.
   ' TARGET$ takes at most its own size in characters. The text scrolls inside the field when it
   ' is longer than WIDTH. Left, Right, Home, End, Backspace, Delete and Insert edit. Enter, Tab,
   ' Esc and every other extended key end the edit, and INPUT2 returns that key as WAITKEY()
   ' gives it; KEYMODS() tells Shift+Tab from Tab. Esc puts back the text the field started
   ' with. The field is drawn again from its first character at the end, and the cursor is left
-  ' after the field.
+  ' after the field. FLAGS changes the field as the CONSTs above give. MASK$ is not used.
   ' Trap: a field that ends in the screen's last column moves the cursor to the next line.
-  FUNCTION INPUT2(ROW AS UBYTE, COLUMN AS UBYTE, TARGET$, WIDTH AS UBYTE) AS UWORD
+  FUNCTION INPUT2(ROW AS UBYTE, COLUMN AS UBYTE, TARGET$, WIDTH AS UBYTE, MASK$ = "", FLAGS AS UBYTE = 0) AS UWORD
     DIM MOST AS UBYTE, CURSOR AS UBYTE, FIRST AS UBYTE, SHOWN AS UBYTE, TAIL AS UBYTE
-    DIM ADDED AS UBYTE
+    DIM ADDED AS UBYTE, CHANGE AS UBYTE, TYPED AS UBYTE
     DIM PRESSED AS UWORD, ENDING AS UWORD
     MOST = ContentsAt(@TARGET$)
     ORIGINAL$ = TARGET$
@@ -37,7 +44,13 @@ NAMESPACE GUI
       POS(0) = COLUMN
       SHOWN = LEN(TARGET$) - FIRST
       IF SHOWN > WIDTH THEN SHOWN = WIDTH
-      PRINT MID$(TARGET$, FIRST + 1, SHOWN);
+      IF FLAGS AND PASSWORD THEN
+        REPEAT SHOWN
+          PRINT "*";
+        END REPEAT
+      ELSE
+        PRINT MID$(TARGET$, FIRST + 1, SHOWN);
+      ENDIF
       REPEAT WIDTH - SHOWN
         PRINT " ";
       END REPEAT
@@ -61,11 +74,26 @@ NAMESPACE GUI
         CASE KEYS.KEY_INSERT
           OVERWRITE_MODE = OVERWRITE_MODE XOR 1
         CASE KEYS.KEY_DELETE, 32 TO 255
+          IF FLAGS AND READ_ONLY THEN CONTINUE
+          ADDED = 0
+          IF PRESSED < 256 THEN
+            ADDED = 1
+            CHANGE = FLAGS
+            IF FLAGS AND PROPER THEN
+              CHANGE = LOWER
+              ' The string's block is the size byte, the length byte, then the characters.
+              IF CURSOR = 0 OR ContentsAt(@TARGET$ + CURSOR + 1) = 32 THEN CHANGE = UPPER
+            ENDIF
+            ' A letter OR 32 is its lower case, 97 to 122.
+            TYPED = PRESSED OR 32
+            IF TYPED - 97 < 26 THEN
+              IF CHANGE AND UPPER THEN PRESSED = TYPED - 32
+              IF CHANGE AND LOWER THEN PRESSED = TYPED
+            ENDIF
+          ENDIF
           ' One splice deletes the character at the cursor, types over it, or inserts one.
           ' ADDED is 0 for Delete and 1 for a character. ADDED <= OVERWRITE_MODE holds for
           ' Delete and for a character typed over another: both drop the character at the cursor.
-          ADDED = 1
-          IF PRESSED > 255 THEN ADDED = 0
           IF TAIL > 0 AND ADDED <= OVERWRITE_MODE THEN
             TAIL = TAIL - 1
           ELSEIF LEN(TARGET$) = MOST THEN

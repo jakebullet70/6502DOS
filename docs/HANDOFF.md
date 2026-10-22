@@ -3703,6 +3703,19 @@
             and `.IN` (6502DOS runner; the UXCBASIC runner sees no `lib/`), ok 0.5 s. Steps
             since the full suite: 3. Next: step 1b, flags. The `GUI.PLAN.md` names are still to
             fix, and its tests line says `UXCBASIC/tests`.
+          - Done (2026-10-22): GUI step 1b. `INPUT2(..., WIDTH, MASK$ = "", FLAGS AS UBYTE = 0)`;
+            `MASK$` is taken and not used until 1c. CONSTs `GUI.PASSWORD` 1 (shows `*`),
+            `READ_ONLY` 2 (editing keys do nothing; Backspace still moves left), `UPPER` 4,
+            `LOWER` 8, `PROPER` 16 (upper at the start or after a space, lower elsewhere). Case
+            works on typed ASCII letters only. PROPER reads the byte before the cursor with
+            `ContentsAt(@TARGET$ + CURSOR + 1)`. Size, a program with one call: region 1 1593 to
+            1809 bytes (+216; plan said 200), 6383 free; low RAM +99, of which +31 a call (34 to
+            65 bytes a call). Passing `MASK$ = ""` costs 26 bytes a call and pulls string runtime
+            into low RAM; a pyuxc fix to pass a literal `""` as one shared block would save it.
+            Measured: PROPER by `RIGHT$(LEFT$(...)) <= " "` cost 94 more than `ContentsAt`;
+            case on the UWORD `PRESSED` cost 42 more than on a UBYTE. Test `tests/GUIFLAGS.UXB`
+            and `.IN`, ok 0.5 s; GUIEDIT ok 0.4 s. The user paused the full suite and the doc
+            batches until the GUI work is done. Next: step 1c, masks.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

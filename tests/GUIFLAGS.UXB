@@ -1,0 +1,27 @@
+' GUIFLAGS: GUI.INPUT2's FLAGS. Each call prints the text and the key that ended it.
+' 1: PASSWORD shows *. 2: READ_ONLY keeps the text through typing, Delete and Backspace.
+' 3: UPPER. 4: LOWER. 5: PROPER, then a letter typed at the start.
+#INCLUDE "KEYS.UXI"
+#INCLUDE "GUI.UXI"
+DIM NAME$ * 12, ENDED AS UWORD
+
+SUB SHOW()
+  PRINT
+  PRINT "["; NAME$; "]"; ENDED
+END SUB
+
+NAME$ = "AB"
+ENDED = GUI.INPUT2(2, 10, NAME$, 6, "", GUI.PASSWORD)
+SHOW()
+NAME$ = "KEEP"
+ENDED = GUI.INPUT2(4, 10, NAME$, 6, "", GUI.READ_ONLY)
+SHOW()
+NAME$ = ""
+ENDED = GUI.INPUT2(6, 10, NAME$, 12, "", GUI.UPPER)
+SHOW()
+NAME$ = ""
+ENDED = GUI.INPUT2(8, 10, NAME$, 12, "", GUI.LOWER)
+SHOW()
+NAME$ = ""
+ENDED = GUI.INPUT2(10, 10, NAME$, 12, "", GUI.PROPER)
+SHOW()
