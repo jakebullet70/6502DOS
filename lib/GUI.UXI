@@ -49,6 +49,17 @@ NAMESPACE GUI
   CONST CON_COLOR_CALL AS UWORD = $03CA
   ' SYS loads A and P from these bytes before the call. DOS.UXI names them REG_A and REG_P.
   DIM CALL_A AS UBYTE AT $030C, CALL_P AS UBYTE AT $030F
+
+  ' The line styles of BOX, HLINE and VLINE: CP437's single and double lines.
+  ENUM LINES
+    SINGLE, DOUBLE
+  END ENUM
+  ' The characters of the current style, set by PICK_LINES.
+  DIM LINE_ACROSS AS UBYTE, LINE_DOWN AS UBYTE, LINE_TOP_LEFT AS UBYTE, LINE_TOP_RIGHT AS UBYTE
+  DIM LINE_LOW_LEFT AS UBYTE, LINE_LOW_RIGHT AS UBYTE
+  ' Where SPAN prints its next row, and the row's length.
+  DIM SPAN_ROW AS UBYTE, SPAN_COLUMN AS UBYTE, SPAN_LENGTH AS UBYTE
+
   ' Edits TARGET$ in a field at ROW and COLUMN, counted from 0, WIDTH characters wide.
   ' TARGET$ takes at most its own size in characters. The text scrolls inside the field when it
   ' is longer than WIDTH. Left, Right, Home, End, Backspace, Delete and Insert edit. Enter, Tab,
@@ -217,5 +228,73 @@ NAMESPACE GUI
     CALL_A = ContentsAt(@COLORS$ + 2 + WHICH)
     CALL_P = 0
     SYS CON_COLOR_CALL
+  END SUB
+
+  ' Puts the CP437 characters of STYLE's lines in the LINE_ variables.
+  SUB PICK_LINES(STYLE AS ENUM.LINES)
+    LINE_ACROSS = 196
+    LINE_DOWN = 179
+    LINE_TOP_LEFT = 218
+    LINE_TOP_RIGHT = 191
+    LINE_LOW_LEFT = 192
+    LINE_LOW_RIGHT = 217
+    IF STYLE = LINES.DOUBLE THEN
+      LINE_ACROSS = 205
+      LINE_DOWN = 186
+      LINE_TOP_LEFT = 201
+      LINE_TOP_RIGHT = 187
+      LINE_LOW_LEFT = 200
+      LINE_LOW_RIGHT = 188
+    ENDIF
+  END SUB
+
+  ' Prints SPAN_LENGTH characters at SPAN_ROW and SPAN_COLUMN: OPENING, then FILLER, then
+  ' CLOSING as the last. SPAN_LENGTH is at least 2. SPAN_ROW moves down a row.
+  SUB SPAN(OPENING AS UBYTE, FILLER AS UBYTE, CLOSING AS UBYTE)
+    POS(1) = SPAN_ROW
+    POS(0) = SPAN_COLUMN
+    SPAN_ROW = SPAN_ROW + 1
+    PRINT CHR$(OPENING);
+    REPEAT SPAN_LENGTH - 2
+      PRINT CHR$(FILLER);
+    END REPEAT
+    PRINT CHR$(CLOSING);
+  END SUB
+
+  ' Draws a box of STYLE's lines, WIDTH columns by HEIGHT rows, its top left corner at ROW and
+  ' COLUMN, counted from 0. The inside is cleared to spaces. WIDTH and HEIGHT are at least 2.
+  ' The box takes the current console color.
+  ' Trap: a box that ends in the screen's last column moves the cursor to the next line, and on
+  ' the last row that scrolls the screen.
+  SUB BOX(ROW AS UBYTE, COLUMN AS UBYTE, WIDTH AS UBYTE, HEIGHT AS UBYTE, STYLE AS ENUM.LINES = SINGLE)
+    PICK_LINES(STYLE)
+    SPAN_ROW = ROW
+    SPAN_COLUMN = COLUMN
+    SPAN_LENGTH = WIDTH
+    SPAN(LINE_TOP_LEFT, LINE_ACROSS, LINE_TOP_RIGHT)
+    REPEAT HEIGHT - 2
+      SPAN(LINE_DOWN, 32, LINE_DOWN)
+    END REPEAT
+    SPAN(LINE_LOW_LEFT, LINE_ACROSS, LINE_LOW_RIGHT)
+  END SUB
+
+  ' Draws a line of STYLE across, LENGTH columns from ROW and COLUMN. LENGTH is at least 2.
+  SUB HLINE(ROW AS UBYTE, COLUMN AS UBYTE, LENGTH AS UBYTE, STYLE AS ENUM.LINES = SINGLE)
+    PICK_LINES(STYLE)
+    SPAN_ROW = ROW
+    SPAN_COLUMN = COLUMN
+    SPAN_LENGTH = LENGTH
+    SPAN(LINE_ACROSS, LINE_ACROSS, LINE_ACROSS)
+  END SUB
+
+  ' Draws a line of STYLE down, LENGTH rows from ROW and COLUMN.
+  SUB VLINE(ROW AS UBYTE, COLUMN AS UBYTE, LENGTH AS UBYTE, STYLE AS ENUM.LINES = SINGLE)
+    PICK_LINES(STYLE)
+    REPEAT LENGTH
+      POS(1) = ROW
+      POS(0) = COLUMN
+      PRINT CHR$(LINE_DOWN);
+      ROW = ROW + 1
+    END REPEAT
   END SUB
 END NAMESPACE

@@ -1,0 +1,33 @@
+' GUIBOX: GUI.BOX, GUI.HLINE and GUI.VLINE. Each draw prints its characters; the last line
+' gives the cursor's row and column after each draw.
+' 1: a single box 6 by 4. 2: a double box 2 by 2. 3: single and double HLINE of 3. 4: single
+' and double VLINE of 3.
+#INCLUDE "KEYS.UXI"
+#INCLUDE "GUI.UXI"
+DIM ENDS(12) AS UBYTE, AT AS UBYTE
+
+SUB KEEP()
+  ENDS(AT) = POS(1)
+  ENDS(AT + 1) = POS(0)
+  AT = AT + 2
+END SUB
+
+AT = 0
+GUI.BOX(2, 5, 6, 4)
+KEEP()
+GUI.BOX(2, 20, 2, 2, DOUBLE)
+KEEP()
+GUI.HLINE(10, 0, 3)
+KEEP()
+GUI.HLINE(11, 70, 3, DOUBLE)
+KEEP()
+GUI.VLINE(12, 40, 3)
+KEEP()
+GUI.VLINE(12, 79, 3, DOUBLE)
+KEEP()
+POS(1) = 20
+POS(0) = 0
+FOR AT = 0 TO 11
+  PRINT ENDS(AT);
+NEXT AT
+PRINT

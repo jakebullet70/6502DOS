@@ -3781,7 +3781,29 @@
             bytes, -415: 332 of runtime, 83 of code); (2) a
             template for `ContentsAt(@X + B)`, B a BYTE variable: `ldy B`, `lda X,y`, in place of
             the 16-bit add and pointer (about 20 bytes a use; asm, ask first).
-            Next: phase 2, step 2b, drawing.
+          - Done (2026-10-22): GUI step 2b, drawing, in `lib/GUI.UXI`. `ENUM LINES` (SINGLE,
+            DOUBLE, CP437 lines). `GUI.BOX(ROW, COLUMN, WIDTH, HEIGHT, STYLE = SINGLE)` draws the
+            frame and clears the inside to spaces; `GUI.HLINE(ROW, COLUMN, LENGTH, STYLE)`,
+            `GUI.VLINE(ROW, COLUMN, LENGTH, STYLE)`. All take the current console color; the
+            caller sets it with USE_COLOR. WIDTH, HEIGHT and HLINE's LENGTH are at least 2.
+            `PICK_LINES(STYLE)` sets six globals `LINE_ACROSS`, `LINE_DOWN`, `LINE_TOP_LEFT`,
+            `LINE_TOP_RIGHT`, `LINE_LOW_LEFT`, `LINE_LOW_RIGHT` (a name part is at most 16
+            characters, so BOTTOM became LOW). `SPAN(OPENING, FILLER, CLOSING)` prints one row
+            at `SPAN_ROW`/`SPAN_COLUMN`, `SPAN_LENGTH` long, and moves SPAN_ROW down; keeping
+            row, column and length in globals in place of 6 parameters saved 36 bytes. `@` of a
+            string CONST is refused ("NOT A VARIABLE"), so the characters are numbers, not a
+            table. Trap, in the contract: a draw ending in column 79 wraps the cursor, and on
+            the last row scrolls. Name clash ahead: the plan's form flag `GUI.BOX` (2c) needs
+            another name, as BOX is now the SUB.
+            Size on top of one INPUT2 call: region 1 2370 to 2726 bytes with all three (+356:
+            BOX alone +252, HLINE alone +190, VLINE alone +132), 5466 free; low RAM: the 3
+            veneers and the parameters of the SUBs called in. The plan said 250.
+            Test `tests/GUIBOX.UXB` (new; a single box 6 by 4, a double box 2 by 2, both HLINE
+            and VLINE styles, VLINE in column 79; prints the cursor after each), wrote golden
+            2.0 s, checked by hand; then GUIBOX ok 0.4 s, GUITHEME ok 0.5 s, GUIEDIT ok 0.5 s,
+            GUIFLAGS ok 0.4 s, GUIMASK ok 0.4 s. Build 1.66 s.
+            Proposals (1) and (2) of 2a still wait for the user.
+            Next: phase 2, step 2c, forms.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
