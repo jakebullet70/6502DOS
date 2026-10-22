@@ -880,11 +880,13 @@ def sg_tos():
 
 def sg_pass():
     """SG.PASS. A literal or a STRING result is copied into a temp first, so that the SUB
-    cannot write into it."""
+    cannot write into it. The literal "" is passed as it is: its max is 0, so a write into it
+    stores no character."""
     g.ex_i = g.ex_vn - 1
     if g.ex_vt[g.ex_i] != K_TY_STR:
         er_mismatch()
-    if g.ex_vs[g.ex_i] == K_SEC_STR:
+    sg_is_empty()
+    if g.ex_vs[g.ex_i] == K_SEC_STR and g.sg_empty == 0:
         sg_copy()
     g.ex_i = g.ex_vn - 1
     sg_is_result()

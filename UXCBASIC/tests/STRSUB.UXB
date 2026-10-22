@@ -1,10 +1,14 @@
-' STRSUB -- STRING parameters are passed by reference
+' STRSUB -- STRING parameters are passed by reference. A "" argument stays empty after a SUB
+' writes into it.
 DIM G$ * 20
 SUB SHOW(T$)
   PRINT "<"; T$; ">"; LEN(T$)
 ENDSUB
 SUB SHOUT(T$)
   T$ = T$ + "!"
+ENDSUB
+SUB FILL(T$)
+  T$ = "FULL"
 ENDSUB
 FUNCTION TWICE(T AS STRING, N AS UBYTE) AS UBYTE
   RETURN LEN(T + T) + N
@@ -18,3 +22,7 @@ SHOUT("LIT")
 SHOW(G$ + "?")
 PRINT TWICE(G$, 1); TWICE("AB", 0)
 SHOW(MID$(G$, 2) + STR$(TWICE("X", 3)))
+FILL("")
+SHOUT("")
+SHOW("")
+SHOW("LIT")

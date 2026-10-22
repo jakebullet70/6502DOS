@@ -3716,6 +3716,13 @@
             case on the UWORD `PRESSED` cost 42 more than on a UBYTE. Test `tests/GUIFLAGS.UXB`
             and `.IN`, ok 0.5 s; GUIEDIT ok 0.4 s. The user paused the full suite and the doc
             batches until the GUI work is done. Next: step 1c, masks.
+          - Done (2026-10-22): pyuxc `sg_pass` passes the literal `""` to a STRING parameter
+            as the shared block, with no copy into a temp; its max is 0, so a write into it
+            stores no character. INPUT2's `MASK$ = ""` now costs 10 bytes a call (was 26), and
+            no string runtime comes into low RAM for it. With strings already in the main code,
+            the runtime was low anyway: the cost was 26 a call plus 2. `UXCBASIC/tests/STRSUB`
+            gains `FILL("")`, `SHOUT("")`, `SHOW("")`, ok 0.7 s; GUIFLAGS ok 0.7 s; BANKEXEC
+            ok 0.5 s. Next: step 1c, masks.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
