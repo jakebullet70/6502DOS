@@ -1,0 +1,53 @@
+' GUILBOX: GUI.LISTBOX. The last line gives each result kept.
+' The items: 5 records of 8 bytes in low RAM, One to Five; the list has 3 rows.
+' 1: Down, Down and Enter return 3. 2: "t" chooses Two, Tab moves to OK, and Enter returns 2.
+' 3: with LIST_MULTI, Space marks 1, Down, Down, Space marks 3, and Enter returns 3; then the
+' marks of 1, 2 and 3 (1, 0, 1). 4: Tab, Tab and Enter on Cancel return 0. 5: Esc returns 0.
+' 6: a COUNT of 0, and Enter returns 0.
+#INCLUDE "KEYS.UXI"
+#INCLUDE "VERA.UXI"
+#INCLUDE "GUI.UXI"
+DIM KEPT(16) AS UBYTE, AT AS UBYTE, N AS UBYTE
+DIM ITEMS(40) AS UBYTE, PUT_AT AS UWORD
+
+SUB KEEP(VALUE AS UBYTE)
+  KEPT(AT) = VALUE
+  AT = AT + 1
+END SUB
+
+' Writes TEXT$ padded with zeros to 8 bytes at PUT_AT, and moves PUT_AT on.
+SUB PUT_ITEM(TEXT$ AS CONST)
+  DIM SPOT AS UBYTE, CHARACTER AS UBYTE
+  SPOT = 0
+  REPEAT 8
+    CHARACTER = 0
+    IF SPOT < LEN(TEXT$) THEN CHARACTER = ContentsAt(AddrOf(TEXT$) + 2 + SPOT)
+    ContentsAt(PUT_AT) = CHARACTER
+    PUT_AT = PUT_AT + 1
+    SPOT = SPOT + 1
+  END REPEAT
+END SUB
+
+PUT_AT = @ITEMS
+PUT_ITEM("One")
+PUT_ITEM("Two")
+PUT_ITEM("Three")
+PUT_ITEM("Four")
+PUT_ITEM("Five")
+
+AT = 0
+KEEP(GUI.LISTBOX("Pick", @ITEMS, 0, 8, 5, 3))
+KEEP(GUI.LISTBOX("Pick", @ITEMS, 0, 8, 5, 3))
+KEEP(GUI.LISTBOX("Marks", @ITEMS, 0, 8, 5, 3, GUI.LIST_MULTI))
+KEEP(GUI.MARKED(1))
+KEEP(GUI.MARKED(2))
+KEEP(GUI.MARKED(3))
+KEEP(GUI.LISTBOX("Pick", @ITEMS, 0, 8, 5, 3))
+KEEP(GUI.LISTBOX("Pick", @ITEMS, 0, 8, 5, 3))
+KEEP(GUI.LISTBOX("None", @ITEMS, 0, 8, 0, 3))
+POS(1) = 24
+POS(0) = 0
+FOR N = 0 TO AT - 1
+  PRINT KEPT(N);
+NEXT N
+PRINT

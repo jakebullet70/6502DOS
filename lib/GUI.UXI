@@ -1593,6 +1593,26 @@ NAMESPACE GUI
     RETURN RUN_DIALOG(FIRST)
   END FUNCTION
 
+  ' Shows a dialog as MSGBOX does, titled TITLE$, with a list of ROWS rows over the buttons &OK
+  ' and &Cancel. The items and FLAGS are LIST's. The list shows ITEM_LENGTH characters of each
+  ' item. The focus starts in the list, on the first item. Returns the item chosen, 1 for the
+  ' first, for OK or for Enter in the list, and 0 for Cancel, for Esc, or when COUNT is 0. With
+  ' LIST_MULTI, MARKED reads the marks after it returns.
+  ' Trap: with MOST_LISTS lists in use, the dialog has no list, and OK returns 1.
+  FUNCTION LISTBOX(TITLE$ AS CONST, ITEMS_AT AS UWORD, ITEMS_BANK AS UBYTE, ITEM_LENGTH AS UBYTE, COUNT AS UBYTE, ROWS AS UBYTE, FLAGS AS UBYTE = 0) AS UBYTE
+    DIM CHOSEN AS UBYTE, WIDTH AS UBYTE
+    ' A compare gives 1 for true.
+    CHOSEN = COUNT <> 0
+    ' The last column holds ^ and v, and with LIST_MULTI the first holds the mark.
+    WIDTH = ITEM_LENGTH + 1
+    IF FLAGS AND LIST_MULTI THEN WIDTH = WIDTH + 1
+    DIALOG_WIDTH = WIDTH
+    OPEN_DIALOG(TITLE$, ROWS, "&OK", "&Cancel")
+    ' The buttons come first, so Enter in the list, the last control, returns EV_DONE.
+    IF RUN_DIALOG(LIST(1, 2, "", ITEMS_AT, ITEMS_BANK, ITEM_LENGTH, COUNT, @CHOSEN, ROWS, WIDTH, FLAGS)) = 1 THEN RETURN CHOSEN
+    RETURN 0
+  END FUNCTION
+
   ' PRINT_RECORD runs from low RAM, as it selects the items' RAM bank.
 #REGION_SLOT 0
   ' Selects RAM bank BANK, prints the string of the record at AT, cut at its first zero, at

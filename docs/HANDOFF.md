@@ -4573,6 +4573,15 @@
             11706 to 11941; GUICBO 9343 to 10458 and HELPED 15482 to 16597 (+1115 each, region 3
             gains `RUN_LIST`, `MARK_BIT`, `MARKED` and `LIST_MARKS`). After the revert: GUILIST
             ok 0.6 s, GUICBO 0.4, HELPED 1.1. Build 2844 ms, the new baseline. Next: L2, L3.
+          - Done, L2 (2026-10-23): `GUI.LISTBOX(TITLE$, ITEMS_AT, ITEMS_BANK, ITEM_LENGTH, COUNT,
+            ROWS, FLAGS = 0)` in region 2, after INPUTBOX2. OPEN_DIALOG with &OK and &Cancel, a
+            LIST at row 1, column 2, no caption, ITEM_LENGTH + 1 columns (+1 more with
+            LIST_MULTI); the value is a local, so its @ is in low RAM. Returns the item for OK or
+            Enter in the list, 0 for Cancel, Esc or a COUNT of 0. Bytes: LISTBOX 206 (211 before
+            `CHOSEN = COUNT <> 0`); only a program that calls it links it. New test GUILBOX
+            (golden local). Tests: GUILBOX ok 0.6 s, GUILIST 0.5, GUIDLG 0.5. Build 3021 ms, the
+            new baseline. Owed to the doc batch: UXC-HELP and GUI.PLAN on LISTBOX. Next: L3,
+            PICKFILE.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
