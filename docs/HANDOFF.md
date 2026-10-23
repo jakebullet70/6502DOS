@@ -4130,6 +4130,32 @@
             No build. Owed to the doc batch: GUI.PLAN.md D10 and 3e (flat 2 KB at $B800 in
             place of the gap buffer, TED not moved to lib/, the keys, the read trap), D9.
             Next: the end of phase 3, a sample utility measured for low RAM and each bank.
+          - Done (2026-10-23), the end of phase 3: the sample utility `HELPED`,
+            `src/utils/helped/HELPED.UXB`, built to the card's `UTILS\HELPED.COM` (the user's
+            choices: the plan's help editor with every kind of control, in the card's UTILS).
+            `HELPED [name]` loads the name, or README.TXT, into a form 76 by 21, centered:
+            section "Page", TWO_COL, with SAYGET "File" (12, UPPER), CBO "Folder"
+            (Current|C:\UTILS|C:\DOS), CHECK "Backup", RADIO "Theme" (Dark|Light|Gray); section
+            "Contents" with MEMO "Text" 64 by 12; buttons &Load, &Save, &Quit at the form's row
+            19. Each pass of the main loop makes the form, shows MESSAGE with STATUS_LINE, runs
+            SHOW, then FREEs the form, so a Load shows its text and a theme change takes effect
+            (the screen is cleared in the PAGE color first). Save with Backup renames the old
+            file to NAME.BAK; a file MEMO_LOAD cut is not saved; Quit and Esc end without saving
+            and put the starting console color back. Sizes: HELPED.COM 14384 bytes; region 1
+            7746 (1135 of data), 446 free; region 2 3325, 2819 free below $B800 (MEMO_TEXT);
+            low RAM 3313 bytes of the file (the program, DOS, HEAP and the veneers). Against
+            the plan's estimates: region 1 6.4 KB, region 2 2.7 KB. Saving applied: the GUI
+            FUNCTIONs called as statements, not stored to a dummy (-25 bytes, low RAM). New
+            repo test `HELPED` (`tests/HELPED.IN`: the shell, `HELPED note.txt`, Backup
+            checked, Light, "Hi" Enter "there", Save; "!" and Save again makes NOTE.BAK; the
+            name edited to NOTE.BAK and Load; Esc; TYPE both files) ok 1.1 s; golden read
+            screen by screen, not traced byte by byte. Build 5898 ms (all programs, the
+            lib changed), the new baseline. Churn owed: the card's UTILS now holds HELPED.COM
+            and SRC\HELPED, so the listing goldens (HDIR, DIRS, TREE, CMDLETS) move at the
+            next full suite. Owed to the doc batch: a HELP.TXT topic for HELPED, PLAN's UTILS
+            list, GUI.PLAN.md phase 3's end and the V1 example's real signatures (MEMO takes
+            WIDTH and HEIGHT; FRAMED, not BOX). Region 1 has 446 bytes left: phase 4 must
+            go in region 2 as planned. Next: phase 4, step 4a, menus.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
