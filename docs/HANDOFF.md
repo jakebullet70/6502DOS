@@ -4156,6 +4156,38 @@
             list, GUI.PLAN.md phase 3's end and the V1 example's real signatures (MEMO takes
             WIDTH and HEIGHT; FRAMED, not BOX). Region 1 has 446 bytes left: phase 4 must
             go in region 2 as planned. Next: phase 4, step 4a, menus.
+          - Done (2026-10-23), the user's ask out of order: the theme builder `THEMED`,
+            `src/utils/themed/THEMED.UXB`, built to the card's `UTILS\THEMED.COM`, after GPC's
+            `UXCEDIT-THEME.BL` box. `THEMED [name]` edits the 13 role colors in place in
+            `GUI.COLORS$` (at `@GUI.COLORS$ + 2`); the name is the parameter or CUSTOM, and
+            takes .GTH when it has no extension (GUI.PLAN.md D6's extension). It loads the file
+            with `GUI.THEME_FILE` when the file exists, else starts from DARK. The screen: a
+            sample at the left drawn by hand in the roles (a menu bar in MENU and
+            MENU_SELECTED, a double box in FRAME with TITLE, captions in TEXT, a FIELD and a
+            FIELD_FOCUS field, DISABLED text, buttons in BUTTON and BUTTON_FOCUS with the first
+            letter in HOT_KEY's foreground), the role list at the right (box at column 44, 34
+            by 24: name, " Abc " in the color, the background and foreground as one hex digit
+            each; the chosen name and the chosen side in FIELD_FOCUS), and the status line.
+            Keys: Up/Down role, Left/Right step the side, Tab switch side, 1/2/3 DARK, LIGHT,
+            GRAY, L/S edit the name with `GUI.INPUT2` (UPPER) then load or save on Enter, Esc
+            quits without saving and puts back the starting color. The file is the 13 bytes
+            written with `WRITE`, as `THEME_FILE` reads them. The whole screen is drawn again
+            after every key. Sizes: THEMED.COM 7735 bytes; region 1 2967 (312 of data), 5225
+            free; no region 2; low RAM 4768 bytes of the file (the program's own drawing code
+            is in low RAM). Trap found: pyuxc's name table holds 1008 names (`K_SY_MAX`,
+            `uxc_defs.py`), and DOS, HEAP, KEYS, CONS and GUI.UXI take about 950 of them.
+            HELPED needs 983, THEMED 1001 after trimming 10 (ROLE_COLOR inlined, DRAW_SAMPLE
+            folded into DRAW_ALL, the list box's size as literals); it stopped at 1011 with
+            TOO MANY NAMES. Phase 4's menus add names to GUI.UXI and will push HELPED and
+            THEMED over: decide first between more symbol banks in pyuxc (`K_SYM_BANKS` 4)
+            and splitting GUI.UXI. New repo test `THEMED` (`tests/THEMED.IN`: the shell,
+            `THEMED blue`, Right (Page background 0 to 1), Tab, Down, Left (Frame foreground B
+            to A), S Enter saves BLUE.GTH; 2 shows LIGHT, L Enter loads BLUE.GTH back; Esc;
+            `THEMED blue.gth` loads it; Esc) ok 0.9 s; golden checked screen by screen by the
+            hex digits of Page and Frame and the messages. Build 2171 ms, the new baseline.
+            Churn owed: the card's UTILS now holds THEMED.COM and SRC\THEMED too. Owed to
+            the doc batch: a HELP.TXT topic for THEMED, PLAN's UTILS list. Next: the name
+            limit's decision, then phase 4, step 4a, menus.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
