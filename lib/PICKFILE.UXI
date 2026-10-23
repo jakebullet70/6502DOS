@@ -36,6 +36,8 @@ NAMESPACE GUI
   END SUB
 
 #REGION_SLOT 3
+  ' PICKFILE's FLAGS: PICK_MANAGE adds the keys of a file manager.
+  CONST PICK_MANAGE AS UBYTE = 1
   ' The lists' rows.
   CONST PICK_ROWS AS UBYTE = 10
   ' PICKFILE's names are records of 32 bytes in RAM bank PICK_BANK from $A000, PICK_COUNT of
@@ -177,6 +179,86 @@ NAMESPACE GUI
     RETURN 0
   END FUNCTION
 
+  ' Copies 256 bytes from FROM to DESTINATION, one of them in the names' bank.
+  SUB KEEP_PATH(FROM AS UWORD, DESTINATION AS UWORD)
+    REPEAT 8
+      COPY_RECORD(FROM, DESTINATION, PICK_BANK)
+      FROM = FROM + 32
+      DESTINATION = DESTINATION + 32
+    END REPEAT
+  END SUB
+
+  ' Runs, for SCAN F2, F5 or F7, the rename, the copy or the folder made of PICK_MANAGE's
+  ' keys, to NEW$, from the file or folder DOS.CALL_TEXT names. A copy onto the same path is
+  ' not made, and sets DOS.ERROR to ERR_ACCESS. A copy keeps DOS.CALL_TEXT, which DOS.COPY
+  ' takes as its buffer, in the names' bank from $A000, over the records.
+  SUB MOVE_FILE(SCAN AS UBYTE, NEW$)
+    ' F1 to F10 are the scan codes KEYS.SCAN_F1 to KEYS.SCAN_F1 + 9.
+    IF SCAN = KEYS.SCAN_F1 + 1 THEN
+      DOS.RENAME(DOS.CALL_TEXT, NEW$)
+    ELSEIF SCAN = KEYS.SCAN_F1 + 6 THEN
+      DOS.MKDIR(NEW$)
+    ELSEIF UCASE$(NEW$) = UCASE$(DOS.CALL_TEXT) THEN
+      DOS.ERROR = DOS.ERR_ACCESS
+    ELSE
+      KEEP_PATH(@DOS.CALL_TEXT + 1, $A000)
+      DOS.COPY(DOS.CALL_TEXT, NEW$)
+      KEEP_PATH($A000, @DOS.CALL_TEXT + 1)
+    ENDIF
+  END SUB
+
+  ' Runs the PICK_MANAGE key of scan code SCAN on record ITEM - 1, a folder up to PICK_DIRS,
+  ' or on none for 0, in the folder shown. Del deletes the file or folder after a YESNO. F2
+  ' renames it, and F5 copies a file, to the name asked with an INPUTBOX. F7 makes the folder
+  ' named in an INPUTBOX. A name asked is a name or a path from the folder shown, or a path from
+  ' a drive, 32 characters at most. .. is not deleted or renamed. Returns 1 when it called DOS,
+  ' with a DOS error shown on the status line, else 0.
+  FUNCTION MANAGE(SCAN AS UBYTE, ITEM AS UBYTE) AS UBYTE
+    DIM FOCUS AS UBYTE, FORM AS UBYTE, SCREEN AS UBYTE, SHOWN AS UBYTE, LENGTH AS UBYTE
+    DIM DONE AS UBYTE, ANSWER AS UBYTE
+    ' Trap: the dialogs here take over DIALOG_FORM and what PUT_DIALOG kept for PICKFILE.
+    FOCUS = KEPT_FOCUS
+    FORM = KEPT_FORM
+    SCREEN = KEPT_SCREEN
+    SHOWN = DIALOG_FORM
+    ' DOS.CALL_TEXT holds the item's path, and LENGTH the length of the folder's.
+    LENGTH = LEN(DOS.CALL_TEXT)
+    IF ITEM <> 0 THEN
+      NAME_OF(ITEM - 1)
+      IF DOS.FOUND_NAME = ".." THEN ITEM = 0
+      DOS.CALL_TEXT = DOS.CALL_TEXT + DOS.FOUND_NAME
+    ENDIF
+    DONE = 0
+    IF SCAN = KEYS.SCAN_DELETE AND ITEM <> 0 THEN
+      DONE = YESNO("Delete", DOS.FOUND_NAME + "?")
+      IF DONE <> 0 AND ITEM > PICK_DIRS THEN DOS.DELETE(DOS.CALL_TEXT)
+      IF DONE <> 0 AND ITEM <= PICK_DIRS THEN DOS.RMDIR(DOS.CALL_TEXT)
+    ENDIF
+    ANSWER = 0
+    IF SCAN = KEYS.SCAN_F1 + 1 AND ITEM <> 0 THEN ANSWER = INPUTBOX("Rename", "New name:", DOS.FOUND_NAME, 32)
+    IF SCAN = KEYS.SCAN_F1 + 4 AND ITEM > PICK_DIRS THEN ANSWER = INPUTBOX("Copy", "Copy to:", DOS.FOUND_NAME, 32)
+    IF SCAN = KEYS.SCAN_F1 + 6 THEN
+      DOS.FOUND_NAME = ""
+      ANSWER = INPUTBOX("New folder", "Name:", DOS.FOUND_NAME, 32)
+    ENDIF
+    IF ANSWER = 1 THEN
+      ' The characters of a string start at its address + 2.
+      IF ContentsAt(@DOS.FOUND_NAME + 3) = ASC(":") THEN
+        MOVE_FILE(SCAN, DOS.FOUND_NAME)
+      ELSE
+        MOVE_FILE(SCAN, LEFT$(DOS.CALL_TEXT, LENGTH) + DOS.FOUND_NAME)
+      ENDIF
+      DONE = 1
+    ENDIF
+    ContentsAt(@DOS.CALL_TEXT + 1) = LENGTH
+    KEPT_FOCUS = FOCUS
+    KEPT_FORM = FORM
+    KEPT_SCREEN = SCREEN
+    DIALOG_FORM = SHOWN
+    IF DONE <> 0 AND DOS.ERROR <> 0 THEN REFUSE("DOS error" + STR$(DOS.ERROR))
+    RETURN DONE
+  END FUNCTION
+
   ' Shows a dialog as MSGBOX does, titled TITLE$, laid out as the Open dialog of MS-DOS's EDIT:
   ' the field File name, which edits TARGET$; the path of the folder shown; the files there that
   ' the mask matches beside the folders there and the drives, each list sorted with case ignored;
@@ -188,11 +270,13 @@ NAMESPACE GUI
   ' Enter in the list of files return 1, with TARGET$ the full path of the file named in the
   ' field when it holds a name, else of the file chosen in the list. Returns 0 for Cancel, for
   ' Esc, with no file named or chosen, or when no RAM bank is free. The current drive and
-  ' folder do not change. The dialog is 72 columns wide. It takes a RAM bank while it is open.
+  ' folder do not change. With PICK_MANAGE in FLAGS, Del, F2 and F5 in a list, and F7 in a list
+  ' or the field, work as MANAGE runs them, and the names are read again after each that calls
+  ' DOS. The dialog is 72 columns wide. It takes a RAM bank while it is open.
   ' The lists hold 255 names in all. It changes DOS.CALL_TEXT and the DOS.FOUND_ variables.
   FUNCTION PICKFILE(TITLE$ AS CONST, MASK$ AS CONST, TARGET$, FLAGS AS UBYTE = 0) AS UBYTE
-    DIM FOLDER AS UBYTE, CHOSEN AS UBYTE, FIELD AS UBYTE, FOCUS AS UBYTE, ON_FOLDERS AS UBYTE
-    DIM RESULT AS UBYTE, DRIVE AS UBYTE, LENGTH AS UBYTE
+    DIM FOLDER AS UBYTE, CHOSEN AS UBYTE, FIELD AS UBYTE, FOLDERS AS UBYTE, FILES AS UBYTE
+    DIM RESULT AS UBYTE, DRIVE AS UBYTE, LENGTH AS UBYTE, ITEM AS UBYTE
     PICK_BANK = BANK.ALLOC(1)
     IF PICK_BANK = 0 THEN RETURN 0
     ' The drives GETCWD knows, H: first, so A: ends in bit 0.
@@ -205,7 +289,6 @@ NAMESPACE GUI
     ' DOS.CALL_TEXT holds the path of the folder shown.
     SET_PATH(DOS.GETDRIVE() + 1)
     TARGET$ = MASK$
-    ON_FOLDERS = 0
     RESULT = 0
     ' Each pass reads the names and makes the form; the first saves the screen.
     DO
@@ -223,41 +306,54 @@ NAMESPACE GUI
       SAY(2, 2, DOS.CALL_TEXT)
       SAY(3, 2, "Files")
       SAY(3, 37, "Folders")
-      FOCUS = LIST(4, 37, "", $A000, PICK_BANK, 32, PICK_FOLDERS, @FOLDER, PICK_ROWS, 33, VALIDATE)
-      ' The list of files is the last control, so Enter in it returns EV_DONE.
-      LIST(4, 2, "", RECORD_AT(PICK_FOLDERS), PICK_BANK, 32, PICK_FILES, @CHOSEN, PICK_ROWS, 33)
-      IF ON_FOLDERS = 0 THEN FOCUS = FIELD
+      FOLDERS = LIST(4, 37, "", $A000, PICK_BANK, 32, PICK_FOLDERS, @FOLDER, PICK_ROWS, 33, VALIDATE)
+      FILES = LIST(4, 2, "", RECORD_AT(PICK_FOLDERS), PICK_BANK, 32, PICK_FILES, @CHOSEN, PICK_ROWS, 33, VALIDATE)
+      ' The form made again takes the same control numbers, so the focus goes back where it was.
       IF RESULT = 0 THEN
-        PUT_DIALOG(FOCUS)
+        PUT_DIALOG(FIELD)
       ELSE
-        NEXT_FOCUS = FOCUS
+        NEXT_FOCUS = LEFT_FIELD
       ENDIF
-      ' Tab and the other keys that leave the field or the list of folders let SHOW go on.
+      ' Tab and the other keys that leave a control let SHOW go on, unless PICK_MANAGE's key
+      ' called DOS.
       DO
         RESULT = SHOW(DIALOG_FORM)
-      LOOP WHILE RESULT = EV_LEAVE AND LEFT_KEY <> KEYS.ENTER
+        IF RESULT <> EV_LEAVE OR LEFT_KEY = KEYS.ENTER THEN EXIT DO
+        IF FLAGS AND PICK_MANAGE THEN
+          ITEM = 0
+          IF LEFT_FIELD = FOLDERS AND FOLDER <= PICK_DIRS THEN ITEM = FOLDER
+          IF LEFT_FIELD = FILES AND CHOSEN <> 0 THEN ITEM = PICK_FOLDERS + CHOSEN
+          ' The scan code is LEFT_KEY's high byte.
+          IF MANAGE(ContentsAt(@LEFT_KEY + 1), ITEM) THEN EXIT DO
+        ENDIF
+      LOOP
       IF RESULT <> EV_LEAVE THEN EXIT DO
-      ON_FOLDERS = LEFT_FIELD <> FIELD
-      IF ON_FOLDERS = 0 THEN
-        IF TARGET$ = "" THEN TARGET$ = MASK$
-        IF WILD(TARGET$) = 0 THEN
+      ' Enter in the list of files is OK. After PICK_MANAGE's key, the names are read again.
+      IF LEFT_KEY = KEYS.ENTER THEN
+        IF LEFT_FIELD = FILES THEN
           RESULT = EV_DONE
           EXIT DO
-        ENDIF
-      ELSE
-        NAME_OF(FOLDER - 1)
-        IF FOLDER > PICK_DIRS THEN
-          ' The letter is the third character of [-A-].
-          SET_PATH(ContentsAt(@DOS.FOUND_NAME + 4) - ASC("@"))
-        ELSEIF DOS.FOUND_NAME = ".." THEN
-          ' The path ends at the \ before its closing \.
-          LENGTH = LEN(DOS.CALL_TEXT) - 1
-          DO
-            LENGTH = LENGTH - 1
-          LOOP UNTIL ContentsAt(@DOS.CALL_TEXT + 1 + LENGTH) = ASC("\")
-          ContentsAt(@DOS.CALL_TEXT + 1) = LENGTH
+        ELSEIF LEFT_FIELD = FIELD THEN
+          IF TARGET$ = "" THEN TARGET$ = MASK$
+          IF WILD(TARGET$) = 0 THEN
+            RESULT = EV_DONE
+            EXIT DO
+          ENDIF
         ELSE
-          DOS.CALL_TEXT = DOS.CALL_TEXT + DOS.FOUND_NAME + "\"
+          NAME_OF(FOLDER - 1)
+          IF FOLDER > PICK_DIRS THEN
+            ' The letter is the third character of [-A-].
+            SET_PATH(ContentsAt(@DOS.FOUND_NAME + 4) - ASC("@"))
+          ELSEIF DOS.FOUND_NAME = ".." THEN
+            ' The path ends at the \ before its closing \.
+            LENGTH = LEN(DOS.CALL_TEXT) - 1
+            DO
+              LENGTH = LENGTH - 1
+            LOOP UNTIL ContentsAt(@DOS.CALL_TEXT + 1 + LENGTH) = ASC("\")
+            ContentsAt(@DOS.CALL_TEXT + 1) = LENGTH
+          ELSE
+            DOS.CALL_TEXT = DOS.CALL_TEXT + DOS.FOUND_NAME + "\"
+          ENDIF
         ENDIF
       ENDIF
       FREE(DIALOG_FORM)

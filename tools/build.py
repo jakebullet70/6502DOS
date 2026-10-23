@@ -21,7 +21,8 @@ commandlet, compiles the same way to build/DOS/NAME.SCOM, a long name on the car
 src/dos/NAME.UXB, a DOS utility, compiles to
 build/DOS/NAME.COM, and each src/dos/NAME.TXT and NAME.HLP is copied to build/DOS. Each
 src/utils/FOLDER/NAME.UXB, a utility, compiles to build/UTILS/NAME.COM, and the files of
-src/utils/FOLDER are copied to build/UTILS/SRC/FOLDER.
+src/utils/FOLDER are copied to build/UTILS/SRC/FOLDER. Each test named in SHOWN_TESTS, tests/NAME.UXB,
+compiles to build/UTILS/NAME.COM as well.
 
 Then tools/mksd.py makes the SD card image build/SD.IMG from the folder sd, CMDSHELL.COM,
 ROMSHELL.COM and MSBASIC.COM, the folder build/DOS, which is the card's folder DOS, the folder build/UTILS, which
@@ -73,6 +74,8 @@ SCOM_OUT = os.path.join(BUILD, "DOS")
 UTILITIES = os.path.join(ROOT, "src", "dos")
 UTILS = os.path.join(ROOT, "src", "utils")
 UTILS_OUT = os.path.join(BUILD, "UTILS")
+# The tests that also go to build/UTILS, for the user to run on the card.
+SHOWN_TESTS = ["GUIPICK"]
 TEMPLATES = os.path.join(ROOT, "UXCBASIC", "tpl")
 MSBASIC_SRC = os.path.join(ROOT, "MSBASIC", "src")
 BANK3_SRC = os.path.join(ROOT, "src", "bank3")
@@ -131,8 +134,9 @@ def compile_scom():
 
 
 def compile_utils():
-    """Compile each src/utils/FOLDER/NAME.UXB to build/UTILS/NAME.COM, and copy the files of
-    src/utils/FOLDER to build/UTILS/SRC/FOLDER. Return the folder build/UTILS."""
+    """Compile each src/utils/FOLDER/NAME.UXB to build/UTILS/NAME.COM, copy the files of
+    src/utils/FOLDER to build/UTILS/SRC/FOLDER, and compile each test of SHOWN_TESTS to
+    build/UTILS/NAME.COM. Return the folder build/UTILS."""
     os.makedirs(UTILS_OUT, exist_ok=True)
     for folder in sorted(glob.glob(os.path.join(UTILS, "*", ""))):
         folder = os.path.dirname(folder)
@@ -141,6 +145,8 @@ def compile_utils():
             uxb.compile(source, os.path.join(UTILS_OUT, name))
         shutil.copytree(folder, os.path.join(UTILS_OUT, "SRC", os.path.basename(folder).upper()),
                         ignore=shutil.ignore_patterns(".*"), dirs_exist_ok=True)
+    for name in SHOWN_TESTS:
+        uxb.compile(os.path.join(ROOT, "tests", name + ".UXB"), os.path.join(UTILS_OUT, name + ".COM"))
     return UTILS_OUT
 
 

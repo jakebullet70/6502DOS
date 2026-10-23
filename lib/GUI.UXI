@@ -1416,7 +1416,9 @@ NAMESPACE GUI
   ' letter, opens a menu of the form's bar, as PULL_MENU runs it; the item chosen returns its
   ' id, as MENUITEM gives, and the focus stays. A CBO's list that closes leaves the focus on the
   ' CBO. Leaving a VALIDATE field returns EV_LEAVE, with the field in
-  ' LEFT_FIELD and the key in LEFT_KEY; the next SHOW moves the focus on, or back to the field after REFUSE. A form is new to SHOW after EV_DONE, EV_CANCEL or FREE, and
+  ' LEFT_FIELD and the key in LEFT_KEY; the next SHOW moves the focus on, or back to the field after REFUSE.
+  ' Any other key that a VALIDATE field passes on, such as F2, returns EV_LEAVE too, and the
+  ' next SHOW keeps the focus on the field. A form is new to SHOW after EV_DONE, EV_CANCEL or FREE, and
   ' when another form was shown last. A form shown again after a MSGBOX keeps its focus, and is
   ' not drawn again. SHOW(0) returns EV_CANCEL.
   FUNCTION SHOW(HANDLE AS UBYTE) AS UBYTE
@@ -1463,7 +1465,8 @@ NAMESPACE GUI
         CASE KEYS.KEY_UP
           DIRECTION = 255
         CASE ELSE
-          CONTINUE
+          ' The focus stays. NEXT_CONTROL with a DIRECTION of 0 returns FOCUS.
+          DIRECTION = 0
       END SELECT
       NEXT_FOCUS = NEXT_CONTROL(HANDLE, FOCUS, DIRECTION)
       IF PRESSED = KEYS.ENTER AND NEXT_FOCUS <= FOCUS THEN NEXT_FOCUS = 0

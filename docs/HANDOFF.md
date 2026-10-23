@@ -4642,6 +4642,45 @@
             folder name or a mask with a path is taken as a file name. Owed to the doc batch:
             UXC-HELP and GUI.PLAN on LEFT_KEY, PUT_DIALOG, SHUT_DIALOG and PICKFILE's keys.
             Next: L3c, PICK_MANAGE.
+          - Done, L3c (2026-10-23): `GUI.PICK_MANAGE` (1) in PICKFILE's FLAGS. In a list, Del
+            deletes the item after a YESNO (DOS.DELETE, or DOS.RMDIR for a folder); F2 renames
+            it and F5 copies a file, to a name asked with an INPUTBOX (a name or path from the
+            folder shown, or a path with a drive, 32 characters, edited in DOS.FOUND_NAME); F7,
+            in a list or the field, makes a folder. .. is not deleted or renamed; F5 on a folder
+            and the keys on a drive do nothing. Each that calls DOS reads the names again, the
+            focus back on the control it left; a DOS error shows on the status line by REFUSE.
+            `MANAGE(SCAN, ITEM)` takes LEFT_KEY's high byte, the scan code. `MOVE_FILE` runs
+            rename, MKDIR or copy; a copy onto the same path (UCASE$ compare) is refused with
+            ERR_ACCESS. Trap: DOS.COPY takes DOS.CALL_TEXT, the path shown, as its buffer, so
+            `KEEP_PATH` keeps its 256 bytes at $A000 in the names' bank over the records, which
+            are read again after. Trap: the dialogs MANAGE runs overwrite DIALOG_FORM,
+            KEPT_FOCUS, KEPT_FORM and KEPT_SCREEN, so MANAGE keeps and puts back all four (the
+            KEPT_ bytes go to low RAM in a PICKFILE program). The list of files takes VALIDATE
+            now, so Enter in it is EV_LEAVE, taken as OK. Each pass after the first puts the
+            focus on LEFT_FIELD: the form made again takes the same control numbers. GUI.UXI:
+            SHOW's CASE ELSE sets DIRECTION 0 in place of CONTINUE, so a key that a VALIDATE
+            field passes on (F2, Del in a list) returns EV_LEAVE with the focus kept;
+            NEXT_CONTROL with DIRECTION 0 returns FOCUS. Bytes: SHOW +2 (GUIDLG 10049 to 10051).
+            Region 3: PICKFILE 1475 (+127), MANAGE 720, MOVE_FILE 206, KEEP_PATH 89. A program
+            with PICKFILE alone (scratch PONLY): 14770 to 17477 (+2707: region 1 -10, region 2 +474 for YESNO,
+            INPUTBOX and MSGBOX, region 3 +1325, the rest +918), with or without the flag, as
+            FLAGS is read at run time.
+            Measured, not applied, as it reverses the user's "flag" call: `GUI.PICKMANAGE(TITLE$,
+            MASK$, TARGET$)`, which sets a `PICK_HANDLER` pointer to MANAGE as MENUBAR sets
+            RUN_MENU; PICKFILE alone is then 14902 (+132 over L3b), and with the file manager
+            17553. Savings applied: MANAGE builds the item's path once, one INPUTBOX branch per
+            key into one MOVE_FILE, and UBYTE scan compares in place of UWORD keys: GUIPICK
+            18245 to 18105 (-140). GUIPICK has 12 dialogs now: 11 and 12 take PICK_MANAGE (F7
+            NewF, F2 beta to gamma, F5 onto itself shows DOS error 5, F5 to Sub\Al2.TXT, Del
+            Alpha, Esc; Del aFold, Del on .. nothing, F2 NewF to Fold2, gamma chosen), then it
+            lists PICKT and PICKT\Sub. x16emu -bas types F2 as \XE0\X3C, F5 \XE0\X3F, F7
+            \XE0\X41, Del \XE0\X53. tests.py: --update runs a test for 4.5 s, not 2 (GUIPICK
+            takes about 3.5). build.py: `SHOWN_TESTS` (GUIPICK) compile to build/UTILS too, so
+            the card's UTILS has GUIPICK.COM, kept up to date by each build. Tests: GUIPICK ok
+            3.5 s, GUISHOW 0.4, GUICHECK 0.4, GUIDLG 0.5, GUILBOX 0.5, GUIFLAGS 0.4, GUIINP 0.5.
+            Build 3.95 s, the new baseline. Owed to the doc batch: UXC-HELP and GUI.PLAN on
+            PICK_MANAGE and SHOW's other keys. Next: the user's call on PICKMANAGE, then V1's
+            remaining items or the paused doc batch.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

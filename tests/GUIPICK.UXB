@@ -1,5 +1,6 @@
 ' GUIPICK: GUI.PICKFILE in the folder PICKT, which it makes. The last lines give each result,
-' then TARGET$ for a 1, then the current folder, which the dialogs leave as it was.
+' then TARGET$ for a 1, then the current folder, which the dialogs leave as it was, then the
+' names in PICKT and in PICKT\Sub.
 ' PICKT holds zed.TXT, Alpha.TXT, beta.TXT, C.DAT and the folders Sub, which holds in.TXT,
 ' and aFold. The list of folders starts .., aFold, Sub, then the drives.
 ' 1: Tab, Tab, Down and Enter choose beta.TXT. 2: 5 Backspaces, NEW.TXT and Enter return
@@ -9,6 +10,11 @@
 ' goes back, then Tab and Enter choose Alpha.TXT. 8: Sub, then Down and Enter on [-C-] go back
 ' to PICKT, then Tab and Enter choose Alpha.TXT. 9: Esc returns 0. 10: 4 Tabs and Enter on
 ' Cancel return 0.
+' 11 and 12 take GUI.PICK_MANAGE. 11: F7 makes the folder NewF; in the list of files F2
+' renames beta.TXT to gamma.TXT; F5 and Enter on Alpha.TXT, a copy onto itself, show DOS error
+' 5; F5 copies Alpha.TXT to Sub\Al2.TXT; Del and Yes delete Alpha.TXT; Esc returns 0. 12: in
+' the list of folders Del and Yes delete aFold; Del on .. does nothing; F2 renames NewF to
+' Fold2; Tab and Enter choose gamma.TXT.
 #INCLUDE "KEYS.UXI"
 #INCLUDE "DOS.UXI"
 #INCLUDE "BANK.UXI"
@@ -21,12 +27,21 @@ SUB MAKE(PATH AS STRING)
   DOS.CLOSE_FILE(DOS.CREATE_FILE(PATH, 0))
 END SUB
 
-SUB TRY()
+SUB TRY(FLAGS AS UBYTE)
   DIM RESULT AS UBYTE
-  RESULT = GUI.PICKFILE("Open", "*.TXT", PICKED)
+  RESULT = GUI.PICKFILE("Open", "*.TXT", PICKED, FLAGS)
   SHOWN = SHOWN + STR$(RESULT)
   IF RESULT = 1 THEN SHOWN = SHOWN + " " + PICKED
   SHOWN = SHOWN + ";"
+END SUB
+
+SUB NAMES(PATTERN AS STRING)
+  DOS.FINDFIRST(PATTERN, DOS.ATTR_DIRECTORY)
+  DO WHILE DOS.ERROR = 0
+    PRINT DOS.FOUND_NAME; " ";
+    DOS.FINDNEXT()
+  LOOP
+  PRINT
 END SUB
 
 DOS.MKDIR("PICKT")
@@ -39,9 +54,13 @@ MAKE("beta.TXT")
 MAKE("C.DAT")
 MAKE("Sub\in.TXT")
 REPEAT 10
-  TRY()
+  TRY(0)
 END REPEAT
+TRY(GUI.PICK_MANAGE)
+TRY(GUI.PICK_MANAGE)
 POS(1) = 20
 POS(0) = 0
 PRINT SHOWN
 PRINT DOS.GETCWD(0)
+NAMES("*.*")
+NAMES("Sub\*.*")

@@ -22,7 +22,7 @@ A test can type keys into the monitor with x16emu -bas:
 - then tests/NAME.IN, each line ended by CR. \\XE0 then a scan code types an extended key:
   \\XE0\\X48 is Up.
 
-NAMEs pick tests; with none, every test runs. --update runs each test for 2 s and writes
+NAMEs pick tests; with none, every test runs. --update runs each test for 4.5 s and writes
 NAME.OUT from what it printed: read the .OUT before you keep it. Build first
 (tools/build.py). Exit status 1 when a test failed or a program did not assemble.
 
@@ -68,7 +68,7 @@ PROGRAM_START = 0x1000
 COM_START = 0x0801
 BYTES_PER_LINE = 24             # "E 1000 " and 24 bytes fit the monitor's 79 characters
 LIMIT = 5.0
-UPDATE_SECONDS = 2.0
+UPDATE_SECONDS = 4.5
 # x16emu prints these itself: when the ROM has no stock KERNAL symbols, and at -sdcard.
 EMULATOR_LINES = ("Unable to find KERNAL ", "SD card attached.")
 BASIC_TESTS = os.path.join(ROOT, "MSBASIC", "tests")
