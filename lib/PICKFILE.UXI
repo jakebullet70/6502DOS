@@ -50,6 +50,8 @@ NAMESPACE GUI
   ' Checklist: record 255 is PLACE_RECORDS's spare, so the records stop at 255.
   DIM PICK_BANK AS UBYTE, PICK_COUNT AS UBYTE, PICK_ORDER(255) AS UBYTE
   DIM PICK_DIRS AS UBYTE, PICK_FOLDERS AS UBYTE, PICK_FILES AS UBYTE, PICK_DRIVES AS UBYTE
+  ' The path shown, cut to the dialog's width.
+  DIM PICK_PATH AS STRING * 68
 
   ' The address of record NUMBER, 0 for the first.
   FUNCTION RECORD_AT(NUMBER AS UBYTE) AS UWORD
@@ -164,22 +166,106 @@ NAMESPACE GUI
   END SUB
 
   ' Puts in DOS.CALL_TEXT the path of the current folder of DRIVE, 1 for A:, from the drive
-  ' letter to a closing \.
+  ' letter to a closing \. A drive GETCWD does not know gets its root.
   SUB SET_PATH(DRIVE AS UBYTE)
     DOS.GETCWD(DRIVE)
+    IF DOS.ERROR <> 0 THEN DOS.CALL_TEXT = ""
     IF DOS.CALL_TEXT <> "" THEN DOS.CALL_TEXT = DOS.CALL_TEXT + "\"
     DOS.CALL_TEXT = CHR$(DRIVE + ASC("@")) + ":\" + DOS.CALL_TEXT
   END SUB
 
-  ' Returns 1 when TEXT$ holds * or ?, else 0.
+  ' Takes out of DOS.CALL_TEXT, a path from the drive letter to a closing \, each empty name,
+  ' each name . and each name .. with the name before it. A .. at the root goes.
+  SUB TIDY_PATH()
+    DIM TAKEN_AT AS UBYTE, KEPT_AT AS UBYTE, START AS UBYTE, CHARACTER AS UBYTE
+    ' Character N, from 1, is at @DOS.CALL_TEXT + 1 + N. X:\ stays. Each pass copies a name and
+    ' its \ back to KEPT_AT.
+    TAKEN_AT = 3
+    KEPT_AT = 3
+    DO WHILE TAKEN_AT < LEN(DOS.CALL_TEXT)
+      START = KEPT_AT
+      DO
+        TAKEN_AT = TAKEN_AT + 1
+        KEPT_AT = KEPT_AT + 1
+        CHARACTER = ContentsAt(@DOS.CALL_TEXT + 1 + TAKEN_AT)
+        ContentsAt(@DOS.CALL_TEXT + 1 + KEPT_AT) = CHARACTER
+      LOOP UNTIL CHARACTER = ASC("\")
+      ' CHARACTER is the name's length and 1 for its \.
+      CHARACTER = KEPT_AT - START
+      IF CHARACTER = 1 THEN KEPT_AT = START
+      IF ContentsAt(@DOS.CALL_TEXT + 1 + START + 1) = ASC(".") THEN
+        IF CHARACTER = 2 THEN KEPT_AT = START
+        IF CHARACTER = 3 AND ContentsAt(@DOS.CALL_TEXT + 1 + START + 2) = ASC(".") THEN
+          KEPT_AT = START
+          IF KEPT_AT > 3 THEN
+            DO
+              KEPT_AT = KEPT_AT - 1
+            LOOP UNTIL ContentsAt(@DOS.CALL_TEXT + 1 + KEPT_AT) = ASC("\")
+          ENDIF
+        ENDIF
+      ENDIF
+    LOOP
+    ContentsAt(@DOS.CALL_TEXT + 1) = KEPT_AT
+  END SUB
+
+  ' Returns 1 when TEXT$ holds * or ?, a mask, and adds 2 when it holds \ or :, a path.
   FUNCTION WILD(TEXT$ AS CONST) AS UBYTE
-    DIM SPOT AS UBYTE, CHARACTER AS UBYTE, AT AS UWORD
+    DIM SPOT AS UBYTE, CHARACTER AS UBYTE, FOUND AS UBYTE, AT AS UWORD
     AT = AddrOf(TEXT$) + 1
+    FOUND = 0
     FOR SPOT = 1 TO LEN(TEXT$)
       CHARACTER = ContentsAt(AT + SPOT)
-      IF CHARACTER = ASC("*") OR CHARACTER = ASC("?") THEN RETURN 1
+      IF CHARACTER = ASC("*") OR CHARACTER = ASC("?") THEN FOUND = FOUND OR 1
+      IF CHARACTER = ASC("\") OR CHARACTER = ASC(":") THEN FOUND = FOUND OR 2
     NEXT
-    RETURN 0
+    RETURN FOUND
+  END FUNCTION
+
+  ' Takes TYPED$, what the field holds, as a path from the folder DOS.CALL_TEXT names: from the
+  ' root of that drive after a first \, from the current folder of drive A: after A:, and from
+  ' its root after A:\. Returns 2, with nothing changed, for a mask with no \ and no :. Else
+  ' DOS.CALL_TEXT gets the folder, TIDY_PATH's way, and it returns 1 for a file, TYPED$ then its
+  ' full path. It returns 0 for a mask, TYPED$ then the mask, and for a folder, which
+  ' DOS.CALL_TEXT then names, TYPED$ then MASK$.
+  FUNCTION TAKE_TYPED(TYPED$, MASK$ AS CONST) AS UBYTE
+    DIM SPOT AS UBYTE, LENGTH AS UBYTE, AT AS UWORD
+    IF WILD(TYPED$) = 1 THEN RETURN 2
+    ' Character N, from 1, is at AT + N.
+    AT = AddrOf(TYPED$) + 1
+    SPOT = 1
+    IF ContentsAt(AT + 2) = ASC(":") THEN
+      ' AND $DF makes a to z A to Z.
+      SET_PATH((ContentsAt(AT + 1) AND $DF) - ASC("@"))
+      SPOT = 3
+    ENDIF
+    ' A \ at SPOT is the root's.
+    IF ContentsAt(AT + SPOT) = ASC("\") AND SPOT <= LEN(TYPED$) THEN ContentsAt(@DOS.CALL_TEXT + 1) = 3
+    ' TIDY_PATH takes the names typed, the last one with a closing \ too.
+    DOS.CALL_TEXT = DOS.CALL_TEXT + MID$(TYPED$, SPOT) + "\"
+    TIDY_PATH()
+    ' The last name starts after the \ at SPOT.
+    LENGTH = LEN(DOS.CALL_TEXT)
+    TYPED$ = MASK$
+    IF LENGTH = 3 THEN RETURN 0
+    SPOT = LENGTH - 1
+    DO
+      SPOT = SPOT - 1
+    LOOP UNTIL ContentsAt(@DOS.CALL_TEXT + 1 + SPOT) = ASC("\")
+    ' The path loses its closing \.
+    LENGTH = LENGTH - 1
+    ContentsAt(@DOS.CALL_TEXT + 1) = LENGTH
+    IF WILD(DOS.CALL_TEXT) AND 1 THEN
+      TYPED$ = MID$(DOS.CALL_TEXT, SPOT + 1)
+      ContentsAt(@DOS.CALL_TEXT + 1) = SPOT
+      RETURN 0
+    ENDIF
+    DOS.FINDFIRST(DOS.CALL_TEXT, DOS.ATTR_DIRECTORY)
+    IF DOS.ERROR = 0 AND (DOS.FOUND_ATTRIBUTES AND DOS.ATTR_DIRECTORY) <> 0 THEN
+      ContentsAt(@DOS.CALL_TEXT + 1) = LENGTH + 1
+      RETURN 0
+    ENDIF
+    TYPED$ = DOS.CALL_TEXT
+    RETURN 1
   END FUNCTION
 
   ' Copies 256 bytes from FROM to DESTINATION, one of them in the names' bank.
@@ -266,18 +352,20 @@ NAMESPACE GUI
   ' the field File name, which edits TARGET$; the path of the folder shown; the files there that
   ' the mask matches beside the folders there and the drives, each list sorted with case ignored;
   ' then the buttons &OK and &Cancel. The dialog opens on the current folder, with the field
-  ' holding MASK$, the mask, and the focus on the field. Enter in the field on a name returns
-  ' as OK does. Enter in the field on a mask, a name with * or ?, makes it the mask, and an
-  ' empty field gets MASK$ back. Enter in the list of folders opens the folder or the drive
-  ' chosen: .. opens the folder above, and a drive, [-A-] for A:, its current folder. OK and
-  ' Enter in the list of files return 1, with TARGET$ the full path of the file named in the
-  ' field when it holds a name, else of the file chosen in the list. Returns 0 for Cancel, for
-  ' Esc, with no file named or chosen, or when no RAM bank is free. The current drive and
-  ' folder do not change. The dialog is 72 columns wide. It takes a RAM bank while it is open.
-  ' The lists hold 255 names in all. It changes DOS.CALL_TEXT and the DOS.FOUND_ variables.
+  ' holding MASK$, the mask, and the focus on the field. OK and Enter in the field take what the
+  ' field holds, as TAKE_TYPED reads it: a file returns 1, with TARGET$ its full path; a folder
+  ' opens, the field then holding MASK$; a mask, a name with * or ?, becomes the mask, and opens
+  ' the folder before it. An empty field gets MASK$ back. OK on a mask with no folder, and Enter
+  ' in the list of files, return 1 with TARGET$ the full path of the file chosen in the list.
+  ' Enter in the list of folders opens the folder or the drive chosen: .. opens the folder
+  ' above, and a drive, [-A-] for A:, its current folder. Returns 0 for Cancel, for Esc, with
+  ' no file chosen, or when no RAM bank is free. The current drive and folder do not change.
+  ' The dialog is 72 columns wide, and a path past 68 characters shows as its drive, ... and
+  ' its end. It takes a RAM bank while it is open. The lists hold 255 names in all. It changes
+  ' DOS.CALL_TEXT and the DOS.FOUND_ variables.
   FUNCTION PICKFILE(TITLE$ AS CONST, MASK$ AS CONST, TARGET$) AS UBYTE
     DIM FOLDER AS UBYTE, CHOSEN AS UBYTE, FIELD AS UBYTE, FOLDERS AS UBYTE, FILES AS UBYTE
-    DIM RESULT AS UBYTE, DRIVE AS UBYTE, LENGTH AS UBYTE, ITEM AS UBYTE
+    DIM RESULT AS UBYTE, DRIVE AS UBYTE, ITEM AS UBYTE, TAKEN AS UBYTE
     PICK_BANK = BANK.ALLOC(1)
     IF PICK_BANK = 0 THEN RETURN 0
     ' The drives GETCWD knows, H: first, so A: ends in bit 0.
@@ -293,7 +381,7 @@ NAMESPACE GUI
     RESULT = 0
     ' Each pass reads the names and makes the form; the first saves the screen.
     DO
-      IF WILD(TARGET$) THEN
+      IF WILD(TARGET$) = 1 THEN
         READ_ALL(TARGET$)
       ELSE
         READ_ALL(MASK$)
@@ -304,7 +392,13 @@ NAMESPACE GUI
       DIALOG_WIDTH = 68
       OPEN_DIALOG(TITLE$, PICK_ROWS + 3, "&OK", "&Cancel")
       FIELD = SAYGET(1, 2, "File name:", TARGET$, 57, "", VALIDATE)
-      SAY(2, 2, DOS.CALL_TEXT)
+      ' A path past 68 characters shows as its drive, ... and its last 62 characters.
+      IF LEN(DOS.CALL_TEXT) > 68 THEN
+        PICK_PATH = LEFT$(DOS.CALL_TEXT, 3) + "..." + RIGHT$(DOS.CALL_TEXT, 62)
+      ELSE
+        PICK_PATH = DOS.CALL_TEXT
+      ENDIF
+      SAY(2, 2, PICK_PATH)
       SAY(3, 2, "Files")
       SAY(3, 37, "Folders")
       FOLDERS = LIST(4, 37, "", $A000, PICK_BANK, 32, PICK_FOLDERS, @FOLDER, PICK_ROWS, 33, VALIDATE)
@@ -329,54 +423,42 @@ NAMESPACE GUI
           IF ITEM <> 0 THEN EXIT DO
         ENDIF
       LOOP
-      IF RESULT <> EV_LEAVE THEN EXIT DO
-      ' Enter in the list of files is OK. After PICK_HANDLER's key, the names are read again.
-      IF LEFT_KEY = KEYS.ENTER THEN
+      ' TAKEN is 1 for the file the field names, and 2 for the file chosen in the list. OK and
+      ' Enter in the field take what the field holds, and OK on a mask with no folder the file
+      ' chosen. Else the names are read again.
+      TAKEN = 0
+      IF RESULT = 1 OR (RESULT = EV_LEAVE AND LEFT_KEY = KEYS.ENTER AND LEFT_FIELD = FIELD) THEN
+        IF TARGET$ = "" THEN TARGET$ = MASK$
+        TAKEN = TAKE_TYPED(TARGET$, MASK$)
+        IF RESULT = EV_LEAVE AND TAKEN = 2 THEN TAKEN = 0
+      ELSEIF RESULT <> EV_LEAVE THEN
+        EXIT DO
+      ELSEIF LEFT_KEY = KEYS.ENTER THEN
         IF LEFT_FIELD = FILES THEN
-          RESULT = EV_DONE
-          EXIT DO
-        ELSEIF LEFT_FIELD = FIELD THEN
-          IF TARGET$ = "" THEN TARGET$ = MASK$
-          IF WILD(TARGET$) = 0 THEN
-            RESULT = EV_DONE
-            EXIT DO
-          ENDIF
+          TAKEN = 2
         ELSE
           NAME_OF(FOLDER - 1)
           IF FOLDER > PICK_DIRS THEN
             ' The letter is the third character of [-A-].
             SET_PATH(ContentsAt(@DOS.FOUND_NAME + 4) - ASC("@"))
-          ELSEIF DOS.FOUND_NAME = ".." THEN
-            ' The path ends at the \ before its closing \.
-            LENGTH = LEN(DOS.CALL_TEXT) - 1
-            DO
-              LENGTH = LENGTH - 1
-            LOOP UNTIL ContentsAt(@DOS.CALL_TEXT + 1 + LENGTH) = ASC("\")
-            ContentsAt(@DOS.CALL_TEXT + 1) = LENGTH
           ELSE
             DOS.CALL_TEXT = DOS.CALL_TEXT + DOS.FOUND_NAME + "\"
+            TIDY_PATH()
           ENDIF
         ENDIF
+      ENDIF
+      IF TAKEN <> 0 THEN
+        RESULT = EV_DONE
+        EXIT DO
       ENDIF
       FREE(DIALOG_FORM)
     LOOP
     RESULT = SHUT_DIALOG(RESULT)
-    IF RESULT = 1 THEN
-      IF TARGET$ <> "" AND WILD(TARGET$) = 0 THEN
-        ' A name with no drive takes the drive shown, and one with no \ first the folder too.
-        ' The characters of TARGET$ start at AddrOf(TARGET$) + 2.
-        IF ContentsAt(AddrOf(TARGET$) + 3) <> ASC(":") THEN
-          IF ContentsAt(AddrOf(TARGET$) + 2) = ASC("\") THEN
-            TARGET$ = CHR$(ContentsAt(@DOS.CALL_TEXT + 2)) + ":" + TARGET$
-          ELSE
-            TARGET$ = DOS.CALL_TEXT + TARGET$
-          ENDIF
-        ENDIF
-      ELSEIF CHOSEN <> 0 THEN
+    IF TAKEN = 2 THEN
+      RESULT = CHOSEN <> 0
+      IF RESULT <> 0 THEN
         NAME_OF(PICK_FOLDERS + CHOSEN - 1)
         TARGET$ = DOS.CALL_TEXT + DOS.FOUND_NAME
-      ELSE
-        RESULT = 0
       ENDIF
     ENDIF
     BANK.FREE(PICK_BANK)

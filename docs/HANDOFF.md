@@ -4693,6 +4693,28 @@
             Test: GUIPICK ok 3.1 s, golden unchanged. Build 2469 ms, the new baseline. Owed to
             the doc batch: UXC-HELP and GUI.PLAN (lines 379 to 392 name FLAGS and PICK_MANAGE)
             on PICKMANAGE. Next: V1's remaining items or the paused doc batch.
+          - Done, L3e (2026-10-23), L3b's two open faults. V1's steps (0a to 4c) and L1 to L3
+            are all done. OK and Enter in the field run `TAKE_TYPED(TYPED$, MASK$)`: a mask
+            with no \ and no : returns 2 (OK then takes the file chosen in the list, Enter reads
+            the names with the mask). Else the text joins the folder shown (from the drive's
+            root after a first \, from drive X:'s current folder after X:, its root after X:\),
+            `TIDY_PATH` takes out empty names, . and .. with the name before, and the last name
+            decides: a mask becomes the mask and its folder is shown; a folder (FINDFIRST with
+            ATTR_DIRECTORY, or the root) is shown, the field back to MASK$; else a file, the
+            full path in TARGET$. Enter on .. in the list of folders goes through TIDY_PATH
+            too. `WILD` returns 1 for * or ?, plus 2 for \ or :. SET_PATH gives a drive GETCWD
+            does not know its root. The path line is `PICK_PATH` (STRING * 68, low RAM): a
+            path past 68 characters shows as `C:\...` and its last 62. Bytes: PICKFILE alone
+            (scratch PONLY) 14903 to 15684 (+781: region 3 +773, region 1 -139, low RAM +147);
+            PICKMANAGE alone 17554 to 18414 (+860), region 3 7532 of 8192. Measured per
+            statement: INSTR for the mask check cost 218 (folded into WILD instead), and a
+            `ContentsAt(AT)` through a UWORD variable about 19 against a constant address
+            (TIDY_PATH -54). GUIPICK has 16 dialogs: 13 Sub opens Sub; 14 Sub\i*.TXT; 15 the
+            two long folders (made after 12) then ..\..\..\zED.TXT; 16 zed.TXT and OK. 18235
+            to 19303 bytes. Test: GUIPICK ok 3.9 s (golden local, updated); --update's 4.5 s
+            window is near. Build 2421 ms, the new baseline. Owed to the doc batch: UXC-HELP
+            and GUI.PLAN on PICKFILE's typed paths. Next: the user's call: the paused doc
+            batch (V1 done), a full suite, or After V1's PICKMENU, GRID, BROWSE.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
