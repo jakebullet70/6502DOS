@@ -4522,6 +4522,24 @@
             @ values, bank 4 calls $FF89). Build 6650 ms (every program recompiled), the new
             baseline. RGMULTI 0.4, RGCALL 0.5, ROM3 0.5, FPTR 0.6, PRINTS, FUNC1, STRRET 0.5
             ok. Next: FP4, the GUI handlers.
+          - Done, FP4 (2026-10-23): GUI editors through pointers. `GUI.EDITOR(CONTROL, COLUMN,
+            MORE_FLAGS) AS UWORD` is the signature; `KIND_EDITOR(7) AS EDITOR`, one a kind, 14
+            bytes in region 1. SAYGET sets KIND_FIELD's to EDIT_TEXT, and MAKE_CHOICE takes the
+            kind's editor as a new 4th parameter: PICK_CHOICE (CHECK, RADIO), PUSH_BUTTON,
+            EDIT_CBO, EDIT_MEMO, EDIT_LIST. EDIT_TEXT, EDIT_CBO, EDIT_MEMO and EDIT_LIST are new
+            region 1 wrappers that read the control's arrays, which stay in region 1. EDIT_FIELD
+            is now the color, FIELD_COLUMN and one `CALL KIND_EDITOR(...) WITH`. New TALL_FIELD
+            (region 1) holds MEMO's layout, so LIST no longer calls MEMO. PRG bytes before,
+            after: GUIBTN 15130, 10213; GUISHOW 15546, 10425; GUICBO 15216, 11003; GUIDLG 16413,
+            11496; GUIMEMO 16551, 13619; GUILIST 16856, 13555; THEMED 20471, 15600; HELPED 18396,
+            16953 (region 1 7673 to 7709, region 3 1746 to 357). A call of an editor goes through
+            region 1's gate and bank_call, about 145 cycles, twice a key. Left: every program
+            that makes a control links INPUT2, as SAYGET names EDIT_TEXT. Tests one at a time:
+            GUIBTN 0.6, GUICBO 0.4, GUIMEMO 0.6, GUILIST 0.5, GUICHECK 0.6, GUIDLG 0.5, GUIINP
+            0.5, GUIMENU 0.5, GUISAY 0.5, GUISHOW 0.5, HELPED 1.2, THEMED 1.2 ok. Build 2997 ms,
+            the new baseline. Next: one list engine for the pull-down, the CBO list and LIST,
+            its item fetch passed as a pointer; then L2, L3. Owed to the doc batch: GUI.PLAN D9
+            (the editors now link by kind).
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
