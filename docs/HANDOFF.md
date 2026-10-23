@@ -4733,6 +4733,21 @@
             (RUN UTILS\GUIDEMO.COM, Alt+F, a refused Age, OK, Esc) showed each screen and the
             report; keys typed on the RUN line's heels were lost once, so Alt+F goes on its
             own line. Build 2308 ms, the new baseline. Next: D2, the Controls demo.
+          - Done, D1b (2026-10-23), GUIDEMO's Memory popup: Program, Memory (id 2) and the
+            main-form button &Memory (Alt+M, column 56). MEMORY_INFO shows low RAM ($0801 to
+            the end of the page in PSP_TOP, $0702, and the free rest to $9EFF), the machine's
+            banks (64, 128 or 256: a bank past 63 or 127 not owned $FF), the system, free,
+            GUIDEMO, caller and kept banks with counts, GUIDEMO's bank numbers and runs, the
+            string heap's free bytes (HEAP.STR_GC, bank from PSP_HEAP $0701), and a bank map,
+            64 marks a row: S system, . free, G GUIDEMO, C callers, K kept. It reads the
+            kernel's BANK_OWNER table at $AC00 in bank 0 with BANK.GET_BYTE; GUIDEMO's CONSTs
+            copy mem.inc's address and owner codes, with a trap comment. GUIDEMO's banks are
+            the deepest owner (exec depth + 1, bit 7 the first bank of a run). Includes
+            BANK.UXI and HEAP.UXI. GUIDEMO 16484 bytes, 4051 more, all low RAM: the seven
+            joined lines cost 1263, the low RAM lines 714, the form 536, the map 332. Region 1
+            1485 free. Smoke run on x16emu's 64 banks: low RAM $0801-$34FF 11519 bytes, 27136
+            free; system 0 11; callers 5; GUIDEMO 6 7 8 in 3 runs (the GUI regions); 54 free;
+            8116 heap bytes free. Build 2497 ms, the new baseline. Next: D2, the Controls demo.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

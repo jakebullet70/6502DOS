@@ -6,6 +6,9 @@
 ' --     F10, Alt+letter   open a menu
 ' --     Alt+letter        press a button of the main form
 ' --     Esc               end the program
+' -- Program, Memory shows how the program uses memory: the low RAM it fills, the RAM banks of
+' -- the system, of GUIDEMO, of the programs that ran it and of programs kept, the free bytes
+' -- of the string heap, and a map of the banks.
 ' -- The demos:
 ' --     Forms     fields with captions, sections in one and two columns, a mask, the
 ' --               PASSWORD, READ_ONLY, UPPER, LOWER and PROPER flags, and a VALIDATE field
@@ -20,9 +23,18 @@
 #INCLUDE "CONS.UXI"
 #INCLUDE "VERA.UXI"
 #INCLUDE "GUI.UXI"
+#INCLUDE "BANK.UXI"
+#INCLUDE "HEAP.UXI"
 
 ' The ids of the menu items and the buttons.
-CONST ID_EXIT AS UBYTE = 1, ID_FORMS AS UBYTE = 10
+CONST ID_EXIT AS UBYTE = 1, ID_MEMORY AS UBYTE = 2, ID_FORMS AS UBYTE = 10
+
+' The kernel's table of bank owners, in RAM bank 0, as src/asm/mem.inc and banks.s lay it out.
+' Trap: a change to BANK_OWNER or its owner codes there must change these.
+CONST OWNER_TABLE AS UWORD = $AC00, OWNER_SYSTEM AS UBYTE = $FF, OWNER_KEPT AS UBYTE = $FE
+CONST OWNER_FIRST AS UBYTE = $80, OWNER_DEPTH AS UBYTE = $7F
+' The PSP's last page of the program, and the end of the program area.
+CONST PSP_TOP AS UWORD = $0702, PROGRAM_START AS UWORD = $0801, PROGRAM_LAST AS UWORD = $9EFF
 
 DIM MAIN_FORM AS UBYTE, EVENT AS UBYTE, START_COLOR AS UBYTE
 DIM MESSAGE AS STRING * 79
@@ -32,9 +44,145 @@ DIM PERSON_NAME AS STRING * 24, SECRET AS STRING * 12, PHONE AS STRING * 14
 DIM AGE AS STRING * 2, SHOWN_ONLY AS STRING * 24
 DIM SHOUT AS STRING * 12, QUIET AS STRING * 12, PROPER_NAME AS STRING * 12, PLAIN AS STRING * 12
 
+' The Memory popup's lines, and a row of the bank map for each 64 banks.
+DIM PROGRAM_LINE AS STRING * 68, LOW_FREE_LINE AS STRING * 68, BANKS_LINE AS STRING * 68
+DIM SYSTEM_LINE AS STRING * 68, FREE_BANKS_LINE AS STRING * 68, OWN_LINE AS STRING * 68
+DIM CALLERS_LINE AS STRING * 68, KEPT_LINE AS STRING * 68, HEAP_LINE AS STRING * 68
+DIM MAP_ROW0 AS STRING * 68, MAP_ROW1 AS STRING * 68, MAP_ROW2 AS STRING * 68
+DIM MAP_ROW3 AS STRING * 68
+
 ' Shows MESSAGE on the status line.
 SUB REPORT()
   GUI.STATUS_LINE(MESSAGE)
+END SUB
+
+' NUMBER in decimal, with no space in front.
+FUNCTION DECIMAL(NUMBER AS UWORD) AS STRING
+  RETURN MID$(STR$(NUMBER), 2)
+END FUNCTION
+
+' NUMBER as $ and four hex digits.
+FUNCTION HEX_WORD(NUMBER AS UWORD) AS STRING
+  DIM TEXT AS STRING * 5, SHIFT AS UBYTE
+  TEXT = "$"
+  FOR SHIFT = 12 TO 0 STEP -4
+    TEXT = TEXT + MID$("0123456789ABCDEF", ((NUMBER >> SHIFT) AND 15) + 1, 1)
+  NEXT
+  RETURN TEXT
+END FUNCTION
+
+' The owner of RAM bank NUMBER in the kernel's table.
+FUNCTION OWNER_OF(NUMBER AS UBYTE) AS UBYTE
+  RETURN BANK.GET_BYTE(0, OWNER_TABLE + NUMBER)
+END FUNCTION
+
+' The Memory popup. A bank's owner is the exec depth of the program that took it, plus 1, so
+' GUIDEMO's banks have the deepest owner, and the programs that ran it own the ones below.
+SUB MEMORY_INFO()
+  DIM FORM AS UBYTE, NUMBER AS UBYTE, OWNER AS UBYTE, OWN_DEPTH AS UBYTE, MARK AS STRING * 1
+  DIM BANK_COUNT AS UWORD, PROGRAM_END AS UWORD, SYSTEM_BANKS AS UWORD, FREE_BANKS AS UWORD
+  DIM OWN_BANKS AS UWORD, OWN_RUNS AS UWORD, CALLER_BANKS AS UWORD, KEPT_BANKS AS UWORD
+  DIM SYSTEM_LIST AS STRING * 40, OWN_LIST AS STRING * 40, MAP AS STRING * 64
+  ' Low RAM: the program runs from $0801 to the end of the page in PSP_TOP.
+  PROGRAM_END = ContentsAt(PSP_TOP)
+  PROGRAM_END = (PROGRAM_END << 8) OR 255
+  PROGRAM_LINE = "  GUIDEMO  $0801-" + HEX_WORD(PROGRAM_END) + "  " + DECIMAL(PROGRAM_END - PROGRAM_START + 1) + " bytes, code and variables"
+  IF PROGRAM_END < PROGRAM_LAST THEN
+    LOW_FREE_LINE = "  Free     " + HEX_WORD(PROGRAM_END + 1) + "-$9EFF  " + DECIMAL(PROGRAM_LAST - PROGRAM_END) + " bytes"
+  ELSE
+    LOW_FREE_LINE = "  Free     none"
+  ENDIF
+  ' A machine has 64, 128 or 256 banks. The banks it lacks are the system's.
+  BANK_COUNT = 64
+  OWN_DEPTH = 0
+  FOR NUMBER = 0 TO 255
+    OWNER = OWNER_OF(NUMBER)
+    IF OWNER <> OWNER_SYSTEM THEN
+      IF NUMBER >= 128 THEN
+        BANK_COUNT = 256
+      ELSEIF NUMBER >= 64 AND BANK_COUNT = 64 THEN
+        BANK_COUNT = 128
+      ENDIF
+      IF OWNER <> OWNER_KEPT AND (OWNER AND OWNER_DEPTH) > OWN_DEPTH THEN OWN_DEPTH = OWNER AND OWNER_DEPTH
+    ENDIF
+  NEXT
+  ' Counts each kind of bank and draws the map, a mark for each bank.
+  MAP_ROW0 = ""
+  MAP_ROW1 = ""
+  MAP_ROW2 = ""
+  MAP_ROW3 = ""
+  MAP = ""
+  SYSTEM_BANKS = 0
+  FREE_BANKS = 0
+  OWN_BANKS = 0
+  OWN_RUNS = 0
+  CALLER_BANKS = 0
+  KEPT_BANKS = 0
+  FOR NUMBER = 0 TO BANK_COUNT - 1
+    OWNER = OWNER_OF(NUMBER)
+    IF OWNER = OWNER_SYSTEM THEN
+      MARK = "S"
+      SYSTEM_BANKS = SYSTEM_BANKS + 1
+      SYSTEM_LIST = SYSTEM_LIST + " " + DECIMAL(NUMBER)
+    ELSEIF OWNER = 0 THEN
+      MARK = "."
+      FREE_BANKS = FREE_BANKS + 1
+    ELSEIF OWNER = OWNER_KEPT THEN
+      MARK = "K"
+      KEPT_BANKS = KEPT_BANKS + 1
+    ELSEIF (OWNER AND OWNER_DEPTH) = OWN_DEPTH THEN
+      MARK = "G"
+      OWN_BANKS = OWN_BANKS + 1
+      OWN_LIST = OWN_LIST + " " + DECIMAL(NUMBER)
+      IF (OWNER AND OWNER_FIRST) <> 0 THEN OWN_RUNS = OWN_RUNS + 1
+    ELSE
+      MARK = "C"
+      CALLER_BANKS = CALLER_BANKS + 1
+    ENDIF
+    MAP = MAP + MARK
+    IF (NUMBER AND 63) = 63 THEN
+      SELECT CASE NUMBER >> 6
+        CASE 0
+          MAP_ROW0 = "  0 " + MAP
+        CASE 1
+          MAP_ROW1 = " 64 " + MAP
+        CASE 2
+          MAP_ROW2 = "128 " + MAP
+        CASE 3
+          MAP_ROW3 = "192 " + MAP
+      END SELECT
+      MAP = ""
+    ENDIF
+  NEXT
+  BANKS_LINE = "RAM banks  " + DECIMAL(BANK_COUNT) + " banks of 8 KB at $A000-$BFFF, " + DECIMAL(BANK_COUNT * 8) + " KB"
+  SYSTEM_LINE = "  System   " + DECIMAL(SYSTEM_BANKS) + " banks:" + SYSTEM_LIST
+  FREE_BANKS_LINE = "  Free     " + DECIMAL(FREE_BANKS) + " banks, " + DECIMAL(FREE_BANKS * 8) + " KB"
+  OWN_LINE = "  GUIDEMO  " + DECIMAL(OWN_BANKS) + " banks in " + DECIMAL(OWN_RUNS) + " runs:" + OWN_LIST
+  CALLERS_LINE = "  Callers  " + DECIMAL(CALLER_BANKS) + " banks of the programs that ran GUIDEMO"
+  KEPT_LINE = "  Kept     " + DECIMAL(KEPT_BANKS) + " banks of programs that ended with keep"
+  HEAP_LINE = "Strings    " + DECIMAL(HEAP.STR_GC()) + " bytes free in the string heap, bank " + DECIMAL(ContentsAt(HEAP.PSP_HEAP))
+
+  FORM = GUI.CREATEFORM("Memory", GUI.CENTER, GUI.CENTER, 74, 23, GUI.FRAMED)
+  GUI.SAY(1, 2, "Low RAM    $0801-$9EFF  38655 bytes")
+  GUI.SAY(2, 2, PROGRAM_LINE)
+  GUI.SAY(3, 2, LOW_FREE_LINE)
+  GUI.SAY(5, 2, BANKS_LINE)
+  GUI.SAY(6, 2, SYSTEM_LINE)
+  GUI.SAY(7, 2, FREE_BANKS_LINE)
+  GUI.SAY(8, 2, OWN_LINE)
+  GUI.SAY(9, 2, CALLERS_LINE)
+  GUI.SAY(10, 2, KEPT_LINE)
+  GUI.SAY(12, 2, HEAP_LINE)
+  GUI.SAY(14, 2, "Bank map   S system  . free  G GUIDEMO  C callers  K kept")
+  GUI.SAY(15, 2, MAP_ROW0)
+  GUI.SAY(16, 2, MAP_ROW1)
+  GUI.SAY(17, 2, MAP_ROW2)
+  GUI.SAY(18, 2, MAP_ROW3)
+  GUI.BUTTON(20, 33, "&OK", 1)
+  GUI.SHOW(FORM)
+  GUI.FREE(FORM)
+  MESSAGE = "Memory: " + DECIMAL(FREE_BANKS) + " banks free, GUIDEMO has " + DECIMAL(OWN_BANKS)
+  REPORT()
 END SUB
 
 ' The Forms demo: a form of two sections over the buttons OK and Cancel. Leaving the Age field
@@ -85,9 +233,11 @@ MAIN_FORM = GUI.CREATEFORM("6502DOS GUI Demo", 1, 0, 80, 28, GUI.FRAMED OR GUI.N
 GUI.SAY(2, 3, "F10, or Alt with a menu's letter, opens the menus. Esc ends the program.")
 GUI.SAY(3, 3, "Each button opens the demo of the menu item with its name.")
 GUI.BUTTON(5, 3, "&Forms", ID_FORMS)
+GUI.BUTTON(5, 56, "&Memory", ID_MEMORY)
 GUI.BUTTON(5, 68, "E&xit", ID_EXIT)
 GUI.MENUBAR(MAIN_FORM)
 GUI.BEGINMENU("&Program")
+GUI.MENUITEM("&Memory", ID_MEMORY)
 GUI.MENUITEM("E&xit", ID_EXIT)
 GUI.ENDMENU()
 GUI.BEGINMENU("&Demos")
@@ -100,6 +250,8 @@ DO
   SELECT CASE EVENT
     CASE ID_FORMS
       FORMS_DEMO()
+    CASE ID_MEMORY
+      MEMORY_INFO()
     CASE ID_EXIT, GUI.EV_CANCEL
       EXIT DO
   END SELECT
