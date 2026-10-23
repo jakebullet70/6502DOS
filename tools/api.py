@@ -289,7 +289,7 @@ CALLS = [
           "with carry clear. The screen has 30 rows and 80 columns. With carry clear, X = $80 or "
           "above leaves the cursor where it is and sets whether it shows: bit 6 set hides it while "
           "a call waits for a key, clear shows it. A program's end shows it again. In UXCBASIC, "
-          "`POS(1) = $C0` hides it and `POS(1) = $80` shows it."),
+          "`CURSOR OFF` hides it and `CURSOR ON` shows it."),
          in_=[("carry", "set: get, clear: set"), ("X", "row, to set; $80 or above: the cursor's state"),
               ("Y", "column, to set")],
          out=[("X", "row"), ("Y", "column"), ("r0L", "the screen's rows, on a get"),

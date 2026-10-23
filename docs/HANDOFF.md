@@ -4329,6 +4329,16 @@
             0.6, GUIDLG 0.5. Build 3584 ms, the new baseline. Next: 4a part 2, F10 and
             Alt+letter open a menu; Left, Right, Up, Down, Enter, Esc, hot letters; the item's
             id returns from SHOW; the form drawn again on close.
+          - Done (2026-10-23), `CURSOR ON` / `CURSOR OFF` in pyuxc (`sm_cursor` in
+            `uxc_stmt.py`): the same code as `POS(1) = $80` / `$C0` (the .PRG matches byte for
+            byte). CURSOR is not reserved: it is the statement only when ON or OFF follows it,
+            so TED's, CMDSHELL's and GUI's CURSOR variables still work. The CONSTs
+            `CONS.CURSOR_ON`/`CURSOR_OFF` and `GUI.CURSOR_ON`/`CURSOR_OFF` are gone; GUI's 5
+            sites use the statement. `api.py` names it (API.md regenerated). 0 bytes: HELPED
+            545 free, THEMED 626, as before. Test `CURSORONOFF` new (UXCBASIC; golden local).
+            Tests: CURSORONOFF ok 0.7 s, GUIEDIT 0.4, GUICBO 0.5, GUIMEMO 0.6. Build 6707 ms
+            (all programs recompiled for the new pyuxc), the new baseline. Owed to the doc
+            batch: UXC-HELP's CURSOR ON / CURSOR OFF, in place of POS(1) = $80/$C0.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

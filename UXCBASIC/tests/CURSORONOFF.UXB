@@ -1,0 +1,12 @@
+' CURSORONOFF -- CURSOR OFF and CURSOR ON leave the cursor where it is, and a variable may still
+' be named CURSOR
+DIM CURSOR AS UBYTE
+CURSOR = 7
+PRINT "AB";
+CURSOR OFF
+PRINT POS(0); CURSOR
+CURSOR ON
+IF CURSOR = 7 THEN CURSOR OFF
+PRINT "C";
+CURSOR ON
+PRINT POS(0)

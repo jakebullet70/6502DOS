@@ -158,6 +158,9 @@ def sm_stmt():
     if g.tk_t == K_TT_OP and g.tk_k == 40:
         sm_bracket()
         return
+    if g.sm_w == "CURSOR" and g.tk_t == K_TT_NAME:
+        sm_cursor()
+        return
     er_syntax()
 
 
@@ -585,6 +588,28 @@ def sm_pos():
         emit(T.T_POSSETCOL)
     if g.ex_pos_row == 1:
         emit(T.T_POSSETROW)
+
+
+def sm_cursor():
+    """SM.CURSOR. CURSOR ON shows the cursor; CURSOR OFF hides it while the program waits for a
+    key. Each is POS(1) = $80 or POS(1) = $C0. CURSOR is not reserved: it is this statement only
+    when ON or OFF follows it, so a variable may still be named CURSOR."""
+    if g.tk_s != "ON" and g.tk_s != "OFF":
+        er_syntax()
+    g.ex_k = K_EK_CONST
+    g.ex_s = K_SEC_CONST
+    g.ex_v = 0xC0
+    if g.tk_s == "ON":
+        g.ex_v = 0x80
+    g.ex_ty = K_TY_BYTE
+    g.ex_cg = 0
+    g.ex_r = g.ex_v
+    uxc_expr.ex_pushv()
+    g.ex_i = g.ex_vn - 1
+    uxc_expr.ex_setc()
+    uxc_expr.ex_tob()
+    emit(T.T_POSSETROW)
+    uxc_lex.lx_next()
 
 
 def sm_poke():
