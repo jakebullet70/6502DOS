@@ -4273,6 +4273,23 @@
             the new baseline. Owed to
             the doc batch: GUI.PLAN 4b (the split, the right-aligned prompts, the sizes),
             UXC-HELP for INPUTBOX and INPUTBOX2. Next: the THEMED refactor.
+          - Done (2026-10-23), the THEMED refactor: L and S ask the name with `GUI.INPUTBOX`
+            (titled Load or Save, into `TYPED_NAME`, copied to `FILE_NAME` on OK only, so
+            Cancel and Esc keep the name); Load's "Not found:" and Save's "Cannot write" are
+            MSGBOXes; Save asks `GUI.YESNO` "NAME exists. Replace it?" when the file exists;
+            Esc asks YESNO "The theme is not saved. Quit anyway?" when `GUI.COLORS$` differs
+            from `SAVED_COLORS`, the 13 bytes as last loaded or saved (set at the start, by
+            Load and by Save). The snapshot compare replaces a CHANGED flag: fewer sites, and a
+            change put back counts as saved; `R_SCMP` compares by length, so the zero bytes of
+            DARK are safe. The status line keeps New theme, Loaded and Saved. Bytes: THEMED.COM
+            7751 to 16418 (+8667), as the dialogs pull in the form engine (CREATEFORM, SHOW,
+            BUTTON, GET); region 1 2983 to 7690 (502 free), region 2 0 to 3446, low RAM 4768 to
+            5282 (+514). `tests/THEMED.IN` (local) now also: 3 then S, Alt+N keeps BLUE.GTH; L
+            Esc; L Enter loads; L with BLUE.X, Not found, Enter; Right, Esc, Alt+N stays; Esc,
+            Alt+Y quits; the second run shows Frame foreground A, so the refused save kept the
+            file. Golden checked screen by screen. `THEMED` ok 1.3 s. Build 2373 ms, the new
+            baseline. Owed to the doc batch: HELP.TXT's THEMED topic covers the dialogs.
+            Next: phase 4, step 4a, menus.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
