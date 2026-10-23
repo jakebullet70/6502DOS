@@ -28,8 +28,9 @@ NAMESPACE CONS
   CONST CURSOR_HOME$ = CSI$ + "H"
 
   ' CLEAR_SCREEN$ clears the screen and puts the cursor home. CLEAR_EOL$ blanks from the
-  ' cursor to the end of the line.
+  ' cursor to the end of the line. CLS$ is CLEAR_SCREEN$.
   CONST CLEAR_SCREEN$ = CSI$ + "2J", CLEAR_EOL$ = CSI$ + "K"
+  BIND CLS$ CLEAR_SCREEN$
 
   ' NORMAL$ gives the color DOS.SET_COLOR last set. REVERSE$ swaps the foreground and the
   ' background.

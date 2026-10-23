@@ -1382,6 +1382,8 @@ NAMESPACE GUI
     SPAN_COLUMN = 0
     SPAN_LENGTH = POS(3) - 1
     SPAN(32, 32, 32)
+    ' Printing in the screen's last cell scrolls the screen, so VERA writes that cell.
+    VERA.PUT_CELL(SPAN_ROW - 1, SPAN_LENGTH, 32, ContentsAt(@COLORS$ + 2 + ROLE.STATUS))
     POS(1) = SPAN_ROW - 1
     POS(0) = 0
     PRINT LEFT$(MESSAGE$, SPAN_LENGTH);

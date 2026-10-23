@@ -4761,8 +4761,14 @@
             string escape); `PRINT CONS.CLEAR_SCREEN$;` is back. GUIDEMO 16531 bytes; region 1
             1485 free. Goldens rewritten and diffed: GUIMENU (one more bar space), GUITHEME
             (the new bytes). Tests: GUIMENU ok 0.6 s, GUITHEME 0.7, GUISHADOW 0.6. Build 6664
-            ms with GUIDEMO, HELPED and THEMED recompiled, the new baseline. Next: D2, the
-            Controls demo.
+            ms with GUIDEMO, HELPED and THEMED recompiled, the new baseline.
+          - Done, D1d (2026-10-23): `STATUS_LINE` fills the last row's last column with
+            `VERA.PUT_CELL` in the STATUS color; the cursor does not move, so nothing scrolls.
+            It costs 80 bytes a program (GUIDEMO, HELPED, THEMED). CONS.UXI has `BIND CLS$
+            CLEAR_SCREEN$`; GUIDEMO prints `CONS.CLS$`. The user moved the Forms fields' first
+            values to `SEED_DEMO`, called once at the start, so the Forms demo keeps what was
+            typed. GUIDEMO 16618 bytes. Tests: GUISHOW ok 0.7 s, CONSLIB 0.6. Build 6319 ms,
+            the new baseline. Next: D2, the Controls demo.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

@@ -192,12 +192,6 @@ END SUB
 ' The Forms demo: a form of two sections over the buttons OK and Cancel. Leaving the Age field
 ' with a space in it is refused.
 SUB FORMS_DEMO()
-
-  PERSON_NAME = "Ada Lovelace"
-  PHONE = "(555)-010-1815"
-  AGE = "36"
-  SHOWN_ONLY = "This field reads only"
-
   DIM FORM AS UBYTE, AGE_FIELD AS UBYTE, RESULT AS UBYTE
   FORM = GUI.CREATEFORM("Forms", GUI.CENTER, GUI.CENTER, 56, 17, GUI.FRAMED)
   GUI.SAY(GUI.AUTO, 2, "Tab, Up and Down move. Esc cancels.")
@@ -229,14 +223,19 @@ SUB FORMS_DEMO()
   REPORT()
 END SUB
 
-
+SUb SEED_demo()
+  PERSON_NAME = "Ada Lovelace"
+  PHONE = "(555)-010-1815"
+  AGE = "36"
+  SHOWN_ONLY = "This field reads only"
+end sub
 
 
 START_COLOR = DOS.GET_COLOR()
 GUI.THEME(GRAY)
 GUI.USE_COLOR(GUI.ROLE.PAGE)
-PRINT CONS.CLEAR_SCREEN$;
-
+PRINT CONS.CLS$;
+SEED_demo()
 
 ' The main form fills the screen between the menu bar and the status line.
 MAIN_FORM = GUI.CREATEFORM("6502DOS GUI Demo", 1, 0, 80, 28, GUI.FRAMED OR GUI.NO_SHADOW)
@@ -269,6 +268,6 @@ LOOP
 
 // --- END of prg
 DOS.SET_COLOR(START_COLOR)
-PRINT CONS.CLEAR_SCREEN$;
+PRINT CONS.CLS$;
 PRINT "End GUI Demo... Bye!"
 END
