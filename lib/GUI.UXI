@@ -40,10 +40,10 @@ NAMESPACE GUI
   DIM COLORS$ * 13
 
   ' The built-in themes, one color a role. As background, foreground:
-  ' DARK  0,0 0,11 0,1 0,15 15,0 7,0 15,0 7,0 0,2 0,12 6,1 7,0 6,1
+  ' DARK  0,0 0,12 0,2 0,15 15,0 1,0 12,0 1,0 0,2 0,12 11,1 12,0 11,1
   ' LIGHT 1,1 1,11 1,6 1,0 0,1 7,0 0,1 7,0 1,2 1,12 15,0 7,0 15,0
   ' GRAY  11,11 11,14 11,7 11,1 14,1 7,11 14,1 7,11 11,2 11,12 12,1 7,11 12,1
-  CONST DARK_COLORS$ = !"\&h00\&h0B\&h01\&h0F\&hF0\&h70\&hF0\&h70\&h02\&h0C\&h61\&h70\&h61"
+  CONST DARK_COLORS$ = !"\&h00\&h0C\&h02\&h0F\&hF0\&h10\&hC0\&h10\&h02\&h0C\&hB1\&hC0\&hB1"
   CONST LIGHT_COLORS$ = !"\&h11\&h1B\&h16\&h10\&h01\&h70\&h01\&h70\&h12\&h1C\&hF0\&h70\&hF0"
   CONST GRAY_COLORS$ = !"\&hBB\&hBE\&hB7\&hB1\&hE1\&h7B\&hE1\&h7B\&hB2\&hBC\&hC1\&h7B\&hC1"
 

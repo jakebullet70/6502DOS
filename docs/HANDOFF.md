@@ -4290,6 +4290,13 @@
             file. Golden checked screen by screen. `THEMED` ok 1.3 s. Build 2373 ms, the new
             baseline. Owed to the doc batch: HELP.TXT's THEMED topic covers the dialogs.
             Next: phase 4, step 4a, menus.
+          - Done (2026-10-23), DARK from the user's theme: `GUI.DARK_COLORS$` takes the 13 bytes
+            of `Utils/CUSTOM-DARK.GTH` the user saved on the card (kept in build/card):
+            0,0 0,12 0,2 0,15 15,0 1,0 12,0 1,0 0,2 0,12 11,1 12,0 11,1. 0 bytes. Goldens
+            updated (local): GUITHEME (DARK, the 3-byte file, the missing file, TITLE now 2) and
+            THEMED (DARK's values in each role table, the rest the same). `GUITHEME` ok 0.5 s,
+            `THEMED` ok 1.2 s, `HELPED` ok 1.1 s. Build 2646 ms, the new baseline. No other doc
+            lists DARK's colors. Next: phase 4, step 4a, menus.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
