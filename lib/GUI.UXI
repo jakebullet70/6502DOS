@@ -124,9 +124,10 @@ NAMESPACE GUI
   ' A field and the memo show the cursor with CURSOR ON; the other controls hide it with
   ' CURSOR OFF.
   ' The form SHOW runs, 0 when the next SHOW starts a form afresh. The control SHOW gives the
-  ' focus to next, 0 to return EV_DONE. The VALIDATE field of the last EV_LEAVE. 1 while
-  ' REFUSE's message is on the status line.
+  ' focus to next, 0 to return EV_DONE. The VALIDATE field of the last EV_LEAVE, and the key that
+  ' left it. 1 while REFUSE's message is on the status line.
   DIM SHOWN_FORM AS UBYTE, NEXT_FOCUS AS UBYTE, LEFT_FIELD AS UBYTE, STATUS_SHOWN AS UBYTE
+  DIM LEFT_KEY AS UWORD
 
   ' Edits TARGET$ in a field at ROW and COLUMN, counted from 0, WIDTH characters wide.
   ' TARGET$ takes at most its own size in characters. The text scrolls inside the field when it
@@ -1415,7 +1416,7 @@ NAMESPACE GUI
   ' letter, opens a menu of the form's bar, as PULL_MENU runs it; the item chosen returns its
   ' id, as MENUITEM gives, and the focus stays. A CBO's list that closes leaves the focus on the
   ' CBO. Leaving a VALIDATE field returns EV_LEAVE, with the field in
-  ' LEFT_FIELD; the next SHOW moves the focus on, or back to the field after REFUSE. A form is new to SHOW after EV_DONE, EV_CANCEL or FREE, and
+  ' LEFT_FIELD and the key in LEFT_KEY; the next SHOW moves the focus on, or back to the field after REFUSE. A form is new to SHOW after EV_DONE, EV_CANCEL or FREE, and
   ' when another form was shown last. A form shown again after a MSGBOX keeps its focus, and is
   ' not drawn again. SHOW(0) returns EV_CANCEL.
   FUNCTION SHOW(HANDLE AS UBYTE) AS UBYTE
@@ -1468,6 +1469,7 @@ NAMESPACE GUI
       IF PRESSED = KEYS.ENTER AND NEXT_FOCUS <= FOCUS THEN NEXT_FOCUS = 0
       IF CONTROL_FLAGS(FOCUS) AND VALIDATE THEN
         LEFT_FIELD = FOCUS
+        LEFT_KEY = PRESSED
         RETURN EV_LEAVE
       ENDIF
       FOCUS = NEXT_FOCUS
@@ -1517,26 +1519,42 @@ NAMESPACE GUI
     IF SECOND <> 0 THEN BUTTON(ROWS, COLUMN + FIRST + 2, BUTTON2$, 2)
   END SUB
 
-  ' Shows the dialog DIALOG_FORM, the focus first on the control FOCUS, or on the form's first control
-  ' for 0, then frees the form and returns SHOW's event, with EV_DONE, Enter in the last field,
-  ' as 1. The screen under the form and its shadow is put back. A form shown before keeps its
-  ' focus, and is not drawn again. When VERA.SAVE_RECT has no room, the screen is not put back,
-  ' and that form's next SHOW draws it whole.
-  FUNCTION RUN_DIALOG(FOCUS AS UBYTE) AS UBYTE
-    DIM KEPT_FOCUS AS UBYTE, KEPT_FORM AS UBYTE, SAVED AS UBYTE, RESULT AS UBYTE
+  ' What PUT_DIALOG keeps for SHUT_DIALOG: the focus and the form SHOW had, and 1 when the screen
+  ' was saved.
+  DIM KEPT_FOCUS AS UBYTE, KEPT_FORM AS UBYTE, KEPT_SCREEN AS UBYTE
+
+  ' Saves the screen under the dialog DIALOG_FORM and its shadow, and puts the focus of its first
+  ' SHOW on the control FOCUS, or on the form's first control for 0. SHUT_DIALOG ends the dialog.
+  ' Trap: one dialog at a time. A dialog run between PUT_DIALOG and SHUT_DIALOG loses what
+  ' PUT_DIALOG kept.
+  SUB PUT_DIALOG(FOCUS AS UBYTE)
     KEPT_FOCUS = NEXT_FOCUS
     KEPT_FORM = SHOWN_FORM
     NEXT_FOCUS = FOCUS
-    SAVED = VERA.SAVE_RECT(PANEL_ROW(DIALOG_FORM), PANEL_COLUMN(DIALOG_FORM), PANEL_WIDTH(DIALOG_FORM) + 2, PANEL_HEIGHT(DIALOG_FORM) + 1)
-    RESULT = SHOW(DIALOG_FORM)
+    KEPT_SCREEN = VERA.SAVE_RECT(PANEL_ROW(DIALOG_FORM), PANEL_COLUMN(DIALOG_FORM), PANEL_WIDTH(DIALOG_FORM) + 2, PANEL_HEIGHT(DIALOG_FORM) + 1)
+  END SUB
+
+  ' Frees DIALOG_FORM, puts back the screen and the focus PUT_DIALOG kept, and returns RESULT,
+  ' SHOW's event, with EV_DONE as 1. A form shown before keeps its focus, and is not drawn
+  ' again. When VERA.SAVE_RECT had no room, the screen is not put back, and that form's next
+  ' SHOW draws it whole.
+  FUNCTION SHUT_DIALOG(RESULT AS UBYTE) AS UBYTE
     FREE(DIALOG_FORM)
     NEXT_FOCUS = KEPT_FOCUS
-    IF SAVED THEN
+    IF KEPT_SCREEN THEN
       VERA.RESTORE_RECT()
       SHOWN_FORM = KEPT_FORM
     ENDIF
     IF RESULT = EV_DONE THEN RESULT = 1
     RETURN RESULT
+  END FUNCTION
+
+  ' Shows the dialog DIALOG_FORM, the focus first on the control FOCUS, or on the form's first
+  ' control for 0, then frees the form and returns SHOW's event, with EV_DONE, Enter in the last
+  ' field, as 1. The screen is put back as SHUT_DIALOG puts it back.
+  FUNCTION RUN_DIALOG(FOCUS AS UBYTE) AS UBYTE
+    PUT_DIALOG(FOCUS)
+    RETURN SHUT_DIALOG(SHOW(DIALOG_FORM))
   END FUNCTION
 
   ' Shows a framed form centered on the screen, titled TITLE$, with the lines LINE1$ to LINE3$,

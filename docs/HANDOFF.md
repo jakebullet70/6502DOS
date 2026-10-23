@@ -4612,6 +4612,36 @@
             Trap: x16emu's -bas takes \ as its escape, so a .IN types \ as \X5C. Tests: GUIPICK
             ok 1.0 s. No build: no ROM or utility source changed. Owed to the doc batch:
             UXC-HELP and GUI.PLAN on PICKFILE.UXI. Next: L3b.
+          - Done, L3b (2026-10-23): PICKFILE browses without CHDIR or SETDRIVE. `DOS.CALL_TEXT`
+            holds the path shown ("C:\PICKT\"), and the reads search `CALL_TEXT + "*.*"` and
+            `CALL_TEXT + mask`, so the current drive and folder never change and nothing is put
+            back. The field and the list of folders take VALIDATE; PICKFILE runs its own SHOW
+            loop, going on after EV_LEAVE unless the key was Enter. Enter in the field: a name
+            is OK; a mask (* or ?) rereads the files with it; empty gets MASK$ back. Enter in
+            the list of folders: `..` cuts the path to the \ before its closing \; a folder
+            appends `name\`; a drive record `[-A-]` sets the path to that drive's GETCWD
+            (`SET_PATH`). Drives: GETCWD(1 to 8) at the start, one bit each in `PICK_DRIVES`;
+            their records follow the folders. Each reread frees the form and makes it again,
+            the focus back on the field or the list of folders; the first pass saves the
+            screen. A typed name with a leading \ takes the shown path's drive. GUI.UXI:
+            `LEFT_KEY` (UWORD), the key of the last EV_LEAVE; RUN_DIALOG split into
+            `PUT_DIALOG(FOCUS)` and `SHUT_DIALOG(RESULT)`, its locals now `KEPT_FOCUS`,
+            `KEPT_FORM`, `KEPT_SCREEN` in region 2. Trap: one dialog at a time between PUT and
+            SHUT. Bytes, region 3: PICKFILE 1348, ADD_NAME 324 (split from READ_NAMES),
+            PLACE_RECORDS 275, READ_ALL 235, READ_NAMES 128, WILD 111, NAME_OF 105, SET_PATH
+            101, RECORD_AT 55; 2682 in all (+691), plus PICK_ORDER 255 and 4 bytes of globals.
+            Low RAM unchanged, 201. GUI.UXI cost to a RUN_DIALOG program, GUIDLG 10018 to
+            10049 (+31: region 1 +14, region 2 +17). GUIPICK 15455, regions 6768, 1037, 5280.
+            Savings applied: the drive record as "[-A-]" and one byte poked (-60), WILD's
+            address once (-7), the drive probe as a FOR STEP -1 (-7). Tried and not taken: INSTR
+            in WILD (+92), SET_PATH on GETCWD's result (+8), others +0 to +12. GUIPICK now runs
+            10 dialogs: list, NEW.TXT, \X.TXT, D:\Z.TXT, mask *.DAT, into Sub, aFold then ..,
+            Sub then [-C-], Esc, Cancel; then it prints the current folder, still PICKT.
+            Tests: GUIPICK ok 2.1 s, GUIDLG 0.5, GUILBOX 0.5, GUIFLAGS 0.4, GUICHECK 0.5,
+            GUISHOW 0.4. No build. Open: a path past 68 columns overruns the frame; a typed
+            folder name or a mask with a path is taken as a file name. Owed to the doc batch:
+            UXC-HELP and GUI.PLAN on LEFT_KEY, PUT_DIALOG, SHUT_DIALOG and PICKFILE's keys.
+            Next: L3c, PICK_MANAGE.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
