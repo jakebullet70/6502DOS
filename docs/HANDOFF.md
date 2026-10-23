@@ -4339,6 +4339,25 @@
             Tests: CURSORONOFF ok 0.7 s, GUIEDIT 0.4, GUICBO 0.5, GUIMEMO 0.6. Build 6707 ms
             (all programs recompiled for the new pyuxc), the new baseline. Owed to the doc
             batch: UXC-HELP's CURSOR ON / CURSOR OFF, in place of POS(1) = $80/$C0.
+          - Done (2026-10-23), 4a part 2, `lib/GUI.UXI`. Region 2: `ALT_LETTER(PRESSED)` (the
+            Alt+letter table and decode, moved out of HOT_BUTTON; returns the letter OR $A0, as
+            PRINT_HOT); `DRAW_TITLE(NUMBER, WHICH)` (shared by DRAW_BAR and the open title);
+            `PULL_MENU(HANDLE, PRESSED)`: F10 opens menu 1, Alt+hot letter its menu (buttons
+            win, as HOT_BUTTON runs first); title in MENU_SELECTED, a box under it 3 columns
+            wider than the longest caption, kept off the last column; Up/Down wrap, Left/Right
+            switch menus (wrapping), Enter or an item's plain hot letter chooses, Esc closes;
+            on leaving a menu the box is cleared in PAGE and the form drawn whole. Region 1:
+            `DRAW_WHOLE(HANDLE)` split out of SHOW (form, bar, every control DRAW_ONLY, sets
+            SHOWN_FORM); SHOW calls PULL_MENU after the button check and returns the item's id,
+            the focus kept. Item ids 1 to 252. Bytes, HELPED against 4a part 1: region 1 +24
+            free (569), region 2 +1322 (5053, 3139 free; PULL_MENU alone 1213 with the 133
+            bytes of item tables it pulls in), low RAM +37 (call stubs); THEMED region 1 650
+            free, region 2 3018 free. Every SHOW program pays it (D9). Applied: COUNT, LENGTH
+            and the typed letter kept in locals, -78. `GUIMENU` extended: F10, Down, Right,
+            Left, Esc, Enter 5; Alt+H Enter 3; F10 x 2; Alt+G 5; Esc 255 (golden local).
+            Tests: GUIMENU ok 0.6 s, GUIBTN 0.5, GUIDLG 0.5, GUISHOW 0.4, GUICBO 0.5, HELPED
+            1.2. Build 2562 ms, the new baseline. Next: 4c, shadows (open: a SHADOW role or
+            black), then L1 to L3. Maybe later: "-" separators and disabled items.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

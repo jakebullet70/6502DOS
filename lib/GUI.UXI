@@ -765,6 +765,18 @@ NAMESPACE GUI
     END REPEAT
     RETURN LETTER
   END FUNCTION
+
+  ' Returns the letter of PRESSED, as WAITKEY() gives it, when it is Alt with a letter: in lower
+  ' case with bit 7 set, as PRINT_HOT returns a hot letter. Returns 0 for any other key.
+  ' LETTERS$ is the letter of each Alt+letter key, from scan code $10; the console gives no Alt
+  ' key at a -.
+  FUNCTION ALT_LETTER(PRESSED AS UWORD, LETTERS$ AS CONST = "qwertyuiop----asdfghjkl-----zxcvbnm") AS UBYTE
+    DIM SPOT AS UBYTE
+    ' The scan code is the high byte. A plain key's is 0, which wraps past 34.
+    SPOT = ContentsAt(@PRESSED + 1) - $10
+    IF SPOT > 34 THEN RETURN 0
+    RETURN ContentsAt(AddrOf(LETTERS$) + 2 + SPOT) OR $A0
+  END FUNCTION
 #REGION_SLOT 1
 
   ' Draws CONTROL, a BUTTON, at COLUMN in the BUTTON_FOCUS color, or the BUTTON color when
@@ -788,16 +800,13 @@ NAMESPACE GUI
   END FUNCTION
 
   ' Returns the button of the form HANDLE whose hot key is PRESSED, as WAITKEY() gives it, or 0.
-  ' The form is drawn. LETTERS$ is the letter of each Alt+letter key, from scan code $10; the
-  ' console gives no Alt key at a -.
-  FUNCTION HOT_BUTTON(HANDLE AS UBYTE, PRESSED AS UWORD, LETTERS$ AS CONST = "qwertyuiop----asdfghjkl-----zxcvbnm") AS UBYTE
+  ' The form is drawn.
+  FUNCTION HOT_BUTTON(HANDLE AS UBYTE, PRESSED AS UWORD) AS UBYTE
     DIM CONTROL AS UBYTE, LETTER AS UBYTE
-    ' The scan code is the high byte. A plain key's is 0, which wraps past 34.
-    CONTROL = ContentsAt(@PRESSED + 1) - $10
-    IF CONTROL > 34 THEN RETURN 0
+    LETTER = ALT_LETTER(PRESSED)
+    IF LETTER = 0 THEN RETURN 0
     ' PUSH_BUTTON keeps a button's hot letter in its CONTROL_WIDTH, as PRINT_HOT returns it.
     ' A field is never that wide.
-    LETTER = ContentsAt(AddrOf(LETTERS$) + 2 + CONTROL) OR $80
     CONTROL = MOST_CONTROLS
     REPEAT MOST_CONTROLS
       IF CONTROL_OWNER(CONTROL) = HANDLE AND CONTROL_WIDTH(CONTROL) = LETTER THEN RETURN CONTROL
@@ -1107,7 +1116,7 @@ NAMESPACE GUI
   END SUB
 
   ' Adds the item CAPTION$ to the menu BEGINMENU opened, after the items before it. Choosing the
-  ' item makes SHOW return ID, as a button's id. The & marks its hot letter. The menu keeps the
+  ' item makes SHOW return ID, as a button's id; ID is 1 to 252. The & marks its hot letter. The menu keeps the
   ' address of CAPTION$, not a copy. Past MOST_ITEMS items MENUITEM does nothing.
   SUB MENUITEM(CAPTION$ AS CONST, ID AS UBYTE)
     IF ITEM_COUNT = MOST_ITEMS THEN RETURN
@@ -1121,9 +1130,19 @@ NAMESPACE GUI
     MENU_FIRST(MENU_COUNT + 1) = ITEM_COUNT + 1
   END SUB
 
+  ' Prints menu NUMBER's title at the cursor in WHICH's color, between spaces, as PRINT_HOT
+  ' prints it, and returns its hot letter.
+  FUNCTION DRAW_TITLE(NUMBER AS UBYTE, WHICH AS ENUM.ROLE) AS UBYTE
+    DIM LETTER AS UBYTE
+    USE_COLOR(WHICH)
+    PRINT " ";
+    LETTER = PRINT_HOT(MENU_TITLE_AT(NUMBER), WHICH)
+    PRINT " ";
+    RETURN LETTER
+  END FUNCTION
+
   ' Draws the menu bar when HANDLE is MENU_FORM: the screen's top row, all but its last column,
-  ' in the MENU color, and each menu's title from column 2, as PRINT_HOT prints it, 2 columns
-  ' after the one before.
+  ' in the MENU color, and each menu's title from column 2, as DRAW_TITLE prints it.
   SUB DRAW_BAR(HANDLE AS UBYTE)
     DIM NUMBER AS UBYTE
     IF HANDLE <> MENU_FORM THEN RETURN
@@ -1137,12 +1156,96 @@ NAMESPACE GUI
     NUMBER = 1
     REPEAT MENU_COUNT
       MENU_COLUMN(NUMBER) = POS(0)
-      PRINT " ";
-      MENU_HOT(NUMBER) = PRINT_HOT(MENU_TITLE_AT(NUMBER), ROLE.MENU)
-      PRINT " ";
+      MENU_HOT(NUMBER) = DRAW_TITLE(NUMBER, ROLE.MENU)
       NUMBER = NUMBER + 1
     END REPEAT
   END SUB
+
+  ' Opens a menu of the bar of the form HANDLE when PRESSED, as WAITKEY() gives it, is F10 or
+  ' Alt with a menu's hot letter; F10 opens the first menu. Returns 0 at once for any other key.
+  ' The open menu's title takes the MENU_SELECTED color, and its items drop down under it in a
+  ' box, the selected item in MENU_SELECTED. Up and Down move through the items, wrapping, and
+  ' Left and Right open the menu before or after, wrapping. Enter, or an item's hot letter,
+  ' chooses the item; Esc closes the menu. Then the menu is cleared, the form drawn whole, and
+  ' PULL_MENU returns the item's id, or 0 after Esc.
+  ' Trap: a menu takes the rows from 1 to 2 + its number of items, and does not scroll. A menu
+  ' needs one item at least.
+  FUNCTION PULL_MENU(HANDLE AS UBYTE, PRESSED AS UWORD) AS UBYTE
+    DIM NUMBER AS UBYTE, LETTER AS UBYTE, FIRST AS UBYTE, LAST AS UBYTE, ITEM AS UBYTE
+    DIM SPOT AS UBYTE, CHOSEN AS UBYTE, COLUMN AS UBYTE, WIDTH AS UBYTE, WHICH AS ENUM.ROLE
+    DIM COUNT AS UBYTE, LENGTH AS UBYTE
+    IF HANDLE <> MENU_FORM THEN RETURN 0
+    NUMBER = 0
+    IF PRESSED = KEYS.KEY_F10 THEN NUMBER = 1
+    LETTER = ALT_LETTER(PRESSED)
+    SPOT = MENU_COUNT
+    REPEAT MENU_COUNT
+      IF LETTER <> 0 AND MENU_HOT(SPOT) = LETTER THEN NUMBER = SPOT
+      SPOT = SPOT - 1
+    END REPEAT
+    IF NUMBER = 0 OR NUMBER > MENU_COUNT THEN RETURN 0
+    CURSOR OFF
+    CHOSEN = 0
+    ' No key yet: a plain key's low byte with bit 7 set is a hot letter.
+    PRESSED = 0
+    DO
+      ' Menu NUMBER's items are FIRST to LAST. Its box is 3 columns wider than its longest
+      ' caption, and stays off the screen's last column.
+      FIRST = MENU_FIRST(NUMBER)
+      LAST = MENU_FIRST(NUMBER + 1) - 1
+      COUNT = LAST - FIRST + 1
+      WIDTH = 0
+      SPOT = FIRST
+      REPEAT COUNT
+        LENGTH = ContentsAt(ITEM_CAPTION_AT(SPOT) + 1)
+        IF LENGTH > WIDTH THEN WIDTH = LENGTH
+        SPOT = SPOT + 1
+      END REPEAT
+      WIDTH = WIDTH + 3
+      COLUMN = MENU_COLUMN(NUMBER)
+      IF COLUMN + WIDTH >= POS(3) THEN COLUMN = POS(3) - 1 - WIDTH
+      POS(1) = 0
+      POS(0) = MENU_COLUMN(NUMBER)
+      DRAW_TITLE(NUMBER, ROLE.MENU_SELECTED)
+      USE_COLOR(ROLE.MENU)
+      BOX(1, COLUMN, WIDTH, COUNT + 2)
+      ITEM = FIRST
+      DO
+        LETTER = ContentsAt(@PRESSED) OR $A0
+        SPOT = FIRST
+        REPEAT COUNT
+          WHICH = ROLE.MENU
+          IF SPOT = ITEM THEN WHICH = ROLE.MENU_SELECTED
+          USE_COLOR(WHICH)
+          POS(1) = SPOT - FIRST + 2
+          POS(0) = COLUMN + 1
+          PRINT " ";
+          IF PRINT_HOT(ITEM_CAPTION_AT(SPOT), WHICH) = LETTER THEN CHOSEN = SPOT
+          REPEAT COLUMN + WIDTH - 1 - POS(0)
+            PRINT " ";
+          END REPEAT
+          SPOT = SPOT + 1
+        END REPEAT
+        IF PRESSED = KEYS.ENTER THEN CHOSEN = ITEM
+        IF CHOSEN <> 0 THEN EXIT DO
+        PRESSED = WAITKEY()
+        IF PRESSED = KEYS.KEY_UP THEN ITEM = ITEM - 1
+        IF PRESSED = KEYS.KEY_DOWN THEN ITEM = ITEM + 1
+        IF ITEM < FIRST THEN ITEM = LAST
+        IF ITEM > LAST THEN ITEM = FIRST
+      LOOP UNTIL PRESSED = KEYS.ESC OR PRESSED = KEYS.KEY_LEFT OR PRESSED = KEYS.KEY_RIGHT
+      ' Each theme's PAGE color has the same foreground as background, so the box clears.
+      USE_COLOR(ROLE.PAGE)
+      BOX(1, COLUMN, WIDTH, COUNT + 2)
+      DRAW_WHOLE(HANDLE)
+      IF PRESSED = KEYS.KEY_LEFT THEN NUMBER = NUMBER - 1
+      IF PRESSED = KEYS.KEY_RIGHT THEN NUMBER = NUMBER + 1
+      IF NUMBER = 0 THEN NUMBER = MENU_COUNT
+      IF NUMBER > MENU_COUNT THEN NUMBER = 1
+    LOOP UNTIL PRESSED <> KEYS.KEY_LEFT AND PRESSED <> KEYS.KEY_RIGHT
+    IF CHOSEN = 0 THEN RETURN 0
+    RETURN ITEM_ID(CHOSEN)
+  END FUNCTION
 #REGION_SLOT 1
 
   ' Runs INPUT2 on the field CONTROL, its FLAGS with MORE_FLAGS added, and returns INPUT2's key;
@@ -1180,19 +1283,41 @@ NAMESPACE GUI
     PRINT LEFT$(MESSAGE$, SPAN_LENGTH);
   END SUB
 
+  ' Draws the form HANDLE whole: the form, its menu bar when MENUBAR gave it one, and each
+  ' control's caption and field, none in focus. SHOWN_FORM becomes HANDLE.
+  SUB DRAW_WHOLE(HANDLE AS UBYTE)
+    DIM CONTROL AS UBYTE, LABEL_AT AS UWORD
+    SHOWN_FORM = HANDLE
+    DRAW_FORM(HANDLE)
+    DRAW_BAR(HANDLE)
+    CONTROL = MOST_CONTROLS
+    REPEAT MOST_CONTROLS
+      IF CONTROL_OWNER(CONTROL) = HANDLE THEN
+        USE_COLOR(TEXT)
+        POS(1) = CONTROL_ROW(CONTROL)
+        POS(0) = CONTROL_COLUMN(CONTROL)
+        LABEL_AT = CONTROL_LABEL_AT(CONTROL)
+        PRINT StringAt(LABEL_AT);
+        IF CONTROL_WIDTH(CONTROL) <> 0 THEN EDIT_FIELD(CONTROL, DRAW_ONLY)
+      ENDIF
+      CONTROL = CONTROL - 1
+    END REPEAT
+  END SUB
+
   ' Shows the form HANDLE and lets the user edit its controls, then returns an event. A form new
-  ' to SHOW is drawn with its captions and fields, and its menu bar when MENUBAR gave it one, and
-  ' the focus goes to its first control. Tab,
+  ' to SHOW is drawn whole, as DRAW_WHOLE draws it, and the focus goes to its first control. Tab,
   ' Down and Enter move the focus to the next control, and Shift+Tab and Up to the one before;
   ' the focus wraps from the last control to the first and back, and skips each SAY. Enter on
   ' the last control returns EV_DONE, and so does a form with no control but SAYs. Esc returns
-  ' EV_CANCEL. A button pressed returns its id, as BUTTON gives. A CBO's list that closes has the
-  ' form drawn again, the focus on the CBO. Leaving a VALIDATE field returns EV_LEAVE, with the field in LEFT_FIELD; the next SHOW moves the focus on, or
-  ' back to the field after REFUSE. A form is new to SHOW after EV_DONE, EV_CANCEL or FREE, and
+  ' EV_CANCEL. A button pressed returns its id, as BUTTON gives. F10, or Alt with a menu's hot
+  ' letter, opens a menu of the form's bar, as PULL_MENU runs it; the item chosen returns its
+  ' id, as MENUITEM gives, and the focus stays. A CBO's list that closes has the form drawn
+  ' again, the focus on the CBO. Leaving a VALIDATE field returns EV_LEAVE, with the field in
+  ' LEFT_FIELD; the next SHOW moves the focus on, or back to the field after REFUSE. A form is new to SHOW after EV_DONE, EV_CANCEL or FREE, and
   ' when another form was shown last. A form shown again after a MSGBOX is drawn whole, and
   ' keeps its focus. SHOW(0) returns EV_CANCEL.
   FUNCTION SHOW(HANDLE AS UBYTE) AS UBYTE
-    DIM FOCUS AS UBYTE, DIRECTION AS UBYTE, PUSHED AS UBYTE, PRESSED AS UWORD, LABEL_AT AS UWORD
+    DIM FOCUS AS UBYTE, DIRECTION AS UBYTE, PUSHED AS UBYTE, PRESSED AS UWORD
     IF HANDLE = 0 THEN RETURN EV_CANCEL
     IF HANDLE <> SHOWN_FORM THEN
       SHOWN_FORM = 0
@@ -1202,23 +1327,7 @@ NAMESPACE GUI
     FOCUS = NEXT_FOCUS
     DO
       ' A form new to SHOW, or one a CBO's list has covered, is drawn whole.
-      IF SHOWN_FORM = 0 THEN
-        SHOWN_FORM = HANDLE
-        DRAW_FORM(HANDLE)
-        DRAW_BAR(HANDLE)
-        PUSHED = MOST_CONTROLS
-        REPEAT MOST_CONTROLS
-          IF CONTROL_OWNER(PUSHED) = HANDLE THEN
-            USE_COLOR(TEXT)
-            POS(1) = CONTROL_ROW(PUSHED)
-            POS(0) = CONTROL_COLUMN(PUSHED)
-            LABEL_AT = CONTROL_LABEL_AT(PUSHED)
-            PRINT StringAt(LABEL_AT);
-            IF CONTROL_WIDTH(PUSHED) <> 0 THEN EDIT_FIELD(PUSHED, DRAW_ONLY)
-          ENDIF
-          PUSHED = PUSHED - 1
-        END REPEAT
-      ENDIF
+      IF SHOWN_FORM = 0 THEN DRAW_WHOLE(HANDLE)
       IF FOCUS = 0 THEN EXIT DO
       PRESSED = EDIT_FIELD(FOCUS, 0)
       EDIT_FIELD(FOCUS, DRAW_ONLY)
@@ -1234,6 +1343,10 @@ NAMESPACE GUI
         NEXT_FOCUS = PUSHED
         RETURN CONTROL_TEXT_AT(PUSHED)
       ENDIF
+      ' F10, or Alt with a menu's hot letter, opens a menu. The item chosen returns its id; Esc
+      ' leaves the key to the CASE ELSE below.
+      PUSHED = PULL_MENU(HANDLE, PRESSED)
+      IF PUSHED <> 0 THEN RETURN PUSHED
       SELECT CASE PRESSED
         CASE KEYS.ESC
           SHOWN_FORM = 0
