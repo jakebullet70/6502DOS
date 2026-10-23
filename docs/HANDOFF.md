@@ -4561,6 +4561,23 @@
             GUIDLG 0.5, HELPED 1.3, THEMED 1.4 ok. Build 3140 ms, the new baseline. Next: the
             merged list engine (pull-down, CBO list, LIST; item print through a pointer), then
             L2, L3. Owed to the doc batch: GUI.PLAN on RUN_MENU.
+          - Measured (2026-10-23): no program has two engines (HELPED: CBO; THEMED: none).
+            Engines: PULL_MENU 1169, DROP_LIST + PRINT_ITEM 786, LIST_EDIT + PRINT_ITEM_OF +
+            PRINT_RECORD + MARK_BIT + MARKED 1424. Estimate after the merge: CBO-only +~700,
+            menu-only +~600, LIST-only +~50, two engines -~500. Decided (the user): merge anyway,
+            in parts M1 (engine, LIST on it), M2 (DROP_LIST on it), M3 (PULL_MENU on it).
+          - Done, M1 (2026-10-23): `RUN_LIST` in region 3 is the engine, LIST_EDIT's old body.
+            It takes CONTEXT, a `GUI.ITEM_PRINTER(CONTEXT AS UWORD, ITEM AS UBYTE, WIDTH AS UBYTE,
+            WHICH AS ENUM.ROLE) AS UBYTE` pointer, ROW, COLUMN, ROWS, WIDTH, COUNT, VALUE, TOP,
+            FLAGS (LIST_MULTI), BASE (the role) and MORE_FLAGS; it leaves the choice in
+            PICKED_ITEM and the top in PICKED_TOP. Items count from 1. The printer prints in WIDTH
+            and returns the item's letter; WIDTH 0 prints nothing (the letter search). WHICH is
+            for PULL_MENU's PRINT_HOT. PRINT_ITEM_OF is LIST's printer (CONTEXT is the slot).
+            LIST_EDIT sets BASE, calls RUN_LIST, stores the value and the top. Bytes: RUN_LIST
+            944, LIST_EDIT 999 to 191, PRINT_ITEM_OF 148 to 154. GUILIST 11706 to 11854 (region 3
+            1851 to 1992); the rest unchanged. GUILIST ok 0.6 s. Build 2984 ms, the new baseline.
+            Next: M2, DROP_LIST on RUN_LIST (needs: wrap Up/Down, no ^/v column, 0-based CBO
+            value, Enter/Esc loop in DROP_LIST; PRINT_ITEM to the ITEM_PRINTER signature).
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

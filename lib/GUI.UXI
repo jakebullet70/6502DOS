@@ -1694,42 +1694,38 @@ NAMESPACE GUI
     RETURN 0
   END FUNCTION
 
-  ' Prints item ITEM of list SLOT, 1 for the first, as PRINT_RECORD prints it in WIDTH
-  ' characters, and returns its first byte. An ITEM past the list's last prints spaces.
-  FUNCTION PRINT_ITEM_OF(SLOT AS UBYTE, ITEM AS UBYTE, WIDTH AS UBYTE) AS UBYTE
-    DIM AT AS UWORD, LENGTH AS UBYTE
-    LENGTH = LIST_LENGTH(SLOT)
-    AT = ITEM - 1
-    AT = LIST_ITEMS_AT(SLOT) + AT * LENGTH
-    IF ITEM > LIST_COUNT(SLOT) THEN LENGTH = 0
-    RETURN PRINT_RECORD(AT, LIST_BANK(SLOT), LENGTH, WIDTH)
-  END FUNCTION
+  ' An item printer, which RUN_LIST calls for each row. It prints item ITEM, 1 for the first, of
+  ' the items CONTEXT names, in WIDTH characters in WHICH's color, which is the console's color,
+  ' and returns the item's letter. With WIDTH 0 it prints nothing.
+  DECLARE FUNCTION ITEM_PRINTER(CONTEXT AS UWORD, ITEM AS UBYTE, WIDTH AS UBYTE, WHICH AS ENUM.ROLE) AS UBYTE
 
-  ' Draws list SLOT, its first row at ROW and COLUMN, in the FIELD_FOCUS color, or the FIELD
-  ' color when MORE_FLAGS is DRAW_ONLY. With MORE_FLAGS DRAW_ONLY it returns DRAW_ONLY. Else it
-  ' moves the choice and the marks by the keys LIST gives, and returns any other key.
-  FUNCTION LIST_EDIT(SLOT AS UBYTE, ROW AS UBYTE, COLUMN AS UBYTE, MORE_FLAGS AS UBYTE) AS UWORD
-    DIM PRESSED AS UWORD, VALUE_AT AS UWORD
-    DIM VALUE AS UBYTE, COUNT AS UBYTE, ROWS AS UBYTE, TOP AS UBYTE, ITEM AS UBYTE, SPOT AS UBYTE
-    DIM TEXT_WIDTH AS UBYTE, MULTI AS UBYTE, MARK AS UBYTE, CHARACTER AS UBYTE, SCAN AS UBYTE
-    DIM STEPS AS UBYTE, BASE AS ENUM.ROLE
-    VALUE_AT = LIST_VALUE_AT(SLOT)
-    COUNT = LIST_COUNT(SLOT)
-    ROWS = LIST_ROWS(SLOT)
-    MULTI = LIST_FLAGS(SLOT) AND LIST_MULTI
+  ' The item chosen and the item on the top row, as RUN_LIST leaves them.
+  DIM PICKED_ITEM AS UBYTE, PICKED_TOP AS UBYTE
+
+  ' Draws ROWS rows of WIDTH columns from ROW and COLUMN, in BASE's color, of a list of COUNT
+  ' items, and runs its keys. PRINTER prints each item, with CONTEXT. VALUE is the item chosen, 1
+  ' for the first, or 0 for none; it is drawn in the MENU_SELECTED color. TOP is the item on the
+  ' top row. The list scrolls by the fewest rows that show the item chosen. The last column holds
+  ' a ^ on the top row when items lie above, and a v on the bottom row when items lie below. With
+  ' LIST_MULTI in FLAGS, the first column holds a * on each item LIST_MARKS marks. With
+  ' MORE_FLAGS DRAW_ONLY it returns DRAW_ONLY. Else it moves the choice and the marks by the keys
+  ' LIST gives, and returns any other key. It leaves the choice in PICKED_ITEM and the top row's
+  ' item in PICKED_TOP.
+  FUNCTION RUN_LIST(CONTEXT AS UWORD, PRINTER AS ITEM_PRINTER, ROW AS UBYTE, COLUMN AS UBYTE, ROWS AS UBYTE, WIDTH AS UBYTE, COUNT AS UBYTE, VALUE AS UBYTE, TOP AS UBYTE, FLAGS AS UBYTE, BASE AS ENUM.ROLE, MORE_FLAGS AS UBYTE) AS UWORD
+    DIM PRESSED AS UWORD
+    DIM ITEM AS UBYTE, SPOT AS UBYTE, TEXT_WIDTH AS UBYTE, MULTI AS UBYTE, MARK AS UBYTE
+    DIM CHARACTER AS UBYTE, SCAN AS UBYTE, STEPS AS UBYTE, WHICH AS ENUM.ROLE
+    MULTI = FLAGS AND LIST_MULTI
     ' The last column holds ^ and v, and with LIST_MULTI the first holds the mark.
-    TEXT_WIDTH = LIST_WIDTH(SLOT) - 1
+    TEXT_WIDTH = WIDTH - 1
     IF MULTI <> 0 THEN TEXT_WIDTH = TEXT_WIDTH - 1
-    BASE = ROLE.FIELD_FOCUS
-    IF MORE_FLAGS <> 0 THEN BASE = ROLE.FIELD
     DO
-      VALUE = ContentsAt(VALUE_AT)
-      TOP = LIST_TOP(SLOT)
       IF VALUE <> 0 THEN
         IF VALUE < TOP THEN TOP = VALUE
         IF VALUE - TOP >= ROWS THEN TOP = VALUE - ROWS + 1
       ENDIF
-      LIST_TOP(SLOT) = TOP
+      PICKED_ITEM = VALUE
+      PICKED_TOP = TOP
       ITEM = TOP
       SPOT = 0
       REPEAT ROWS
@@ -1741,8 +1737,10 @@ NAMESPACE GUI
           IF MARKED(ITEM) THEN MARK = ASC("*")
           PRINT CHR$(MARK);
         ENDIF
-        IF ITEM = VALUE THEN USE_COLOR(ROLE.MENU_SELECTED)
-        PRINT_ITEM_OF(SLOT, ITEM, TEXT_WIDTH)
+        WHICH = BASE
+        IF ITEM = VALUE THEN WHICH = ROLE.MENU_SELECTED
+        USE_COLOR(WHICH)
+        CALL PRINTER WITH (CONTEXT, ITEM, TEXT_WIDTH, WHICH)
         USE_COLOR(BASE)
         MARK = 32
         IF SPOT = 0 AND TOP > 1 THEN MARK = ASC("^")
@@ -1790,7 +1788,7 @@ NAMESPACE GUI
             REPEAT COUNT
               IF ITEM >= COUNT THEN ITEM = 0
               ITEM = ITEM + 1
-              IF (PRINT_ITEM_OF(SLOT, ITEM, 0) OR 32) = CHARACTER THEN
+              IF ((CALL PRINTER WITH (CONTEXT, ITEM, 0, BASE)) OR 32) = CHARACTER THEN
                 VALUE = ITEM
                 EXIT REPEAT
               ENDIF
@@ -1802,8 +1800,32 @@ NAMESPACE GUI
           RETURN PRESSED
       END SELECT
       IF VALUE > COUNT THEN VALUE = COUNT
-      ContentsAt(VALUE_AT) = VALUE
     LOOP
+  END FUNCTION
+
+  ' The ITEM_PRINTER of a LIST: prints item ITEM of list CONTEXT as PRINT_RECORD prints it, and
+  ' returns its first byte. An ITEM past the list's last prints spaces.
+  FUNCTION PRINT_ITEM_OF(CONTEXT AS UWORD, ITEM AS UBYTE, WIDTH AS UBYTE, WHICH AS ENUM.ROLE) AS UBYTE
+    DIM AT AS UWORD, SLOT AS UBYTE, LENGTH AS UBYTE
+    SLOT = CONTEXT
+    LENGTH = LIST_LENGTH(SLOT)
+    AT = ITEM - 1
+    AT = LIST_ITEMS_AT(SLOT) + AT * LENGTH
+    IF ITEM > LIST_COUNT(SLOT) THEN LENGTH = 0
+    RETURN PRINT_RECORD(AT, LIST_BANK(SLOT), LENGTH, WIDTH)
+  END FUNCTION
+
+  ' Draws list SLOT, its first row at ROW and COLUMN, in the FIELD_FOCUS color, or the FIELD
+  ' color when MORE_FLAGS is DRAW_ONLY, and runs its keys, as RUN_LIST does.
+  FUNCTION LIST_EDIT(SLOT AS UBYTE, ROW AS UBYTE, COLUMN AS UBYTE, MORE_FLAGS AS UBYTE) AS UWORD
+    DIM PRESSED AS UWORD, VALUE_AT AS UWORD, BASE AS ENUM.ROLE
+    VALUE_AT = LIST_VALUE_AT(SLOT)
+    BASE = ROLE.FIELD_FOCUS
+    IF MORE_FLAGS <> 0 THEN BASE = ROLE.FIELD
+    PRESSED = RUN_LIST(SLOT, @PRINT_ITEM_OF, ROW, COLUMN, LIST_ROWS(SLOT), LIST_WIDTH(SLOT), LIST_COUNT(SLOT), ContentsAt(VALUE_AT), LIST_TOP(SLOT), LIST_FLAGS(SLOT), BASE, MORE_FLAGS)
+    ContentsAt(VALUE_AT) = PICKED_ITEM
+    LIST_TOP(SLOT) = PICKED_TOP
+    RETURN PRESSED
   END FUNCTION
   ERRORS ON
 END NAMESPACE
