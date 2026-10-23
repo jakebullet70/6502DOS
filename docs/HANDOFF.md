@@ -4540,6 +4540,27 @@
             the new baseline. Next: one list engine for the pull-down, the CBO list and LIST,
             its item fetch passed as a pointer; then L2, L3. Owed to the doc batch: GUI.PLAN D9
             (the editors now link by kind).
+          - Found (2026-10-23): SHOW called PULL_MENU and DRAW_WHOLE called DRAW_BAR by name, so
+            every SHOW program linked the menu. After FP4 a merged list engine saves bytes only in
+            a program with two of menu, CBO and LIST; none has two yet (EDIT with PICKFILE will).
+            Decided (the user): FP5 first, then the merge.
+          - Done, FP5 (2026-10-23): the menu through a pointer. `GUI.MENU_HANDLER(HANDLE,
+            PRESSED) AS UBYTE` is the signature, `RUN_MENU` the pointer (low RAM when a program
+            calls MENUBAR, else region 1; 0 at start, as every variable). MENUBAR sets RUN_MENU
+            to PULL_MENU. SHOW and DRAW_WHOLE call it when it is not 0; DRAW_WHOLE passes
+            `DRAW_MENU_BAR` ($FFFF), and PULL_MENU then calls DRAW_BAR, which lost its HANDLE.
+            PULL_MENU no longer calls DRAW_WHOLE (that made a cycle through the pointer, SUBS
+            CALL EACH OTHER): with no VERA room it clears the menu and sets SHOWN_FORM to 0, as
+            DROP_LIST does, so SHOW draws the form again; when an item is chosen that waits for
+            the next SHOW. The title is drawn back in both cases. PRG bytes before, after:
+            GUIBTN 10213, 8345; GUISHOW 10425, 8361; GUISAY 10242, 8178; GUICHECK 10804, 8740;
+            GUICBO 11003, 9343; GUIDLG 11496, 10018; GUIINP 11257, 9779; GUILIST 13555, 11706;
+            GUIMEMO 13619, 11751; GUIMENU 10177, 10238; HELPED 16953, 15482; THEMED 15600, 14122.
+            Region 1 +44 to +72 (SHOW +23, DRAW_WHOLE +33: the null tests and pointer calls);
+            HELPED region 1 7753. Tests one at a time: GUIMENU 0.6, GUISHOW 0.5, GUICBO 0.4,
+            GUIDLG 0.5, HELPED 1.3, THEMED 1.4 ok. Build 3140 ms, the new baseline. Next: the
+            merged list engine (pull-down, CBO list, LIST; item print through a pointer), then
+            L2, L3. Owed to the doc batch: GUI.PLAN on RUN_MENU.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

@@ -1160,12 +1160,19 @@ NAMESPACE GUI
   DIM MENU_TITLE_AT(10) AS UWORD, MENU_FIRST(10) AS UBYTE, MENU_COLUMN(10) AS UBYTE
   DIM MENU_HOT(10) AS UBYTE
   DIM ITEM_CAPTION_AT(41) AS UWORD, ITEM_ID(41) AS UBYTE
+  ' The menu bar's handler, which SHOW calls with each key a control returns, and DRAW_WHOLE
+  ' with DRAW_MENU_BAR. MENUBAR sets RUN_MENU to PULL_MENU, so a program with no MENUBAR carries
+  ' no menu code. RUN_MENU is 0 until the first MENUBAR.
+  DECLARE FUNCTION MENU_HANDLER(HANDLE AS UBYTE, PRESSED AS UWORD) AS UBYTE
+  DIM RUN_MENU AS MENU_HANDLER
+  CONST DRAW_MENU_BAR AS UWORD = $FFFF
 
   ' Gives the form HANDLE an empty menu bar on the screen's top row, and takes it from the form
   ' that had it. MENUBAR(0) takes the bar away. The menus made from now on go on the bar. SHOW
   ' draws the bar after the form.
   ' Trap: FREE leaves the bar to the handle, and the next form made may take that handle.
   SUB MENUBAR(HANDLE AS UBYTE)
+    RUN_MENU = @PULL_MENU
     MENU_FORM = HANDLE
     MENU_COUNT = 0
     ITEM_COUNT = 0
@@ -1208,11 +1215,10 @@ NAMESPACE GUI
     RETURN LETTER
   END FUNCTION
 
-  ' Draws the menu bar when HANDLE is MENU_FORM: the screen's top row, all but its last column,
-  ' in the MENU color, and each menu's title from column 2, as DRAW_TITLE prints it.
-  SUB DRAW_BAR(HANDLE AS UBYTE)
+  ' Draws the menu bar: the screen's top row, all but its last column, in the MENU color, and
+  ' each menu's title from column 2, as DRAW_TITLE prints it.
+  SUB DRAW_BAR()
     DIM NUMBER AS UBYTE
-    IF HANDLE <> MENU_FORM THEN RETURN
     USE_COLOR(ROLE.MENU)
     POS(1) = 0
     POS(0) = 0
@@ -1235,7 +1241,9 @@ NAMESPACE GUI
   ' Left and Right open the menu before or after, wrapping. Enter, or an item's hot letter,
   ' chooses the item; Esc closes the menu. Then the screen under the menu is put back, its title
   ' drawn again, and PULL_MENU returns the item's id, or 0 after Esc. When VERA.SAVE_RECT has no
-  ' room, the menu is cleared in its place and the form drawn whole.
+  ' room, the menu is cleared in its place, and SHOWN_FORM is set to 0 for SHOW to draw the form
+  ' again. With DRAW_MENU_BAR as
+  ' PRESSED it draws the bar, as DRAW_BAR draws it, and returns 0. It is the MENU_HANDLER.
   ' Trap: a menu takes the rows from 1 to 2 + its number of items, and does not scroll. A menu
   ' needs one item at least.
   FUNCTION PULL_MENU(HANDLE AS UBYTE, PRESSED AS UWORD) AS UBYTE
@@ -1243,6 +1251,10 @@ NAMESPACE GUI
     DIM SPOT AS UBYTE, CHOSEN AS UBYTE, COLUMN AS UBYTE, WIDTH AS UBYTE, WHICH AS ENUM.ROLE
     DIM COUNT AS UBYTE, LENGTH AS UBYTE, SAVED AS UBYTE
     IF HANDLE <> MENU_FORM THEN RETURN 0
+    IF PRESSED = DRAW_MENU_BAR THEN
+      DRAW_BAR()
+      RETURN 0
+    ENDIF
     NUMBER = 0
     IF PRESSED = KEYS.KEY_F10 THEN NUMBER = 1
     LETTER = ALT_LETTER(PRESSED)
@@ -1305,15 +1317,15 @@ NAMESPACE GUI
       LOOP UNTIL PRESSED = KEYS.ESC OR PRESSED = KEYS.KEY_LEFT OR PRESSED = KEYS.KEY_RIGHT
       IF SAVED THEN
         VERA.RESTORE_RECT()
-        POS(1) = 0
-        POS(0) = MENU_COLUMN(NUMBER)
-        DRAW_TITLE(NUMBER, ROLE.MENU)
       ELSE
         ' Each theme's PAGE color has the same foreground as background, so the box clears.
         USE_COLOR(ROLE.PAGE)
         BOX(1, COLUMN, WIDTH, COUNT + 2)
-        DRAW_WHOLE(HANDLE)
+        SHOWN_FORM = 0
       ENDIF
+      POS(1) = 0
+      POS(0) = MENU_COLUMN(NUMBER)
+      DRAW_TITLE(NUMBER, ROLE.MENU)
       IF PRESSED = KEYS.KEY_LEFT THEN NUMBER = NUMBER - 1
       IF PRESSED = KEYS.KEY_RIGHT THEN NUMBER = NUMBER + 1
       IF NUMBER = 0 THEN NUMBER = MENU_COUNT
@@ -1379,7 +1391,7 @@ NAMESPACE GUI
     DIM CONTROL AS UBYTE, LABEL_AT AS UWORD
     SHOWN_FORM = HANDLE
     DRAW_FORM(HANDLE)
-    DRAW_BAR(HANDLE)
+    IF RUN_MENU <> 0 THEN CALL RUN_MENU WITH (HANDLE, DRAW_MENU_BAR)
     CONTROL = MOST_CONTROLS
     REPEAT MOST_CONTROLS
       IF CONTROL_OWNER(CONTROL) = HANDLE THEN
@@ -1435,8 +1447,10 @@ NAMESPACE GUI
       ENDIF
       ' F10, or Alt with a menu's hot letter, opens a menu. The item chosen returns its id; Esc
       ' leaves the key to the CASE ELSE below.
-      PUSHED = PULL_MENU(HANDLE, PRESSED)
-      IF PUSHED <> 0 THEN RETURN PUSHED
+      IF RUN_MENU <> 0 THEN
+        PUSHED = CALL RUN_MENU WITH (HANDLE, PRESSED)
+        IF PUSHED <> 0 THEN RETURN PUSHED
+      ENDIF
       SELECT CASE PRESSED
         CASE KEYS.ESC
           SHOWN_FORM = 0
