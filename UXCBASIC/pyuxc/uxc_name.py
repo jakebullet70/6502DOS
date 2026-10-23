@@ -26,7 +26,7 @@ UXC-NAME.BL has the rules of the scopes.
 """
 
 from uxc_defs import K_ALIASES, K_CN_SIZE, K_EK_CONST, K_SK_BIND, K_SK_CONST, K_SK_ENUM, \
-    K_SK_LABEL, K_SK_SPACE, K_SK_SUB, K_SK_VAR, K_SY_ENUM_PARAMETER, K_SY_FIXED, K_SY_MEMBER, K_SY_SCANNED, \
+    K_SK_LABEL, K_SK_SIG, K_SK_SPACE, K_SK_SUB, K_SK_VAR, K_SY_ENUM_PARAMETER, K_SY_FIXED, K_SY_MEMBER, K_SY_SCANNED, \
     K_SY_SIGNED, K_TT_EOL, K_TT_NAME, K_TT_NUM, K_TT_OP, K_TT_STR, K_TY_BYTE, K_TY_LONG, K_TY_RECORD, K_TY_STR, K_TY_WORD
 import uxc_expr
 import uxc_fold
@@ -51,7 +51,7 @@ def nm_word():
     g.nm_r = g.nm_r + "|UBYTE|UWORD|INT|UINT|LONG|ULONG"
     g.nm_r = g.nm_r + "|UNTIL|FOR|TO|STEP|NEXT|REPEAT|ENDREPEAT|EXIT|CONTINUE|ERRORS|UXC"
     g.nm_r = g.nm_r + "|NAMESPACE|ENDNAMESPACE|BIND|CONST|ENUM|ENDENUM|TYPE|ENDTYPE|"
-    g.nm_q = "|GOTO|SUB|ENDSUB|FUNCTION|ENDFUNCTION|CALL|RETURN|INPUT|LINPUT|GETKEY|OPEN|CLOSE|READ|WRITE|EOF"
+    g.nm_q = "|GOTO|SUB|ENDSUB|FUNCTION|ENDFUNCTION|CALL|DECLARE|RETURN|INPUT|LINPUT|GETKEY|OPEN|CLOSE|READ|WRITE|EOF"
     g.nm_q = g.nm_q + "|DIR|PEEK|POKE|SYS|ASM|AND|OR|XOR|NOT|MOD|LEN|MID$|LEFT$|RIGHT$|CHR$|ASC|STR$|VAL|LVAL|NOFILE|"
     g.nm_q = g.nm_q + "INSTR|UCASE$|LCASE$|POS|ON|CASE|ENDCASE|SELECT|ENDSELECT|"
     g.nm_q = g.nm_q + "ADDROF|CONTENTSAT|CONTENTSATW|STRINGAT|GETEXTKEY|WAITKEY|KEYMODS|"
@@ -166,7 +166,7 @@ def nm_end():
 def nm_body():
     """NM.BODY. A namespace body holds declarations and SUBs, and nothing that runs. END is
     allowed only as END NAMESPACE; the token after it is read, and g.lx_p put back."""
-    if uxc_lex.instr("|DIM|VAR|CONST|ENUM|TYPE|ENDTYPE|SUB|FUNCTION|NAMESPACE|ENDNAMESPACE|BIND"
+    if uxc_lex.instr("|DIM|VAR|CONST|ENUM|TYPE|ENDTYPE|SUB|FUNCTION|DECLARE|NAMESPACE|ENDNAMESPACE|BIND"
                      "|ERRORS|", "|" + g.sm_w + "|") > 0:
         return
     if g.sm_w != "END":
@@ -331,6 +331,7 @@ def nm_type_name():
     g.nm_type_code = 0
     g.nm_type_signed = 0
     g.nm_type_enum = 0
+    g.nm_type_sig = 0
     if g.tk_s[:5] == "ENUM.":
         nm_type_enum()
         return
@@ -365,7 +366,8 @@ def nm_type_enum():
 
 
 def nm_type_bare_enum():
-    """NM.TYPE.BARE.ENUM. A word that names an ENUM stops the compile."""
+    """NM.TYPE.BARE.ENUM. A word that names an ENUM stops the compile. A word that names a
+    signature is a pointer: a WORD, with g.nm_type_sig its record."""
     g.nm_type_saved_name = g.sm_n
     g.sm_n = g.tk_s
     g.nm_find_quiet = 1
@@ -374,6 +376,9 @@ def nm_type_bare_enum():
     g.sm_n = g.nm_type_saved_name
     if g.sy_r != 0 and g.sy_kind == K_SK_ENUM:
         er_stop("USE AS ENUM." + g.tk_s)
+    if g.sy_r != 0 and g.sy_kind == K_SK_SIG:
+        g.nm_type_code = K_TY_WORD
+        g.nm_type_sig = g.sy_r
 
 
 def nm_const():

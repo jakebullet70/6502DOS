@@ -107,6 +107,9 @@ def ex_operand():
         return _OPERAND
     if g.tk_s == "ADDROF":
         return ex_addrof()
+    if g.tk_s == "CALL":
+        uxc_sub.sb_pointer_function()
+        return _OPERATOR
     if g.tk_s == "GETKEY":
         return ex_key(T.T_GETKEY, K_TY_BYTE)
     if g.tk_s == "GETEXTKEY":
@@ -209,6 +212,9 @@ def ex_at_name():
         er_syntax()
     g.sm_n = g.tk_s
     uxc_name.nm_find()
+    if g.sy_kind == K_SK_SUB:
+        uxc_sub.sb_at_sub()
+        return
     if g.sy_kind == K_SK_ARRAY and g.sy_type >= K_TY_RECORD:
         uxc_record.rd_at_element()
         return

@@ -269,3 +269,19 @@ T_CASE_JMP .block
         jmp (ZP_TMP)
         #endtpl
         .endblock
+
+; CALL p WITH (...): call the address in A/Y. ZP_PTR is lost. X, the expression stack, is kept.
+R_ICALL .block
+        #tpl
+        sta ZP_PTR
+        sty ZP_PTR+1
+        jmp (ZP_PTR)
+        #endtpl
+        .endblock
+
+; CALL p WITH (...): the address is in A/Y.
+T_ICALL .block
+        #tpl
+        #rec jsr, R_ICALL
+        #endtpl
+        .endblock

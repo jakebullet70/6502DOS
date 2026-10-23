@@ -506,6 +506,8 @@ def rg_label(side, at):
     if (g.sy_flags & 1) == 0:
         return
     target_side = rg_side_of(g.sy_val)[0]
+    if g.sy_kind == K_SK_SUB and g.fx_k != K_F_ABS and target_side != 0:
+        er_stop("@ OF A SUB IN A REGION")
     if target_side == side:
         return
     g.cb_at = at - 1

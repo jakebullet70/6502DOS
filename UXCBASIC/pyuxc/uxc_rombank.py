@@ -295,6 +295,8 @@ def rb_label(bank, at):
     uxc_sym.sy_get()
     if (g.sy_flags & 1) == 0:
         return
+    if g.sy_kind == K_SK_SUB and g.fx_k != K_F_ABS:
+        er_stop("@ OF A SUB IN A ROM BANK")
     target_bank = rb_bank_of(g.sy_val)[0]
     if target_bank == bank:
         return

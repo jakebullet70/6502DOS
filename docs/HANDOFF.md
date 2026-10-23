@@ -4450,6 +4450,58 @@
             includes; a banked list; screen cells read back; slot reuse after FREE). GUILIST
             ok 0.5 s, GUICBO 0.4, GUIMEMO 0.6, GUIDLG 0.5, HELPED 1.2, THEMED 1.2. Build 2939
             ms, the new baseline. Owed to the doc batch: UXC-HELP and GUI.PLAN on LIST.
+          - Measured (2026-10-23), code bytes a routine before the dead-code cut (scratchpad
+            `subsz.py` hooks `uxc_dead.dd_strip`): PULL_MENU 1150, LIST_EDIT 999, DROP_LIST 625
+            + PRINT_ITEM 161, LIST 333, PRINT_ITEM_OF 148, PRINT_RECORD 135, MEMO_EDIT 1578,
+            INPUT2 1878, SHOW 538, EDIT_FIELD 428. A list costs what a menu costs; the GUI has
+            three list engines (CBO drop-down, menu pull-down, LIST). The real leak: EDIT_FIELD
+            names every control's edit routine, so every SHOW program links MEMO_EDIT,
+            DROP_LIST and LIST_EDIT, about 3.8 KB, used or not. The asm LIST_EDIT was dropped.
+          - Decided (the user, 2026-10-23): function pointers in pyuxc first, L2 and L3 parked.
+            Proposed syntax, to settle in step FP1:
+            `DECLARE FUNCTION EDITOR(CONTROL AS UBYTE, MORE_FLAGS AS UBYTE) AS UWORD` (a
+            signature), `DIM CONTROL_EDITOR(49) AS EDITOR`, `CONTROL_EDITOR(C) = @LIST_EDIT`
+            (the compile checks LIST_EDIT matches), `PRESSED = CALL CONTROL_EDITOR(C) WITH (C,
+            0)`. Compiler parts: (1) each FUNCTION or SUB that matches a signature and has its
+            @ taken gets its parameters at one fixed block for that signature, out of the
+            level-pooled frames; the caller stores the arguments there and jumps through the
+            pointer; (2) the call graph counts a call through a signature as a call to every
+            target taken with it, so the pooled frames and temps stay right (PLAN "Shared temps
+            and locals" names the pointer call as what breaks the sharing); (3) dead code: @SUB
+            in live code keeps the SUB live, as dd_follow does for a K_SEC_LABEL fixup; (4) a
+            region SUB's @ is its low-RAM veneer, so a pointer call from anywhere goes through
+            bank_call, about 145 cycles; ROM banks likewise through the T_FARCALL veneer; (5)
+            errors (signature mismatch, @ of a non-SUB), tests, UXC-HELP, UXCBASIC.PLAN.
+            Steps: FP1 signature, @SUB and the call in low RAM; FP2 call graph and frames; FP3
+            regions and ROM banks; FP4 the GUI: each control's handler set by its constructor,
+            SHOW calls it, so LIST, MEMO and CBO link only when called. Then one list engine
+            for the pull-down, the CBO list and LIST, its item fetch passed as a pointer; asm
+            only if still needed. Then L2, L3.
+          - Done, FP1 with FP2 (2026-10-23, not committed). Syntax: `DECLARE SUB name(params)`
+            or `DECLARE FUNCTION name(params) AS type` makes a signature (K_SK_SIG, read by
+            sb_scan, skipped by the second pass; DECLARE is a reserved word). `DIM P AS name`
+            or `DIM T(n) AS name`, and a parameter `H AS name`, is a pointer: a WORD whose
+            record holds the signature at K_SY_SIGNATURE (30). `@SUB` is allowed only where a
+            pointer is wanted (an assignment to a pointer variable or element, an argument to
+            a pointer parameter; g.sb_call_sig per call depth, as g.sb_call_enum), and must
+            match: result type, parameter count, types, signs, AS CONST, ENUM or signature.
+            `CALL p WITH (args)` as a statement or in an expression: the arguments go into the
+            signature's parameters, then the pointer is read again from its text
+            (sb_pointer_load) into A/Y, then `T_ICALL` (JSR `R_ICALL`: sta/sty ZP_PTR, jmp
+            (ZP_PTR), 7 bytes once, the asm agreed). The pointer may hold no call (A CALL IN
+            A POINTER). Frames: no fixed block. A K_SK_TARGET record (owned by the signature,
+            its value the SUB) makes SB.POOLS put the SUB at its signature's level, so their
+            parameters share offsets in one pool; a pointer call is a K_SK_CALL edge to the
+            signature; a SUB that calls through its own signature stops the link (SUBS CALL
+            EACH OTHER). Dead code needed nothing: @SUB is a K_SEC_LABEL fixup. Regions and
+            ROM banks refuse @ of a SUB there (@ OF A SUB IN A REGION, IN A ROM BANK): FP3.
+            Not yet: a FUNCTION result or a TYPE field of a pointer type, DIM ... AT. Costs: a
+            program without pointers is unchanged (GUILIST 16856); a pointer call is the
+            argument stores, the pointer load and a 3-byte JSR; the template table +21. New
+            tests FPTR (array, namespace, parameter, nested, direct and pointer calls of one
+            SUB) ok 0.7 s, ERRPTRMATCH, ERRPTRCYCLE ok 0.0 s; SUBNEST 0.7, SUBDEF, LOCALPOOL,
+            ENUMAS, DEADSUB 0.5, GUILIST 0.5 ok. Next: FP3 (a region SUB's @ is its low-RAM
+            veneer), then FP4. Owed to the doc batch: UXC-HELP and UXCBASIC.PLAN on pointers.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

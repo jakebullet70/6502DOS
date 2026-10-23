@@ -7,15 +7,19 @@
     sb_call_keyword()    CALL name ( args ), with the token at CALL
     sb_call_statement()  in  g.sm_w   name ( args ), with the token at its (
     sb_function() in  g.sy_*     a call in an expression, with the token at the name
+    sb_pointer_function()  CALL pointer WITH ( args ) in an expression, with the token at CALL
+    sb_declare()  DECLARE SUB or DECLARE FUNCTION in the second pass
+    sb_at_sub()   in  g.sy_*     @name of a SUB, where a pointer is wanted
+    sb_sig_of()   in  g.sy_r     out g.sb_sig, the signature of a pointer variable, else 0
     sb_open()     at the end of the source, a SUB still open is an error
     sb_pools()    at link, place the pools of temps and locals
     sb_pool_of()  in  g.fx_ow    out g.sb_pool, the offset of that SUB's pool
 """
 
 from uxc_code import emit
-from uxc_defs import K_EK_CONST, K_EK_REG, K_EX_DEPTH, K_FRAME_MAX, K_JP_LIST, K_NS_IFL, K_NS_MAX, \
-    K_SB_DEFAULTS, K_SB_DEPTH, K_SEC_BSS, K_SEC_CONST, K_SEC_LABEL, K_SEC_VAR, K_SK_CALL, K_SK_SUB, \
-    K_SK_VAR, K_SY_END, K_SY_ENUM_PARAMETER, K_SY_ENUM_TYPE, \
+from uxc_defs import K_EK_ADDR, K_EK_CONST, K_EK_REG, K_EX_DEPTH, K_FRAME_MAX, K_JP_LIST, K_NS_IFL, K_NS_MAX, \
+    K_SB_DEFAULTS, K_SB_DEPTH, K_SEC_BSS, K_SEC_CONST, K_SEC_LABEL, K_SEC_VAR, K_SK_ARRAY, K_SK_CALL, K_SK_SIG, \
+    K_SK_SUB, K_SK_TARGET, K_SK_VAR, K_SY_END, K_SY_ENUM_PARAMETER, K_SY_ENUM_TYPE, K_SY_SIGNATURE, \
     K_SY_LEVEL, K_SY_LIVE, K_SY_POOL, K_SY_READ_ONLY, K_SY_SIGNED, K_SY_TEMP, K_SY_TEMPS, K_TT_EOL, K_TT_NAME, K_TT_OP, \
     K_TT_STR, K_TY_BYTE, K_TY_LONG, K_TY_STR, K_TY_WORD
 import uxc_cond
@@ -60,6 +64,14 @@ def sb_scan():
             continue
         if g.tk_s == "SUB" or g.tk_s == "FUNCTION":
             g.sb_scan_in_sub = 1
+            g.sb_header_kind = K_SK_SUB
+            sb_header()
+            continue
+        if g.tk_s == "DECLARE":
+            uxc_lex.lx_next()
+            if g.tk_t != K_TT_NAME or (g.tk_s != "SUB" and g.tk_s != "FUNCTION"):
+                er_syntax()
+            g.sb_header_kind = K_SK_SIG
             sb_header()
             continue
         if g.tk_s == "ENDSUB" or g.tk_s == "ENDFUNCTION":
@@ -78,7 +90,8 @@ def sb_scan():
 
 def sb_header():
     """SB.HEADER. SUB name ( [param, ...] ), or FUNCTION name[$] ( [param, ...] ) [AS type],
-    with the token at SUB or FUNCTION. A FUNCTION needs a $ or an AS."""
+    with the token at SUB or FUNCTION. A FUNCTION needs a $ or an AS. The record is of kind
+    g.sb_header_kind: K_SK_SUB, or K_SK_SIG after DECLARE."""
     g.sb_header_function = 0
     if g.tk_s == "FUNCTION":
         g.sb_header_function = 1
@@ -94,7 +107,7 @@ def sb_header():
     uxc_sym.sy_find()
     if g.sy_r != 0:
         sb_error_duplicate()
-    g.sy_kind = K_SK_SUB
+    g.sy_kind = g.sb_header_kind
     g.sy_type = 0
     g.sy_val = 0
     g.sy_flags = 0
@@ -184,7 +197,7 @@ def sb_parameter():
     g.sy_np = g.sb_default
     uxc_sym.sy_set()
     g.sb_field = K_SY_ENUM_TYPE
-    g.sb_word = g.sb_enum
+    g.sb_word = g.sb_enum + g.sb_sig
     sb_field_set()
     g.sb_count = g.sb_count + 1
 
@@ -221,10 +234,11 @@ def sb_default_read():
 
 def sb_as():
     """SB.AS. An optional AS type after the name g.sm_n, whose type mark is g.sb_type. Out:
-    g.sb_type, g.sb_signed, 1 for a signed type, and g.sb_enum, the ENUM's record for AS
-    ENUM.name, else 0."""
+    g.sb_type, g.sb_signed, 1 for a signed type, g.sb_enum, the ENUM's record for AS
+    ENUM.name, else 0, and g.sb_sig, the signature's record for a pointer, else 0."""
     g.sb_signed = 0
     g.sb_enum = 0
+    g.sb_sig = 0
     if g.tk_t != K_TT_NAME:
         return
     if g.tk_s != "AS":
@@ -242,6 +256,7 @@ def sb_as():
     if g.sb_type == 0:
         er_syntax()
     g.sb_enum = g.nm_type_enum
+    g.sb_sig = g.nm_type_sig
     if g.sb_enum != 0:
         g.sy_r = g.sb_enum
         uxc_sym.sy_get()
@@ -392,11 +407,20 @@ def sb_return():
 # Calls
 
 def sb_call_keyword():
-    """SB.CALL.KEYWORD. CALL name ( args ), with the token at CALL."""
+    """SB.CALL.KEYWORD. CALL name ( args ), or CALL pointer WITH ( args ), with the token at
+    CALL."""
+    g.sb_pointer_at = g.lx_p
     uxc_lex.lx_next()
     if g.tk_t != K_TT_NAME:
         er_syntax()
     g.sb_called_name = g.tk_s
+    g.sm_n = g.sb_called_name
+    uxc_name.nm_find()
+    if g.sy_kind == K_SK_VAR or g.sy_kind == K_SK_ARRAY:
+        sb_pointer_find()
+        sb_call()
+        return
+    g.sb_pointer_at = 0
     uxc_lex.lx_next()
     sb_call_named()
 
@@ -432,6 +456,12 @@ def sb_function():
     g.ex_fb = g.ex_vn
     uxc_expr.ex_flush()
     sb_call()
+    sb_function_result()
+
+
+def sb_function_result():
+    """SB.FUNCTION.RESULT. The result of the call just made, of type g.sb_call_type, goes on
+    the value stack."""
     if g.sb_call_type == K_TY_STR:
         uxc_str.sg_result()
         return
@@ -461,6 +491,8 @@ def sb_call():
     g.sy_r = g.sb_called_record
     uxc_sym.sy_get()
     d = g.sb_depth
+    g.sb_call_at[d] = g.sb_pointer_at
+    g.sb_pointer_at = 0
     g.sb_call_record[d] = g.sb_called_record
     g.sb_call_parameters[d] = g.sy_np
     g.sb_call_result[d] = g.sy_type
@@ -487,9 +519,13 @@ def sb_call():
         g.sb_call_argument[d] = g.sb_call_argument[d] + 1
         sb_call_default()
     sb_call_pop()
-    g.sl_s[0] = K_SEC_LABEL
-    g.sl_v[0] = g.sb_call_record[d]
-    emit(T.T_JSR)
+    if g.sb_call_at[d] != 0:
+        sb_pointer_load()
+        emit(T.T_ICALL)
+    else:
+        g.sl_s[0] = K_SEC_LABEL
+        g.sl_v[0] = g.sb_call_record[d]
+        emit(T.T_JSR)
     g.sb_call_signed = g.sb_call_result[d] // 256
     g.sb_call_type = g.sb_call_result[d] - 256 * g.sb_call_signed
     sb_unnest()
@@ -502,9 +538,12 @@ def sb_call_argument():
     be a constant."""
     d = g.sb_depth
     g.sy_r = g.sb_call_record[d] + g.sb_call_argument[d]
+    sb_sig_of()
+    g.sb_call_sig[d] = g.sb_sig
+    g.sy_r = g.sb_call_record[d] + g.sb_call_argument[d]
     g.sb_field = K_SY_ENUM_TYPE
     sb_field_get()
-    g.sb_call_enum[d] = g.sb_word
+    g.sb_call_enum[d] = g.sb_word - g.sb_sig
     g.ex_op_base = g.ex_on
     g.ex_cm = 0
     g.ex_const_record = 0
@@ -602,6 +641,7 @@ def sb_nest():
         er_stop("CALLS NESTED TOO DEEP")
     g.sb_depth = g.sb_depth + 1
     g.sb_call_enum[g.sb_depth] = 0
+    g.sb_call_sig[g.sb_depth] = 0
     g.sb_saved_operators[g.sb_depth] = g.ex_on
     g.sb_saved_operator_base[g.sb_depth] = g.ex_op_base
     g.sb_saved_parentheses[g.sb_depth] = g.ex_pd
@@ -674,9 +714,9 @@ def sb_call_pop():
 
 def sb_look_ahead():
     """SB.LOOK.AHEAD. g.sb_nested = 1 when the arguments, up to the call's own ), call a SUB or
-    FUNCTION: a name before a ( that is a SUB's. An array or a built-in function before a ( is
-    no call. The token is at the call's ( and is put back after, with g.lx_p. Clobbers g.sy_*
-    and g.nm_*."""
+    FUNCTION: a name before a ( that is a SUB's, or CALL. An array or a built-in function
+    before a ( is no call. The token is at the call's ( and is put back after, with g.lx_p.
+    Clobbers g.sy_* and g.nm_*."""
     g.sb_saved_position = g.lx_p
     g.sb_saved_name = g.sm_n
     g.sb_nested = 0
@@ -702,6 +742,8 @@ def sb_look_ahead():
         g.sb_look_name = ""
         if g.tk_t == K_TT_NAME:
             g.sb_look_name = g.tk_s
+            if g.tk_s == "CALL":
+                g.sb_nested = 1
     g.sm_n = g.sb_saved_name
     g.lx_p = g.sb_saved_position
     g.tk_t = K_TT_OP
@@ -709,6 +751,170 @@ def sb_look_ahead():
     g.tk_s = ""
     g.tk_m = 0
     g.tk_v = 0
+
+
+# Pointers
+
+def sb_declare():
+    """SB.DECLARE. DECLARE SUB or DECLARE FUNCTION in the second pass. The first pass made the
+    signature, so the rest of the line is skipped."""
+    if g.sb_current != 0:
+        er_stop("DECLARE IN A SUB")
+    while g.tk_t != K_TT_EOL:
+        uxc_lex.lx_next()
+
+
+def sb_sig_of():
+    """SB.SIG.OF. In g.sy_r, a variable, an array or a parameter. Out: g.sb_sig, the record of
+    its signature when it is a pointer, else 0. Clobbers g.sy_*."""
+    g.sb_field = K_SY_SIGNATURE
+    sb_field_get()
+    g.sb_sig = g.sb_word
+    if g.sb_sig == 0:
+        return
+    g.sy_r = g.sb_sig
+    uxc_sym.sy_get()
+    if g.sy_kind != K_SK_SIG:
+        g.sb_sig = 0
+
+
+def sb_at_sub():
+    """SB.AT.SUB. @name of a SUB or FUNCTION, with its record in g.sy_*, where a pointer of
+    the signature g.sb_call_sig(g.sb_depth) is wanted: the address of its code. The SUB must
+    match the signature. A K_SK_TARGET record ties the two for SB.POOLS."""
+    g.sb_target = g.sy_r
+    g.sb_sig = g.sb_call_sig[g.sb_depth]
+    if g.sb_sig == 0:
+        er_stop("NO POINTER TYPE FOR @" + g.sm_n)
+    sb_match()
+    g.sy_name = "%T" + uxc_str.basic_str(g.sb_target)
+    g.sy_ow = g.sb_sig
+    uxc_sym.sy_find()
+    if g.sy_r == 0:
+        g.sy_kind = K_SK_TARGET
+        g.sy_type = 0
+        g.sy_val = g.sb_target
+        g.sy_flags = 0
+        g.sy_cnt = g.lx_no
+        uxc_sym.sy_add()
+    g.ex_k = K_EK_ADDR
+    g.ex_s = K_SEC_LABEL
+    g.ex_v = g.sb_target
+    g.ex_ty = K_TY_WORD
+    uxc_expr.ex_pushv()
+    uxc_lex.lx_next()
+
+
+def sb_match():
+    """SB.MATCH. SUB g.sb_target matches signature g.sb_sig: the same result type, and
+    parameters of the same number, types, signs, AS CONST and ENUM or signature. The names
+    and the defaults may differ."""
+    g.sy_r = g.sb_sig
+    uxc_sym.sy_get()
+    g.sb_match_type = g.sy_type
+    g.sb_match_flags = g.sy_flags & K_SY_SIGNED
+    g.sb_match_count = g.sy_np
+    g.sy_r = g.sb_target
+    uxc_sym.sy_get()
+    if g.sy_type != g.sb_match_type or (g.sy_flags & K_SY_SIGNED) != g.sb_match_flags or \
+            g.sy_np != g.sb_match_count:
+        sb_error_match()
+    for g.sb_i in range(1, g.sb_match_count + 1):
+        g.sy_r = g.sb_sig + g.sb_i
+        uxc_sym.sy_get()
+        g.sb_match_type = g.sy_type
+        g.sb_match_flags = g.sy_flags & (K_SY_SIGNED + K_SY_READ_ONLY)
+        g.sb_field = K_SY_ENUM_TYPE
+        sb_field_get()
+        g.sb_match_word = g.sb_word
+        g.sy_r = g.sb_target + g.sb_i
+        uxc_sym.sy_get()
+        sb_field_get()
+        if g.sy_type != g.sb_match_type or \
+                (g.sy_flags & (K_SY_SIGNED + K_SY_READ_ONLY)) != g.sb_match_flags or \
+                g.sb_word != g.sb_match_word:
+            sb_error_match()
+
+
+def sb_pointer_find():
+    """SB.POINTER.FIND. CALL pointer WITH ( args ), with the variable or array of the pointer
+    in g.sy_*, and the token at its name. g.sb_called_record is its signature. The token is
+    left at the ( after WITH. The pointer is compiled after the arguments, by sb_pointer_load,
+    so it may hold no call."""
+    sb_sig_of()
+    if g.sb_sig == 0:
+        er_stop("NOT A POINTER: " + g.sb_called_name)
+    g.sb_called_record = g.sb_sig
+    g.sb_look_depth = 0
+    g.sb_look_name = ""
+    while True:
+        uxc_lex.lx_next()
+        if g.tk_t == K_TT_EOL:
+            er_stop("MISSING WITH")
+        if g.tk_t == K_TT_OP and g.tk_k == 41:
+            g.sb_look_depth = g.sb_look_depth - 1
+        if g.tk_t == K_TT_OP and g.tk_k == 40:
+            g.sb_look_depth = g.sb_look_depth + 1
+            if g.sb_look_name != "":
+                g.sm_n = g.sb_look_name
+                g.nm_find_quiet = 1
+                uxc_name.nm_find()
+                g.nm_find_quiet = 0
+                if g.sy_r != 0 and g.sy_kind == K_SK_SUB:
+                    sb_error_pointer_call()
+        g.sb_look_name = ""
+        if g.tk_t == K_TT_NAME:
+            if g.tk_s == "WITH" and g.sb_look_depth == 0:
+                break
+            if g.tk_s == "CALL":
+                sb_error_pointer_call()
+            g.sb_look_name = g.tk_s
+    uxc_lex.lx_next()
+    if g.tk_t != K_TT_OP or g.tk_k != 40:
+        sb_error_missing_open()
+
+
+def sb_pointer_load():
+    """SB.POINTER.LOAD. The pointer of the call at g.sb_depth into A/Y, with the token at the
+    call's ). Its text, from g.sb_call_at(g.sb_depth) to WITH, is read again; the token is
+    left at the ) again, as sb_call_default leaves it."""
+    g.sb_pointer_end = g.lx_p
+    g.lx_p = g.sb_call_at[g.sb_depth]
+    uxc_lex.lx_next()
+    g.ex_op_base = g.ex_on
+    g.ex_cm = 0
+    uxc_expr.ex_expr()
+    uxc_expr.ex_tow()
+    g.lx_p = g.sb_pointer_end
+    g.tk_t = K_TT_OP
+    g.tk_k = 41
+    g.tk_s = ""
+    g.tk_m = 0
+    g.tk_v = 0
+
+
+def sb_pointer_function():
+    """SB.POINTER.FUNCTION. CALL pointer WITH ( args ) in an expression, with the token at
+    CALL. The pointer's signature is a FUNCTION. The result is pushed as sb_function pushes
+    it."""
+    g.sb_pointer_at = g.lx_p
+    uxc_lex.lx_next()
+    if g.tk_t != K_TT_NAME:
+        er_syntax()
+    g.sb_called_name = g.tk_s
+    g.sm_n = g.sb_called_name
+    uxc_name.nm_find()
+    if g.sy_kind != K_SK_VAR and g.sy_kind != K_SK_ARRAY:
+        er_stop("NOT A POINTER: " + g.sb_called_name)
+    sb_pointer_find()
+    g.sy_r = g.sb_called_record
+    uxc_sym.sy_get()
+    if g.sy_type == 0:
+        sb_error_no_value()
+    g.ex_fb = g.ex_vn
+    uxc_expr.ex_flush()
+    sb_call()
+    sb_function_result()
 
 
 # Placing variables
@@ -788,6 +994,9 @@ def sb_pools():
     SUBs of one level are never active at once, so the frames and the temps of one level
     share one pool: the frames below the pool's offset, the temps from it up. The main
     program has a pool of its own, of temps only. Out: g.bs_n, the end of the pools.
+    A signature is placed as a SUB is. A call through a pointer is a call of its signature,
+    and each SUB whose @ was taken for a signature is at the signature's level, so its
+    parameters are where the caller stored them.
     WARNING: two SUBs that call each other have no level; the link stops with an error."""
     g.sb_subs = 0
     g.sb_top_level = 0
@@ -796,7 +1005,7 @@ def sb_pools():
     for g.sb_record in range(1, g.sy_n + 1):
         g.sy_r = g.sb_record
         uxc_sym.sy_get()
-        if g.sy_kind == K_SK_SUB:
+        if g.sy_kind == K_SK_SUB or g.sy_kind == K_SK_SIG:
             sb_pools_start()
     g.sb_passes = 0
     while True:
@@ -806,6 +1015,8 @@ def sb_pools():
             uxc_sym.sy_get()
             if g.sy_kind == K_SK_CALL:
                 sb_pools_raise()
+            if g.sy_kind == K_SK_TARGET:
+                sb_pools_tie()
         g.sb_passes = g.sb_passes + 1
         if g.sb_changed == 0:
             break
@@ -854,6 +1065,32 @@ def sb_pools_raise():
     g.sb_each_other_line = g.sb_call_line
 
 
+def sb_pools_tie():
+    """SB.POOLS.TIE. With a K_SK_TARGET record read: the SUB and its signature are at the
+    higher of their two levels. A SUB left out is not tied."""
+    g.sb_tie_sig = g.sy_owner
+    g.sb_call_line = g.sy_cnt
+    g.sy_r = g.sy_val
+    uxc_sym.sy_get()
+    if g.sy_kind != K_SK_SUB:
+        return
+    g.sb_tie_target = g.sy_r
+    sb_level_of()
+    g.sb_caller_level = g.sb_level
+    g.sy_r = g.sb_tie_sig
+    sb_level_of()
+    if g.sb_level == g.sb_caller_level:
+        return
+    if g.sb_level < g.sb_caller_level:
+        g.sb_level = g.sb_caller_level
+    else:
+        g.sy_r = g.sb_tie_target
+        uxc_sym.sy_at()
+    g.ram[g.sy_ad + K_SY_LEVEL] = g.sb_level
+    g.sb_changed = 1
+    g.sb_each_other_line = g.sb_call_line
+
+
 def sb_pools_need():
     """SB.POOLS.NEED. With a temp's record read: its owner's pool holds at least its block."""
     g.sb_need = g.sy_val + 257
@@ -878,13 +1115,13 @@ def sb_pools_level():
     for g.sb_record in range(1, g.sy_n + 1):
         g.sy_r = g.sb_record
         uxc_sym.sy_get()
-        if g.sy_kind == K_SK_SUB:
+        if g.sy_kind == K_SK_SUB or g.sy_kind == K_SK_SIG:
             sb_pools_measure()
     g.sb_pool_at = g.bs_n + g.sb_pool_frame
     for g.sb_record in range(1, g.sy_n + 1):
         g.sy_r = g.sb_record
         uxc_sym.sy_get()
-        if g.sy_kind == K_SK_SUB:
+        if g.sy_kind == K_SK_SUB or g.sy_kind == K_SK_SIG:
             sb_pools_place()
     sb_pools_maxes()
     g.bs_n = g.sb_pool_at + g.sb_pool_temps
@@ -981,6 +1218,19 @@ def sb_error_arguments():
 
 def sb_error_default():
     er_stop("BAD DEFAULT: " + g.sb_parameter_name)
+
+
+def sb_error_match():
+    g.sy_r = g.sb_sig
+    uxc_sym.sy_at()
+    g.sb_match_name = ""
+    for g.sb_i in range(g.ram[g.sy_ad + 7]):
+        g.sb_match_name = g.sb_match_name + chr(g.ram[g.sy_ad + 8 + g.sb_i])
+    er_stop(g.sm_n + " DOES NOT MATCH " + g.sb_match_name)
+
+
+def sb_error_pointer_call():
+    er_stop("A CALL IN A POINTER")
 
 
 def sb_error_each_other():

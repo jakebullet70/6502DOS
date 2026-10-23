@@ -14,7 +14,7 @@ import sys
 
 from uxc_code import emit
 from uxc_defs import K_EK_ADDR, K_EK_CONST, K_EK_MEM, K_SEC_BSS, K_SEC_CONST, K_SK_ARRAY, K_SK_LABEL, \
-    K_SK_VAR, K_SY_SIGNED, K_TOP, K_TT_EOL, K_TT_NAME, K_TT_OP, K_TY_BYTE, K_TY_LONG, \
+    K_SK_VAR, K_SY_SIGNATURE, K_SY_SIGNED, K_TOP, K_TT_EOL, K_TT_NAME, K_TT_OP, K_TY_BYTE, K_TY_LONG, \
     K_TY_RECORD, K_TY_STR, K_TY_WORD
 import uxc_case
 import uxc_dead
@@ -76,6 +76,7 @@ def sm_stmt():
     g.ex_op_base = 0
     g.sg_n = 0
     g.sg_pointers = 0
+    g.sb_call_sig[0] = 0
     if g.tk_t == K_TT_EOL:
         return
     g.sm_previous_return = g.sm_last_return
@@ -143,6 +144,9 @@ def sm_stmt():
         return
     if g.sm_w == "CALL":
         uxc_sub.sb_call_keyword()
+        return
+    if g.sm_w == "DECLARE":
+        uxc_sub.sb_declare()
         return
     uxc_name.nm_declaration()
     if g.nm_declared != 0:
@@ -279,6 +283,7 @@ def sm_dim():
         uxc_name.nm_reserved()
         uxc_lex.lx_next()
         g.sm_cnt = 0
+        g.nm_type_sig = 0
         if g.tk_t == K_TT_OP and g.tk_k == 40:
             sm_dim_count()
         if g.tk_t == K_TT_NAME and g.tk_s == "AS":
@@ -330,6 +335,9 @@ def sm_dim_one():
         uxc_sym.sy_add()
         if g.bs_n > K_TOP:
             er_stop("ARRAYS TOO BIG")
+    g.sb_field = K_SY_SIGNATURE
+    g.sb_word = g.nm_type_sig
+    uxc_sub.sb_field_set()
 
 
 def sm_dim_count():
@@ -392,6 +400,8 @@ def sm_let():
     g.sm_ty = g.sy_type
     g.sm_ad = g.sy_val
     g.sm_sec = g.rd_sec
+    uxc_sub.sb_sig_of()
+    g.sb_call_sig[0] = g.sb_sig
     uxc_lex.lx_next()
     uxc_expr.ex_expr()
     sm_store()
@@ -431,6 +441,8 @@ def sm_let_element():
     g.sm_ad = g.sy_val
     g.sm_sec = K_SEC_BSS
     g.sm_cnt = g.sy_cnt
+    uxc_sub.sb_sig_of()
+    g.sm_sig = g.sb_sig
     uxc_lex.lx_next()
     uxc_expr.ex_expr()
     if g.tk_t != K_TT_OP or g.tk_k != 41:
@@ -438,6 +450,7 @@ def sm_let_element():
     uxc_lex.lx_next()
     if g.tk_t != K_TT_OP or g.tk_k != 61:
         er_syntax()
+    g.sb_call_sig[0] = g.sm_sig
     g.ex_i = g.ex_vn - 1
     if g.ex_vk[g.ex_i] == K_EK_CONST:
         if g.ex_vv[g.ex_i] >= g.sm_cnt:

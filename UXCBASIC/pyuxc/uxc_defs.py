@@ -40,6 +40,12 @@ K_SK_TYPE = 10
 K_SK_FIELD = 11
 # A SUB that UXC-DEAD.BL left out, and the call records and temps it owned.
 K_SK_DEAD = 12
+# A signature: DECLARE SUB or DECLARE FUNCTION. Its parameters are records after it, as a SUB's
+# are, and it has a level and a pool as a SUB has, but no code.
+K_SK_SIG = 13
+# A SUB whose address @name gave as a pointer of a signature: owned by the signature, its value
+# the SUB. SB.POOLS puts the two at one level, so that the SUB's parameters are the signature's.
+K_SK_TARGET = 14
 
 # A symbol flag of a STRING parameter: it is AS CONST. A literal argument is passed with no copy,
 # and the SUB may not assign to it.
@@ -66,6 +72,9 @@ K_SY_LIVE = 128
 K_SY_RECORD_TYPE = 30
 # The field of a parameter's record that holds its ENUM's record (word), 0 for none.
 K_SY_ENUM_TYPE = 30
+# The field of a variable's, an array's or a parameter's record that holds its signature's
+# record (word), for a pointer: DIM P AS name, where name is a DECLARE.
+K_SY_SIGNATURE = 30
 
 # The fields of a SUB record the link step uses (UXC-SYM.BL): its level in the call graph
 # (byte), the number of temps it needs (byte), and the bytes of its frame, then the offset
