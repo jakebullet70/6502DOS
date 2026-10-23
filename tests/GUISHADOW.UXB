@@ -1,0 +1,77 @@
+' GUISHADOW: a form's shadow, read back from the screen map. The screen is cleared in the LIGHT
+' theme's TEXT color, then four forms are drawn: 1 at 2, 2, 6 by 3; 2 with NO_SHADOW at 2, 12,
+' 6 by 3; 3 at 10, 74, 6 by 3, its shadow trimmed at the right edge; 4 at 27, 72, 7 by 2, its
+' shadow trimmed at the bottom and leaving out the last cell. A # is a blank cell in black on
+' black, a . any other. The map lines give rows 1 to 6, columns 0 to 21; rows 9 to 14, columns
+' 70 to 79; rows 26 to 29, columns 70 to 79. The last line gives 0 when the screen did not
+' scroll.
+#INCLUDE "KEYS.UXI"
+#INCLUDE "GUI.UXI"
+' VERA's data port 0 and its address, and layer 1's vertical scroll.
+DIM VERA_LOW AS UBYTE AT $9F20, VERA_MIDDLE AS UBYTE AT $9F21, VERA_HIGH AS UBYTE AT $9F22
+DIM VERA_DATA AS UBYTE AT $9F23, SCROLL_LOW AS UBYTE AT $9F39, SCROLL_HIGH AS UBYTE AT $9F3A
+DIM TOP AS UBYTE, FIRST_TOP AS UBYTE, ROW AS UBYTE, COLUMN AS UBYTE, H AS UBYTE
+DIM MAP$ * 240
+
+' Returns the screen row at the top of the map: a map row is 8 lines of scroll.
+FUNCTION MAP_TOP() AS UBYTE
+  RETURN SCROLL_LOW / 8 + SCROLL_HIGH * 32
+END FUNCTION
+
+' Adds a # to MAP$ for the cell at ROW and COLUMN when it is a blank in color 0, else a dot.
+' The screen map is at $10000, 256 bytes a row, a character then its color.
+SUB READ_CELL(ROW AS UBYTE, COLUMN AS UBYTE)
+  DIM SHADED AS UBYTE
+  VERA_HIGH = 1
+  VERA_MIDDLE = (ROW + TOP) AND 63
+  VERA_LOW = COLUMN * 2
+  SHADED = 0
+  IF VERA_DATA = 32 THEN SHADED = 1
+  VERA_LOW = COLUMN * 2 + 1
+  IF VERA_DATA <> 0 THEN SHADED = 0
+  IF SHADED = 1 THEN
+    MAP$ = MAP$ + "#"
+  ELSE
+    MAP$ = MAP$ + "."
+  ENDIF
+END SUB
+
+SUB READ_AREA(FIRST_ROW AS UBYTE, LAST_ROW AS UBYTE, FIRST_COLUMN AS UBYTE, LAST_COLUMN AS UBYTE)
+  FOR ROW = FIRST_ROW TO LAST_ROW
+    FOR COLUMN = FIRST_COLUMN TO LAST_COLUMN
+      READ_CELL(ROW, COLUMN)
+    NEXT COLUMN
+  NEXT ROW
+END SUB
+
+SUB PRINT_AREA(START AS UBYTE, ROWS AS UBYTE, WIDTH AS UBYTE)
+  REPEAT ROWS
+    PRINT MID$(MAP$, START, WIDTH)
+    START = START + WIDTH
+  END REPEAT
+END SUB
+
+GUI.THEME(GUI.THEMES.LIGHT)
+GUI.USE_COLOR(GUI.ROLE.TEXT)
+PRINT "{CLS}";
+FIRST_TOP = MAP_TOP()
+H = GUI.CREATEFORM("A", 2, 2, 6, 3, GUI.FRAMED)
+GUI.DRAW_FORM(H)
+H = GUI.CREATEFORM("B", 2, 12, 6, 3, GUI.FRAMED OR GUI.NO_SHADOW)
+GUI.DRAW_FORM(H)
+H = GUI.CREATEFORM("C", 10, 74, 6, 3, GUI.FRAMED)
+GUI.DRAW_FORM(H)
+H = GUI.CREATEFORM("D", 27, 72, 7, 2, GUI.FRAMED)
+GUI.DRAW_FORM(H)
+TOP = MAP_TOP()
+MAP$ = ""
+READ_AREA(1, 6, 0, 21)
+READ_AREA(9, 14, 70, 79)
+READ_AREA(26, 29, 70, 79)
+POS(1) = 0
+POS(0) = 0
+PRINT
+PRINT_AREA(1, 6, 22)
+PRINT_AREA(133, 6, 10)
+PRINT_AREA(193, 4, 10)
+PRINT TOP - FIRST_TOP

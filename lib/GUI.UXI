@@ -70,8 +70,8 @@ NAMESPACE GUI
   CONST AUTO AS UBYTE = 254
   ' The FLAGS of CREATEFORM and STARTSECTION. FRAMED draws a form in a box of double lines, and
   ' a section in a box of single lines. TWO_COL puts a section's automatic controls in two
-  ' columns, left then right.
-  CONST FRAMED AS UBYTE = 1, ONE_COL AS UBYTE = 0, TWO_COL AS UBYTE = 2
+  ' columns, left then right. NO_SHADOW leaves out a form's shadow; a section has none.
+  CONST FRAMED AS UBYTE = 1, ONE_COL AS UBYTE = 0, TWO_COL AS UBYTE = 2, NO_SHADOW AS UBYTE = 4
   ' The forms and their sections, one panel each, 1 to MOST_PANELS. A form's handle is its
   ' panel. PANEL_OWNER is the form's handle, for the form and for each of its sections, and 0
   ' for a free panel; element 0 is never used. PANEL_TITLE_AT is the address of the caller's
@@ -531,9 +531,11 @@ NAMESPACE GUI
     ENDIF
   END SUB
 
-  ' Draws the form HANDLE, then its sections, each as DRAW_PANEL draws it.
+  ' Draws the form HANDLE and its shadow, unless its FLAGS hold NO_SHADOW, then its sections,
+  ' each as DRAW_PANEL draws it.
   SUB DRAW_FORM(HANDLE AS UBYTE)
     DIM PANEL AS UBYTE
+    IF (PANEL_FLAGS(HANDLE) AND NO_SHADOW) = 0 THEN DRAW_SHADOW(HANDLE)
     DRAW_PANEL(HANDLE)
     PANEL = MOST_PANELS
     REPEAT MOST_PANELS
@@ -815,9 +817,39 @@ NAMESPACE GUI
     RETURN 0
   END FUNCTION
 
+#REGION_SLOT 2
+  ' The shadow runs from region 2. Its code names the forms' places and sizes, so those tables
+  ' are in low RAM.
+
+  ' Draws the shadow of the form HANDLE in black on black: 2 columns down its right side from
+  ' its second row, and the row under it from its third column. The shadow is trimmed at the
+  ' screen's edges, and leaves out the screen's last cell, whose print scrolls the screen.
+  SUB DRAW_SHADOW(HANDLE AS UBYTE)
+    DIM ROW AS UBYTE, COLUMN AS UBYTE, RIGHT AS UBYTE, BOTTOM AS UBYTE, LIMIT AS UBYTE
+    CALL_A = 0
+    CALL_P = 0
+    SYS CON_COLOR_CALL
+    ROW = PANEL_ROW(HANDLE)
+    BOTTOM = ROW + PANEL_HEIGHT(HANDLE)
+    RIGHT = PANEL_COLUMN(HANDLE) + PANEL_WIDTH(HANDLE) + 1
+    LIMIT = POS(3)
+    REPEAT PANEL_HEIGHT(HANDLE)
+      ROW = ROW + 1
+      COLUMN = RIGHT - 1
+      IF ROW = BOTTOM THEN COLUMN = PANEL_COLUMN(HANDLE) + 2
+      IF ROW >= POS(2) THEN RETURN
+      IF ROW + 1 = POS(2) THEN LIMIT = LIMIT - 1
+      DO WHILE COLUMN <= RIGHT AND COLUMN < LIMIT
+        POS(1) = ROW
+        POS(0) = COLUMN
+        PRINT " ";
+        COLUMN = COLUMN + 1
+      LOOP
+    END REPEAT
+  END SUB
+
   ' The drop-down list runs from region 2. It reaches the form's tables only through its
   ' parameters, so the tables stay in region 1.
-#REGION_SLOT 2
   ' Prints choice NUMBER of the choices at CHOICES_AT, cut or padded with spaces to WIDTH
   ' characters, and returns the last choice's number.
   FUNCTION PRINT_ITEM(CHOICES_AT AS UWORD, NUMBER AS UBYTE, WIDTH AS UBYTE) AS UBYTE

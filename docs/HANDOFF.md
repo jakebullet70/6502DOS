@@ -4358,6 +4358,25 @@
             Tests: GUIMENU ok 0.6 s, GUIBTN 0.5, GUIDLG 0.5, GUISHOW 0.4, GUICBO 0.5, HELPED
             1.2. Build 2562 ms, the new baseline. Next: 4c, shadows (open: a SHADOW role or
             black), then L1 to L3. Maybe later: "-" separators and disabled items.
+          - Done (2026-10-23), 4c, shadows, `lib/GUI.UXI`, black on black as GUI.PLAN says.
+            `GUI.NO_SHADOW` (4) in CREATEFORM's FLAGS. DRAW_FORM calls `DRAW_SHADOW(HANDLE)`
+            first unless NO_SHADOW: blanks in color 0, 2 columns down the right side from the
+            form's second row, and the row under it from its third column; trimmed at the
+            screen's right and bottom edges, the screen's last cell left out (its print
+            scrolls). Sections have none; CENTER unchanged. In DARK the shadow does not show,
+            as PAGE is black on black too. DRAW_SHADOW is in region 2: in region 1 it cost 309
+            bytes (the trim alone 97). Bytes, HELPED against 4a part 2: region 1 569 to 580
+            free (+11: the call +35, and PANEL_ROW, _COLUMN, _WIDTH and _HEIGHT, 52 bytes, move
+            to low RAM, as region 2 names them), region 2 3139 to 2868 free (-271), low RAM
+            unchanged; THEMED region 1 661 free, region 2 2747 free. A dialog's shadow outside
+            the form under it stays on screen after the dialog, as the dialog itself would.
+            New `tests/GUISHADOW.UXB` reads the VERA map back (forms with shadow, NO_SHADOW,
+            trimmed right, trimmed bottom; no scroll); golden local. Goldens updated, spaces
+            only: GUIFORM, GUISECT, GUISAY, GUISHOW, GUIINP, GUICHECK, GUIBTN, GUICBO, GUIMEMO,
+            GUIDLG, GUIMENU, HELPED, THEMED. Tests: GUISHADOW ok 0.4 s, and those 13 ok, 0.4
+            to 1.5 s; GUIEDIT, GUIFLAGS, GUIMASK, GUITHEME, GUIBOX ok unchanged; after the
+            last build HELPED 1.2, THEMED 1.2. Build 3069 ms, the new baseline. Next: L1 to L3 (GUI.LIST, LISTBOX, PICKFILE). Maybe later: "-" separators
+            and disabled items in menus.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
