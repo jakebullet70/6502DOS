@@ -15,6 +15,8 @@
 ' --               that REFUSE holds until it takes two digits
 ' --     Controls  check boxes in two columns, two sets of radio buttons, a combo box, and
 ' --               the buttons OK, Show and Cancel; Show reports the choices and keeps the form
+' --     Memo      a memo of 2047 bytes at most, and a file name; Load reads the file into the
+' --               memo, Save writes the memo to it, and New empties the memo
 ' -- Exit code 0.
 ' --
 ' -- From a prompt:
@@ -30,9 +32,9 @@
 
 ' The ids of the menu items and the buttons.
 CONST ID_EXIT AS UBYTE = 1, ID_MEMORY AS UBYTE = 2, ID_FORMS AS UBYTE = 10
-CONST ID_CONTROLS AS UBYTE = 11
-' The Controls demo's Show button.
-CONST ID_SHOW AS UBYTE = 3
+CONST ID_CONTROLS AS UBYTE = 11, ID_MEMO AS UBYTE = 12
+' The Controls demo's Show button, and the Memo demo's Load, Save and New buttons.
+CONST ID_SHOW AS UBYTE = 3, ID_LOAD AS UBYTE = 4, ID_SAVE AS UBYTE = 5, ID_NEW AS UBYTE = 6
 ' The choices of the Controls demo's radio buttons and combo box. A form keeps their addresses.
 CONST SIZES$ = "Small|Medium|Large", ALIGNS$ = "Left|Center|Right"
 CONST INKS$ = "Black|Red|Green|Yellow|Blue|Magenta|Cyan|White"
@@ -55,6 +57,9 @@ DIM SHOUT AS STRING * 12, QUIET AS STRING * 12, PROPER_NAME AS STRING * 12, PLAI
 ' The Controls demo's choices: 1 for a checked box, and a choice's number from 0.
 DIM BOLD AS UBYTE, ITALIC AS UBYTE, UNDERLINE AS UBYTE, BLINKING AS UBYTE
 DIM TEXT_SIZE AS UBYTE, TEXT_ALIGN AS UBYTE, INK_CHOICE AS UBYTE
+
+' The Memo demo's file name.
+DIM MEMO_FILE AS STRING * 12
 
 ' The Memory popup's lines, and a row of the bank map for each 64 banks.
 DIM PROGRAM_LINE AS STRING * 68, LOW_FREE_LINE AS STRING * 68, BANKS_LINE AS STRING * 68
@@ -295,6 +300,61 @@ SUB CONTROLS_DEMO()
   REPORT()
 END SUB
 
+' The bytes of text in the memo.
+FUNCTION MEMO_BYTES() AS STRING
+  RETURN DECIMAL(GUI.MEMO_END - GUI.MEMO_TEXT) + " bytes"
+END FUNCTION
+
+' The Memo demo: a file name and a memo over the buttons Load, Save, New and Close. A memo
+' shows the text MEMO_LOAD or MEMO_CLEAR changed when it next takes the focus, so the demo
+' draws it again at once.
+SUB MEMO_DEMO()
+  DIM FORM AS UBYTE, TEXT_FIELD AS UBYTE, RESULT AS UBYTE
+  FORM = GUI.CREATEFORM("Memo", GUI.CENTER, GUI.CENTER, 60, 17, GUI.FRAMED)
+  GUI.SAY(GUI.AUTO, 2, "Enter starts a line in the memo. Tab leaves it.")
+  GUI.SAYGET(GUI.AUTO, 2, "File", MEMO_FILE, 12, "", GUI.UPPER)
+  TEXT_FIELD = GUI.MEMO(GUI.AUTO, 2, "Text", 50, 11)
+  GUI.BUTTON(15, 12, "&Load", ID_LOAD)
+  GUI.BUTTON(15, 22, "&Save", ID_SAVE)
+  GUI.BUTTON(15, 32, "&New", ID_NEW)
+  GUI.BUTTON(15, 41, "&Close", 1)
+  DO
+    RESULT = GUI.SHOW(FORM)
+    SELECT CASE RESULT
+      CASE ID_LOAD
+        SELECT CASE GUI.MEMO_LOAD(MEMO_FILE)
+          CASE GUI.MEMO_MISSING
+            MESSAGE = "Memo: " + MEMO_FILE + " not found, the memo is empty"
+          CASE GUI.MEMO_CUT
+            MESSAGE = "Memo: " + MEMO_FILE + " is cut to " + MEMO_BYTES()
+          CASE ELSE
+            MESSAGE = "Memo: loaded " + MEMO_BYTES() + " from " + MEMO_FILE
+        END SELECT
+        GUI.EDIT_FIELD(TEXT_FIELD, GUI.DRAW_ONLY)
+      CASE ID_SAVE
+        IF GUI.MEMO_SAVE(MEMO_FILE) = 0 THEN
+          MESSAGE = "Memo: saved " + MEMO_BYTES() + " to " + MEMO_FILE
+        ELSE
+          MESSAGE = "Memo: cannot write " + MEMO_FILE
+        ENDIF
+      CASE ID_NEW
+        GUI.MEMO_CLEAR()
+        GUI.EDIT_FIELD(TEXT_FIELD, GUI.DRAW_ONLY)
+        MESSAGE = "Memo: empty"
+      CASE ELSE
+        EXIT DO
+    END SELECT
+    REPORT()
+  LOOP
+  GUI.FREE(FORM)
+  IF RESULT = 1 THEN
+    MESSAGE = "Memo: closed, " + MEMO_BYTES()
+  ELSE
+    MESSAGE = "Memo: cancelled, event " + STR$(RESULT)
+  ENDIF
+  REPORT()
+END SUB
+
 SUb SEED_demo()
   PERSON_NAME = "Ada Lovelace"
   PHONE = "(555)-010-1815"
@@ -302,6 +362,7 @@ SUb SEED_demo()
   SHOWN_ONLY = "This field reads only"
   BOLD = 1
   TEXT_SIZE = 1
+  MEMO_FILE = "MEMO.TXT"
 end sub
 
 
@@ -317,6 +378,7 @@ GUI.SAY(2, 3, "F10, or Alt with a menu's letter, opens the menus. Esc ends the p
 GUI.SAY(3, 3, "Each button opens the demo of the menu item with its name.")
 GUI.BUTTON(5, 3, "&Forms", ID_FORMS)
 GUI.BUTTON(5, 14, "&Controls", ID_CONTROLS)
+GUI.BUTTON(5, 28, "M&emo", ID_MEMO)
 GUI.BUTTON(5, 56, "&Memory", ID_MEMORY)
 GUI.BUTTON(5, 68, "E&xit", ID_EXIT)
 GUI.MENUBAR(MAIN_FORM)
@@ -327,6 +389,7 @@ GUI.ENDMENU()
 GUI.BEGINMENU("&Demos")
 GUI.MENUITEM("&Forms", ID_FORMS)
 GUI.MENUITEM("&Controls", ID_CONTROLS)
+GUI.MENUITEM("M&emo", ID_MEMO)
 GUI.ENDMENU()
 MESSAGE = "Ready."
 REPORT()
@@ -337,6 +400,8 @@ DO
       FORMS_DEMO()
     CASE ID_CONTROLS
       CONTROLS_DEMO()
+    CASE ID_MEMO
+      MEMO_DEMO()
     CASE ID_MEMORY
       MEMORY_INFO()
     CASE ID_EXIT, GUI.EV_CANCEL

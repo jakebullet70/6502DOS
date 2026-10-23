@@ -4797,6 +4797,22 @@
             ink" on Show and OK, then the end. A -gif frame showed the layout; the hint lines
             and the main-form button were moved off the frame and off Forms. Build 3804 ms,
             the new baseline (7494 ms before the layout fix). Next: D3, the Memo demo.
+          - Done, D3 (2026-10-23), GUIDEMO's Memo demo: Demos, Memo (id 12) and the main-form
+            button M&emo (Alt+E, column 28). A centered form 60 by 17: a SAY, SAYGET File
+            (`MEMO_FILE`, 12, UPPER, seeded MEMO.TXT), MEMO Text 50 by 11, then &Load (4),
+            &Save (5), &New (6) and &Close (1) at row 15. Load reports not found, cut or the
+            bytes loaded; Save the bytes saved or "cannot write"; New empties the memo. After
+            Load and New the demo calls `GUI.EDIT_FIELD(TEXT_FIELD, GUI.DRAW_ONLY)`, since a
+            memo shows new text only when it next takes the focus. `MEMO_BYTES()` gives
+            MEMO_END - MEMO_TEXT in decimal. GUIDEMO 24425 bytes, 4302 more: region 1 +246
+            (7904, 288 free), region 2 +2595 (5636: MEMO_EDIT and the memo routines link
+            now; 508 bytes left below MEMO_TEXT $B800), region 3 401 (+0), low RAM +1461.
+            Region 2 is near its $B800 limit for Dialogs and Files. Smoke run (a scratch test,
+            deleted: Alt+E, Alt+L on a missing file, Esc; Alt+E, "Hello" Enter "World", Alt+S,
+            Alt+N, Alt+L, Alt+C, Esc) 4.6 s: not found, cancelled 255, saved 11, empty, loaded
+            11 and drawn, closed 11, the end. A -gif frame showed the layout; the buttons were
+            centered and the form cut by 2 rows. Build 4283 ms, the new baseline (4661 ms
+            before the layout fix). Next: D4, the Lists demo.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
