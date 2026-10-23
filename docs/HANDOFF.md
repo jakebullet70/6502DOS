@@ -4768,7 +4768,18 @@
             CLEAR_SCREEN$`; GUIDEMO prints `CONS.CLS$`. The user moved the Forms fields' first
             values to `SEED_DEMO`, called once at the start, so the Forms demo keeps what was
             typed. GUIDEMO 16618 bytes. Tests: GUISHOW ok 0.7 s, CONSLIB 0.6. Build 6319 ms,
-            the new baseline. Next: D2, the Controls demo.
+            the new baseline.
+          - Done, D1e (2026-10-23): the user renamed `CONS.PRINT_AT` to `CONS.PRINTAT`, with
+            `TEXT$ AS CONST`. It takes an optional `COLOR AS UBYTE = 0` last, as VERA.PRINTAT
+            does: a color other than 0 prints the text in it through the console color call
+            ($03CA, `CON_COLOR_CALL` in CONS, as in GUI) and then puts the old color back. CONS
+            has `SUB CLS()`, which prints `CLEAR_SCREEN$`; the user's `BIND CLS PRINT
+            CLEAR_SCREEN$;` did not compile, because a BIND cannot name a statement. `CLS$`
+            stays. GUIDEMO calls `CONS.CLS()`, 16621 bytes (+3). CONSLIB calls CLS and PRINTAT
+            with a color, and prints `DOS.GET_COLOR()` before and after (5 both); its golden
+            is rewritten. Tests: CONSLIB ok 0.6 s. Build 6869 ms, the new baseline. Owed to
+            the doc batch: PLAN.md's CONS row and UXC-HELP name `PRINT_AT`. Next: D2, the
+            Controls demo.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

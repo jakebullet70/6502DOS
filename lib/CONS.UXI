@@ -32,6 +32,11 @@ NAMESPACE CONS
   CONST CLEAR_SCREEN$ = CSI$ + "2J", CLEAR_EOL$ = CSI$ + "K"
   BIND CLS$ CLEAR_SCREEN$
 
+  ' Clears the screen and puts the cursor home: CONS.CLS().
+  SUB CLS()
+    PRINT CLEAR_SCREEN$;
+  END SUB
+
   ' NORMAL$ gives the color DOS.SET_COLOR last set. REVERSE$ swaps the foreground and the
   ' background.
   CONST NORMAL$ = CSI$ + "0m", REVERSE$ = CSI$ + "7m"
@@ -64,11 +69,34 @@ NAMESPACE CONS
     POS(0) = COLUMN
   END SUB
 
-  ' Prints TEXT$ at ROW and COLUMN and leaves the cursor after it.
-  SUB PRINT_AT(ROW AS UBYTE, COLUMN AS UBYTE, TEXT$)
+  ' The console color call.
+  ' Checklist: tools/genapi.py writes the same address into lib/DOS.UXI as API_CON_COLOUR.
+  ' Change this one when that one moves.
+  CONST CON_COLOR_CALL AS UWORD = $03CA
+  ' SYS loads A and P from these bytes before the call. DOS.UXI names them REG_A and REG_P.
+  DIM CALL_A AS UBYTE AT $030C, CALL_P AS UBYTE AT $030F
+
+  ' Prints TEXT$ at ROW and COLUMN and leaves the cursor after it. A COLOR, background times 16
+  ' plus foreground, prints TEXT$ in that color and then puts the console's color back. COLOR 0,
+  ' the default, prints in the console's color.
+  SUB PRINTAT(ROW AS UBYTE, COLUMN AS UBYTE, TEXT$ AS CONST, COLOR AS UBYTE = 0)
+    DIM OLD_COLOR AS UBYTE
     POS(1) = ROW
     POS(0) = COLUMN
+    IF COLOR THEN
+      CALL_P = 1
+      SYS CON_COLOR_CALL
+      OLD_COLOR = CALL_A
+      CALL_A = COLOR
+      CALL_P = 0
+      SYS CON_COLOR_CALL
+    ENDIF
     PRINT TEXT$;
+    IF COLOR THEN
+      CALL_A = OLD_COLOR
+      CALL_P = 0
+      SYS CON_COLOR_CALL
+    ENDIF
   END SUB
 
   ' Prints true when VALUE is not 0, and false when it is 0.
