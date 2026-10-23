@@ -1,0 +1,305 @@
+' VERA.UXI: direct reads and writes of the text screen in VERA, in namespace VERA, and a stack
+' of saved screen boxes in VRAM.
+'
+' The code runs from region 3, a RAM bank of its own at $A000. A SUB or FUNCTION adds bytes
+' only when called. ROW and COLUMN count from 0 at the screen's top left. The screen map is at
+' VRAM $10000: 64 rows of 256 bytes, 128 cells a row, each a character then its color. A color
+' is the background times 16 plus the foreground. The map row of a screen row follows layer 1's
+' vertical scroll. VRAM $00000 to $0FFFF holds the saved boxes.
+'
+' Trap: the console's cursor is a cell with the nibbles of its color swapped. A box saved with
+' the cursor on keeps the swap, and RESTORE_RECT puts it back.
+'
+' DIM CELL AS UWORD
+' VERA.PUT_CELL(2, 5, 65, $1F)    ' an A, white on blue, at row 2, column 5
+' CELL = VERA.GET_CELL(2, 5)      ' 65 in the low byte, $1F in the high byte
+' IF VERA.SAVE_RECT(1, 1, 20, 5) THEN
+'   VERA.FILL(1, 1, 20, 5, 32, $70)
+'   VERA.RESTORE_RECT()
+' ENDIF
+
+#REGION_SLOT 3
+NAMESPACE VERA
+  ' VERA's address of the data port that CONTROL selects, its data ports 0 and 1, and layer
+  ' 1's vertical scroll. CONTROL's bit 0 selects port 1. Each routine here, and the console,
+  ' leaves CONTROL 0. Trap: bit 7 of CONTROL resets VERA.
+  DIM ADDRESS_LOW AS UBYTE AT $9F20, ADDRESS_MIDDLE AS UBYTE AT $9F21
+  DIM ADDRESS_HIGH AS UBYTE AT $9F22, DATA0 AS UBYTE AT $9F23, DATA1 AS UBYTE AT $9F24
+  DIM CONTROL AS UBYTE AT $9F25, SCROLL_LOW AS UBYTE AT $9F39, SCROLL_HIGH AS UBYTE AT $9F3A
+
+  ' The VRAM address of the stack's first free byte, 0 when the stack is empty. A box on the
+  ' stack is its cells, row by row, then 6 bytes: the address of its cells, low byte first,
+  ' then its row, column, width and height.
+  DIM STACK_TOP AS UWORD
+
+  ' Returns the map row of screen row 0: the vertical scroll over 8, AND 63.
+  FUNCTION MAP_TOP() AS UBYTE
+    DIM TOP AS UBYTE
+    ASM
+        lda @SCROLL_HIGH
+        lsr                     ' bit 0, worth 32 map rows, to carry
+        lda @SCROLL_LOW
+        ror
+        lsr
+        lsr
+        sta @TOP
+    END ASM
+    RETURN TOP
+  END FUNCTION
+
+  ' Returns the cell at ROW and COLUMN: its character in the low byte, its color in the high.
+  FUNCTION GET_CELL(ROW AS UBYTE, COLUMN AS UBYTE) AS UWORD
+    DIM CELL AS UWORD
+    ASM
+        lda @SCROLL_HIGH
+        lsr
+        lda @SCROLL_LOW
+        ror
+        lsr
+        lsr                     ' the map row of screen row 0
+        clc
+        adc @ROW
+        and #63
+        sta @ADDRESS_MIDDLE     ' a map row is 256 bytes
+        lda @COLUMN
+        asl
+        sta @ADDRESS_LOW
+        lda #$11                ' increment 1, VRAM $1xxxx
+        sta @ADDRESS_HIGH
+        lda @DATA0
+        sta @CELL
+        lda @DATA0
+        sta @CELL + 1
+    END ASM
+    RETURN CELL
+  END FUNCTION
+
+  ' Writes CHARACTER in COLOR to the cell at ROW and COLUMN. The console's cursor does not move.
+  SUB PUT_CELL(ROW AS UBYTE, COLUMN AS UBYTE, CHARACTER AS UBYTE, COLOR AS UBYTE)
+    ASM
+        lda @SCROLL_HIGH
+        lsr
+        lda @SCROLL_LOW
+        ror
+        lsr
+        lsr
+        clc
+        adc @ROW
+        and #63
+        sta @ADDRESS_MIDDLE
+        lda @COLUMN
+        asl
+        sta @ADDRESS_LOW
+        lda #$11
+        sta @ADDRESS_HIGH
+        lda @CHARACTER
+        sta @DATA0
+        lda @COLOR
+        sta @DATA0
+    END ASM
+  END SUB
+
+  ' Fills the box of WIDTH by HEIGHT cells from ROW and COLUMN with CHARACTER in COLOR. A WIDTH
+  ' or HEIGHT of 1 draws a line. WIDTH 0 or over 127, or HEIGHT 0, draws nothing. The console's
+  ' cursor does not move.
+  SUB FILL(ROW AS UBYTE, COLUMN AS UBYTE, WIDTH AS UBYTE, HEIGHT AS UBYTE, CHARACTER AS UBYTE, COLOR AS UBYTE)
+    DIM TOP AS UBYTE
+    ASM
+        lda @WIDTH
+        beq done
+        bmi done                ' over 127
+        lda @HEIGHT
+        beq done
+        phx
+        lda @SCROLL_HIGH
+        lsr
+        lda @SCROLL_LOW
+        ror
+        lsr
+        lsr
+        clc
+        adc @ROW
+        sta @TOP                ' the map row of ROW
+        lda @COLUMN
+        asl
+        sta @COLUMN             ' now the cell's byte in its map row
+        ldx @COLOR
+    row: lda @TOP
+        and #63
+        sta @ADDRESS_MIDDLE
+        lda @COLUMN
+        sta @ADDRESS_LOW
+        lda #$11
+        sta @ADDRESS_HIGH
+        lda @CHARACTER
+        ldy @WIDTH
+    cell: sta @DATA0
+        stx @DATA0
+        dey
+        bne cell
+        inc @TOP
+        dec @HEIGHT
+        bne row
+        plx
+    done:
+    END ASM
+  END SUB
+
+
+  ' Pushes the box of WIDTH by HEIGHT cells from ROW and COLUMN onto the stack. Returns 1, or 0
+  ' when WIDTH or HEIGHT is 0, WIDTH is over 127, or the stack has no room for 2 bytes a cell
+  ' and 6 more. Only a 1 has a box for RESTORE_RECT.
+  FUNCTION SAVE_RECT(ROW AS UBYTE, COLUMN AS UBYTE, WIDTH AS UBYTE, HEIGHT AS UBYTE) AS UBYTE
+    DIM RESULT AS UBYTE, TOP AS UBYTE, BYTES AS UBYTE, LINES AS UBYTE, PLACE AS UWORD
+    ASM
+        stz @RESULT
+        lda @WIDTH
+        beq out
+        bmi out                 ' over 127
+        asl
+        sta @BYTES
+        lda @HEIGHT
+        bne start
+    out: jmp done
+    start: sta @LINES
+        lda @SCROLL_HIGH
+        lsr
+        lda @SCROLL_LOW
+        ror
+        lsr
+        lsr
+        clc
+        adc @ROW
+        sta @TOP
+        lda @STACK_TOP
+        sta @PLACE
+        lda @STACK_TOP + 1
+        sta @PLACE + 1
+        lda #1                  ' port 1 at the stack top
+        sta @CONTROL
+        lda @PLACE
+        sta @ADDRESS_LOW
+        lda @PLACE + 1
+        sta @ADDRESS_MIDDLE
+        lda #$10                ' increment 1, VRAM $0xxxx
+        sta @ADDRESS_HIGH
+        stz @CONTROL
+    row: clc                    ' PLACE past the row, or the stack is full
+        lda @PLACE
+        adc @BYTES
+        sta @PLACE
+        bcc room
+        inc @PLACE + 1
+        beq done
+    room: lda @TOP              ' port 0 at the row's first cell
+        and #63
+        sta @ADDRESS_MIDDLE
+        lda @COLUMN
+        asl
+        sta @ADDRESS_LOW
+        lda #$11
+        sta @ADDRESS_HIGH
+        ldy @BYTES
+    copy: lda @DATA0
+        sta @DATA1
+        dey
+        bne copy
+        inc @TOP
+        dec @LINES
+        bne row
+        clc                     ' PLACE past the header, or the stack is full
+        lda @PLACE
+        adc #6
+        sta @PLACE
+        bcc header
+        inc @PLACE + 1
+        beq done
+    header: lda @STACK_TOP
+        sta @DATA1
+        lda @STACK_TOP + 1
+        sta @DATA1
+        lda @ROW
+        sta @DATA1
+        lda @COLUMN
+        sta @DATA1
+        lda @WIDTH
+        sta @DATA1
+        lda @HEIGHT
+        sta @DATA1
+        lda @PLACE
+        sta @STACK_TOP
+        lda @PLACE + 1
+        sta @STACK_TOP + 1
+        inc @RESULT
+    done:
+    END ASM
+    RETURN RESULT
+  END FUNCTION
+
+  ' Pops the last box SAVE_RECT pushed and writes it back where it was on the screen. An empty
+  ' stack does nothing.
+  SUB RESTORE_RECT()
+    DIM ROW AS UBYTE, COLUMN AS UBYTE, HEIGHT AS UBYTE, TOP AS UBYTE, BYTES AS UBYTE
+    ASM
+        lda @STACK_TOP
+        ora @STACK_TOP + 1
+        bne pop
+        jmp done
+    pop: sec                    ' port 0 at the header
+        lda @STACK_TOP
+        sbc #6
+        sta @ADDRESS_LOW
+        lda @STACK_TOP + 1
+        sbc #0
+        sta @ADDRESS_MIDDLE
+        lda #$10
+        sta @ADDRESS_HIGH
+        lda @DATA0              ' the box's cells are the new stack top
+        sta @STACK_TOP
+        lda @DATA0
+        sta @STACK_TOP + 1
+        lda @DATA0
+        sta @ROW
+        lda @DATA0
+        asl
+        sta @COLUMN             ' now the cell's byte in its map row
+        lda @DATA0
+        asl
+        sta @BYTES
+        lda @DATA0
+        sta @HEIGHT
+        lda @STACK_TOP          ' port 0 at the box's cells
+        sta @ADDRESS_LOW
+        lda @STACK_TOP + 1
+        sta @ADDRESS_MIDDLE
+        lda @SCROLL_HIGH
+        lsr
+        lda @SCROLL_LOW
+        ror
+        lsr
+        lsr
+        clc
+        adc @ROW
+        sta @TOP
+    row: lda #1                 ' port 1 at the row's first cell
+        sta @CONTROL
+        lda @TOP
+        and #63
+        sta @ADDRESS_MIDDLE
+        lda @COLUMN
+        sta @ADDRESS_LOW
+        lda #$11
+        sta @ADDRESS_HIGH
+        stz @CONTROL
+        ldy @BYTES
+    copy: lda @DATA0
+        sta @DATA1
+        dey
+        bne copy
+        inc @TOP
+        dec @HEIGHT
+        bne row
+    done:
+    END ASM
+  END SUB
+END NAMESPACE

@@ -4377,6 +4377,25 @@
             to 1.5 s; GUIEDIT, GUIFLAGS, GUIMASK, GUITHEME, GUIBOX ok unchanged; after the
             last build HELPED 1.2, THEMED 1.2. Build 3069 ms, the new baseline. Next: L1 to L3 (GUI.LIST, LISTBOX, PICKFILE). Maybe later: "-" separators
             and disabled items in menus.
+          - Done (2026-10-23), screen save part 1, new `lib/VERA.UXI`, namespace VERA, region
+            3 (the user's choice: its own bank, not GUI's region 2), every body ASM. MAP_TOP(),
+            GET_CELL(ROW, COLUMN) (character low byte, color high), PUT_CELL(ROW, COLUMN,
+            CHARACTER, COLOR), FILL(ROW, COLUMN, WIDTH, HEIGHT, CHARACTER, COLOR), SAVE_RECT(ROW,
+            COLUMN, WIDTH, HEIGHT) (1, or 0: WIDTH 0 or over 127, HEIGHT 0, stack full) and
+            RESTORE_RECT() (pops, empty does nothing). A LIFO stack in VRAM $00000-$0FFFF: a
+            box is its cells then 6 bytes (its cells' address, row, column, width, height), so
+            no multiply. Copy: port 0 reads, port 1 writes, 13 cycles a byte; every routine
+            leaves VERA_CTRL 0. Taken from vtuilib: gotoxy, plot_char/scan_char, fill_box
+            (hline, vline), save_rect/rest_rect; left out its PETSCII, border, input and mode
+            calls. Bytes in region 3, each alone: MAP_TOP 17, GET_CELL 50, PUT_CELL 44, FILL 84,
+            SAVE_RECT 209, RESTORE_RECT 150, both 357; all six 552 (7640 free). A first
+            version with shared BASIC POINT and COPY SUBs cost 808. A program that includes
+            VERA.UXI takes one more RAM bank and 19 bytes of low RAM, and 7 for each VERA
+            routine called. New `tests/VERABOX.UXB` (golden local): ok 0.6 s. No build: no ROM
+            or utility includes VERA.UXI yet. Next, part 2: GUI dialogs, menus and CBO lists
+            SAVE_RECT their box and shadow and RESTORE_RECT on close; decide whether menus and
+            lists drop their whole-form redraw; the cursor is a swapped cell, so hide it
+            before the save. Then L1 to L3.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
