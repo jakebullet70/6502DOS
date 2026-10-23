@@ -4211,6 +4211,24 @@
             55 names. New step 4c: every form drops a shadow by default, as GPC's boxes, black
             on black; `GUI.NO_SHADOW` (4) in CREATEFORM's FLAGS leaves it out; DRAW_FORM draws
             it; about 80 bytes of region 1. Next: phase 4, step 4a, menus.
+          - Order changed by the user (2026-10-23): 4b before 4a, then THEMED uses the
+            dialogs: Load and Save errors in a MSGBOX, YESNO on Esc with changes unsaved,
+            INPUTBOX for the file name, YESNO before a Save writes over a file. Steps: 4b part 1
+            MSGBOX and YESNO; part 2 INPUTBOX and INPUTBOX2; then THEMED; then 4a.
+          - Done (2026-10-23), 4b part 1: `GUI.MSGBOX` in region 2, with `WIDEN` and
+            `DIALOG_WIDTH`; `GUI.YESNO` in slot 0, as its literals &Yes and &No must be in low
+            RAM (a region's literal is in its bank, and region 1's SHOW reads the caption by
+            address; trap comment in GUI.UXI). SHOW keeps NEXT_FOCUS when it is a control of
+            the form shown, and FREE and Esc set it to 0, so a form under a dialog keeps its
+            focus. Bytes: MSGBOX 536 of region 2 (696 before WIDEN, LEN once per button and
+            HALF_GAP), about 94 of low RAM for the calls across; YESNO about 130 of low RAM;
+            the focus keep 24 of region 1 (HELPED 422 free). A program that used no SAY pays
+            SAY's 160 of region 1. Test `GUIDLG` new (MSGBOX of 1 and 3 lines, Tab, Alt+R, Esc;
+            YESNO Alt+Y, Alt+N, Esc; a form's focus kept after a MSGBOX): ok 2.0 s at
+            --update, golden checked (`1 2 1 255 1 0 0 5 1 5`, box widths 10 and 25). Tests:
+            `GUISHOW` ok 0.4 s, `GUIBTN` 0.4, `GUICBO` 0.5, `HELPED` 1.3, `THEMED` 1.4. Build
+            2253 ms, the new baseline. Owed to the doc batch: GUI.PLAN 4b's sizes and the
+            YESNO slot. Next: 4b part 2, INPUTBOX and INPUTBOX2.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

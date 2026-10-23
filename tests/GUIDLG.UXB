@@ -1,0 +1,36 @@
+' GUIDLG: GUI.MSGBOX and GUI.YESNO. The last line gives the result of each.
+' 1: one line and OK, Enter returns 1. 2: three lines, &Retry and &Cancel, Tab and Enter
+' return 2. 3: Alt+R returns 1. 4: Esc returns EV_CANCEL. 5: YESNO, Alt+Y gives 1. 6: Alt+N
+' gives 0. 7: Esc gives 0. 8: a form of a field and "&Go" (id 5): Tab and Enter on Go return 5;
+' a MSGBOX over it, Enter returns 1; the form's next SHOW keeps the focus on Go, and Enter
+' returns 5.
+#INCLUDE "KEYS.UXI"
+#INCLUDE "GUI.UXI"
+DIM KEPT(16) AS UBYTE, AT AS UBYTE, H AS UBYTE, N AS UBYTE
+DIM N$ * 6
+
+SUB KEEP(VALUE AS UBYTE)
+  KEPT(AT) = VALUE
+  AT = AT + 1
+END SUB
+
+AT = 0
+KEEP(GUI.MSGBOX("Note", "Done."))
+FOR N = 1 TO 3
+  KEEP(GUI.MSGBOX("Disk", "Drive not ready.", "", "Try again?", "&Retry", "&Cancel"))
+NEXT N
+FOR N = 1 TO 3
+  KEEP(GUI.YESNO("Quit", "Save changes?"))
+NEXT N
+H = GUI.CREATEFORM("Act", 2, 0, 40, 10, GUI.FRAMED)
+GUI.SAYGET(GUI.AUTO, GUI.AUTO, "Name", N$, 6)
+GUI.BUTTON(8, 20, "&Go", 5)
+KEEP(GUI.SHOW(H))
+KEEP(GUI.MSGBOX("Go", "Going."))
+KEEP(GUI.SHOW(H))
+POS(1) = 24
+POS(0) = 0
+FOR N = 0 TO AT - 1
+  PRINT KEPT(N);
+NEXT N
+PRINT

@@ -422,7 +422,8 @@ NAMESPACE GUI
   END FUNCTION
 
   ' Frees the form HANDLE, its sections and its controls for the next CREATEFORM and GET. A
-  ' handle of 0 does nothing. The next SHOW starts its form afresh.
+  ' handle of 0 does nothing. The next SHOW starts its form afresh, its focus on its first
+  ' control.
   SUB FREE(HANDLE AS UBYTE)
     DIM PANEL AS UBYTE
     PANEL = MOST_PANELS
@@ -436,6 +437,7 @@ NAMESPACE GUI
       PANEL = PANEL - 1
     END REPEAT
     SHOWN_FORM = 0
+    NEXT_FOCUS = 0
   END SUB
 
   ' Opens a section in the form HANDLE, on the form's next automatic line, 1 column in from each
@@ -1091,13 +1093,15 @@ NAMESPACE GUI
   ' EV_CANCEL. A button pressed returns its id, as BUTTON gives. A CBO's list that closes has the
   ' form drawn again, the focus on the CBO. Leaving a VALIDATE field returns EV_LEAVE, with the field in LEFT_FIELD; the next SHOW moves the focus on, or
   ' back to the field after REFUSE. A form is new to SHOW after EV_DONE, EV_CANCEL or FREE, and
-  ' when another form was shown last. SHOW(0) returns EV_CANCEL.
+  ' when another form was shown last. A form shown again after a MSGBOX is drawn whole, and
+  ' keeps its focus. SHOW(0) returns EV_CANCEL.
   FUNCTION SHOW(HANDLE AS UBYTE) AS UBYTE
     DIM FOCUS AS UBYTE, DIRECTION AS UBYTE, PUSHED AS UBYTE, PRESSED AS UWORD, LABEL_AT AS UWORD
     IF HANDLE = 0 THEN RETURN EV_CANCEL
     IF HANDLE <> SHOWN_FORM THEN
       SHOWN_FORM = 0
-      NEXT_FOCUS = NEXT_CONTROL(HANDLE, 0, 1)
+      ' A dialog puts back the focus it found, so it may be a control of this form.
+      IF CONTROL_OWNER(NEXT_FOCUS) <> HANDLE THEN NEXT_FOCUS = NEXT_CONTROL(HANDLE, 0, 1)
     ENDIF
     FOCUS = NEXT_FOCUS
     DO
@@ -1136,6 +1140,7 @@ NAMESPACE GUI
       SELECT CASE PRESSED
         CASE KEYS.ESC
           SHOWN_FORM = 0
+          NEXT_FOCUS = 0
           RETURN EV_CANCEL
         CASE KEYS.ENTER, KEYS.KEY_DOWN
         CASE KEYS.TAB
@@ -1164,5 +1169,64 @@ NAMESPACE GUI
     STATUS_LINE(MESSAGE$)
     STATUS_SHOWN = 1
   END SUB
+
+  ' The dialogs run from region 2, and reach the forms only through the SUBs of region 1.
+  ' Trap: a dialog's strings must be in low RAM, as the main program's literals, the variables
+  ' and the temps are. A literal of a SUB in a region is in that region's bank, which region 1
+  ' cannot read.
+#REGION_SLOT 2
+  DIM DIALOG_WIDTH AS UBYTE
+
+  ' Raises DIALOG_WIDTH to the length of TEXT$, and returns the length.
+  FUNCTION WIDEN(TEXT$ AS CONST) AS UBYTE
+    DIM LENGTH AS UBYTE
+    LENGTH = LEN(TEXT$)
+    IF LENGTH > DIALOG_WIDTH THEN DIALOG_WIDTH = LENGTH
+    RETURN LENGTH
+  END FUNCTION
+
+  ' Shows a framed form centered on the screen, titled TITLE$, with the lines LINE1$ to LINE3$,
+  ' then the button BUTTON1$, and BUTTON2$ beside it when it is not empty. Returns 1 or 2 for the
+  ' button pressed, by Enter or its hot key, or EV_CANCEL for Esc. The form is 4 columns wider
+  ' than its widest line, its title or its buttons. It is freed before MSGBOX returns, and the
+  ' screen under it is not drawn again. A form shown before MSGBOX keeps its focus, and its next
+  ' SHOW draws it whole.
+  FUNCTION MSGBOX(TITLE$ AS CONST, LINE1$ AS CONST, LINE2$ AS CONST = "", LINE3$ AS CONST = "", BUTTON1$ AS CONST = "&OK", BUTTON2$ AS CONST = "") AS UBYTE
+    DIM FORM AS UBYTE, ROWS AS UBYTE, FIRST AS UBYTE, SECOND AS UBYTE, BUTTONS AS UBYTE
+    DIM COLUMN AS UBYTE, KEPT_FOCUS AS UBYTE, RESULT AS UBYTE
+    ' A button is its caption less the &, between "< " and " >". Two have 2 columns between.
+    FIRST = LEN(BUTTON1$) + 3
+    SECOND = LEN(BUTTON2$)
+    BUTTONS = FIRST
+    IF SECOND <> 0 THEN BUTTONS = FIRST + SECOND + 5
+    DIALOG_WIDTH = BUTTONS
+    WIDEN(TITLE$)
+    WIDEN(LINE1$)
+    ROWS = 1
+    IF WIDEN(LINE2$) <> 0 THEN ROWS = 2
+    IF WIDEN(LINE3$) <> 0 THEN ROWS = 3
+    FORM = CREATEFORM(TITLE$, CENTER, CENTER, DIALOG_WIDTH + 4, ROWS + 4, FRAMED)
+    ' An empty line's SAY prints nothing.
+    SAY(1, 2, LINE1$)
+    SAY(2, 2, LINE2$)
+    SAY(3, 2, LINE3$)
+    COLUMN = HALF_GAP(DIALOG_WIDTH, BUTTONS) + 2
+    ROWS = ROWS + 2
+    BUTTON(ROWS, COLUMN, BUTTON1$, 1)
+    IF SECOND <> 0 THEN BUTTON(ROWS, COLUMN + FIRST + 2, BUTTON2$, 2)
+    KEPT_FOCUS = NEXT_FOCUS
+    RESULT = SHOW(FORM)
+    FREE(FORM)
+    NEXT_FOCUS = KEPT_FOCUS
+    RETURN RESULT
+  END FUNCTION
+
+  ' YESNO's literals must be in low RAM.
+#REGION_SLOT 0
+  ' MSGBOX with the buttons &Yes and &No. Returns 1 for Yes, and 0 for No or Esc.
+  FUNCTION YESNO(TITLE$ AS CONST, LINE1$ AS CONST, LINE2$ AS CONST = "", LINE3$ AS CONST = "") AS UBYTE
+    IF MSGBOX(TITLE$, LINE1$, LINE2$, LINE3$, "&Yes", "&No") = 1 THEN RETURN 1
+    RETURN 0
+  END FUNCTION
   ERRORS ON
 END NAMESPACE
