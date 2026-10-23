@@ -1,8 +1,8 @@
 ' GUI.UXI: GUI Forms, the text-mode user interface library of 6502DOS's utilities.
 '
 ' A program includes KEYS.UXI, VERA.UXI, then GUI.UXI. The code runs from region 1, a RAM bank
-' of its own at $A000, and a CBO's list, the memo, the menus and the dialogs from region 2. A SUB
-' or FUNCTION adds bytes only when called. A CBO's list, a menu and a dialog save the screen
+' of its own at $A000, a CBO's list, the memo, the menus and the dialogs from region 2, and the
+' lists from region 3, beside VERA.UXI. A SUB or FUNCTION adds bytes only when called. A CBO's list, a menu and a dialog save the screen
 ' under them on VERA.UXI's stack, and put it back when they close.
 
 #REGION_SLOT 1
@@ -108,6 +108,9 @@ NAMESPACE GUI
   ' The kinds of control. A SAY is a KIND_FIELD of WIDTH 0.
   CONST KIND_FIELD AS UBYTE = 0, KIND_CHECK AS UBYTE = 1, KIND_RADIO AS UBYTE = 2
   CONST KIND_BUTTON AS UBYTE = 3, KIND_CBO AS UBYTE = 4, KIND_MEMO AS UBYTE = 5
+  CONST KIND_LIST AS UBYTE = 6
+  ' LIST's FLAGS add LIST_MULTI: Space marks and unmarks the item under the focus.
+  CONST LIST_MULTI AS UBYTE = 128
   ' SHOW's events. A button's id is below them.
   CONST EV_DONE AS UBYTE = 253, EV_LEAVE AS UBYTE = 254, EV_CANCEL AS UBYTE = 255
   ' A field and the memo show the cursor with CURSOR ON; the other controls hide it with
@@ -669,6 +672,12 @@ NAMESPACE GUI
     CONTROL = SAYGET(ROW, COLUMN, CAPTION$, ORIGINAL$, WIDTH, "", FLAGS)
     IF ROW = AUTO THEN PANEL_LAYOUT(CURRENT_FORM) = PANEL_LAYOUT(CURRENT_FORM) + HEIGHT - 1
     RETURN MAKE_CHOICE(CONTROL, HEIGHT, KIND_MEMO)
+  END FUNCTION
+
+  ' Returns the list slot of CONTROL when it is a LIST in use, else 0.
+  FUNCTION LIST_SLOT_OF(CONTROL AS UBYTE) AS UBYTE
+    IF CONTROL_OWNER(CONTROL) <> 0 AND CONTROL_KIND(CONTROL) = KIND_LIST THEN RETURN CONTROL_TEXT_AT(CONTROL)
+    RETURN 0
   END FUNCTION
 
   ' Returns the screen column of CONTROL's field, as SAYGET gives it.
@@ -1298,8 +1307,8 @@ NAMESPACE GUI
 
   ' Runs INPUT2 on the field CONTROL, its FLAGS with MORE_FLAGS added, and returns INPUT2's key;
   ' a CHECK or a RADIO runs PICK_CHOICE in its place, a BUTTON PUSH_BUTTON, a CBO DROP_LIST,
-  ' and a MEMO MEMO_EDIT. A field, CHECK, RADIO, CBO or MEMO takes the FIELD_FOCUS color, or
-  ' the FIELD color when MORE_FLAGS is DRAW_ONLY.
+  ' a MEMO MEMO_EDIT, and a LIST LIST_EDIT. A field, CHECK, RADIO, CBO, MEMO or LIST takes the
+  ' FIELD_FOCUS color, or the FIELD color when MORE_FLAGS is DRAW_ONLY.
   FUNCTION EDIT_FIELD(CONTROL AS UBYTE, MORE_FLAGS AS UBYTE) AS UWORD
     DIM TARGET_AT AS UWORD, MASK_AT AS UWORD, COLUMN AS UBYTE
     IF MORE_FLAGS = 0 THEN
@@ -1312,6 +1321,7 @@ NAMESPACE GUI
     IF CONTROL_KIND(CONTROL) = KIND_BUTTON THEN RETURN PUSH_BUTTON(CONTROL, COLUMN, MORE_FLAGS)
     IF CONTROL_KIND(CONTROL) = KIND_CBO THEN RETURN DROP_LIST(CONTROL_ROW(CONTROL), COLUMN, CONTROL_WIDTH(CONTROL), CONTROL_MASK_AT(CONTROL), CONTROL_TEXT_AT(CONTROL), MORE_FLAGS)
     IF CONTROL_KIND(CONTROL) = KIND_MEMO THEN RETURN MEMO_EDIT(CONTROL_ROW(CONTROL), COLUMN, CONTROL_WIDTH(CONTROL), CONTROL_TEXT_AT(CONTROL), MORE_FLAGS)
+    IF CONTROL_KIND(CONTROL) = KIND_LIST THEN RETURN LIST_EDIT(CONTROL_TEXT_AT(CONTROL), CONTROL_ROW(CONTROL), COLUMN, MORE_FLAGS)
     IF CONTROL_KIND(CONTROL) <> KIND_FIELD THEN RETURN PICK_CHOICE(CONTROL, COLUMN, MORE_FLAGS)
     TARGET_AT = CONTROL_TEXT_AT(CONTROL)
     MASK_AT = CONTROL_MASK_AT(CONTROL)
@@ -1535,6 +1545,220 @@ NAMESPACE GUI
     FIRST = SAYGET(1, ENDS - LEN(PROMPT1$), PROMPT1$, TARGET1$, WIDTH, MASK$, FLAGS)
     SAYGET(2, ENDS - LEN(PROMPT2$), PROMPT2$, TARGET2$, WIDTH, MASK$, FLAGS)
     RETURN RUN_DIALOG(FIRST)
+  END FUNCTION
+
+  ' PRINT_RECORD runs from low RAM, as it selects the items' RAM bank.
+#REGION_SLOT 0
+  ' Selects RAM bank BANK, prints the string of the record at AT, cut at its first zero, at
+  ' LENGTH characters or at WIDTH, and pads it with spaces to WIDTH characters. Returns the
+  ' record's first byte. A LENGTH of 0 prints spaces.
+  ' Trap: the bank stays selected. A call from a region selects the region's bank again after.
+  FUNCTION PRINT_RECORD(AT AS UWORD, BANK AS UBYTE, LENGTH AS UBYTE, WIDTH AS UBYTE) AS UBYTE
+    DIM CHARACTER AS UBYTE, FIRST AS UBYTE
+    ContentsAt(0) = BANK
+    FIRST = ContentsAt(AT)
+    REPEAT WIDTH
+      CHARACTER = 0
+      IF LENGTH <> 0 THEN CHARACTER = ContentsAt(AT)
+      IF CHARACTER = 0 THEN
+        LENGTH = 0
+        CHARACTER = 32
+      ELSE
+        LENGTH = LENGTH - 1
+        AT = AT + 1
+      ENDIF
+      PRINT CHR$(CHARACTER);
+    END REPEAT
+    RETURN FIRST
+  END FUNCTION
+
+  ' The lists run from region 3, beside VERA.UXI, and reach the forms only through the SUBs of
+  ' region 1.
+#REGION_SLOT 3
+  ' The lists, 1 to MOST_LISTS. LIST_CONTROL is a list's control; a slot is free when that
+  ' control is no longer a LIST that holds the slot. The others are LIST's arguments, and
+  ' LIST_TOP the item on the list's top row. LIST_MARKS holds LIST_MULTI's marks, one bit an
+  ' item, bit 0 of byte 0 for item 0.
+  ' Checklist: the LIST_ arrays hold MOST_LISTS + 1 elements.
+  CONST MOST_LISTS AS UBYTE = 4
+  DIM LIST_CONTROL(5) AS UBYTE, LIST_ITEMS_AT(5) AS UWORD, LIST_BANK(5) AS UBYTE
+  DIM LIST_LENGTH(5) AS UBYTE, LIST_COUNT(5) AS UBYTE, LIST_VALUE_AT(5) AS UWORD
+  DIM LIST_ROWS(5) AS UBYTE, LIST_WIDTH(5) AS UBYTE, LIST_FLAGS(5) AS UBYTE, LIST_TOP(5) AS UBYTE
+  DIM LIST_MARKS(32) AS UBYTE
+
+  ' Makes a list of the current form, ROWS rows of WIDTH columns with the caption CAPTION$
+  ' before its first row, and returns its control number, as SAYGET does. The items are COUNT
+  ' records of ITEM_LENGTH bytes from ITEMS_AT, each a string padded with zeros, in RAM bank
+  ' ITEMS_BANK at $A000 to $BFFF, or in low RAM for 0. The UBYTE at VALUE_AT is the item
+  ' chosen, 1 for the first, or 0 for none; pass it as @NAME. The item chosen is drawn in the
+  ' MENU_SELECTED color. Up, Down, PgUp, PgDn, Home and End move the choice, and a letter moves
+  ' it to the next item that starts with that letter. The list scrolls by the fewest rows that
+  ' show the item chosen; a ^ in its last column on the top row and a v on the bottom row mark
+  ' items above and below. ROW, COLUMN and FLAGS are SAYGET's. With AUTO as ROW, the form's
+  ' next automatic line is below the list. With LIST_MULTI in FLAGS, Space marks and unmarks the
+  ' item chosen, and a * before an item shows its mark; MARKED reads the marks. LIST returns 0
+  ' when MOST_LISTS lists are in use.
+  ' Trap: one list at a time has marks. LIST with LIST_MULTI clears them.
+  FUNCTION LIST(ROW AS UBYTE, COLUMN AS UBYTE, CAPTION$ AS CONST, ITEMS_AT AS UWORD, ITEMS_BANK AS UBYTE, ITEM_LENGTH AS UBYTE, COUNT AS UBYTE, VALUE_AT AS UWORD, ROWS AS UBYTE, WIDTH AS UBYTE, FLAGS AS UBYTE = 0) AS UBYTE
+    DIM SLOT AS UBYTE, CONTROL AS UBYTE
+    SLOT = MOST_LISTS
+    DO WHILE SLOT <> 0
+      IF LIST_SLOT_OF(LIST_CONTROL(SLOT)) <> SLOT THEN EXIT DO
+      SLOT = SLOT - 1
+    LOOP
+    IF SLOT = 0 THEN RETURN 0
+    ' MEMO lays the control out as a list's.
+    CONTROL = MEMO(ROW, COLUMN, CAPTION$, WIDTH, ROWS, FLAGS)
+    IF CONTROL = 0 THEN RETURN 0
+    MAKE_CHOICE(CONTROL, SLOT, KIND_LIST)
+    LIST_CONTROL(SLOT) = CONTROL
+    LIST_ITEMS_AT(SLOT) = ITEMS_AT
+    LIST_BANK(SLOT) = ITEMS_BANK
+    LIST_LENGTH(SLOT) = ITEM_LENGTH
+    LIST_COUNT(SLOT) = COUNT
+    LIST_VALUE_AT(SLOT) = VALUE_AT
+    LIST_ROWS(SLOT) = ROWS
+    LIST_WIDTH(SLOT) = WIDTH
+    LIST_FLAGS(SLOT) = FLAGS
+    LIST_TOP(SLOT) = 1
+    IF FLAGS AND LIST_MULTI THEN
+      SLOT = 0
+      REPEAT 32
+        LIST_MARKS(SLOT) = 0
+        SLOT = SLOT + 1
+      END REPEAT
+    ENDIF
+    RETURN CONTROL
+  END FUNCTION
+
+  ' The byte of LIST_MARKS that MARK_BIT set last.
+  DIM MARK_BYTE AS UBYTE
+
+  ' Puts the byte of LIST_MARKS that holds item INDEX's mark in MARK_BYTE, and returns its bit.
+  ' BITS$ is each bit, by the item's number AND 7.
+  FUNCTION MARK_BIT(INDEX AS UBYTE, BITS$ AS CONST = !"\&h01\&h02\&h04\&h08\&h10\&h20\&h40\&h80") AS UBYTE
+    MARK_BYTE = INDEX >> 3
+    RETURN ContentsAt(AddrOf(BITS$) + 2 + (INDEX AND 7))
+  END FUNCTION
+
+  ' Returns 1 when LIST_MULTI's mark is on item INDEX, else 0.
+  FUNCTION MARKED(INDEX AS UBYTE) AS UBYTE
+    DIM BIT AS UBYTE
+    BIT = MARK_BIT(INDEX)
+    IF LIST_MARKS(MARK_BYTE) AND BIT THEN RETURN 1
+    RETURN 0
+  END FUNCTION
+
+  ' Prints item ITEM of list SLOT, 1 for the first, as PRINT_RECORD prints it in WIDTH
+  ' characters, and returns its first byte. An ITEM past the list's last prints spaces.
+  FUNCTION PRINT_ITEM_OF(SLOT AS UBYTE, ITEM AS UBYTE, WIDTH AS UBYTE) AS UBYTE
+    DIM AT AS UWORD, LENGTH AS UBYTE
+    LENGTH = LIST_LENGTH(SLOT)
+    AT = ITEM - 1
+    AT = LIST_ITEMS_AT(SLOT) + AT * LENGTH
+    IF ITEM > LIST_COUNT(SLOT) THEN LENGTH = 0
+    RETURN PRINT_RECORD(AT, LIST_BANK(SLOT), LENGTH, WIDTH)
+  END FUNCTION
+
+  ' Draws list SLOT, its first row at ROW and COLUMN, in the FIELD_FOCUS color, or the FIELD
+  ' color when MORE_FLAGS is DRAW_ONLY. With MORE_FLAGS DRAW_ONLY it returns DRAW_ONLY. Else it
+  ' moves the choice and the marks by the keys LIST gives, and returns any other key.
+  FUNCTION LIST_EDIT(SLOT AS UBYTE, ROW AS UBYTE, COLUMN AS UBYTE, MORE_FLAGS AS UBYTE) AS UWORD
+    DIM PRESSED AS UWORD, VALUE_AT AS UWORD
+    DIM VALUE AS UBYTE, COUNT AS UBYTE, ROWS AS UBYTE, TOP AS UBYTE, ITEM AS UBYTE, SPOT AS UBYTE
+    DIM TEXT_WIDTH AS UBYTE, MULTI AS UBYTE, MARK AS UBYTE, CHARACTER AS UBYTE, SCAN AS UBYTE
+    DIM STEPS AS UBYTE, BASE AS ENUM.ROLE
+    VALUE_AT = LIST_VALUE_AT(SLOT)
+    COUNT = LIST_COUNT(SLOT)
+    ROWS = LIST_ROWS(SLOT)
+    MULTI = LIST_FLAGS(SLOT) AND LIST_MULTI
+    ' The last column holds ^ and v, and with LIST_MULTI the first holds the mark.
+    TEXT_WIDTH = LIST_WIDTH(SLOT) - 1
+    IF MULTI <> 0 THEN TEXT_WIDTH = TEXT_WIDTH - 1
+    BASE = ROLE.FIELD_FOCUS
+    IF MORE_FLAGS <> 0 THEN BASE = ROLE.FIELD
+    DO
+      VALUE = ContentsAt(VALUE_AT)
+      TOP = LIST_TOP(SLOT)
+      IF VALUE <> 0 THEN
+        IF VALUE < TOP THEN TOP = VALUE
+        IF VALUE - TOP >= ROWS THEN TOP = VALUE - ROWS + 1
+      ENDIF
+      LIST_TOP(SLOT) = TOP
+      ITEM = TOP
+      SPOT = 0
+      REPEAT ROWS
+        USE_COLOR(BASE)
+        POS(1) = ROW + SPOT
+        POS(0) = COLUMN
+        IF MULTI <> 0 THEN
+          MARK = 32
+          IF MARKED(ITEM) THEN MARK = ASC("*")
+          PRINT CHR$(MARK);
+        ENDIF
+        IF ITEM = VALUE THEN USE_COLOR(ROLE.MENU_SELECTED)
+        PRINT_ITEM_OF(SLOT, ITEM, TEXT_WIDTH)
+        USE_COLOR(BASE)
+        MARK = 32
+        IF SPOT = 0 AND TOP > 1 THEN MARK = ASC("^")
+        IF SPOT = ROWS - 1 AND ITEM < COUNT THEN MARK = ASC("v")
+        PRINT CHR$(MARK);
+        ITEM = ITEM + 1
+        SPOT = SPOT + 1
+      END REPEAT
+      IF MORE_FLAGS <> 0 THEN RETURN MORE_FLAGS
+      CURSOR OFF
+      PRESSED = WAITKEY()
+      ' The scan code is the high byte, 0 for a plain key. PgUp and PgDn are Up and Down + 1.
+      CHARACTER = PRESSED
+      SCAN = ContentsAt(@PRESSED + 1)
+      STEPS = 1
+      IF SCAN = KEYS.SCAN_PGUP OR SCAN = KEYS.SCAN_PGDN THEN
+        SCAN = SCAN - 1
+        STEPS = ROWS
+      ENDIF
+      SELECT CASE SCAN
+        CASE KEYS.SCAN_UP
+          IF VALUE > STEPS THEN
+            VALUE = VALUE - STEPS
+          ELSE
+            VALUE = 1
+          ENDIF
+        CASE KEYS.SCAN_DOWN
+          IF COUNT - VALUE > STEPS THEN
+            VALUE = VALUE + STEPS
+          ELSE
+            VALUE = COUNT
+          ENDIF
+        CASE KEYS.SCAN_HOME
+          VALUE = 1
+        CASE KEYS.SCAN_END
+          VALUE = COUNT
+        CASE 0
+          IF CHARACTER = KEYS.SPACE AND MULTI <> 0 THEN
+            MARK = MARK_BIT(VALUE)
+            LIST_MARKS(MARK_BYTE) = LIST_MARKS(MARK_BYTE) XOR MARK
+          ELSEIF CHARACTER > KEYS.SPACE THEN
+            ' A letter OR 32 is its lower case.
+            CHARACTER = CHARACTER OR 32
+            ITEM = VALUE
+            REPEAT COUNT
+              IF ITEM >= COUNT THEN ITEM = 0
+              ITEM = ITEM + 1
+              IF (PRINT_ITEM_OF(SLOT, ITEM, 0) OR 32) = CHARACTER THEN
+                VALUE = ITEM
+                EXIT REPEAT
+              ENDIF
+            END REPEAT
+          ELSE
+            RETURN PRESSED
+          ENDIF
+        CASE ELSE
+          RETURN PRESSED
+      END SELECT
+      IF VALUE > COUNT THEN VALUE = COUNT
+      ContentsAt(VALUE_AT) = VALUE
+    LOOP
   END FUNCTION
   ERRORS ON
 END NAMESPACE

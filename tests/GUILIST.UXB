@@ -1,0 +1,98 @@
+' GUILIST: GUI.LIST and GUI.MARKED. The last line gives each result kept.
+' A form with a LIST "Fruit" of 10 items of 8 bytes in low RAM, 4 rows by 12 columns, the
+' choice 0, a LIST "Num" of 5 items in a RAM bank, 3 rows by 10 columns, LIST_MULTI, the
+' choice 2, and a BUTTON "&Go" (id 5).
+' Round 1: on Fruit, Down 5 times, End, Home, PgDn, "g" and "l" choose Lemon, 9, scrolled to
+' Fig; Tab; on Num, Space marks 2, Down, Space and Space leave 3 clear, Down, Down, Space marks
+' 5, "o" chooses One, 1, and Up stays; Enter, and Enter on Go returns 5. Then the choices, the
+' marks of 2, 3 and 5 (1, 0, 1), and 1 for each cell checked: the ^ at 2, 20 and the v at
+' 5, 20, Lemon's L at 5, 9 in MENU_SELECTED, One's O at 6, 8 in MENU_SELECTED, the * at 7, 7,
+' Three's T at 8, 8 and the v at 8, 16.
+' Round 2: Tab wraps to Fruit, and Esc returns EV_CANCEL.
+' Last, after FREE, a form of five lists: four are made, and the fifth returns 0.
+#INCLUDE "DOS.UXI"
+#INCLUDE "BANK.UXI"
+#INCLUDE "KEYS.UXI"
+#INCLUDE "VERA.UXI"
+#INCLUDE "GUI.UXI"
+DIM KEPT(24) AS UBYTE, AT AS UBYTE, H AS UBYTE, N AS UBYTE
+DIM FRUITS(80) AS UBYTE, PICK AS UBYTE, NUM AS UBYTE, B AS UBYTE
+DIM PUT_AT AS UWORD, PUT_BANK AS UBYTE
+
+SUB KEEP(VALUE AS UBYTE)
+  KEPT(AT) = VALUE
+  AT = AT + 1
+END SUB
+
+' Writes TEXT$ padded with zeros to 8 bytes at PUT_AT in bank PUT_BANK, or low RAM for 0, and
+' moves PUT_AT on.
+SUB PUT_ITEM(TEXT$ AS CONST)
+  DIM SPOT AS UBYTE, CHARACTER AS UBYTE
+  SPOT = 0
+  REPEAT 8
+    CHARACTER = 0
+    IF SPOT < LEN(TEXT$) THEN CHARACTER = ContentsAt(AddrOf(TEXT$) + 2 + SPOT)
+    IF PUT_BANK = 0 THEN
+      ContentsAt(PUT_AT) = CHARACTER
+    ELSE
+      BANK.PUT_BYTE(PUT_BANK, PUT_AT, CHARACTER)
+    ENDIF
+    PUT_AT = PUT_AT + 1
+    SPOT = SPOT + 1
+  END REPEAT
+END SUB
+
+PUT_AT = @FRUITS
+PUT_BANK = 0
+PUT_ITEM("Apple")
+PUT_ITEM("Banana")
+PUT_ITEM("Cherry")
+PUT_ITEM("Date")
+PUT_ITEM("Elder")
+PUT_ITEM("Fig")
+PUT_ITEM("Grape")
+PUT_ITEM("Kiwi")
+PUT_ITEM("Lemon")
+PUT_ITEM("Mangoes!")
+B = BANK.ALLOC(1)
+PUT_AT = $A000
+PUT_BANK = B
+PUT_ITEM("One")
+PUT_ITEM("Two")
+PUT_ITEM("Three")
+PUT_ITEM("Four")
+PUT_ITEM("Five")
+
+AT = 0
+PICK = 0
+NUM = 2
+H = GUI.CREATEFORM("Pick", 1, 0, 40, 14, GUI.FRAMED)
+GUI.LIST(GUI.AUTO, GUI.AUTO, "Fruit", @FRUITS, 0, 8, 10, @PICK, 4, 12)
+GUI.LIST(GUI.AUTO, GUI.AUTO, "Num", $A000, B, 8, 5, @NUM, 3, 10, GUI.LIST_MULTI)
+GUI.BUTTON(11, 3, "&Go", 5)
+KEEP(GUI.SHOW(H))
+KEEP(PICK)
+KEEP(NUM)
+KEEP(GUI.MARKED(2))
+KEEP(GUI.MARKED(3))
+KEEP(GUI.MARKED(5))
+KEEP((VERA.GET_CELL(2, 20) AND 255) = 94)
+KEEP((VERA.GET_CELL(5, 20) AND 255) = 118)
+KEEP(VERA.GET_CELL(5, 9) = $C04C)
+KEEP(VERA.GET_CELL(6, 8) = $C04F)
+KEEP((VERA.GET_CELL(7, 7) AND 255) = 42)
+KEEP((VERA.GET_CELL(8, 8) AND 255) = 84)
+KEEP((VERA.GET_CELL(8, 16) AND 255) = 118)
+KEEP(GUI.SHOW(H))
+GUI.FREE(H)
+H = GUI.CREATEFORM("Five", 1, 0, 40, 14, GUI.FRAMED)
+FOR N = 1 TO 5
+  KEEP(GUI.LIST(GUI.AUTO, GUI.AUTO, "L", @FRUITS, 0, 8, 10, @PICK, 1, 12) <> 0)
+NEXT N
+BANK.FREE(B)
+POS(1) = 24
+POS(0) = 0
+FOR N = 0 TO AT - 1
+  PRINT KEPT(N);
+NEXT N
+PRINT

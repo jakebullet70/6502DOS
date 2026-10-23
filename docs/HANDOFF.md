@@ -4427,6 +4427,29 @@
             0.5, VERABOX 0.4, HELPED 1.2, THEMED 1.2. Build 2949 ms, the new baseline. Owed to
             the doc batch: GUI.PLAN and UXC-HELP on the include order and the restore. Next: L1
             to L3 (GUI.LIST, LISTBOX, PICKFILE).
+          - Correction: HELPED uses the memo, so its region 2 must end below MEMO_TEXT, 6144
+            bytes: 676 free there, not 2724.
+          - Done (2026-10-23), L1 in BASIC, in `lib/GUI.UXI`: `GUI.LIST`, KIND_LIST 6,
+            LIST_MULTI 128 (no clash with VALIDATE 32), `GUI.MARKED`. Region 3, beside VERA, not
+            region 2 (HELPED's memo leaves 676 there). LIST lays the control out by calling
+            MEMO, then MAKE_CHOICE(control, slot, KIND_LIST): CONTROL_TEXT_AT holds the slot.
+            Slots 1 to MOST_LISTS 4 in region 3 hold the other arguments and LIST_TOP; a slot is
+            free when LIST_SLOT_OF (region 1) says its control is no longer a LIST holding it,
+            so FREE needs no change. EDIT_FIELD calls LIST_EDIT(slot, row, column, MORE_FLAGS).
+            PRINT_RECORD is in low RAM (slot 0): region code may not write $00, and the items
+            sit in another bank at $A000. Marks: 32 bytes, bit mask from a CONST default
+            string (AddrOf of a CONST is refused). Keys: Up, Down, PgUp, PgDn, Home, End by scan
+            code; a plain key above Space searches by first letter, wrapping; Space marks with
+            LIST_MULTI, else goes back to SHOW; any other key goes back to SHOW. Bytes, far
+            over the plan's 480: in every SHOW program region 3 +1485 (LIST_EDIT and its
+            helpers, as EDIT_FIELD names it), region 1 +61, low RAM about +85; a program that
+            calls LIST adds about 356 more in region 3 (LIST) and the MEMO creator in region 1.
+            pyuxc's code runs 15 to 25 bytes a statement (POS(1) = A is 22, a variable shift
+            118). HELPED region 1 519 free, region 3 1971 used. Asked the user: keep it, or
+            LIST_EDIT in asm (about 450 bytes). New test GUILIST (DOS, BANK, KEYS, VERA, GUI
+            includes; a banked list; screen cells read back; slot reuse after FREE). GUILIST
+            ok 0.5 s, GUICBO 0.4, GUIMEMO 0.6, GUIDLG 0.5, HELPED 1.2, THEMED 1.2. Build 2939
+            ms, the new baseline. Owed to the doc batch: UXC-HELP and GUI.PLAN on LIST.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
