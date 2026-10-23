@@ -2,7 +2,7 @@
 ' the strings, then each event SHOW returned with GUI.LEFT_FIELD, then the field numbers, then
 ' the 48th and 49th GET after FREE, the event of a form with no controls, and SHOW(0).
 ' Round 1, three fields, the 2nd with the mask ## and VALIDATE: "ab" and Down; Home, "1" and Tab is
-' refused while B$ holds a space; Left, "2" and Up moves back to field 1; Enter twice; at
+' refused while B$ holds a space; Right, "2" and Up moves back to field 1; Enter twice; at
 ' field 3 Tab wraps to field 1 and Up wraps back to field 3; "z" and Enter returns EV_DONE.
 ' Round 2: "q" and Esc puts A$ back and returns EV_CANCEL.
 #INCLUDE "KEYS.UXI"

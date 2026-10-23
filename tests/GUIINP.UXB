@@ -1,0 +1,27 @@
+' GUIINP: GUI.INPUTBOX and GUI.INPUTBOX2. The last lines give the result of each, then the
+' strings. 1: ABC typed, Enter returns 1. 2: Tab, Tab and Enter on Cancel return 2. 3: Esc
+' returns EV_CANCEL. 4: Alt+C returns 2. 5: the mask ##, 42 typed, Alt+O returns 1. 6:
+' INPUTBOX2, X, Enter, Y, Enter returns 1.
+#INCLUDE "KEYS.UXI"
+#INCLUDE "GUI.UXI"
+DIM KEPT(8) AS UBYTE, AT AS UBYTE, N AS UBYTE
+DIM F$ * 12, M$ * 2, A$ * 10, B$ * 10
+
+SUB KEEP(VALUE AS UBYTE)
+  KEPT(AT) = VALUE
+  AT = AT + 1
+END SUB
+
+AT = 0
+FOR N = 1 TO 4
+  KEEP(GUI.INPUTBOX("Open", "File name:", F$, 12))
+NEXT N
+KEEP(GUI.INPUTBOX("Age", "Years:", M$, 2, "##"))
+KEEP(GUI.INPUTBOX2("Replace", "Find:", A$, "Replace with:", B$, 10))
+POS(1) = 23
+POS(0) = 0
+FOR N = 0 TO AT - 1
+  PRINT KEPT(N);
+NEXT N
+PRINT
+PRINT F$; "|"; M$; "|"; A$; "|"; B$

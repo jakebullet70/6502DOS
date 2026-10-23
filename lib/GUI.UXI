@@ -123,8 +123,9 @@ NAMESPACE GUI
   ' after the field. FLAGS changes the field as the CONSTs above give.
   ' MASK$ fixes the field's length, at most TARGET$'s size. In the mask, # takes a digit, A a
   ' letter and X any character. TARGET$ is cut or padded to the mask's length. The padding is
-  ' the mask's other characters, and a space where the mask takes a character. The cursor skips
-  ' the mask's other characters. A masked field types over, and Delete and Backspace put a
+  ' the mask's other characters, and a space where the mask takes a character. The cursor starts
+  ' at the end of the text, or at the start when the text fills the mask, and skips the mask's
+  ' other characters. A masked field types over, and Delete and Backspace put a
   ' space. "(###)-###-####" is a phone number.
   ' Trap: a field that ends in the screen's last column moves the cursor to the next line.
   FUNCTION INPUT2(ROW AS UBYTE, COLUMN AS UBYTE, TARGET$, WIDTH AS UBYTE, MASK$ AS CONST = "", FLAGS AS UBYTE = 0) AS UWORD
@@ -152,8 +153,12 @@ NAMESPACE GUI
       ContentsAt(TEXT_AT + SPOT) = MASK_CHAR
       SPOT = SPOT + 1
     LOOP
-    ' The length byte is before the characters.
-    IF FIXED > 0 THEN ContentsAt(TEXT_AT - 1) = FIXED
+    IF FIXED > 0 THEN
+      ' The length byte is before the characters.
+      ContentsAt(TEXT_AT - 1) = FIXED
+      ' Nothing types at the end of a full masked field, as SHOW leaves one.
+      IF CURSOR >= FIXED THEN CURSOR = 0
+    ENDIF
     IF ENDING <> 0 THEN
       CURSOR = 0
       FIXED = 0
@@ -1172,7 +1177,8 @@ NAMESPACE GUI
 
   ' The dialogs run from region 2, and reach the forms only through the SUBs of region 1.
 #REGION_SLOT 2
-  DIM DIALOG_WIDTH AS UBYTE
+  ' The widest line of the dialog being made. The dialog's form.
+  DIM DIALOG_WIDTH AS UBYTE, DIALOG_FORM AS UBYTE
 
   ' Raises DIALOG_WIDTH to the length of TEXT$, and returns the length.
   FUNCTION WIDEN(TEXT$ AS CONST) AS UBYTE
@@ -1182,6 +1188,41 @@ NAMESPACE GUI
     RETURN LENGTH
   END FUNCTION
 
+  ' Makes a framed form centered on the screen, titled TITLE$, with ROWS rows for its lines, then
+  ' a blank row, then the button BUTTON1$, id 1, and BUTTON2$ beside it, id 2, when it is not
+  ' empty. Puts the form's handle in DIALOG_FORM. The form is 4 columns wider than DIALOG_WIDTH,
+  ' its title or its buttons, whichever is widest. The lines go in from column 2.
+  SUB OPEN_DIALOG(TITLE$ AS CONST, ROWS AS UBYTE, BUTTON1$ AS CONST, BUTTON2$ AS CONST)
+    DIM FIRST AS UBYTE, SECOND AS UBYTE, BUTTONS AS UBYTE, COLUMN AS UBYTE
+    ' A button is its caption less the &, between "< " and " >". Two have 2 columns between.
+    FIRST = LEN(BUTTON1$) + 3
+    SECOND = LEN(BUTTON2$)
+    BUTTONS = FIRST
+    IF SECOND <> 0 THEN BUTTONS = FIRST + SECOND + 5
+    IF BUTTONS > DIALOG_WIDTH THEN DIALOG_WIDTH = BUTTONS
+    WIDEN(TITLE$)
+    DIALOG_FORM = CREATEFORM(TITLE$, CENTER, CENTER, DIALOG_WIDTH + 4, ROWS + 4, FRAMED)
+    COLUMN = HALF_GAP(DIALOG_WIDTH, BUTTONS) + 2
+    ROWS = ROWS + 2
+    BUTTON(ROWS, COLUMN, BUTTON1$, 1)
+    IF SECOND <> 0 THEN BUTTON(ROWS, COLUMN + FIRST + 2, BUTTON2$, 2)
+  END SUB
+
+  ' Shows the dialog DIALOG_FORM, the focus first on the control FOCUS, or on the form's first control
+  ' for 0, then frees the form and returns SHOW's event, with EV_DONE, Enter in the last field,
+  ' as 1. The screen under the form is not drawn again. A form shown before keeps its focus, and
+  ' its next SHOW draws it whole.
+  FUNCTION RUN_DIALOG(FOCUS AS UBYTE) AS UBYTE
+    DIM KEPT_FOCUS AS UBYTE, RESULT AS UBYTE
+    KEPT_FOCUS = NEXT_FOCUS
+    NEXT_FOCUS = FOCUS
+    RESULT = SHOW(DIALOG_FORM)
+    FREE(DIALOG_FORM)
+    NEXT_FOCUS = KEPT_FOCUS
+    IF RESULT = EV_DONE THEN RESULT = 1
+    RETURN RESULT
+  END FUNCTION
+
   ' Shows a framed form centered on the screen, titled TITLE$, with the lines LINE1$ to LINE3$,
   ' then the button BUTTON1$, and BUTTON2$ beside it when it is not empty. Returns 1 or 2 for the
   ' button pressed, by Enter or its hot key, or EV_CANCEL for Esc. The form is 4 columns wider
@@ -1189,39 +1230,52 @@ NAMESPACE GUI
   ' screen under it is not drawn again. A form shown before MSGBOX keeps its focus, and its next
   ' SHOW draws it whole.
   FUNCTION MSGBOX(TITLE$ AS CONST, LINE1$ AS CONST, LINE2$ AS CONST = "", LINE3$ AS CONST = "", BUTTON1$ AS CONST = "&OK", BUTTON2$ AS CONST = "") AS UBYTE
-    DIM FORM AS UBYTE, ROWS AS UBYTE, FIRST AS UBYTE, SECOND AS UBYTE, BUTTONS AS UBYTE
-    DIM COLUMN AS UBYTE, KEPT_FOCUS AS UBYTE, RESULT AS UBYTE
-    ' A button is its caption less the &, between "< " and " >". Two have 2 columns between.
-    FIRST = LEN(BUTTON1$) + 3
-    SECOND = LEN(BUTTON2$)
-    BUTTONS = FIRST
-    IF SECOND <> 0 THEN BUTTONS = FIRST + SECOND + 5
-    DIALOG_WIDTH = BUTTONS
-    WIDEN(TITLE$)
-    WIDEN(LINE1$)
+    DIM ROWS AS UBYTE
+    DIALOG_WIDTH = LEN(LINE1$)
     ROWS = 1
     IF WIDEN(LINE2$) <> 0 THEN ROWS = 2
     IF WIDEN(LINE3$) <> 0 THEN ROWS = 3
-    FORM = CREATEFORM(TITLE$, CENTER, CENTER, DIALOG_WIDTH + 4, ROWS + 4, FRAMED)
+    OPEN_DIALOG(TITLE$, ROWS, BUTTON1$, BUTTON2$)
     ' An empty line's SAY prints nothing.
     SAY(1, 2, LINE1$)
     SAY(2, 2, LINE2$)
     SAY(3, 2, LINE3$)
-    COLUMN = HALF_GAP(DIALOG_WIDTH, BUTTONS) + 2
-    ROWS = ROWS + 2
-    BUTTON(ROWS, COLUMN, BUTTON1$, 1)
-    IF SECOND <> 0 THEN BUTTON(ROWS, COLUMN + FIRST + 2, BUTTON2$, 2)
-    KEPT_FOCUS = NEXT_FOCUS
-    RESULT = SHOW(FORM)
-    FREE(FORM)
-    NEXT_FOCUS = KEPT_FOCUS
-    RETURN RESULT
+    RETURN RUN_DIALOG(0)
   END FUNCTION
 
   ' MSGBOX with the buttons &Yes and &No. Returns 1 for Yes, and 0 for No or Esc.
   FUNCTION YESNO(TITLE$ AS CONST, LINE1$ AS CONST, LINE2$ AS CONST = "", LINE3$ AS CONST = "") AS UBYTE
     IF MSGBOX(TITLE$, LINE1$, LINE2$, LINE3$, "&Yes", "&No") = 1 THEN RETURN 1
     RETURN 0
+  END FUNCTION
+
+  ' Shows a dialog as MSGBOX does, titled TITLE$, with PROMPT$ over a field that edits TARGET$,
+  ' WIDTH characters wide, then the buttons &OK and &Cancel. MASK$ and FLAGS are INPUT2's. The
+  ' focus starts in the field. Returns 1 for OK, or for Enter in the field, 2 for Cancel, or
+  ' EV_CANCEL for Esc. Esc puts back the text of the field it is pressed in, as INPUT2 does;
+  ' TARGET$ keeps what was typed otherwise.
+  FUNCTION INPUTBOX(TITLE$ AS CONST, PROMPT$ AS CONST, TARGET$, WIDTH AS UBYTE, MASK$ AS CONST = "", FLAGS AS UBYTE = 0) AS UBYTE
+    DIALOG_WIDTH = WIDTH
+    WIDEN(PROMPT$)
+    OPEN_DIALOG(TITLE$, 2, "&OK", "&Cancel")
+    SAY(1, 2, PROMPT$)
+    ' The buttons come first, so Enter in the field, the last control, returns EV_DONE.
+    RETURN RUN_DIALOG(GET(2, 2, TARGET$, WIDTH, MASK$, FLAGS))
+  END FUNCTION
+
+  ' INPUTBOX with two fields, TARGET1$ after PROMPT1$ and TARGET2$ after PROMPT2$ under it. The
+  ' prompts end in the same column, so the fields line up. Both fields take WIDTH, MASK$ and
+  ' FLAGS. Enter in the first field moves to the second, and Enter in the second is OK.
+  FUNCTION INPUTBOX2(TITLE$ AS CONST, PROMPT1$ AS CONST, TARGET1$, PROMPT2$ AS CONST, TARGET2$, WIDTH AS UBYTE, MASK$ AS CONST = "", FLAGS AS UBYTE = 0) AS UBYTE
+    DIM FIRST AS UBYTE, ENDS AS UBYTE
+    DIALOG_WIDTH = LEN(PROMPT1$)
+    WIDEN(PROMPT2$)
+    ENDS = DIALOG_WIDTH + 2
+    DIALOG_WIDTH = DIALOG_WIDTH + WIDTH + 1
+    OPEN_DIALOG(TITLE$, 2, "&OK", "&Cancel")
+    FIRST = SAYGET(1, ENDS - LEN(PROMPT1$), PROMPT1$, TARGET1$, WIDTH, MASK$, FLAGS)
+    SAYGET(2, ENDS - LEN(PROMPT2$), PROMPT2$, TARGET2$, WIDTH, MASK$, FLAGS)
+    RETURN RUN_DIALOG(FIRST)
   END FUNCTION
   ERRORS ON
 END NAMESPACE

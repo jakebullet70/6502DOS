@@ -4243,6 +4243,36 @@
             `BANKEXEC` 0.4, `HELPED` 1.1, `THEMED` 1.0, `GUISHOW` 0.4, `GUIBTN` 0.4. Owed to
             the doc batch: UXC-HELP's #REGION_SLOT text on the pins. INPUTBOX's OK and Cancel
             literals can now sit in region 2. Next: 4b part 2, INPUTBOX and INPUTBOX2.
+          - Measured (2026-10-23), no code changed: AS CONST stays. Without it `sg_pass` copies
+            each literal argument into a temp. With every ` AS CONST` stripped from GUI.UXI and
+            THEMED: GUIDLG 12004 to 12333 (+329), HELPED 14408 to 14635 (+227), THEMED 7735 to
+            7767 (+32). Offered, not yet agreed, after the GUI work: pyuxc infers read-only at
+            END SUB (no assignment, no pass to a writable parameter, no `AddrOf`) for calls
+            compiled after the body; AS CONST stays as the contract.
+          - Done (2026-10-23), 4b part 2, in `lib/GUI.UXI` region 2: `GUI.INPUTBOX(TITLE$,
+            PROMPT$, TARGET$, WIDTH, MASK$, FLAGS)`, the prompt over the field, and
+            `GUI.INPUTBOX2(TITLE$, PROMPT1$, TARGET1$, PROMPT2$, TARGET2$, WIDTH, MASK$,
+            FLAGS)`, each prompt the caption of its field, the prompts right-aligned so the
+            fields line up. Both make &OK and &Cancel first and the fields last, start the focus
+            in the first field, and return 1 for OK or Enter in the last field, 2 for Cancel,
+            EV_CANCEL for Esc. MSGBOX is split into `OPEN_DIALOG` (the form, its width and its
+            buttons, the handle in `DIALOG_FORM`) and `RUN_DIALOG(FOCUS)` (keep the focus,
+            SHOW, FREE, EV_DONE as 1), which all three share; MSGBOX now makes its buttons
+            before its lines, so GUIDLG's golden draws them in another order (same bytes, same
+            results). Fix in `INPUT2`: a full masked field, as SHOW's first draw leaves one,
+            started its cursor at the end, where nothing types; it now starts at 0, and so does
+            text longer than the mask. GUISHOW's `.IN` presses Right in place of Left there
+            (golden unchanged). Bytes: INPUT2 fix +16 region 1 (HELPED 406 free); the MSGBOX
+            split +90 region 2 for a program with MSGBOX alone (GUIDLG 3207 to 3297), the shared
+            part paid once; on top of MSGBOX, INPUTBOX +62 region 1 (GET and SAYGET), +149
+            region 2; INPUTBOX2 +302 region 2; both +451 region 2. `tools/tests.py` reserve
+            384 to 512 clusters (the block was full). New `tests/GUIINP.UXB` and `.IN` (Enter,
+            Tab Tab Enter on Cancel, Esc, Alt+C, the mask ## with Alt+O, INPUTBOX2 with Enter
+            twice): ok 0.5 s, golden checked (`1 2 255 2 1 1`, `ABC|42|X|Y`). Tests: `GUIDLG`
+            ok 0.6 s, `GUIMASK` 0.4, `GUISHOW` 0.4, `HELPED` 1.1, `THEMED` 0.9. Build 2478 ms,
+            the new baseline. Owed to
+            the doc batch: GUI.PLAN 4b (the split, the right-aligned prompts, the sizes),
+            UXC-HELP for INPUTBOX and INPUTBOX2. Next: the THEMED refactor.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
