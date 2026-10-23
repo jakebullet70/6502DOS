@@ -13,6 +13,7 @@
 ' DIM CELL AS UWORD
 ' VERA.PUT_CELL(2, 5, 65, $1F)    ' an A, white on blue, at row 2, column 5
 ' CELL = VERA.GET_CELL(2, 5)      ' 65 in the low byte, $1F in the high byte
+' VERA.PRINTAT(3, 5, "READY", $1F)
 ' IF VERA.SAVE_RECT(1, 1, 20, 5) THEN
 '   VERA.FILL(1, 1, 20, 5, 32, $70)
 '   VERA.RESTORE_RECT()
@@ -31,6 +32,9 @@ NAMESPACE VERA
   ' stack is its cells, row by row, then 6 bytes: the address of its cells, low byte first,
   ' then its row, column, width and height.
   DIM STACK_TOP AS UWORD
+
+  ' A pointer for (zp),Y. It is the runtime's temporary, free inside an ASM block.
+  DIM POINTER AS UWORD AT $24
 
   ' Returns the map row of screen row 0: the vertical scroll over 8, AND 63.
   FUNCTION MAP_TOP() AS UBYTE
@@ -96,6 +100,58 @@ NAMESPACE VERA
         sta @DATA0
         lda @COLOR
         sta @DATA0
+    END ASM
+  END SUB
+
+  ' Writes TEXT$ in COLOR from the cell at ROW and COLUMN to the right. Each byte is a character
+  ' code; a control code draws its glyph. Cells past column 127 are not written. The console's
+  ' cursor does not move.
+  SUB PRINTAT(ROW AS UBYTE, COLUMN AS UBYTE, TEXT$ AS CONST, COLOR AS UBYTE)
+    DIM LAST AS UBYTE
+    POINTER = @TEXT$            ' TEXT$'s block: its size, its length, then its characters
+    ASM
+        ldy #1
+        lda (@POINTER),y
+        beq done
+        sta @LAST
+        sec                     ' the cells left in the row
+        lda #128
+        sbc @COLUMN
+        bcc done
+        beq done
+        cmp @LAST
+        bcs fits
+        sta @LAST
+    fits: clc                   ' Y's end: the characters start at Y = 2
+        lda @LAST
+        adc #2
+        sta @LAST
+        lda @SCROLL_HIGH
+        lsr
+        lda @SCROLL_LOW
+        ror
+        lsr
+        lsr
+        clc
+        adc @ROW
+        and #63
+        sta @ADDRESS_MIDDLE
+        lda @COLUMN
+        asl
+        sta @ADDRESS_LOW
+        lda #$11
+        sta @ADDRESS_HIGH
+        phx
+        ldx @COLOR
+        ldy #2
+    cell: lda (@POINTER),y
+        sta @DATA0
+        stx @DATA0
+        iny
+        cpy @LAST
+        bne cell
+        plx
+    done:
     END ASM
   END SUB
 

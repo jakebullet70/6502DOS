@@ -4396,6 +4396,15 @@
             SAVE_RECT their box and shadow and RESTORE_RECT on close; decide whether menus and
             lists drop their whole-form redraw; the cursor is a swapped cell, so hide it
             before the save. Then L1 to L3.
+          - Done (2026-10-23), `VERA.PRINTAT(ROW, COLUMN, TEXT$, COLOR)`: TEXT$ is AS CONST,
+            so a literal is not copied. It writes each byte as a character code in COLOR, no
+            control codes, cut at column 127; the cursor does not move. ASM, with ZP_TMP $24
+            as the (zp),Y pointer (`DIM POINTER AS UWORD AT $24`). Trap: `@TEXT$` of a STRING
+            parameter in an ASM block stops the compile with ASM TAKES A CONSTANT OR @NAME, so
+            `POINTER = @TEXT$` runs in BASIC before the block. 101 bytes in region 3 alone;
+            all seven 653 (7539 free). VERABOX has a line 4 (string variable, literal, cut at
+            127, empty text): ok 0.5 s, golden local. No build.
+          - To do (the user, 2026-10-23): sprite commands in namespace VERA.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

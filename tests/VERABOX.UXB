@@ -4,12 +4,16 @@
 ' 12 by 6 (1), of 6, 2, 3 by 2 inside it (1), a cell inside the inner box after FILLs over both
 ' and one RESTORE_RECT (88), then after the second the Q, the PUT_CELL cell and the FILL cell
 ' (81, 8001, 11842). Line 3: SAVE_RECT with width 0 and 128 (0, 0), the full screens that fit
-' the stack (13), and the Q after they are all restored and one more RESTORE_RECT (81).
+' the stack (13), and the Q after they are all restored and one more RESTORE_RECT (81). Line 4:
+' PRINTAT of a string variable at 12, 4, then of a literal right after it: the I (7753) and the !
+' (33); PRINTAT of 3 characters at 13, 126, cut at column 127: the Y (89) and 14, 0 (32), after an
+' empty PRINTAT there.
 #INCLUDE "VERA.UXI"
 DIM SCROLL_LOW AS UBYTE AT $9F39, SCROLL_HIGH AS UBYTE AT $9F3A
 DIM TOP_OK AS UBYTE, PRINTED AS UWORD, PUT AS UWORD, FILLED AS UWORD, BESIDE AS UWORD
 DIM OUTER AS UBYTE, INNER AS UBYTE, AFTER_INNER AS UWORD, BACK_Q AS UWORD, BACK_PUT AS UWORD
 DIM BACK_FILL AS UWORD, NARROW AS UBYTE, WIDE AS UBYTE, COUNT AS UBYTE, LAST_Q AS UWORD
+DIM GREETING$ * 10, TEXT_CELL AS UWORD, TEXT_END AS UWORD, CLIPPED AS UWORD, NEXT_ROW AS UWORD
 
 PRINT "{CLS}";
 POS(1) = 29
@@ -27,6 +31,15 @@ PUT = VERA.GET_CELL(6, 10)
 VERA.FILL(8, 0, 10, 2, 66, $2E)
 FILLED = VERA.GET_CELL(9, 9)
 BESIDE = VERA.GET_CELL(9, 10) AND 255
+GREETING$ = "HI"
+VERA.PRINTAT(12, 4, GREETING$, $1E)
+VERA.PRINTAT(12, 6, "!", $1E)
+TEXT_CELL = VERA.GET_CELL(12, 5)
+TEXT_END = VERA.GET_CELL(12, 6) AND 255
+VERA.PRINTAT(13, 126, "XYZ", $1E)
+VERA.PRINTAT(14, 0, "", $1E)
+CLIPPED = VERA.GET_CELL(13, 127) AND 255
+NEXT_ROW = VERA.GET_CELL(14, 0) AND 255
 
 OUTER = VERA.SAVE_RECT(5, 0, 12, 6)
 VERA.FILL(5, 0, 12, 6, 88, $40)
@@ -57,3 +70,4 @@ POS(0) = 0
 PRINT TOP_OK; " "; PRINTED; " "; PUT; " "; FILLED; " "; BESIDE
 PRINT OUTER; " "; INNER; " "; AFTER_INNER; " "; BACK_Q; " "; BACK_PUT; " "; BACK_FILL
 PRINT NARROW; " "; WIDE; " "; COUNT; " "; LAST_Q
+PRINT TEXT_CELL; " "; TEXT_END; " "; CLIPPED; " "; NEXT_ROW
