@@ -53,7 +53,9 @@ A call across an edge goes to a veneer on the caller's side, a T_FARCALL, one a 
 It loads the SUB's address and jumps to a T_RGGATE in low RAM: the gate of the SUB's region, or
 for a SUB in low RAM, the gate of the caller's region. The gate calls the SUB through bank_call
 with the region's bank selected and then selects the caller's bank again. A call within a side
-is a JSR, and so is a call from a region to a runtime record. A runtime record that only one
+is a JSR, and so is a call from a region to a runtime record.
+@ of a SUB in a region is the address of its veneer in low RAM, wherever the @ is. A pointer
+call in a region's code, T_ICALL, calls its region's gate instead of R_ICALL. A runtime record that only one
 region's code, or records in that region, name moves into it. A data record, a record that
 writes $00, the records that low code names, and R_RGLOAD, R_EMEM and R_ERRORB stay in low
 RAM. A region's records follow its data in its image; rg_runtime writes the larger size into
@@ -67,7 +69,8 @@ the ranges of the SUBs moved.
 from uxc_code import cb_add, cb_get, cb_put, emit, fx_put, fx_read, rt_address_set, rt_get, \
     rt_use
 from uxc_defs import K_DV_MAX, K_EK_MEM, K_F_ABS, K_FX_MAX, K_SEC_BSS, K_SEC_CODE, K_SEC_CONST, \
-    K_SEC_LABEL, K_SEC_REC, K_SEC_RGDATA, K_SEC_STR, K_SEC_VAR, K_SK_LABEL, K_SK_SUB, \
+    K_SEC_LABEL, K_SEC_LOW, K_SEC_REC, K_SEC_RGDATA, K_SEC_STR, K_SEC_VAR, K_SK_LABEL, \
+    K_SK_SUB, \
     K_SY_END, K_SY_READ_ONLY, K_TOP, K_TT_EOL, K_TT_NUM, K_TY_STR
 import uxc_dead
 import uxc_lex
@@ -488,6 +491,9 @@ def rg_fixups():
             rg_label(side, at)
         if g.fx_s == K_SEC_RGDATA and side == 0:
             er_stop("REGION DATA NAMED OUTSIDE")
+        if g.fx_s == K_SEC_REC and g.fx_v == T.R_ICALL and side != 0:
+            g.fx_s = K_SEC_LOW
+            g.fx_v = g.rg_gate_at[side]
         if side != 0:
             g.rg_fix[side].append((g.fx_at, g.fx_k, g.fx_s, g.fx_v, g.fx_ow))
             continue
@@ -500,14 +506,21 @@ def rg_fixups():
 def rg_label(side, at):
     """RG.LABEL. A K_SEC_LABEL fixup read, at code offset at before the cut, on side. A JSR to
     a SUB on another side goes to its veneer, a K_SEC_CODE fixup on this side. The veneer goes
-    through the gate of the SUB's region, or of the caller's when the SUB is in low RAM."""
+    through the gate of the SUB's region, or of the caller's when the SUB is in low RAM. @ of a
+    SUB in a region, a LO or HI fixup, goes to its veneer in low RAM, a K_SEC_LOW fixup in a
+    region."""
     g.sy_r = g.fx_v
     uxc_sym.sy_get()
     if (g.sy_flags & 1) == 0:
         return
     target_side = rg_side_of(g.sy_val)[0]
-    if g.sy_kind == K_SK_SUB and g.fx_k != K_F_ABS and target_side != 0:
-        er_stop("@ OF A SUB IN A REGION")
+    if g.sy_kind == K_SK_SUB and g.fx_k != K_F_ABS:
+        if target_side != 0:
+            g.fx_v = rg_veneer_at(0, target_side)
+            g.fx_s = K_SEC_CODE
+            if side != 0:
+                g.fx_s = K_SEC_LOW
+        return
     if target_side == side:
         return
     g.cb_at = at - 1
@@ -517,14 +530,20 @@ def rg_label(side, at):
     gate = target_side
     if gate == 0:
         gate = side
+    g.fx_s = K_SEC_CODE
+    g.fx_v = rg_veneer_at(side, gate)
+
+
+def rg_veneer_at(side, gate):
+    """RG.VENEER.AT. The code offset on side of the veneer of the SUB of record g.fx_v, through
+    the gate of region gate. The veneer is added when the side has none for the SUB yet."""
     veneers = g.rg_veneers[side]
     i = 0
     while i < len(veneers) and veneers[i][0] != g.fx_v:
         i = i + 1
     if i == len(veneers):
         veneers.append((g.fx_v, gate))
-    g.fx_s = K_SEC_CODE
-    g.fx_v = g.rg_veneer_base[side] + i * g.rg_veneer_length
+    return g.rg_veneer_base[side] + i * g.rg_veneer_length
 
 
 def rg_records():
@@ -666,6 +685,8 @@ def rg_place():
             g.fx_at = g.fx_at + g.rg_base[k]
             if g.fx_s == K_SEC_CODE:
                 g.fx_v = g.fx_v + g.rg_base[k]
+            if g.fx_s == K_SEC_LOW:
+                g.fx_s = K_SEC_CODE
             g.fx_i = g.fx_n
             fx_put()
             g.fx_n = g.fx_n + 1

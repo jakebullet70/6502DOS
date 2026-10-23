@@ -25,6 +25,9 @@ A call to a SUB in the other bank goes to a veneer in the caller's bank, a T_FAR
 SUB. It loads the SUB's address and jumps to T_FAR, which selects the other bank, calls the
 SUB there, and selects the caller's bank again. A moved SUB's JMP around it is dropped. A
 GOTO, or a jump of any kind but a SUB call, from one bank into the other stops the link.
+A pointer holds an address in the first bank: @ of a SUB in the second bank is the address of
+its veneer in the first. A pointer call in the second bank, T_ICALL, calls T_FAR instead of
+R_ICALL, so it runs in the first bank.
 
 The cut out of the first bank uses UXC-DEAD.BL's g.dd_from, g.dd_to, g.dd_sum and dd_shift,
 with the ranges of the SUBs moved.
@@ -211,7 +214,11 @@ def rb_uses():
         if g.fx_s == K_SEC_REC:
             g.rb_rec_first[g.fx_v] = min(g.rb_rec_first[g.fx_v], j)
             g.rb_rec_last[g.fx_v] = max(g.rb_rec_last[g.fx_v], j)
-        if g.fx_s == K_SEC_LABEL and g.rb_index[g.fx_v] >= 0:
+        if g.fx_s == K_SEC_LABEL and g.rb_index[g.fx_v] >= 0 and g.fx_k != K_F_ABS:
+            # @ of the SUB: from the first bank's view, wherever the @ is.
+            t = g.rb_index[g.fx_v]
+            g.rb_call_first[t] = -1
+        elif g.fx_s == K_SEC_LABEL and g.rb_index[g.fx_v] >= 0:
             t = g.rb_index[g.fx_v]
             g.rb_call_first[t] = min(g.rb_call_first[t], j)
             g.rb_call_last[t] = max(g.rb_call_last[t], j)
@@ -279,6 +286,10 @@ def rb_fixups():
                 er_stop("JUMP ACROSS ROM BANKS")
         if g.fx_s == K_SEC_LABEL:
             rb_label(bank, at)
+        if g.fx_s == K_SEC_REC and g.fx_v == T.R_ICALL and bank == 1:
+            g.rb_code[g.fx_at] = K_FAR % 256
+            g.rb_code[g.fx_at + 1] = K_FAR // 256
+            continue
         if bank == 1:
             g.rb_fix.append((g.fx_at, g.fx_k, g.fx_s, g.fx_v, g.fx_ow))
             continue
@@ -290,20 +301,31 @@ def rb_fixups():
 
 def rb_label(bank, at):
     """RB.LABEL. A K_SEC_LABEL fixup read, at code offset at before the cut, in bank. A JSR
-    to a SUB in the other bank goes to its veneer, a K_SEC_CODE fixup in this bank."""
+    to a SUB in the other bank goes to its veneer, a K_SEC_CODE fixup in this bank. @ of a SUB
+    in the second bank, a LO or HI fixup in either bank, goes to its veneer in the first; both
+    banks run at one address."""
     g.sy_r = g.fx_v
     uxc_sym.sy_get()
     if (g.sy_flags & 1) == 0:
         return
-    if g.sy_kind == K_SK_SUB and g.fx_k != K_F_ABS:
-        er_stop("@ OF A SUB IN A ROM BANK")
     target_bank = rb_bank_of(g.sy_val)[0]
+    if g.sy_kind == K_SK_SUB and g.fx_k != K_F_ABS:
+        if target_bank != 0:
+            rb_veneer_to(0)
+        return
     if target_bank == bank:
         return
     g.cb_at = at - 1
     cb_get()
     if g.sy_kind != K_SK_SUB or g.fx_k != K_F_ABS or g.cb_b != 0x20:
         er_stop("GOTO ACROSS ROM BANKS")
+    rb_veneer_to(bank)
+
+
+def rb_veneer_to(bank):
+    """RB.VENEER.TO. The fixup read names the veneer in bank of the SUB of record g.fx_v, a
+    K_SEC_CODE fixup. The veneer is added when the SUB has none yet; a SUB has one, in the bank
+    it is not in."""
     t = g.rb_index[g.fx_v]
     if g.rb_veneer_at[t] < 0:
         g.rb_veneer_at[t] = g.rb_veneer_base[bank] + len(g.rb_veneers[bank]) * g.rb_veneer_length

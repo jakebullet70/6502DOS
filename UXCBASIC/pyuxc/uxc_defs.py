@@ -95,7 +95,8 @@ K_FRAME_MAX = 16384
 # is never left for the link step. BSS is the array space after the end of the PRG. TEMP is
 # a string temp, counted from the start of its owner's pool, which the link step places
 # after the array space. RGDATA is a literal or a global variable moved into region 1, counted
-# from the start of the region's data, after its code.
+# from the start of the region's data, after its code. LOW, only in g.rg_fix, is a code offset
+# in low RAM named from a region's code; rg_place makes it CODE.
 K_SEC_CONST = 0
 K_SEC_CODE = 1
 K_SEC_REC = 2
@@ -105,6 +106,7 @@ K_SEC_LABEL = 5
 K_SEC_BSS = 6
 K_SEC_TEMP = 7
 K_SEC_RGDATA = 8
+K_SEC_LOW = 9
 
 # The value of a K.SEC.TEMP entry for a part of a PRINT item already printed (UXC-STR.BL).
 K_TEMP_PRINTED = 65535

@@ -4477,7 +4477,7 @@
             SHOW calls it, so LIST, MEMO and CBO link only when called. Then one list engine
             for the pull-down, the CBO list and LIST, its item fetch passed as a pointer; asm
             only if still needed. Then L2, L3.
-          - Done, FP1 with FP2 (2026-10-23, not committed). Syntax: `DECLARE SUB name(params)`
+          - Done, FP1 with FP2 (2026-10-23, commit b42e3d8). Syntax: `DECLARE SUB name(params)`
             or `DECLARE FUNCTION name(params) AS type` makes a signature (K_SK_SIG, read by
             sb_scan, skipped by the second pass; DECLARE is a reserved word). `DIM P AS name`
             or `DIM T(n) AS name`, and a parameter `H AS name`, is a pointer: a WORD whose
@@ -4502,6 +4502,26 @@
             SUB) ok 0.7 s, ERRPTRMATCH, ERRPTRCYCLE ok 0.0 s; SUBNEST 0.7, SUBDEF, LOCALPOOL,
             ENUMAS, DEADSUB 0.5, GUILIST 0.5 ok. Next: FP3 (a region SUB's @ is its low-RAM
             veneer), then FP4. Owed to the doc batch: UXC-HELP and UXCBASIC.PLAN on pointers.
+          - Done, FP3 (2026-10-23): pointers with regions and ROM banks; no asm, the two guards
+            gone. Regions: @ of a SUB in a region is its T_FARCALL veneer in low RAM (through
+            the SUB's gate; shared with low calls to it), wherever the @ is; from a region's
+            code the fixup is K_SEC_LOW (9, only in g.rg_fix; rg_place makes it CODE without
+            the region's base). A T_ICALL in a region's code calls its own T_RGGATE instead of
+            R_ICALL, so a pointer to a low SUB that selects another bank returns to the region
+            (bank_call). New rg_veneer_at. ROM banks: a pointer holds a first-bank address; @
+            of a second-bank SUB is its veneer in the first bank, from either bank (rb_uses
+            counts @ as a call from the main code, so rb_choose counts the veneer); a T_ICALL
+            in the second bank is `jsr K_FAR` (T_FAR runs it in the first bank), and R_ICALL is
+            not placed there. New rb_veneer_to. Fix: sg_scan (PRINT's look-ahead) took WITH as
+            an array name; CALL now marks a call. Costs: 7 bytes a veneer (none when the SUB
+            already has one); a pointer call is still 3 bytes; R_ICALL stays linked (7) when
+            only a region calls through a pointer. Checked: new test `RGPTR` (`tests/`, golden
+            local: low to regions 1 and 3, @ in region 3 equals @ in low RAM and is below
+            $A000, a low SUB that writes $00 called by pointer from region 3) ok 0.4 s; ROM
+            banks by bytes only (a scratch #ROMBANKS 3, 4 program: both banks load the same
+            @ values, bank 4 calls $FF89). Build 6650 ms (every program recompiled), the new
+            baseline. RGMULTI 0.4, RGCALL 0.5, ROM3 0.5, FPTR 0.6, PRINTS, FUNC1, STRRET 0.5
+            ok. Next: FP4, the GUI handlers.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

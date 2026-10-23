@@ -261,8 +261,13 @@ def sg_scan_known():
     g.sg_scan_unknown = 1
     if g.tk_s in ("LEN", "ASC", "VAL", "CHR$", "STR$", "MID$", "LEFT$", "RIGHT$", "UCASE$", "LCASE$", "PEEK", "NOT", "INSTR", "POS",
                   "LVAL", "AND", "OR", "XOR", "MOD", "GETKEY", "OPEN", "EOF", "READ", "ADDROF",
-                  "CONTENTSAT", "CONTENTSATW", "STRINGAT", "GETEXTKEY", "WAITKEY", "KEYMODS"):
+                  "CONTENTSAT", "CONTENTSATW", "STRINGAT", "GETEXTKEY", "WAITKEY", "KEYMODS",
+                  "WITH"):
         g.sg_scan_unknown = 0
+    # CALL pointer WITH (args), a pointer call.
+    if g.tk_s == "CALL":
+        g.sg_scan_unknown = 0
+        g.sg_scan_call = 1
 
 
 def sg_base_of():
