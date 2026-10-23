@@ -4566,36 +4566,13 @@
             PRINT_RECORD + MARK_BIT + MARKED 1424. Estimate after the merge: CBO-only +~700,
             menu-only +~600, LIST-only +~50, two engines -~500. Decided (the user): merge anyway,
             in parts M1 (engine, LIST on it), M2 (DROP_LIST on it), M3 (PULL_MENU on it).
-          - Done, M1 (2026-10-23): `RUN_LIST` in region 3 is the engine, LIST_EDIT's old body.
-            It takes CONTEXT, a `GUI.ITEM_PRINTER(CONTEXT AS UWORD, ITEM AS UBYTE, WIDTH AS UBYTE,
-            WHICH AS ENUM.ROLE) AS UBYTE` pointer, ROW, COLUMN, ROWS, WIDTH, COUNT, VALUE, TOP,
-            FLAGS (LIST_MULTI), BASE (the role) and MORE_FLAGS; it leaves the choice in
-            PICKED_ITEM and the top in PICKED_TOP. Items count from 1. The printer prints in WIDTH
-            and returns the item's letter; WIDTH 0 prints nothing (the letter search). WHICH is
-            for PULL_MENU's PRINT_HOT. PRINT_ITEM_OF is LIST's printer (CONTEXT is the slot).
-            LIST_EDIT sets BASE, calls RUN_LIST, stores the value and the top. Bytes: RUN_LIST
-            944, LIST_EDIT 999 to 191, PRINT_ITEM_OF 148 to 154. GUILIST 11706 to 11854 (region 3
-            1851 to 1992); the rest unchanged. GUILIST ok 0.6 s. Build 2984 ms, the new baseline.
-            Next: M2, DROP_LIST on RUN_LIST (needs: wrap Up/Down, no ^/v column, 0-based CBO
-            value, Enter/Esc loop in DROP_LIST; PRINT_ITEM to the ITEM_PRINTER signature).
-          - Done, M2 (2026-10-23): DROP_LIST runs RUN_LIST in a loop until Enter or Esc, with
-            CONTEXT the choices, ROWS and COUNT the number of choices, TOP 1, BASE MENU and
-            MORE_FLAGS `LIST_WRAP` (1, new): Up on the first item goes to the last, Down on the
-            last to the first. RUN_LIST now tests `MORE_FLAGS AND DRAW_ONLY`. The CBO value stays
-            0-based; DROP_LIST adds and takes 1. PRINT_ITEM is now `PRINT_CHOICE`, the CBO's
-            ITEM_PRINTER; it returns the choice's first character and sets `CHOICE_COUNT`. No
-            no-^/v flag: the list's last column is the engine's blank one, so the selected bar
-            is one column narrower than before (same text; GUICBO's golden unchanged). The CBO
-            list gains PgUp, PgDn, Home, End and the letter search. The DECLARE of ITEM_PRINTER
-            and the DIM of PICKED_ITEM and PICKED_TOP moved up beside LIST_MULTI, region 1, as
-            DROP_LIST in region 2 names them before region 3. Bytes: RUN_LIST 944 to 1031 (the
-            wrap), DROP_LIST + PRINT_ITEM 786 to DROP_LIST 482 + PRINT_CHOICE 188. GUICBO 9343
-            to 10458, HELPED 15482 to 16597 (+1115 each: region 3 gains RUN_LIST, MARK_BIT,
-            MARKED and LIST_MARKS); GUILIST 11854 to 11941; the rest unchanged. GUICBO ok 0.5 s,
-            GUILIST ok 0.5 s, HELPED ok 1.4 s. Build 3039 ms, the new baseline. Next: M3,
-            PULL_MENU on RUN_LIST (menu printer " " + PRINT_HOT + padding, CONTEXT FIRST - 1; a
-            hot letter chooses at once; PRINT_HOT needs a non-printing mode; Left/Right stay in
-            PULL_MENU). Test GUIMENU.
+          - Reverted, M1 and M2 (2026-10-23; the user asked): `lib/GUI.UXI` is back at FP5
+            (2d3bbcc). M1 put LIST on `RUN_LIST`, an engine in region 3 that takes an item
+            printer through a `GUI.ITEM_PRINTER` pointer; M2 put DROP_LIST on it, with a
+            `LIST_WRAP` bit in MORE_FLAGS. Measured: `RUN_LIST` 1031 bytes with the wrap; GUILIST
+            11706 to 11941; GUICBO 9343 to 10458 and HELPED 15482 to 16597 (+1115 each, region 3
+            gains `RUN_LIST`, `MARK_BIT`, `MARKED` and `LIST_MARKS`). After the revert: GUILIST
+            ok 0.6 s, GUICBO 0.4, HELPED 1.1. Build 2844 ms, the new baseline. Next: L2, L3.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
