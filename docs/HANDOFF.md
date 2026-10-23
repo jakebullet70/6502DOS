@@ -4681,6 +4681,18 @@
             Build 3.95 s, the new baseline. Owed to the doc batch: UXC-HELP and GUI.PLAN on
             PICK_MANAGE and SHOW's other keys. Next: the user's call on PICKMANAGE, then V1's
             remaining items or the paused doc batch.
+          - Done, L3d (2026-10-23), the user's call: the flag became a function.
+            `GUI.PICKFILE(TITLE$, MASK$, TARGET$)` has no FLAGS, and CONST PICK_MANAGE is gone.
+            `GUI.PICKMANAGE(TITLE$, MASK$, TARGET$)` sets `PICK_HANDLER` (DIM AS the DECLAREd
+            `PICK_KEY_HANDLER(SCAN, ITEM) AS UBYTE`) to `@MANAGE`, calls PICKFILE, and sets it
+            back to 0, as MENUBAR sets RUN_MENU. PICKFILE calls PICK_HANDLER when it is not 0;
+            its result goes through ITEM. Dead-code stripping drops MANAGE, MOVE_FILE,
+            KEEP_PATH, YESNO, INPUTBOX and MSGBOX from a program with no PICKMANAGE. Scratch
+            compiles: PICKFILE alone 14903 bytes (17477 with the flag, -2574), PICKMANAGE alone
+            17554 (+77). GUIPICK's TRY takes MANAGED, 1 for PICKMANAGE: 18105 to 18235 (+130).
+            Test: GUIPICK ok 3.1 s, golden unchanged. Build 2469 ms, the new baseline. Owed to
+            the doc batch: UXC-HELP and GUI.PLAN (lines 379 to 392 name FLAGS and PICK_MANAGE)
+            on PICKMANAGE. Next: V1's remaining items or the paused doc batch.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

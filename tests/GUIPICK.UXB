@@ -10,7 +10,7 @@
 ' goes back, then Tab and Enter choose Alpha.TXT. 8: Sub, then Down and Enter on [-C-] go back
 ' to PICKT, then Tab and Enter choose Alpha.TXT. 9: Esc returns 0. 10: 4 Tabs and Enter on
 ' Cancel return 0.
-' 11 and 12 take GUI.PICK_MANAGE. 11: F7 makes the folder NewF; in the list of files F2
+' 11 and 12 call GUI.PICKMANAGE. 11: F7 makes the folder NewF; in the list of files F2
 ' renames beta.TXT to gamma.TXT; F5 and Enter on Alpha.TXT, a copy onto itself, show DOS error
 ' 5; F5 copies Alpha.TXT to Sub\Al2.TXT; Del and Yes delete Alpha.TXT; Esc returns 0. 12: in
 ' the list of folders Del and Yes delete aFold; Del on .. does nothing; F2 renames NewF to
@@ -27,9 +27,13 @@ SUB MAKE(PATH AS STRING)
   DOS.CLOSE_FILE(DOS.CREATE_FILE(PATH, 0))
 END SUB
 
-SUB TRY(FLAGS AS UBYTE)
+SUB TRY(MANAGED AS UBYTE)
   DIM RESULT AS UBYTE
-  RESULT = GUI.PICKFILE("Open", "*.TXT", PICKED, FLAGS)
+  IF MANAGED THEN
+    RESULT = GUI.PICKMANAGE("Open", "*.TXT", PICKED)
+  ELSE
+    RESULT = GUI.PICKFILE("Open", "*.TXT", PICKED)
+  ENDIF
   SHOWN = SHOWN + STR$(RESULT)
   IF RESULT = 1 THEN SHOWN = SHOWN + " " + PICKED
   SHOWN = SHOWN + ";"
@@ -56,8 +60,8 @@ MAKE("Sub\in.TXT")
 REPEAT 10
   TRY(0)
 END REPEAT
-TRY(GUI.PICK_MANAGE)
-TRY(GUI.PICK_MANAGE)
+TRY(1)
+TRY(1)
 POS(1) = 20
 POS(0) = 0
 PRINT SHOWN
