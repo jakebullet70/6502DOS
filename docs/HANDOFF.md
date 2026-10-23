@@ -4582,6 +4582,36 @@
             (golden local). Tests: GUILBOX ok 0.6 s, GUILIST 0.5, GUIDLG 0.5. Build 3021 ms, the
             new baseline. Owed to the doc batch: UXC-HELP and GUI.PLAN on LISTBOX. Next: L3,
             PICKFILE.
+          - Decided (the user, 2026-10-23): L3 in three steps. L3a the dialog, the read, the
+            sort, and OK or Enter on a file; L3b Enter on a folder or drive, a typed mask, the
+            drive and folder put back; L3c PICK_MANAGE. Layout: the two lists side by side, 33
+            columns each (32 of name, 1 of ^ and v), so the form is 72 wide, 80-column screens
+            only, with no `~` cut.
+          - Done, L3a (2026-10-23): new include `lib/PICKFILE.UXI` (after DOS, BANK, VERA and
+            GUI.UXI; reopens NAMESPACE GUI, so a GUI program without it pays nothing).
+            `GUI.PICKFILE(TITLE$, MASK$, TARGET$, FLAGS = 0)`: the field File name edits TARGET$
+            (starts as MASK$), the path from `DOS.CALL_TEXT` ("C:\PICKT\"), Files and Folders
+            lists of 10 rows; the list of files is the last control, so Enter in it is OK. OK
+            takes the field's name when it holds no * or ?, prefixed with the path, or the drive
+            for a leading \, or kept with a drive; else the file chosen. Region code runs at
+            $A000, so the names' bank is reached from low RAM: `SORTS_BEFORE` and `COPY_RECORD`
+            (region 0). The read pads `DOS.FOUND_NAME` to 32 bytes, copies it to the next
+            record, and binary-inserts its number into `PICK_ORDER` (region 3, 255 bytes);
+            `PLACE_RECORDS` then moves the records into order cycle by cycle through record 255
+            ($BFE0). Folders: `*.*` with ATTR_DIRECTORY, less "."; files: MASK$ with 0. FLAGS is
+            not read yet. Bytes: PICKFILE 1220, READ_NAMES 441, PLACE_RECORDS 275, RECORD_AT 55
+            (region 3, 1991, plus PICK_ORDER 255); SORTS_BEFORE 144, COPY_RECORD 57 (low RAM,
+            201). Savings applied, GUIPICK 15181 to 14603 (-578): PUT_RECORD dropped for the
+            padded name (-211), ERRORS OFF (-55 READ_NAMES, -41 PLACE_RECORDS), FOR loops with an
+            index in COPY_RECORD and SORTS_BEFORE (-33, -22), `* 32` in RECORD_AT (-11), $BFE0
+            for record 255 (-8), the "." test as one ContentsAtW (-9), byte tests for the typed
+            path in place of MID$/LEFT$ (-124) and a loop for * and ? in place of INSTR (-74).
+            New test GUIPICK (golden and .IN local): it makes C:\PICKT with zed.TXT, Alpha.TXT,
+            beta.TXT, C.DAT, Sub and aFold; the lists show .., aFold, Sub and Alpha, beta, zed.
+            Results `1 C:\PICKT\beta.TXT; 1 C:\PICKT\NEW.TXT; 1 C:\X.TXT; 1 D:\Z.TXT; 0; 0;`.
+            Trap: x16emu's -bas takes \ as its escape, so a .IN types \ as \X5C. Tests: GUIPICK
+            ok 1.0 s. No build: no ROM or utility source changed. Owed to the doc batch:
+            UXC-HELP and GUI.PLAN on PICKFILE.UXI. Next: L3b.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

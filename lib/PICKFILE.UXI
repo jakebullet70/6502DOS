@@ -1,0 +1,189 @@
+' PICKFILE.UXI: GUI.PICKFILE, a dialog that picks a file, laid out as the Open dialog of MS-DOS's
+' EDIT.
+'
+' A program includes KEYS.UXI, DOS.UXI, BANK.UXI, VERA.UXI, GUI.UXI, then PICKFILE.UXI. The
+' dialog runs from region 3, and the helpers that reach its names' RAM bank from low RAM.
+
+NAMESPACE GUI
+  ERRORS OFF
+  ' The helpers run from low RAM, as they select the names' RAM bank.
+#REGION_SLOT 0
+  ' Selects RAM bank BANK, and returns 1 when the record at FIRST sorts before the record at
+  ' SECOND, case ignored, else 0. A name sorts before a longer name that starts with it.
+  ' Trap: the bank stays selected.
+  FUNCTION SORTS_BEFORE(FIRST AS UWORD, SECOND AS UWORD, BANK AS UBYTE) AS UBYTE
+    DIM SPOT AS UBYTE, MINE AS UBYTE, THEIRS AS UBYTE
+    ContentsAt(0) = BANK
+    FOR SPOT = 0 TO 31
+      MINE = ContentsAt(FIRST + SPOT)
+      THEIRS = ContentsAt(SECOND + SPOT)
+      ' AND $DF makes a to z A to Z.
+      IF MINE >= 97 THEN MINE = MINE AND $DF
+      IF THEIRS >= 97 THEN THEIRS = THEIRS AND $DF
+      IF MINE <> THEIRS THEN RETURN MINE < THEIRS
+    NEXT
+    RETURN 0
+  END FUNCTION
+
+  ' Selects RAM bank BANK, and copies the 32 bytes at SOURCE to DESTINATION.
+  ' Trap: the bank stays selected.
+  SUB COPY_RECORD(SOURCE AS UWORD, DESTINATION AS UWORD, BANK AS UBYTE)
+    DIM SPOT AS UBYTE
+    ContentsAt(0) = BANK
+    FOR SPOT = 0 TO 31
+      ContentsAt(DESTINATION + SPOT) = ContentsAt(SOURCE + SPOT)
+    NEXT
+  END SUB
+
+#REGION_SLOT 3
+  ' The lists' rows.
+  CONST PICK_ROWS AS UBYTE = 10
+  ' PICKFILE's names are records of 32 bytes in RAM bank PICK_BANK from $A000, PICK_COUNT of
+  ' them, the folders then the files. PICK_ORDER(N) is the record that sorts Nth.
+  ' Checklist: record 255 is PLACE_RECORDS's spare, so the records stop at 255.
+  DIM PICK_BANK AS UBYTE, PICK_COUNT AS UBYTE, PICK_ORDER(255) AS UBYTE
+
+  ' The address of record NUMBER, 0 for the first.
+  FUNCTION RECORD_AT(NUMBER AS UBYTE) AS UWORD
+    DIM AT AS UWORD
+    AT = NUMBER
+    RETURN $A000 + AT * 32
+  END FUNCTION
+
+  ' Reads into records after the PICK_COUNT read the names that PATTERN$ matches: with
+  ' ATTRIBUTES DOS.ATTR_DIRECTORY the folders but ".", with 0 the files. PICK_ORDER keeps the new
+  ' records sorted, case ignored, after the others. Returns the number read.
+  FUNCTION READ_NAMES(PATTERN$ AS CONST, ATTRIBUTES AS UBYTE) AS UBYTE
+    DIM FIRST AS UBYTE, LOW AS UBYTE, HIGH AS UBYTE, MIDDLE AS UBYTE, NEW_AT AS UWORD
+    FIRST = PICK_COUNT
+    DOS.FINDFIRST(PATTERN$, ATTRIBUTES)
+    DO WHILE DOS.ERROR = 0 AND PICK_COUNT < 255
+      ' The files' search finds no folder. $2E01 is the length and first character of ".".
+      IF (DOS.FOUND_ATTRIBUTES AND DOS.ATTR_DIRECTORY) = ATTRIBUTES AND ContentsAtW(@DOS.FOUND_NAME + 1) <> $2E01 THEN
+        ' The name, padded with zeros to 32 bytes, becomes the next record.
+        LOW = LEN(DOS.FOUND_NAME)
+        DO WHILE LOW < 32
+          ContentsAt(@DOS.FOUND_NAME + 2 + LOW) = 0
+          LOW = LOW + 1
+        LOOP
+        NEW_AT = RECORD_AT(PICK_COUNT)
+        COPY_RECORD(@DOS.FOUND_NAME + 2, NEW_AT, PICK_BANK)
+        ' A binary search for the place of the new record among the records read.
+        LOW = FIRST
+        HIGH = PICK_COUNT
+        DO WHILE LOW < HIGH
+          MIDDLE = LOW + ((HIGH - LOW) >> 1)
+          IF SORTS_BEFORE(NEW_AT, RECORD_AT(PICK_ORDER(MIDDLE)), PICK_BANK) THEN
+            HIGH = MIDDLE
+          ELSE
+            LOW = MIDDLE + 1
+          ENDIF
+        LOOP
+        HIGH = PICK_COUNT
+        DO WHILE HIGH > LOW
+          PICK_ORDER(HIGH) = PICK_ORDER(HIGH - 1)
+          HIGH = HIGH - 1
+        LOOP
+        PICK_ORDER(LOW) = PICK_COUNT
+        PICK_COUNT = PICK_COUNT + 1
+      ENDIF
+      DOS.FINDNEXT()
+    LOOP
+    RETURN PICK_COUNT - FIRST
+  END FUNCTION
+
+  ' Moves each record to its place in PICK_ORDER, one cycle of places at a time, with record 255,
+  ' at $BFE0, as the spare.
+  SUB PLACE_RECORDS()
+    DIM SPOT AS UBYTE, HOLE AS UBYTE, TAKEN AS UBYTE
+    SPOT = 0
+    REPEAT PICK_COUNT
+      IF PICK_ORDER(SPOT) <> SPOT THEN
+        COPY_RECORD(RECORD_AT(SPOT), $BFE0, PICK_BANK)
+        HOLE = SPOT
+        DO
+          TAKEN = PICK_ORDER(HOLE)
+          PICK_ORDER(HOLE) = HOLE
+          IF TAKEN = SPOT THEN EXIT DO
+          COPY_RECORD(RECORD_AT(TAKEN), RECORD_AT(HOLE), PICK_BANK)
+          HOLE = TAKEN
+        LOOP
+        COPY_RECORD($BFE0, RECORD_AT(HOLE), PICK_BANK)
+      ENDIF
+      SPOT = SPOT + 1
+    END REPEAT
+  END SUB
+
+  ' Shows a dialog as MSGBOX does, titled TITLE$, laid out as the Open dialog of MS-DOS's EDIT:
+  ' the field File name, which edits TARGET$; the current folder's path; the files that MASK$
+  ' matches beside the folders, each list sorted with case ignored; then the buttons &OK and
+  ' &Cancel. The field starts as MASK$, and has the focus. OK and Enter in the list of files
+  ' return 1, with TARGET$ the full path of the file named in the field when it holds no * or
+  ' ?, else of the file chosen in the list. Returns 0 for Cancel, for Esc, with no file named
+  ' or chosen, or when no RAM bank is free. The dialog is 72 columns wide. It takes a RAM bank
+  ' while it is open. The lists hold 255 names in all. It changes DOS.CALL_TEXT and the DOS.FOUND_
+  ' variables.
+  FUNCTION PICKFILE(TITLE$ AS CONST, MASK$ AS CONST, TARGET$, FLAGS AS UBYTE = 0) AS UBYTE
+    DIM FOLDERS AS UBYTE, FILES AS UBYTE, FOLDER AS UBYTE, CHOSEN AS UBYTE, FIELD AS UBYTE
+    DIM RESULT AS UBYTE, DRIVE AS UBYTE, LENGTH AS UBYTE, WILD AS UBYTE, CHARACTER AS UBYTE
+    PICK_BANK = BANK.ALLOC(1)
+    IF PICK_BANK = 0 THEN RETURN 0
+    PICK_COUNT = 0
+    FOLDERS = READ_NAMES("*.*", DOS.ATTR_DIRECTORY)
+    FILES = READ_NAMES(MASK$, 0)
+    PLACE_RECORDS()
+    ' The path, in DOS.CALL_TEXT: the drive, then each folder, each ending in \.
+    DRIVE = DOS.GETDRIVE()
+    DOS.GETCWD(0)
+    IF DOS.CALL_TEXT <> "" THEN DOS.CALL_TEXT = DOS.CALL_TEXT + "\"
+    DOS.CALL_TEXT = CHR$(DRIVE + ASC("A")) + ":\" + DOS.CALL_TEXT
+    TARGET$ = MASK$
+    ' A compare gives 1 for true.
+    CHOSEN = FILES <> 0
+    FOLDER = FOLDERS <> 0
+    DIALOG_WIDTH = 68
+    OPEN_DIALOG(TITLE$, PICK_ROWS + 3, "&OK", "&Cancel")
+    FIELD = SAYGET(1, 2, "File name:", TARGET$, 57)
+    SAY(2, 2, DOS.CALL_TEXT)
+    SAY(3, 2, "Files")
+    SAY(3, 37, "Folders")
+    LIST(4, 37, "", $A000, PICK_BANK, 32, FOLDERS, @FOLDER, PICK_ROWS, 33)
+    ' The list of files is the last control, so Enter in it returns EV_DONE.
+    LIST(4, 2, "", RECORD_AT(FOLDERS), PICK_BANK, 32, FILES, @CHOSEN, PICK_ROWS, 33)
+    RESULT = RUN_DIALOG(FIELD)
+    IF RESULT = 1 THEN
+      ' WILD is 1 when TARGET$ is empty or holds * or ?.
+      WILD = TARGET$ = ""
+      FOR LENGTH = 1 TO LEN(TARGET$)
+        CHARACTER = ContentsAt(AddrOf(TARGET$) + 1 + LENGTH)
+        IF CHARACTER = ASC("*") OR CHARACTER = ASC("?") THEN WILD = 1
+      NEXT
+      IF WILD = 0 THEN
+        ' A name with no drive takes the drive, and one with no \ first the folder too.
+        ' The characters of TARGET$ start at AddrOf(TARGET$) + 2.
+        IF ContentsAt(AddrOf(TARGET$) + 3) <> ASC(":") THEN
+          IF ContentsAt(AddrOf(TARGET$) + 2) = ASC("\") THEN
+            TARGET$ = CHR$(DRIVE + ASC("A")) + ":" + TARGET$
+          ELSE
+            TARGET$ = DOS.CALL_TEXT + TARGET$
+          ENDIF
+        ENDIF
+      ELSEIF CHOSEN <> 0 THEN
+        ' The record's name ends at its first zero, or at 32 characters.
+        COPY_RECORD(RECORD_AT(FOLDERS + CHOSEN - 1), @DOS.FOUND_NAME + 2, PICK_BANK)
+        LENGTH = 0
+        DO WHILE LENGTH < 32
+          IF ContentsAt(@DOS.FOUND_NAME + 2 + LENGTH) = 0 THEN EXIT DO
+          LENGTH = LENGTH + 1
+        LOOP
+        ContentsAt(@DOS.FOUND_NAME + 1) = LENGTH
+        TARGET$ = DOS.CALL_TEXT + DOS.FOUND_NAME
+      ELSE
+        RESULT = 0
+      ENDIF
+    ENDIF
+    BANK.FREE(PICK_BANK)
+    RETURN RESULT = 1
+  END FUNCTION
+  ERRORS ON
+END NAMESPACE

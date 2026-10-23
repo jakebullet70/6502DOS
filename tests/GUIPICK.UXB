@@ -1,0 +1,44 @@
+' GUIPICK: GUI.PICKFILE in the folder PICKT, which it makes. The last line gives each result,
+' then TARGET$ for a 1.
+' PICKT holds zed.TXT, Alpha.TXT, beta.TXT, C.DAT and the folders Sub and aFold.
+' 1: Tab, Tab, Down and Enter choose beta.TXT. 2: 5 Backspaces, NEW.TXT, then Enter 3 times,
+' from the field to the list of files, return C:\PICKT\NEW.TXT. 3: \X.TXT the same way returns
+' C:\X.TXT, and 4: D:\Z.TXT returns D:\Z.TXT. 5: Esc returns 0. 6: Enter, 3 Tabs and Enter on
+' Cancel return 0.
+#INCLUDE "KEYS.UXI"
+#INCLUDE "DOS.UXI"
+#INCLUDE "BANK.UXI"
+#INCLUDE "VERA.UXI"
+#INCLUDE "GUI.UXI"
+#INCLUDE "PICKFILE.UXI"
+DIM PICKED AS STRING * 80, SHOWN AS STRING * 200
+
+SUB MAKE(PATH AS STRING)
+  DOS.CLOSE_FILE(DOS.CREATE_FILE(PATH, 0))
+END SUB
+
+SUB TRY()
+  DIM RESULT AS UBYTE
+  RESULT = GUI.PICKFILE("Open", "*.TXT", PICKED)
+  SHOWN = SHOWN + STR$(RESULT)
+  IF RESULT = 1 THEN SHOWN = SHOWN + " " + PICKED
+  SHOWN = SHOWN + ";"
+END SUB
+
+DOS.MKDIR("PICKT")
+DOS.CHDIR("PICKT")
+DOS.MKDIR("Sub")
+DOS.MKDIR("aFold")
+MAKE("zed.TXT")
+MAKE("Alpha.TXT")
+MAKE("beta.TXT")
+MAKE("C.DAT")
+TRY()
+TRY()
+TRY()
+TRY()
+TRY()
+TRY()
+POS(1) = 24
+POS(0) = 0
+PRINT SHOWN
