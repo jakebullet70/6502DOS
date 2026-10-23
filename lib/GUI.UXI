@@ -119,6 +119,16 @@ NAMESPACE GUI
   DIM KIND_EDITOR(7) AS EDITOR
   ' LIST's FLAGS add LIST_MULTI: Space marks and unmarks the item under the focus.
   CONST LIST_MULTI AS UBYTE = 128
+  ' RUN_LIST's MORE_FLAGS add LIST_WRAP: Up on the first item moves to the last, and Down on the
+  ' last to the first.
+  CONST LIST_WRAP AS UBYTE = 1
+  ' An item printer, which RUN_LIST calls for each row. It prints item ITEM, 1 for the first, of
+  ' the items CONTEXT names, in WIDTH characters in WHICH's color, which is the console's color,
+  ' and returns the item's letter. With WIDTH 0 it prints nothing.
+  DECLARE FUNCTION ITEM_PRINTER(CONTEXT AS UWORD, ITEM AS UBYTE, WIDTH AS UBYTE, WHICH AS ENUM.ROLE) AS UBYTE
+
+  ' The item chosen and the item on the top row, as RUN_LIST leaves them.
+  DIM PICKED_ITEM AS UBYTE, PICKED_TOP AS UBYTE
   ' SHOW's events. A button's id is below them.
   CONST EV_DONE AS UBYTE = 253, EV_LEAVE AS UBYTE = 254, EV_CANCEL AS UBYTE = 255
   ' A field and the memo show the cursor with CURSOR ON; the other controls hide it with
@@ -879,78 +889,72 @@ NAMESPACE GUI
 
   ' The drop-down list runs from region 2. It reaches the form's tables only through its
   ' parameters, so the tables stay in region 1.
-  ' Prints choice NUMBER of the choices at CHOICES_AT, cut or padded with spaces to WIDTH
-  ' characters, and returns the last choice's number.
-  FUNCTION PRINT_ITEM(CHOICES_AT AS UWORD, NUMBER AS UBYTE, WIDTH AS UBYTE) AS UBYTE
-    DIM ITEM AS UBYTE, SPOT AS UBYTE, CHARACTER AS UBYTE
-    ITEM = 0
+  ' The number of choices PRINT_CHOICE counted last.
+  DIM CHOICE_COUNT AS UBYTE
+
+  ' The ITEM_PRINTER of a CBO: prints choice ITEM, 1 for the first, of the choices at CONTEXT,
+  ' cut or padded with spaces to WIDTH characters, and returns its first character. Sets
+  ' CHOICE_COUNT.
+  FUNCTION PRINT_CHOICE(CONTEXT AS UWORD, ITEM AS UBYTE, WIDTH AS UBYTE, WHICH AS ENUM.ROLE) AS UBYTE
+    DIM NUMBER AS UBYTE, SPOT AS UBYTE, CHARACTER AS UBYTE, LETTER AS UBYTE
+    NUMBER = 1
+    LETTER = 0
     SPOT = 2
-    REPEAT ContentsAt(CHOICES_AT + 1)
-      CHARACTER = ContentsAt(CHOICES_AT + SPOT)
+    REPEAT ContentsAt(CONTEXT + 1)
+      CHARACTER = ContentsAt(CONTEXT + SPOT)
       SPOT = SPOT + 1
       IF CHARACTER = ASC("|") THEN
-        ITEM = ITEM + 1
-      ELSEIF ITEM = NUMBER AND WIDTH <> 0 THEN
-        PRINT CHR$(CHARACTER);
-        WIDTH = WIDTH - 1
+        NUMBER = NUMBER + 1
+      ELSEIF NUMBER = ITEM THEN
+        IF LETTER = 0 THEN LETTER = CHARACTER
+        IF WIDTH <> 0 THEN
+          PRINT CHR$(CHARACTER);
+          WIDTH = WIDTH - 1
+        ENDIF
       ENDIF
     END REPEAT
+    CHOICE_COUNT = NUMBER
     REPEAT WIDTH
       PRINT " ";
     END REPEAT
-    RETURN ITEM
+    RETURN LETTER
   END FUNCTION
 
   ' Draws a CBO's field, WIDTH columns at ROW and COLUMN: the chosen one of the choices at
   ' CHOICES_AT, then a down arrow. The UBYTE at VALUE_AT is the choice, 0 for the first. With
-  ' MORE_FLAGS DRAW_ONLY it returns DRAW_ONLY. Else Space opens the list under the field: Up
-  ' and Down move through it, wrapping, Enter chooses and Esc leaves the choice as it was; the
-  ' screen under the list is put back, and DROP_LIST returns 0, a key SHOW skips. It returns any
-  ' other key. When VERA.SAVE_RECT has no room, the list is cleared in its place, and SHOWN_FORM
-  ' is set to 0 for SHOW to draw the form again.
+  ' MORE_FLAGS DRAW_ONLY it returns DRAW_ONLY. Else Space opens the list under the field, and
+  ' RUN_LIST runs its keys, with Up and Down wrapping. Enter chooses and Esc leaves the choice as
+  ' it was; the screen under the list is put back, and DROP_LIST returns 0, a key SHOW skips. It
+  ' returns any other key. When VERA.SAVE_RECT has no room, the list is cleared in its place,
+  ' and SHOWN_FORM is set to 0 for SHOW to draw the form again.
   ' Trap: the list takes the rows from ROW + 1 to ROW + 2 + the number of choices, and the
   ' columns from COLUMN - 1 to COLUMN + WIDTH. It does not scroll.
   FUNCTION DROP_LIST(ROW AS UBYTE, COLUMN AS UBYTE, WIDTH AS UBYTE, CHOICES_AT AS UWORD, VALUE_AT AS UWORD, MORE_FLAGS AS UBYTE) AS UWORD
-    DIM PRESSED AS UWORD, VALUE AS UBYTE, LAST AS UBYTE, ITEM AS UBYTE, SAVED AS UBYTE
+    DIM PRESSED AS UWORD, COUNT AS UBYTE, SAVED AS UBYTE
     POS(1) = ROW
     POS(0) = COLUMN
-    VALUE = ContentsAt(VALUE_AT)
-    LAST = PRINT_ITEM(CHOICES_AT, VALUE, WIDTH - 1)
+    PRINT_CHOICE(CHOICES_AT, ContentsAt(VALUE_AT) + 1, WIDTH - 1, ROLE.MENU)
+    COUNT = CHOICE_COUNT
     PRINT CHR$(31);
     IF MORE_FLAGS <> 0 THEN RETURN MORE_FLAGS
     POS(0) = COLUMN
     CURSOR OFF
     PRESSED = WAITKEY()
     IF PRESSED <> KEYS.SPACE THEN RETURN PRESSED
-    SAVED = VERA.SAVE_RECT(ROW + 1, COLUMN - 1, WIDTH + 2, LAST + 3)
+    SAVED = VERA.SAVE_RECT(ROW + 1, COLUMN - 1, WIDTH + 2, COUNT + 2)
     USE_COLOR(MENU)
-    BOX(ROW + 1, COLUMN - 1, WIDTH + 2, LAST + 3)
+    BOX(ROW + 1, COLUMN - 1, WIDTH + 2, COUNT + 2)
+    PICKED_ITEM = ContentsAt(VALUE_AT) + 1
     DO
-      ITEM = 0
-      REPEAT LAST + 1
-        USE_COLOR(MENU)
-        IF ITEM = VALUE THEN USE_COLOR(MENU_SELECTED)
-        POS(1) = ROW + 2 + ITEM
-        POS(0) = COLUMN
-        PRINT_ITEM(CHOICES_AT, ITEM, WIDTH)
-        ITEM = ITEM + 1
-      END REPEAT
-      POS(1) = ROW + 2 + VALUE
-      POS(0) = COLUMN
-      PRESSED = WAITKEY()
-      ' LAST is the last choice's number, so adding LAST + 1 wraps to the same choice, and
-      ' adding LAST to the choice before.
-      IF PRESSED = KEYS.KEY_UP THEN VALUE = VALUE + LAST
-      IF PRESSED = KEYS.KEY_DOWN THEN VALUE = VALUE + 1
-      IF VALUE > LAST THEN VALUE = VALUE - LAST - 1
+      PRESSED = RUN_LIST(CHOICES_AT, @PRINT_CHOICE, ROW + 2, COLUMN, COUNT, WIDTH, COUNT, PICKED_ITEM, 1, 0, ROLE.MENU, LIST_WRAP)
     LOOP UNTIL PRESSED = KEYS.ENTER OR PRESSED = KEYS.ESC
-    IF PRESSED = KEYS.ENTER THEN ContentsAt(VALUE_AT) = VALUE
+    IF PRESSED = KEYS.ENTER THEN ContentsAt(VALUE_AT) = PICKED_ITEM - 1
     IF SAVED THEN
       VERA.RESTORE_RECT()
     ELSE
       ' Each theme's PAGE color has the same foreground as background, so the box clears.
       USE_COLOR(PAGE)
-      BOX(ROW + 1, COLUMN - 1, WIDTH + 2, LAST + 3)
+      BOX(ROW + 1, COLUMN - 1, WIDTH + 2, COUNT + 2)
       SHOWN_FORM = 0
     ENDIF
     RETURN 0
@@ -1694,28 +1698,21 @@ NAMESPACE GUI
     RETURN 0
   END FUNCTION
 
-  ' An item printer, which RUN_LIST calls for each row. It prints item ITEM, 1 for the first, of
-  ' the items CONTEXT names, in WIDTH characters in WHICH's color, which is the console's color,
-  ' and returns the item's letter. With WIDTH 0 it prints nothing.
-  DECLARE FUNCTION ITEM_PRINTER(CONTEXT AS UWORD, ITEM AS UBYTE, WIDTH AS UBYTE, WHICH AS ENUM.ROLE) AS UBYTE
-
-  ' The item chosen and the item on the top row, as RUN_LIST leaves them.
-  DIM PICKED_ITEM AS UBYTE, PICKED_TOP AS UBYTE
-
   ' Draws ROWS rows of WIDTH columns from ROW and COLUMN, in BASE's color, of a list of COUNT
   ' items, and runs its keys. PRINTER prints each item, with CONTEXT. VALUE is the item chosen, 1
   ' for the first, or 0 for none; it is drawn in the MENU_SELECTED color. TOP is the item on the
   ' top row. The list scrolls by the fewest rows that show the item chosen. The last column holds
   ' a ^ on the top row when items lie above, and a v on the bottom row when items lie below. With
   ' LIST_MULTI in FLAGS, the first column holds a * on each item LIST_MARKS marks. With
-  ' MORE_FLAGS DRAW_ONLY it returns DRAW_ONLY. Else it moves the choice and the marks by the keys
+  ' DRAW_ONLY in MORE_FLAGS it returns DRAW_ONLY. Else it moves the choice and the marks by the keys
   ' LIST gives, and returns any other key. It leaves the choice in PICKED_ITEM and the top row's
   ' item in PICKED_TOP.
   FUNCTION RUN_LIST(CONTEXT AS UWORD, PRINTER AS ITEM_PRINTER, ROW AS UBYTE, COLUMN AS UBYTE, ROWS AS UBYTE, WIDTH AS UBYTE, COUNT AS UBYTE, VALUE AS UBYTE, TOP AS UBYTE, FLAGS AS UBYTE, BASE AS ENUM.ROLE, MORE_FLAGS AS UBYTE) AS UWORD
     DIM PRESSED AS UWORD
     DIM ITEM AS UBYTE, SPOT AS UBYTE, TEXT_WIDTH AS UBYTE, MULTI AS UBYTE, MARK AS UBYTE
-    DIM CHARACTER AS UBYTE, SCAN AS UBYTE, STEPS AS UBYTE, WHICH AS ENUM.ROLE
+    DIM CHARACTER AS UBYTE, SCAN AS UBYTE, STEPS AS UBYTE, WHICH AS ENUM.ROLE, WRAP AS UBYTE
     MULTI = FLAGS AND LIST_MULTI
+    WRAP = MORE_FLAGS AND LIST_WRAP
     ' The last column holds ^ and v, and with LIST_MULTI the first holds the mark.
     TEXT_WIDTH = WIDTH - 1
     IF MULTI <> 0 THEN TEXT_WIDTH = TEXT_WIDTH - 1
@@ -1749,7 +1746,7 @@ NAMESPACE GUI
         ITEM = ITEM + 1
         SPOT = SPOT + 1
       END REPEAT
-      IF MORE_FLAGS <> 0 THEN RETURN MORE_FLAGS
+      IF MORE_FLAGS AND DRAW_ONLY THEN RETURN DRAW_ONLY
       CURSOR OFF
       PRESSED = WAITKEY()
       ' The scan code is the high byte, 0 for a plain key. PgUp and PgDn are Up and Down + 1.
@@ -1764,12 +1761,16 @@ NAMESPACE GUI
         CASE KEYS.SCAN_UP
           IF VALUE > STEPS THEN
             VALUE = VALUE - STEPS
+          ELSEIF VALUE = 1 AND WRAP <> 0 THEN
+            VALUE = COUNT
           ELSE
             VALUE = 1
           ENDIF
         CASE KEYS.SCAN_DOWN
           IF COUNT - VALUE > STEPS THEN
             VALUE = VALUE + STEPS
+          ELSEIF VALUE = COUNT AND WRAP <> 0 THEN
+            VALUE = 1
           ELSE
             VALUE = COUNT
           ENDIF

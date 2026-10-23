@@ -4578,6 +4578,24 @@
             1851 to 1992); the rest unchanged. GUILIST ok 0.6 s. Build 2984 ms, the new baseline.
             Next: M2, DROP_LIST on RUN_LIST (needs: wrap Up/Down, no ^/v column, 0-based CBO
             value, Enter/Esc loop in DROP_LIST; PRINT_ITEM to the ITEM_PRINTER signature).
+          - Done, M2 (2026-10-23): DROP_LIST runs RUN_LIST in a loop until Enter or Esc, with
+            CONTEXT the choices, ROWS and COUNT the number of choices, TOP 1, BASE MENU and
+            MORE_FLAGS `LIST_WRAP` (1, new): Up on the first item goes to the last, Down on the
+            last to the first. RUN_LIST now tests `MORE_FLAGS AND DRAW_ONLY`. The CBO value stays
+            0-based; DROP_LIST adds and takes 1. PRINT_ITEM is now `PRINT_CHOICE`, the CBO's
+            ITEM_PRINTER; it returns the choice's first character and sets `CHOICE_COUNT`. No
+            no-^/v flag: the list's last column is the engine's blank one, so the selected bar
+            is one column narrower than before (same text; GUICBO's golden unchanged). The CBO
+            list gains PgUp, PgDn, Home, End and the letter search. The DECLARE of ITEM_PRINTER
+            and the DIM of PICKED_ITEM and PICKED_TOP moved up beside LIST_MULTI, region 1, as
+            DROP_LIST in region 2 names them before region 3. Bytes: RUN_LIST 944 to 1031 (the
+            wrap), DROP_LIST + PRINT_ITEM 786 to DROP_LIST 482 + PRINT_CHOICE 188. GUICBO 9343
+            to 10458, HELPED 15482 to 16597 (+1115 each: region 3 gains RUN_LIST, MARK_BIT,
+            MARKED and LIST_MARKS); GUILIST 11854 to 11941; the rest unchanged. GUICBO ok 0.5 s,
+            GUILIST ok 0.5 s, HELPED ok 1.4 s. Build 3039 ms, the new baseline. Next: M3,
+            PULL_MENU on RUN_LIST (menu printer " " + PRINT_HOT + padding, CONTEXT FIRST - 1; a
+            hot letter chooses at once; PRINT_HOT needs a non-printing mode; Left/Right stay in
+            PULL_MENU). Test GUIMENU.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
