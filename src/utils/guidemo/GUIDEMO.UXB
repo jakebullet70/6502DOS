@@ -76,6 +76,8 @@ FUNCTION OWNER_OF(NUMBER AS UBYTE) AS UBYTE
   RETURN BANK.GET_BYTE(0, OWNER_TABLE + NUMBER)
 END FUNCTION
 
+
+
 ' The Memory popup. A bank's owner is the exec depth of the program that took it, plus 1, so
 ' GUIDEMO's banks have the deepest owner, and the programs that ran it own the ones below.
 SUB MEMORY_INFO()
@@ -185,9 +187,17 @@ SUB MEMORY_INFO()
   REPORT()
 END SUB
 
+
+
 ' The Forms demo: a form of two sections over the buttons OK and Cancel. Leaving the Age field
 ' with a space in it is refused.
 SUB FORMS_DEMO()
+
+  PERSON_NAME = "Ada Lovelace"
+  PHONE = "(555)-010-1815"
+  AGE = "36"
+  SHOWN_ONLY = "This field reads only"
+
   DIM FORM AS UBYTE, AGE_FIELD AS UBYTE, RESULT AS UBYTE
   FORM = GUI.CREATEFORM("Forms", GUI.CENTER, GUI.CENTER, 56, 17, GUI.FRAMED)
   GUI.SAY(GUI.AUTO, 2, "Tab, Up and Down move. Esc cancels.")
@@ -219,14 +229,14 @@ SUB FORMS_DEMO()
   REPORT()
 END SUB
 
+
+
+
 START_COLOR = DOS.GET_COLOR()
-GUI.THEME(DARK)
+GUI.THEME(GRAY)
 GUI.USE_COLOR(GUI.ROLE.PAGE)
 PRINT CONS.CLEAR_SCREEN$;
-PERSON_NAME = "Ada Lovelace"
-PHONE = "(555)-010-1815"
-AGE = "36"
-SHOWN_ONLY = "This field reads only"
+
 
 ' The main form fills the screen between the menu bar and the status line.
 MAIN_FORM = GUI.CREATEFORM("6502DOS GUI Demo", 1, 0, 80, 28, GUI.FRAMED OR GUI.NO_SHADOW)
@@ -256,5 +266,9 @@ DO
       EXIT DO
   END SELECT
 LOOP
+
+// --- END of prg
 DOS.SET_COLOR(START_COLOR)
 PRINT CONS.CLEAR_SCREEN$;
+PRINT "End GUI Demo... Bye!"
+END

@@ -42,11 +42,11 @@ NAMESPACE GUI
 
   ' The built-in themes, one color a role. As background, foreground:
   ' DARK  0,0 0,12 0,2 0,15 15,0 1,0 12,0 1,0 0,2 0,12 11,1 12,0 11,1
-  ' LIGHT 1,1 1,11 1,6 1,0 0,1 7,0 0,1 7,0 1,2 1,12 15,0 7,0 15,0
-  ' GRAY  11,11 11,14 11,7 11,1 14,1 7,11 14,1 7,11 11,2 11,12 12,1 7,11 12,1
+  ' LIGHT 1,1 1,11 1,6 1,0 15,0 12,1 6,12 6,1 1,14 1,12 15,0 6,1 6,1
+  ' GRAY  11,0 14,0 14,0 14,1 15,0 1,0 11,1 1,0 0,2 14,12 12,1 14,1 12,0
   CONST DARK_COLORS$ = !"\&h00\&h0C\&h02\&h0F\&hF0\&h10\&hC0\&h10\&h02\&h0C\&hB1\&hC0\&hB1"
-  CONST LIGHT_COLORS$ = !"\&h11\&h1B\&h16\&h10\&h01\&h70\&h01\&h70\&h12\&h1C\&hF0\&h70\&hF0"
-  CONST GRAY_COLORS$ = !"\&hBB\&hBE\&hB7\&hB1\&hE1\&h7B\&hE1\&h7B\&hB2\&hBC\&hC1\&h7B\&hC1"
+  CONST LIGHT_COLORS$ = !"\&h11\&h1B\&h16\&h10\&hF0\&hC1\&h6C\&h61\&h1E\&h1C\&hF0\&h61\&h61"
+  CONST GRAY_COLORS$ = !"\&hB0\&hE0\&hE0\&hE1\&hF0\&h10\&hB1\&h10\&h02\&hEC\&hC1\&hE1\&hC0"
 
   ' The console color call.
   ' Checklist: tools/genapi.py writes the same address into lib/DOS.UXI as API_CON_COLOUR.
@@ -1216,16 +1216,17 @@ NAMESPACE GUI
     RETURN LETTER
   END FUNCTION
 
-  ' Draws the menu bar: the screen's top row, all but its last column, in the MENU color, and
-  ' each menu's title from column 2, as DRAW_TITLE prints it.
+  ' Draws the menu bar: the screen's top row in the MENU color, and each menu's title from
+  ' column 2, as DRAW_TITLE prints it.
   SUB DRAW_BAR()
     DIM NUMBER AS UBYTE
     USE_COLOR(ROLE.MENU)
     POS(1) = 0
     POS(0) = 0
-    REPEAT POS(3) - 1
+    REPEAT POS(3)
       PRINT " ";
     END REPEAT
+    POS(1) = 0
     POS(0) = 1
     NUMBER = 1
     REPEAT MENU_COUNT

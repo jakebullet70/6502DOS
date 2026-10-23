@@ -4747,7 +4747,22 @@
             joined lines cost 1263, the low RAM lines 714, the form 536, the map 332. Region 1
             1485 free. Smoke run on x16emu's 64 banks: low RAM $0801-$34FF 11519 bytes, 27136
             free; system 0 11; callers 5; GUIDEMO 6 7 8 in 3 runs (the GUI regions); 54 free;
-            8116 heap bytes free. Build 2497 ms, the new baseline. Next: D2, the Controls demo.
+            8116 heap bytes free. Build 2497 ms, the new baseline.
+          - Done, D1c (2026-10-23): the user's LIGHT and GRAY themes (THEMED's saves
+            `Utils/CUSTOM-LIGHT.GTH`, `CUSTOM-GRAY.GTH`, kept in `card`) replace GUI.UXI's
+            `LIGHT_COLORS$` and `GRAY_COLORS$`. LIGHT 1,1 1,11 1,6 1,0 15,0 12,1 6,12 6,1 1,14
+            1,12 15,0 6,1 6,1; GRAY 11,0 14,0 14,0 14,1 15,0 1,0 11,1 1,0 0,2 14,12 12,1 14,1
+            12,0. GUIDEMO starts in GRAY. `DRAW_BAR` fills the top row's last column too: the
+            wrap goes to row 1, which does not scroll, then `POS(1) = 0` again. `STATUS_LINE`
+            still skips the last row's last column, since printing there scrolls; a
+            `VERA.PUT_CELL` would fill it. The user's GUIDEMO edits kept: the Forms demo sets
+            its fields each time it opens, and the end prints "End GUI Demo... Bye!" and ENDs.
+            Their `cls` line did not compile (UXCBASIC has no CLS statement, only the `{CLS}`
+            string escape); `PRINT CONS.CLEAR_SCREEN$;` is back. GUIDEMO 16531 bytes; region 1
+            1485 free. Goldens rewritten and diffed: GUIMENU (one more bar space), GUITHEME
+            (the new bytes). Tests: GUIMENU ok 0.6 s, GUITHEME 0.7, GUISHADOW 0.6. Build 6664
+            ms with GUIDEMO, HELPED and THEMED recompiled, the new baseline. Next: D2, the
+            Controls demo.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
