@@ -4188,6 +4188,29 @@
             Churn owed: the card's UTILS now holds THEMED.COM and SRC\THEMED too. Owed to
             the doc batch: a HELP.TXT topic for THEMED, PLAN's UTILS list. Next: the name
             limit's decision, then phase 4, step 4a, menus.
+          - Planned (2026-10-23): GUI.PLAN step 4b, `GUI.MSGBOX` and `GUI.INPUTBOX` as
+            wrappers over CREATEFORM, SAY, GET, BUTTON, SHOW and FREE; YESNO is MSGBOX with two
+            buttons. About 400 bytes of region 1 and 35 names. Name count of THEMED's 1001:
+            461 belong to SUBs (parameters, locals, call records, temps), 295 are library
+            CONSTs; GUI owns 419, DOS 290, KEYS 123. Options put to the user: `K_SYM_BANKS` 4
+            to 8 (2032 names, 0 program bytes, 32 KB more banked RAM while compiling), split
+            GUI.UXI (not enough alone: a program with every control, menus and dialogs still
+            passes 1008), or free a SUB's names at END SUB (fixups and the dead-code pass
+            name records by number; a large change).
+          - Done (2026-10-23), the user's choice: `K_SYM_BANKS` 8 and `K_SY_MAX` 2032 in
+            `UXCBASIC/pyuxc/uxc_defs.py`, with a checklist comment on how the two relate. 0
+            program bytes; 32 KB more banked RAM while compiling. A scratch source of 2000
+            CONSTs compiles; one of 2100 stops at 2032 with TOO MANY NAMES. Tests: `NAMES` ok
+            0.7 s, `THEMED` ok 1.0 s, `HELPED` ok 1.1 s. Build 6648 ms (all 27 programs, the
+            compiler changed; THEMED 0.3 s as before), the new baseline.
+          - Planned (2026-10-23), the user's asks: GUI.PLAN step 4b now holds `GUI.YESNO`
+            (MSGBOX with &Yes and &No; 1 for Yes, 0 for No or Esc, as GPC's ASKYN) and
+            `GUI.INPUTBOX2` (two captioned fields, as GPC's ASKTEXT2 for UXCEDIT's Replace;
+            the only GPC trace is its call in `attic/gpc/src/UXCEDIT/bench/FIX2000.TXT`).
+            4b moves to region 2: region 1 has 446 bytes left in HELPED. About 550 bytes and
+            55 names. New step 4c: every form drops a shadow by default, as GPC's boxes, black
+            on black; `GUI.NO_SHADOW` (4) in CREATEFORM's FLAGS leaves it out; DRAW_FORM draws
+            it; about 80 bytes of region 1. Next: phase 4, step 4a, menus.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

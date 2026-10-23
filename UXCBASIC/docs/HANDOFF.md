@@ -92,7 +92,7 @@ The stock ROM is not supported. pyuxc compiles for 6502DOS and has no target opt
   start code changes.
 - A test that calls 6502DOS directly calls `con_out` at `$03B8` and uses `$9E00`-`$9E11` for
   its data.
-- Limits in `pyuxc/uxc_defs.py`: `K_SY_MAX` 1008 names in `K_SYM_BANKS` 4 banks, which the
+- Limits in `pyuxc/uxc_defs.py`: `K_SY_MAX` 2032 names in `K_SYM_BANKS` 8 banks, which the
   hidden call records and temps count toward; `K_FX_MAX` 4096 fixups; `K_CN_SIZE` 2,048
   bytes of string CONST text.
 - Git Bash `sed -i` turns CRLF into LF. `docs/HISTORY.md`, `docs/UXCBASIC.PLAN.md`,

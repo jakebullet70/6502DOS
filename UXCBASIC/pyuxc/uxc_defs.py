@@ -110,7 +110,7 @@ K_F_REC_HI = 6
 
 # Banked RAM, in banks from BANKMGR.
 K_CODE_BANKS = 5
-K_SYM_BANKS = 4
+K_SYM_BANKS = 8
 K_FIX_BANKS = 8
 
 # The runtime record table, in bank RT.BANK, for at most 1024 records: a byte per record
@@ -124,8 +124,9 @@ K_RT_ADDR = 0xB000
 K_TP_DATA = 254
 
 # The symbol table: bucket heads, then 32-byte records.
+# Checklist: K_SY_MAX is (K_SYM_BANKS * 8192 - K_SY_HEADS) / 32.
 K_SY_HEADS = 512
-K_SY_MAX = 1008
+K_SY_MAX = 2032
 
 # The most SUBs UXC-DEAD.BL can leave out of one program.
 K_DD_MAX = 512

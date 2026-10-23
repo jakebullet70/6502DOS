@@ -402,7 +402,7 @@ Every other option comes from `#DEFINE UXC.*` lines in the source.
 **Compiler memory.** pyuxc keeps the GPC UXC's banks, each a `bytearray` of 8,192 bytes.
 - The code buffer is `K_CODE_BANKS`, 5 banks: a program's code is at most 40,960 bytes. Past
   that the compile stops with `PROGRAM TOO BIG`.
-- The symbol table is `K_SYM_BANKS`, 4 banks, and the fixups `K_FIX_BANKS`, 8 banks: 8,192 fixups of 8 bytes.
+- The symbol table is `K_SYM_BANKS`, 8 banks: 2,032 names, and the fixups `K_FIX_BANKS`, 8 banks: 8,192 fixups of 8 bytes.
 - The program and its arrays must end below `K_TOP`, `$9F00`, or the link stops with
   `PROGRAM TOO BIG`.
 
