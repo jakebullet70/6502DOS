@@ -1,0 +1,21 @@
+' GUIMENU: GUI.MENUBAR, GUI.BEGINMENU, GUI.MENUITEM and GUI.ENDMENU. A form under a menu bar
+' of File and Help, with the button "&Go" (id 5): SHOW draws the bar on the top row, and Enter
+' on Go returns 5. The last line gives the result.
+#INCLUDE "KEYS.UXI"
+#INCLUDE "GUI.UXI"
+DIM H AS UBYTE
+
+H = GUI.CREATEFORM("Main", 1, 0, 40, 6, GUI.FRAMED)
+GUI.BUTTON(3, 2, "&Go", 5)
+GUI.MENUBAR(H)
+GUI.BEGINMENU("&File")
+GUI.MENUITEM("&Open", 1)
+GUI.MENUITEM("E&xit", 2)
+GUI.ENDMENU()
+GUI.BEGINMENU("&Help")
+GUI.MENUITEM("&About", 3)
+GUI.ENDMENU()
+H = GUI.SHOW(H)
+POS(1) = 24
+POS(0) = 0
+PRINT H

@@ -4309,7 +4309,26 @@
             Owed to the doc batch: UXC-HELP's POS. Tests: ANSI ok 0.8 s, BREAK 0.4, GUIINP 0.5,
             GUIBTN 0.5, GUICBO 0.5, GUIMEMO 0.6, GUICHECK 0.5, GUIDLG 0.5. No test sees the
             cursor (colors are not echoed); the user checks it by eye. Build 3994 ms, the new baseline.
-            Next: the list box and file dialog plan (GUI.PLAN "After V1"), then 4a, menus.
+          - Done (2026-10-23), the list and file dialog plan, in GUI.PLAN "After V1" (the file
+            is still untracked): L1 `GUI.LIST` (kind 6, records in a bank, `LIST_MULTI` marks),
+            L2 `GUI.LISTBOX`, L3 `GUI.PICKFILE` (EDIT's Open layout; `PICK_MANAGE` deletes,
+            renames, copies, makes folders). User's calls: after V1 (after 4a and 4c);
+            multi-select as a flag; the file manager mode as a flag; region 3 if needed.
+            Next: 4a, menus.
+          - Done (2026-10-23), 4a part 1, in `lib/GUI.UXI` region 2: the menu tables (8 menus,
+            40 items; caption address and id an item, 3 bytes), `GUI.MENUBAR(HANDLE)` (0 takes
+            the bar away), `GUI.BEGINMENU(TITLE$)`, `GUI.MENUITEM(CAPTION$, ID)`,
+            `GUI.ENDMENU()`, and `DRAW_BAR`, which SHOW calls after DRAW_FORM: the top row in
+            the MENU color, titles from column 2 between spaces, each title's column and hot
+            letter kept for part 2. `PRINT_HOT` (the & caption printer) split out of
+            PUSH_BUTTON and moved to region 2, shared by buttons and menus; COLORS$ moves to
+            low RAM. Bytes, a SHOW program with no menu (HELPED): region 1 -154 (391 to 545
+            free), region 2 +396, low RAM +5; THEMED region 1 +139 free, low RAM 0. The four
+            builders: region 2 +291 (134 of data). Test `GUIMENU` new (bar of File and Help
+            over a form, Enter on Go returns 5; golden local). Tests: GUIMENU ok 0.6 s, GUIBTN
+            0.6, GUIDLG 0.5. Build 3584 ms, the new baseline. Next: 4a part 2, F10 and
+            Alt+letter open a menu; Left, Right, Up, Down, Enter, Esc, hot letters; the item's
+            id returns from SHOW; the form drawn again on close.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

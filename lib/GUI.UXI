@@ -1,7 +1,7 @@
 ' GUI.UXI: GUI Forms, the text-mode user interface library of 6502DOS's utilities.
 '
 ' A program includes KEYS.UXI, then GUI.UXI. The code runs from region 1, a RAM bank of its
-' own at $A000, and a CBO's list and the memo from region 2. A SUB or FUNCTION adds bytes only
+' own at $A000, and a CBO's list, the memo, the menus and the dialogs from region 2. A SUB or FUNCTION adds bytes only
 ' when called.
 
 #REGION_SLOT 1
@@ -741,26 +741,21 @@ NAMESPACE GUI
     LOOP
   END FUNCTION
 
-  ' Draws CONTROL, a BUTTON, at COLUMN in the BUTTON_FOCUS color, or the BUTTON color when
-  ' MORE_FLAGS is DRAW_ONLY. The & is not drawn, and the letter after it takes the button's
-  ' background and the HOT_KEY color's foreground. With MORE_FLAGS DRAW_ONLY it returns
-  ' DRAW_ONLY; else it returns the next key.
-  FUNCTION PUSH_BUTTON(CONTROL AS UBYTE, COLUMN AS UBYTE, MORE_FLAGS AS UBYTE) AS UWORD
-    DIM CAPTION_AT AS UWORD, WHICH AS ENUM.ROLE, HOT AS UBYTE, CHARACTER AS UBYTE, SPOT AS UBYTE
-    CAPTION_AT = CONTROL_MASK_AT(CONTROL)
-    WHICH = ROLE.BUTTON_FOCUS
-    IF MORE_FLAGS <> 0 THEN WHICH = ROLE.BUTTON
+  ' PRINT_HOT runs from region 2, beside the menus. It reads the theme, so COLORS$ is in low RAM.
+#REGION_SLOT 2
+  ' Prints the caption at CAPTION_AT in WHICH's color, which is the console's color. The & is
+  ' not printed, and the letter after it takes WHICH's background and the HOT_KEY color's
+  ' foreground. Returns that letter in lower case with bit 7 set, or 0 for a caption with no &.
+  FUNCTION PRINT_HOT(CAPTION_AT AS UWORD, WHICH AS ENUM.ROLE) AS UBYTE
+    DIM HOT AS UBYTE, LETTER AS UBYTE, CHARACTER AS UBYTE, SPOT AS UBYTE
     HOT = (ContentsAt(@COLORS$ + 2 + WHICH) AND $F0) OR (ContentsAt(@COLORS$ + 2 + ROLE.HOT_KEY) AND 15)
-    USE_COLOR(WHICH)
-    POS(1) = CONTROL_ROW(CONTROL)
-    POS(0) = COLUMN
-    PRINT "< ";
+    LETTER = 0
     SPOT = 2
     REPEAT ContentsAt(CAPTION_AT + 1)
       CHARACTER = ContentsAt(CAPTION_AT + SPOT)
       SPOT = SPOT + 1
       IF CHARACTER = ASC("&") THEN
-        CONTROL_WIDTH(CONTROL) = ContentsAt(CAPTION_AT + SPOT) OR $A0
+        LETTER = ContentsAt(CAPTION_AT + SPOT) OR $A0
         CALL_A = HOT
         CALL_P = 0
         SYS CON_COLOR_CALL
@@ -769,6 +764,23 @@ NAMESPACE GUI
         USE_COLOR(WHICH)
       ENDIF
     END REPEAT
+    RETURN LETTER
+  END FUNCTION
+#REGION_SLOT 1
+
+  ' Draws CONTROL, a BUTTON, at COLUMN in the BUTTON_FOCUS color, or the BUTTON color when
+  ' MORE_FLAGS is DRAW_ONLY. The caption is printed as PRINT_HOT prints it. With MORE_FLAGS
+  ' DRAW_ONLY it returns DRAW_ONLY; else it returns the next key.
+  FUNCTION PUSH_BUTTON(CONTROL AS UBYTE, COLUMN AS UBYTE, MORE_FLAGS AS UBYTE) AS UWORD
+    DIM WHICH AS ENUM.ROLE, LETTER AS UBYTE
+    WHICH = ROLE.BUTTON_FOCUS
+    IF MORE_FLAGS <> 0 THEN WHICH = ROLE.BUTTON
+    USE_COLOR(WHICH)
+    POS(1) = CONTROL_ROW(CONTROL)
+    POS(0) = COLUMN
+    PRINT "< ";
+    LETTER = PRINT_HOT(CONTROL_MASK_AT(CONTROL), WHICH)
+    IF LETTER <> 0 THEN CONTROL_WIDTH(CONTROL) = LETTER
     PRINT " >";
     IF MORE_FLAGS <> 0 THEN RETURN MORE_FLAGS
     POS(0) = COLUMN + 2
@@ -784,8 +796,8 @@ NAMESPACE GUI
     ' The scan code is the high byte. A plain key's is 0, which wraps past 34.
     CONTROL = ContentsAt(@PRESSED + 1) - $10
     IF CONTROL > 34 THEN RETURN 0
-    ' PUSH_BUTTON keeps a button's hot letter in its CONTROL_WIDTH, in lower case, with bit 7
-    ' set. A field is never that wide.
+    ' PUSH_BUTTON keeps a button's hot letter in its CONTROL_WIDTH, as PRINT_HOT returns it.
+    ' A field is never that wide.
     LETTER = ContentsAt(AddrOf(LETTERS$) + 2 + CONTROL) OR $80
     CONTROL = MOST_CONTROLS
     REPEAT MOST_CONTROLS
@@ -1061,6 +1073,77 @@ NAMESPACE GUI
     CLOSE HANDLE
     RETURN 0
   END FUNCTION
+
+  ' The menu bar. MENU_FORM is the form that shows it, 0 for none. The menus are 1 to
+  ' MENU_COUNT: MENU_TITLE_AT is the address of a menu's title, and MENU_FIRST its first item;
+  ' a menu's items run up to the next menu's first. DRAW_BAR puts a menu's column on the bar in
+  ' MENU_COLUMN, and its hot letter, as PRINT_HOT returns it, in MENU_HOT. The items are 1 to
+  ' ITEM_COUNT: ITEM_CAPTION_AT is the address of an item's caption, and ITEM_ID its id.
+  ' Checklist: the MENU_ arrays hold MOST_MENUS + 2 elements, and the ITEM_ arrays MOST_ITEMS + 1.
+  CONST MOST_MENUS AS UBYTE = 8, MOST_ITEMS AS UBYTE = 40
+  DIM MENU_FORM AS UBYTE, MENU_COUNT AS UBYTE, ITEM_COUNT AS UBYTE
+  DIM MENU_TITLE_AT(10) AS UWORD, MENU_FIRST(10) AS UBYTE, MENU_COLUMN(10) AS UBYTE
+  DIM MENU_HOT(10) AS UBYTE
+  DIM ITEM_CAPTION_AT(41) AS UWORD, ITEM_ID(41) AS UBYTE
+
+  ' Gives the form HANDLE an empty menu bar on the screen's top row, and takes it from the form
+  ' that had it. MENUBAR(0) takes the bar away. The menus made from now on go on the bar. SHOW
+  ' draws the bar after the form.
+  ' Trap: FREE leaves the bar to the handle, and the next form made may take that handle.
+  SUB MENUBAR(HANDLE AS UBYTE)
+    MENU_FORM = HANDLE
+    MENU_COUNT = 0
+    ITEM_COUNT = 0
+    MENU_FIRST(1) = 1
+  END SUB
+
+  ' Adds a menu titled TITLE$ to the bar, after the menus before it. The & marks its hot letter,
+  ' as in "&File". The items made from now on go in it, up to ENDMENU. The bar keeps the address
+  ' of TITLE$, not a copy. Past MOST_MENUS menus BEGINMENU does nothing, and the items go in the
+  ' last menu.
+  SUB BEGINMENU(TITLE$ AS CONST)
+    IF MENU_COUNT = MOST_MENUS THEN RETURN
+    MENU_COUNT = MENU_COUNT + 1
+    MENU_TITLE_AT(MENU_COUNT) = AddrOf(TITLE$)
+  END SUB
+
+  ' Adds the item CAPTION$ to the menu BEGINMENU opened, after the items before it. Choosing the
+  ' item makes SHOW return ID, as a button's id. The & marks its hot letter. The menu keeps the
+  ' address of CAPTION$, not a copy. Past MOST_ITEMS items MENUITEM does nothing.
+  SUB MENUITEM(CAPTION$ AS CONST, ID AS UBYTE)
+    IF ITEM_COUNT = MOST_ITEMS THEN RETURN
+    ITEM_COUNT = ITEM_COUNT + 1
+    ITEM_CAPTION_AT(ITEM_COUNT) = AddrOf(CAPTION$)
+    ITEM_ID(ITEM_COUNT) = ID
+  END SUB
+
+  ' Ends the menu BEGINMENU opened.
+  SUB ENDMENU()
+    MENU_FIRST(MENU_COUNT + 1) = ITEM_COUNT + 1
+  END SUB
+
+  ' Draws the menu bar when HANDLE is MENU_FORM: the screen's top row, all but its last column,
+  ' in the MENU color, and each menu's title from column 2, as PRINT_HOT prints it, 2 columns
+  ' after the one before.
+  SUB DRAW_BAR(HANDLE AS UBYTE)
+    DIM NUMBER AS UBYTE
+    IF HANDLE <> MENU_FORM THEN RETURN
+    USE_COLOR(ROLE.MENU)
+    POS(1) = 0
+    POS(0) = 0
+    REPEAT POS(3) - 1
+      PRINT " ";
+    END REPEAT
+    POS(0) = 1
+    NUMBER = 1
+    REPEAT MENU_COUNT
+      MENU_COLUMN(NUMBER) = POS(0)
+      PRINT " ";
+      MENU_HOT(NUMBER) = PRINT_HOT(MENU_TITLE_AT(NUMBER), ROLE.MENU)
+      PRINT " ";
+      NUMBER = NUMBER + 1
+    END REPEAT
+  END SUB
 #REGION_SLOT 1
 
   ' Runs INPUT2 on the field CONTROL, its FLAGS with MORE_FLAGS added, and returns INPUT2's key;
@@ -1099,7 +1182,8 @@ NAMESPACE GUI
   END SUB
 
   ' Shows the form HANDLE and lets the user edit its controls, then returns an event. A form new
-  ' to SHOW is drawn with its captions and fields, and the focus goes to its first control. Tab,
+  ' to SHOW is drawn with its captions and fields, and its menu bar when MENUBAR gave it one, and
+  ' the focus goes to its first control. Tab,
   ' Down and Enter move the focus to the next control, and Shift+Tab and Up to the one before;
   ' the focus wraps from the last control to the first and back, and skips each SAY. Enter on
   ' the last control returns EV_DONE, and so does a form with no control but SAYs. Esc returns
@@ -1122,6 +1206,7 @@ NAMESPACE GUI
       IF SHOWN_FORM = 0 THEN
         SHOWN_FORM = HANDLE
         DRAW_FORM(HANDLE)
+        DRAW_BAR(HANDLE)
         PUSHED = MOST_CONTROLS
         REPEAT MOST_CONTROLS
           IF CONTROL_OWNER(PUSHED) = HANDLE THEN
