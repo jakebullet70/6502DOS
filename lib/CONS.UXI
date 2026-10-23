@@ -27,6 +27,11 @@ NAMESPACE CONS
   ' The cursor to row 1, column 1.
   CONST CURSOR_HOME$ = CSI$ + "H"
 
+  ' POS(1) = CURSOR_OFF hides the cursor while the program waits for a key, and POS(1) =
+  ' CURSOR_ON shows it. Neither moves the cursor. The program's end shows it again.
+  ' Checklist: GUI.UXI has the same two values; api_con_cursor in src/asm/console.s reads them.
+  CONST CURSOR_ON AS UBYTE = $80, CURSOR_OFF AS UBYTE = $C0
+
   ' CLEAR_SCREEN$ clears the screen and puts the cursor home. CLEAR_EOL$ blanks from the
   ' cursor to the end of the line.
   CONST CLEAR_SCREEN$ = CSI$ + "2J", CLEAR_EOL$ = CSI$ + "K"

@@ -4297,6 +4297,19 @@
             THEMED (DARK's values in each role table, the rest the same). `GUITHEME` ok 0.5 s,
             `THEMED` ok 1.2 s, `HELPED` ok 1.1 s. Build 2646 ms, the new baseline. No other doc
             lists DARK's colors. Next: phase 4, step 4a, menus.
+          - Done (2026-10-23), the cursor off and on (asm agreed): `con_hide` (KERNELRAM);
+            bit 6 set makes `cursor_flip` do nothing, so `con_in` waits with no cursor.
+            `api_con_cursor` with carry clear and X = $80 or above stores X in `con_hide` and
+            does not move the cursor. `con_init` and `exec_quit` clear it, so the shell always
+            has its cursor. UXCBASIC: `POS(1) = $C0` hides, `POS(1) = $80` shows (`R_POSSETROW`
+            passes the value in X). `CONS.CURSOR_ON`/`CURSOR_OFF` and `GUI.CURSOR_ON`/`CURSOR_OFF`
+            name them. GUI: INPUT2 and the memo show it; PICK_CHOICE, PUSH_BUTTON and DROP_LIST
+            hide it. Bytes: ROM 18 of code, 1 of RAM (bank 0: 6738 free below $FFA0); region 1
+            +15 (HELPED 391 free), region 2 +10. `api.py` documents it (API.md regenerated).
+            Owed to the doc batch: UXC-HELP's POS. Tests: ANSI ok 0.8 s, BREAK 0.4, GUIINP 0.5,
+            GUIBTN 0.5, GUICBO 0.5, GUIMEMO 0.6, GUICHECK 0.5, GUIDLG 0.5. No test sees the
+            cursor (colors are not echoed); the user checks it by eye. Build 3994 ms, the new baseline.
+            Next: the list box and file dialog plan (GUI.PLAN "After V1"), then 4a, menus.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

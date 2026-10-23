@@ -109,6 +109,9 @@ NAMESPACE GUI
   CONST KIND_BUTTON AS UBYTE = 3, KIND_CBO AS UBYTE = 4, KIND_MEMO AS UBYTE = 5
   ' SHOW's events. A button's id is below them.
   CONST EV_DONE AS UBYTE = 253, EV_LEAVE AS UBYTE = 254, EV_CANCEL AS UBYTE = 255
+  ' POS(1) = CURSOR_OFF hides the cursor while WAITKEY() waits, POS(1) = CURSOR_ON shows it, as
+  ' in CONS.UXI. A field and the memo show it; the other controls hide it.
+  CONST CURSOR_ON AS UBYTE = $80, CURSOR_OFF AS UBYTE = $C0
   ' The form SHOW runs, 0 when the next SHOW starts a form afresh. The control SHOW gives the
   ' focus to next, 0 to return EV_DONE. The VALIDATE field of the last EV_LEAVE. 1 while
   ' REFUSE's message is on the status line.
@@ -196,6 +199,7 @@ NAMESPACE GUI
       END REPEAT
       IF ENDING <> 0 THEN RETURN ENDING
       POS(0) = COLUMN + CURSOR - FIRST
+      POS(1) = CURSOR_ON
       PRESSED = KEYS.KEY_DELETE
       IF BACKWARD < 2 THEN PRESSED = WAITKEY()
       BACKWARD = 0
@@ -725,6 +729,7 @@ NAMESPACE GUI
       END REPEAT
       IF MORE_FLAGS <> 0 THEN RETURN MORE_FLAGS
       POS(0) = CURSOR
+      POS(1) = CURSOR_OFF
       PRESSED = WAITKEY()
       ' ITEM is the last choice's number, so adding ITEM + 1 wraps to the same choice, and
       ' adding ITEM to the choice before.
@@ -767,6 +772,7 @@ NAMESPACE GUI
     PRINT " >";
     IF MORE_FLAGS <> 0 THEN RETURN MORE_FLAGS
     POS(0) = COLUMN + 2
+    POS(1) = CURSOR_OFF
     RETURN WAITKEY()
   END FUNCTION
 
@@ -831,6 +837,7 @@ NAMESPACE GUI
     PRINT CHR$(31);
     IF MORE_FLAGS <> 0 THEN RETURN MORE_FLAGS
     POS(0) = COLUMN
+    POS(1) = CURSOR_OFF
     PRESSED = WAITKEY()
     IF PRESSED <> KEYS.SPACE THEN RETURN PRESSED
     USE_COLOR(MENU)
@@ -944,6 +951,7 @@ NAMESPACE GUI
       IF MORE_FLAGS <> 0 THEN RETURN MORE_FLAGS
       POS(1) = CURSOR_ROW
       POS(0) = COLUMN + CURSOR_COLUMN - MEMO_LEFT
+      POS(1) = CURSOR_ON
       PRESSED = WAITKEY()
       ' The scan code is the high byte, 0 for a plain key. PgUp and PgDn are Up and Down + 1.
       CHARACTER = PRESSED

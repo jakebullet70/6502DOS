@@ -33,7 +33,7 @@
 
 .export con_init, api_con_line, api_con_edit, api_con_screen, api_con_status, api_con_out, api_con_in, api_con_cursor
 .export api_con_getkey
-.export api_con_colour, api_con_break
+.export api_con_colour, api_con_break, con_hide
 .export CHRIN, CHROUT
 .import font, i2c_read_byte, sft_find, bank_restore, api_read, exec_break
 .importzp ticks
@@ -87,6 +87,7 @@ ansi_state:   .res 1            ; 0, ANSI_ESC after Esc, ANSI_CSI after Esc [
 
 con_default:  .res 1            ; the colour Esc[0m sets: the one api_con_colour last set
 con_broke:    .res 1            ; 1 when Ctrl+C came in BREAK_CATCH since api_con_break's last get
+con_hide:     .res 1            ; bit 6 set keeps the cursor hidden; api_con_cursor sets it
 ansi_count:   .res 1            ; the index of the parameter being read
 ansi_params:  .res ANSI_PARAMS  ; the parameters, each modulo 256
 scr_row:      .res 1            ; api_con_screen: the row and column the line started at
@@ -112,6 +113,7 @@ con_init:
         sta VERA_DC_VSCALE
         stz VERA_DC_BORDER
         stz con_broke
+        stz con_hide
         lda #$60                ; map 64 rows by 128 columns, 1 bpp tiles
         sta VERA_L1_CONFIG
         lda #SCREEN_MAP >> 9
@@ -438,8 +440,11 @@ ansi:
         rts
 
 ; cursor_flip: shows or hides the cursor by swapping the nibbles of its cell's colour. A cell
-; whose two nibbles match shows no cursor. Changes A, X and Y.
+; whose two nibbles match shows no cursor. Does nothing while bit 6 of con_hide is set.
+; Changes A, X and Y.
 cursor_flip:
+        bit con_hide
+        bvs @done
         inc con_cursor
         ldx con_row
         ldy con_col
@@ -455,6 +460,7 @@ cursor_flip:
         adc #$80
         rol
         sta VERA_DATA0
+@done:
         rts
 
 ; con_in: waits for a key and returns its character in A. The cursor blinks while it waits.
@@ -581,7 +587,9 @@ api_con_break:
 
 ; api_con_cursor: with carry set returns the cursor's row in X and column in Y, and the screen's
 ; rows in r0L and columns in r0H. With carry clear moves the cursor to row X, below ROWS, and
-; column Y, below COLUMNS. Returns carry clear.
+; column Y, below COLUMNS. With carry clear and X = $80 or above, stores X in con_hide and
+; leaves the cursor where it is: bit 6 set hides the cursor while con_in waits, clear shows it.
+; Returns carry clear.
 api_con_cursor:
         bcc @move
         lda #ROWS
@@ -593,8 +601,13 @@ api_con_cursor:
         clc
         rts
 @move:
+        txa
+        bmi @hide
         stx con_row
         sty con_col
+        rts
+@hide:
+        stx con_hide
         rts
 
 ; api_con_colour: with carry set returns con_colour in A. With carry clear sets con_colour to A,

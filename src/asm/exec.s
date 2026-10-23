@@ -12,7 +12,7 @@
 .include "far.inc"
 
 .export api_exec, api_exit, api_exitcode, api_keep, exec_break
-.import handles_inherit, handles_close, heap_exec, heap_exit, CHROUT
+.import handles_inherit, handles_close, heap_exec, heap_exit, CHROUT, con_hide
 .import api_bank_alloc, api_bank_free, bank_exit
 .import jsrfar, bank0, lib_open, lib_read, lib_close
 .importzp file_size, saved_bank
@@ -189,12 +189,14 @@ exit_normal:
         ldx #0                  ; ended by exit
         ; fall through
 
-; exec_quit: the program ended with code A, in the way X. Unwinds the stack to PSP_STACK.
+; exec_quit: the program ended with code A, in the way X. Unwinds the stack to PSP_STACK and
+; shows the cursor again.
 exec_quit:
         stx exit_how
         ldx PSP_STACK
         txs
         sta exit_code
+        stz con_hide
         cld
         clc
         ; fall through
