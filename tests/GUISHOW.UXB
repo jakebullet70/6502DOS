@@ -6,6 +6,7 @@
 ' field 3 Tab wraps to field 1 and Up wraps back to field 3; "z" and Enter returns EV_DONE.
 ' Round 2: "q" and Esc puts A$ back and returns EV_CANCEL.
 #INCLUDE "KEYS.UXI"
+#INCLUDE "VERA.UXI"
 #INCLUDE "GUI.UXI"
 DIM KEPT(24) AS UBYTE, AT AS UBYTE, H AS UBYTE, EVENT AS UBYTE
 DIM A$ * 6, B$ * 2, C$ * 6, X$ * 2

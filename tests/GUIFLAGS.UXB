@@ -2,6 +2,7 @@
 ' 1: PASSWORD shows *. 2: READ_ONLY keeps the text through typing, Delete and Backspace.
 ' 3: UPPER. 4: LOWER. 5: PROPER, then a letter typed at the start.
 #INCLUDE "KEYS.UXI"
+#INCLUDE "VERA.UXI"
 #INCLUDE "GUI.UXI"
 DIM NAME$ * 12, ENDED AS UWORD
 

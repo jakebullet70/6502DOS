@@ -6,6 +6,7 @@
 ' 1. 3: on Save, Tab, Tab, Enter on Help returns 9. 4: Down wraps to the field, Enter, Enter on
 ' Save returns 1. 5: Esc returns EV_CANCEL. 6: the form is drawn again, and Alt+H returns 9.
 #INCLUDE "KEYS.UXI"
+#INCLUDE "VERA.UXI"
 #INCLUDE "GUI.UXI"
 DIM KEPT(16) AS UBYTE, AT AS UBYTE, H AS UBYTE, N AS UBYTE
 DIM N$ * 6

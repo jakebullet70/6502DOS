@@ -3,6 +3,7 @@
 ' 1: a single box 6 by 4. 2: a double box 2 by 2. 3: single and double HLINE of 3. 4: single
 ' and double VLINE of 3.
 #INCLUDE "KEYS.UXI"
+#INCLUDE "VERA.UXI"
 #INCLUDE "GUI.UXI"
 DIM ENDS(12) AS UBYTE, AT AS UBYTE
 

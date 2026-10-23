@@ -3,6 +3,7 @@
 ' returns EV_CANCEL. 4: Alt+C returns 2. 5: the mask ##, 42 typed, Alt+O returns 1. 6:
 ' INPUTBOX2, X, Enter, Y, Enter returns 1.
 #INCLUDE "KEYS.UXI"
+#INCLUDE "VERA.UXI"
 #INCLUDE "GUI.UXI"
 DIM KEPT(8) AS UBYTE, AT AS UBYTE, N AS UBYTE
 DIM F$ * 12, M$ * 2, A$ * 10, B$ * 10

@@ -7,9 +7,6 @@
 ' is the background times 16 plus the foreground. The map row of a screen row follows layer 1's
 ' vertical scroll. VRAM $00000 to $0FFFF holds the saved boxes.
 '
-' Trap: the console's cursor is a cell with the nibbles of its color swapped. A box saved with
-' the cursor on keeps the swap, and RESTORE_RECT puts it back.
-'
 ' DIM CELL AS UWORD
 ' VERA.PUT_CELL(2, 5, 65, $1F)    ' an A, white on blue, at row 2, column 5
 ' CELL = VERA.GET_CELL(2, 5)      ' 65 in the low byte, $1F in the high byte

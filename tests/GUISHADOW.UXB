@@ -6,6 +6,7 @@
 ' 70 to 79; rows 26 to 29, columns 70 to 79. The last line gives 0 when the screen did not
 ' scroll.
 #INCLUDE "KEYS.UXI"
+#INCLUDE "VERA.UXI"
 #INCLUDE "GUI.UXI"
 ' VERA's data port 0 and its address, and layer 1's vertical scroll.
 DIM VERA_LOW AS UBYTE AT $9F20, VERA_MIDDLE AS UBYTE AT $9F21, VERA_HIGH AS UBYTE AT $9F22

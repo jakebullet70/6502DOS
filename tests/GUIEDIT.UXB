@@ -3,6 +3,7 @@
 ' 2: the string's size stops the typing, and the text scrolls in a field 3 wide.
 ' 3: Esc puts back the text. 4: Up ends the edit at once. 5: Tab ends it. 6: Enter at once.
 #INCLUDE "KEYS.UXI"
+#INCLUDE "VERA.UXI"
 #INCLUDE "GUI.UXI"
 DIM NAME$ * 12, SHORT$ * 4, ENDED AS UWORD
 

@@ -5,6 +5,7 @@
 ' 4: Esc puts back "". 5: Home skips the (; Backspace and Left there do nothing. 6: a mask
 ' longer than the string's size stops at the size.
 #INCLUDE "KEYS.UXI"
+#INCLUDE "VERA.UXI"
 #INCLUDE "GUI.UXI"
 DIM NAME$ * 14, SHORT$ * 3, ENDED AS UWORD
 

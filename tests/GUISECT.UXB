@@ -8,6 +8,7 @@
 ' Form 2 at 20, 50, 20 by 6, no frame, ends the open section. Its framed section "": one
 ' control; ENDSECTION twice; then a control on the form's own line.
 #INCLUDE "KEYS.UXI"
+#INCLUDE "VERA.UXI"
 #INCLUDE "GUI.UXI"
 DIM KEPT(64) AS UBYTE, AT AS UBYTE, H1 AS UBYTE, H2 AS UBYTE, PANEL AS UBYTE
 

@@ -7,6 +7,7 @@
 ' twice joins the lines, Left at the start, PgDn; Tab, and Enter on the button returns 7.
 ' Round 2: MEMO_CLEAR, and Esc returns EV_CANCEL. Then a save to a missing drive.
 #INCLUDE "KEYS.UXI"
+#INCLUDE "VERA.UXI"
 #INCLUDE "GUI.UXI"
 DIM KEPT(16) AS UBYTE, AT AS UBYTE, H AS UBYTE, N AS UWORD, F AS UWORD, I AS UWORD
 DIM B(40) AS UBYTE

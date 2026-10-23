@@ -7,6 +7,7 @@
 ' to the last field; "q" and Tab wrap past the SAY to the first; Enter; "9" and Enter; "zz" and
 ' Enter; Enter on the last field returns EV_DONE. A form of one SAY returns EV_DONE at once.
 #INCLUDE "KEYS.UXI"
+#INCLUDE "VERA.UXI"
 #INCLUDE "GUI.UXI"
 DIM KEPT(24) AS UBYTE, AT AS UBYTE, H AS UBYTE, N AS UBYTE
 DIM N$ * 8, P$ * 6, Z$ * 4, A$ * 4

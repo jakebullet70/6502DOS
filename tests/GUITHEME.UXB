@@ -3,6 +3,7 @@
 ' 5: a theme file of 13 bytes. 6: a file of 3 bytes. 7: a missing file. 8: USE_COLOR(TITLE).
 #INCLUDE "KEYS.UXI"
 #INCLUDE "DOS.UXI"
+#INCLUDE "VERA.UXI"
 #INCLUDE "GUI.UXI"
 DIM KEPT AS UBYTE, F AS UWORD, B(13) AS UBYTE, I AS UBYTE
 

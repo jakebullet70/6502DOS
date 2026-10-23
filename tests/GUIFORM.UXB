@@ -5,6 +5,7 @@
 ' and a global title, changed before the draw. 5: a fifth form gets 0. 6: after FREE, a new form
 ' takes the freed handle; FREE(0) does nothing.
 #INCLUDE "KEYS.UXI"
+#INCLUDE "VERA.UXI"
 #INCLUDE "GUI.UXI"
 DIM ENDS(10) AS UBYTE, AT AS UBYTE, H(6) AS UBYTE, T$ * 4
 

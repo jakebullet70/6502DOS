@@ -4405,6 +4405,28 @@
             all seven 653 (7539 free). VERABOX has a line 4 (string variable, literal, cut at
             127, empty text): ok 0.5 s, golden local. No build.
           - To do (the user, 2026-10-23): sprite commands in namespace VERA.
+          - Done (2026-10-23), part 2, `lib/GUI.UXI`: a CBO's list (DROP_LIST), a menu
+            (PULL_MENU) and a dialog (RUN_DIALOG) VERA.SAVE_RECT the screen under them before
+            they draw, and VERA.RESTORE_RECT it when they close. A menu then draws its title
+            again in MENU; the list and the menu no longer draw the form whole. RUN_DIALOG saves
+            the form and its shadow (width + 2, height + 1), and after the restore puts back
+            SHOWN_FORM, so the form shown before is not drawn again. When SAVE_RECT returns 0
+            (stack full), each falls back to the old clear and whole draw. A program now
+            includes KEYS.UXI, VERA.UXI, then GUI.UXI (an included file may not include
+            another): the 17 GUI tests, HELPED and THEMED changed. No CURSOR OFF before a
+            save: the console swaps the cursor cell only while con_in waits, and con_in swaps
+            it back before it returns; VERA.UXI's trap on that removed. Bytes in region 2: list
+            +70, menu +74 (both in every SHOW program), dialogs +71; region 3 +357 (SAVE_RECT
+            and RESTORE_RECT); low RAM +19. HELPED region 2 2724 free, THEMED 2532 free.
+            Possible saving, not taken: drop the three fallbacks (about 20 bytes each) and make
+            a full stack a trap. Tests, goldens local: the echo shows no VERA write, so the
+            goldens lose the box clear and form redraw; results unchanged. New checks read
+            cells back: GUIDLG (a cell under the MSGBOX and one under its shadow, 1 1), GUIMENU
+            (a cell under File's menu matches the form, 1), GUICBO (cells under both lists, 1
+            1). GUICBO ok 0.5 s, GUIMENU 0.4, GUIDLG 0.5, GUISHADOW 0.4, GUISHOW 0.4, GUIBTN
+            0.5, VERABOX 0.4, HELPED 1.2, THEMED 1.2. Build 2949 ms, the new baseline. Owed to
+            the doc batch: GUI.PLAN and UXC-HELP on the include order and the restore. Next: L1
+            to L3 (GUI.LIST, LISTBOX, PICKFILE).
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
