@@ -13,6 +13,8 @@
 ' --     Forms     fields with captions, sections in one and two columns, a mask, the
 ' --               PASSWORD, READ_ONLY, UPPER, LOWER and PROPER flags, and a VALIDATE field
 ' --               that REFUSE holds until it takes two digits
+' --     Controls  check boxes in two columns, two sets of radio buttons, a combo box, and
+' --               the buttons OK, Show and Cancel; Show reports the choices and keeps the form
 ' -- Exit code 0.
 ' --
 ' -- From a prompt:
@@ -28,6 +30,12 @@
 
 ' The ids of the menu items and the buttons.
 CONST ID_EXIT AS UBYTE = 1, ID_MEMORY AS UBYTE = 2, ID_FORMS AS UBYTE = 10
+CONST ID_CONTROLS AS UBYTE = 11
+' The Controls demo's Show button.
+CONST ID_SHOW AS UBYTE = 3
+' The choices of the Controls demo's radio buttons and combo box. A form keeps their addresses.
+CONST SIZES$ = "Small|Medium|Large", ALIGNS$ = "Left|Center|Right"
+CONST INKS$ = "Black|Red|Green|Yellow|Blue|Magenta|Cyan|White"
 
 ' The kernel's table of bank owners, in RAM bank 0, as src/asm/mem.inc and banks.s lay it out.
 ' Trap: a change to BANK_OWNER or its owner codes there must change these.
@@ -43,6 +51,10 @@ DIM MESSAGE AS STRING * 79
 DIM PERSON_NAME AS STRING * 24, SECRET AS STRING * 12, PHONE AS STRING * 14
 DIM AGE AS STRING * 2, SHOWN_ONLY AS STRING * 24
 DIM SHOUT AS STRING * 12, QUIET AS STRING * 12, PROPER_NAME AS STRING * 12, PLAIN AS STRING * 12
+
+' The Controls demo's choices: 1 for a checked box, and a choice's number from 0.
+DIM BOLD AS UBYTE, ITALIC AS UBYTE, UNDERLINE AS UBYTE, BLINKING AS UBYTE
+DIM TEXT_SIZE AS UBYTE, TEXT_ALIGN AS UBYTE, INK_CHOICE AS UBYTE
 
 ' The Memory popup's lines, and a row of the bank map for each 64 banks.
 DIM PROGRAM_LINE AS STRING * 68, LOW_FREE_LINE AS STRING * 68, BANKS_LINE AS STRING * 68
@@ -223,11 +235,73 @@ SUB FORMS_DEMO()
   REPORT()
 END SUB
 
+' Choice NUMBER of CHOICES$, whose choices have | between them, counted from 0.
+FUNCTION CHOICE_NAME(CHOICES$ AS CONST, NUMBER AS UBYTE) AS STRING
+  DIM START AS UBYTE, FINISH AS UBYTE
+  START = 1
+  REPEAT NUMBER
+    START = INSTR(CHOICES$, "|", START) + 1
+  END REPEAT
+  FINISH = INSTR(CHOICES$, "|", START)
+  IF FINISH = 0 THEN FINISH = LEN(CHOICES$) + 1
+  RETURN MID$(CHOICES$, START, FINISH - START)
+END FUNCTION
+
+' The Controls demo's choices as words: the checked boxes, the size, the alignment and the ink.
+FUNCTION CONTROLS_TEXT() AS STRING
+  DIM TEXT AS STRING * 60
+  TEXT = ""
+  IF BOLD THEN TEXT = "Bold "
+  IF ITALIC THEN TEXT = TEXT + "Italic "
+  IF UNDERLINE THEN TEXT = TEXT + "Underline "
+  IF BLINKING THEN TEXT = TEXT + "Blink "
+  IF TEXT = "" THEN TEXT = "Plain "
+  RETURN TEXT + CHOICE_NAME(SIZES$, TEXT_SIZE) + ", " + CHOICE_NAME(ALIGNS$, TEXT_ALIGN) + ", " + CHOICE_NAME(INKS$, INK_CHOICE) + " ink"
+END FUNCTION
+
+' The Controls demo: four check boxes in a section of two columns, then two sets of radio
+' buttons and a combo box, over the buttons OK, Show and Cancel. Show reports the choices on the
+' status line and the form stays.
+SUB CONTROLS_DEMO()
+  DIM FORM AS UBYTE, RESULT AS UBYTE
+  FORM = GUI.CREATEFORM("Controls", GUI.CENTER, GUI.CENTER, 56, 15, GUI.FRAMED)
+  GUI.SAY(GUI.AUTO, 2, "Space checks a box and opens the Ink list. Left and")
+  GUI.SAY(GUI.AUTO, 2, "Right choose a size and an alignment. Show reports.")
+  GUI.STARTSECTION(FORM, "Style", GUI.FRAMED OR GUI.TWO_COL)
+  GUI.CHECK(GUI.AUTO, GUI.AUTO, "Bold", @BOLD)
+  GUI.CHECK(GUI.AUTO, GUI.AUTO, "Italic", @ITALIC)
+  GUI.CHECK(GUI.AUTO, GUI.AUTO, "Underline", @UNDERLINE)
+  GUI.CHECK(GUI.AUTO, GUI.AUTO, "Blink", @BLINKING)
+  GUI.STARTSECTION(FORM, "Choices", GUI.FRAMED)
+  GUI.RADIO(GUI.AUTO, GUI.AUTO, "Size", SIZES$, @TEXT_SIZE)
+  GUI.RADIO(GUI.AUTO, GUI.AUTO, "Align", ALIGNS$, @TEXT_ALIGN)
+  GUI.CBO(GUI.AUTO, GUI.AUTO, "Ink", INKS$, @INK_CHOICE, 10)
+  GUI.ENDSECTION()
+  GUI.BUTTON(13, 12, "&OK", 1)
+  GUI.BUTTON(13, 21, "&Show", ID_SHOW)
+  GUI.BUTTON(13, 32, "&Cancel", 2)
+  DO
+    RESULT = GUI.SHOW(FORM)
+    IF RESULT <> ID_SHOW THEN EXIT DO
+    MESSAGE = "Controls: " + CONTROLS_TEXT()
+    REPORT()
+  LOOP
+  GUI.FREE(FORM)
+  IF RESULT = 1 THEN
+    MESSAGE = "Controls: OK. " + CONTROLS_TEXT()
+  ELSE
+    MESSAGE = "Controls: cancelled, event " + STR$(RESULT)
+  ENDIF
+  REPORT()
+END SUB
+
 SUb SEED_demo()
   PERSON_NAME = "Ada Lovelace"
   PHONE = "(555)-010-1815"
   AGE = "36"
   SHOWN_ONLY = "This field reads only"
+  BOLD = 1
+  TEXT_SIZE = 1
 end sub
 
 
@@ -242,6 +316,7 @@ MAIN_FORM = GUI.CREATEFORM("6502DOS GUI Demo", 1, 0, 80, 28, GUI.FRAMED OR GUI.N
 GUI.SAY(2, 3, "F10, or Alt with a menu's letter, opens the menus. Esc ends the program.")
 GUI.SAY(3, 3, "Each button opens the demo of the menu item with its name.")
 GUI.BUTTON(5, 3, "&Forms", ID_FORMS)
+GUI.BUTTON(5, 14, "&Controls", ID_CONTROLS)
 GUI.BUTTON(5, 56, "&Memory", ID_MEMORY)
 GUI.BUTTON(5, 68, "E&xit", ID_EXIT)
 GUI.MENUBAR(MAIN_FORM)
@@ -251,6 +326,7 @@ GUI.MENUITEM("E&xit", ID_EXIT)
 GUI.ENDMENU()
 GUI.BEGINMENU("&Demos")
 GUI.MENUITEM("&Forms", ID_FORMS)
+GUI.MENUITEM("&Controls", ID_CONTROLS)
 GUI.ENDMENU()
 MESSAGE = "Ready."
 REPORT()
@@ -259,6 +335,8 @@ DO
   SELECT CASE EVENT
     CASE ID_FORMS
       FORMS_DEMO()
+    CASE ID_CONTROLS
+      CONTROLS_DEMO()
     CASE ID_MEMORY
       MEMORY_INFO()
     CASE ID_EXIT, GUI.EV_CANCEL

@@ -4780,6 +4780,23 @@
             is rewritten. Tests: CONSLIB ok 0.6 s. Build 6869 ms, the new baseline. Owed to
             the doc batch: PLAN.md's CONS row and UXC-HELP name `PRINT_AT`. Next: D2, the
             Controls demo.
+          - Done, D2 (2026-10-23), GUIDEMO's Controls demo: Demos, Controls (id 11) and the
+            main-form button &Controls (Alt+C, column 14). A centered form 56 by 15: two SAY
+            lines, the framed TWO_COL section Style (CHECK Bold, Italic, Underline, Blink), the
+            framed section Choices (RADIO Size "Small|Medium|Large", RADIO Align
+            "Left|Center|Right", CBO Ink of the 8 ANSI colors, 10 wide), then &OK (1), &Show
+            (`ID_SHOW` 3) and &Cancel (2). Show puts the choices on the status line and SHOW
+            runs again; OK reports them; Cancel reports the event and keeps the changes, as
+            Forms does. `CHOICE_NAME(CHOICES$, NUMBER)` picks a choice from a | list with
+            INSTR; `CONTROLS_TEXT()` joins the checked boxes (or Plain), size, alignment and
+            ink. SEED_demo checks Bold and picks Medium. GUIDEMO 20123 bytes, 3502 more: region
+            1 +915 (6743 to 7658, 534 free; CHECK, RADIO, CBO), region 2 +780 (2261 to 3041,
+            the CBO's list), low RAM +1807. Region 1 is near full for Memo, Lists, Dialogs and
+            Files. Smoke run (a scratch test, deleted: Alt+C, Space, Tabs, Right, Left, the
+            Ink list to Green, Alt+S, Alt+O, Esc): "Controls: Bold Italic Large, Right, Green
+            ink" on Show and OK, then the end. A -gif frame showed the layout; the hint lines
+            and the main-form button were moved off the frame and off Forms. Build 3804 ms,
+            the new baseline (7494 ms before the layout fix). Next: D3, the Memo demo.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
