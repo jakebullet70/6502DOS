@@ -4091,7 +4091,45 @@
             traced by hand; GUIBTN, GUICHECK, GUISHOW, GUISAY, GUISECT ok 0.4 to 0.5 s. No
             build. Owed to the doc batch: GUI.PLAN.md 3d (the split, Space, no scroll, the
             clear), D9 (CBO's list in region 2).
-            Next: phase 3, step 3e, `GUI.MEMO`, in region 2.
+          - Done (2026-10-23), 3e, in `lib/GUI.UXI`; the user's choices: a flat buffer of 2 KB
+            (not TED's gap buffer, and TED stays as it is), scroll sideways, Tab, Shift+Tab and
+            Esc leave, CR dropped on load and LF saved. `GUI.MEMO(ROW, COLUMN, CAPTION$ AS
+            CONST, WIDTH, HEIGHT, FLAGS = 0) AS UBYTE` in region 1: SAYGET with WIDTH, then
+            MAKE_CHOICE with HEIGHT in CONTROL_TEXT_AT and KIND_MEMO 5; AUTO as ROW moves the
+            form's next line HEIGHT - 1 more. EDIT_FIELD calls `MEMO_EDIT(ROW, COLUMN, WIDTH,
+            HEIGHT, MORE_FLAGS)` in region 2. Region 2 also holds `LINE_START`, `LINE_END`,
+            `CURSOR_TO`, `MEMO_CLEAR()`, `MEMO_LOAD(FILE_NAME$)` (0, MEMO_MISSING 1, MEMO_CUT 2)
+            and `MEMO_SAVE(FILE_NAME$)` (0 or MEMO_MISSING). One text a program: CONST
+            MEMO_TEXT $B800, MEMO_SIZE 2047, in region 2's bank past the image (a DIM array
+            would put its zeros in the file); MEMO_END, MEMO_CURSOR, MEMO_TOP are addresses,
+            MEMO_LEFT a column; MEMO_END is 0 until the first MEMO_CLEAR, so MEMO_EDIT and
+            MEMO_SAVE clear first. Keys: characters and Enter insert, Backspace, Delete, Left,
+            Right (across line ends), Up, Down (column kept, cut to the line), Home, End, PgUp,
+            PgDn (HEIGHT lines); any other key returns to SHOW. The whole memo is drawn at each
+            key; a character below 32 shows as a space. Esc does not put the text back. Traps
+            in the code: region 2's code and data must stay below $B800 (6144 bytes); a
+            kernel `read` that fills $BFFF returns with the next RAM bank selected
+            (`x16_banked_copy` in `src/asm/fat32.s` carries `bank_save` on), so region code
+            reading into its own bank must stop at $BFFE; a 2048-byte read hung the program.
+            A kernel fix is asm, not done; to propose. Sizes on GUISHOW: region 1 7258 to 7328
+            (+70, the dispatch), region 2 733 to 2587 (+1854: every GUI program carries the
+            editor, as SHOW reaches it), low RAM +0. GUI.MEMO's call: region 1 +127, low RAM
+            +57. MEMO_LOAD, MEMO_SAVE: region 2 +372 (GUIMEMO 2959). Region 1 left: GUICHECK
+            740 free, GUIBTN 832, GUICBO 917, GUIMEMO 858. Region 2 has 3557 bytes below $B800
+            on GUISHOW. Savings applied: keys switched on the scan code, a UBYTE, PgUp and PgDn
+            as Up and Down by scan - 1 (-108); the draw's two tests in one (-5); addresses in
+            place of offsets (-110 GUISHOW, -148 GUIMEMO). Measured, no gain: CURSOR_TO inline
+            (+42), DO WHILE with AND in LINE_START and LINE_END (0). Not applied: CURSOR_COLUMN
+            as a UBYTE (-36) breaks lines past 255. Profile before the savings: moves 523,
+            insert 299, draw 281, scroll 279, delete 274. New `tests/GUIMEMO.UXB` and `.IN`
+            (MEMO_LOAD of a missing file, of 2048 bytes, of "ab" CR LF "cdefghijklmn" LF "x"; a
+            SAYGET, a MEMO 8 by 3, a BUTTON; Down, End, Z scrolls across, Home, Down, PgDn,
+            End, Enter, y scrolls down, Up 3, Backspace, Delete 2 joins, Left, PgDn, Tab, Enter
+            returns 7; MEMO_SAVE; MEMO_CLEAR, Esc; saves to M3.TXT and Q:) ok 0.7 s, golden
+            traced by hand; GUICBO 0.6 s, GUIBTN, GUICHECK, GUISHOW, GUISAY, GUISECT ok 0.5 s.
+            No build. Owed to the doc batch: GUI.PLAN.md D10 and 3e (flat 2 KB at $B800 in
+            place of the gap buffer, TED not moved to lib/, the keys, the read trap), D9.
+            Next: the end of phase 3, a sample utility measured for low RAM and each bank.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

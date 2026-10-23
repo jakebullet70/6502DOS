@@ -1,7 +1,8 @@
 ' GUI.UXI: GUI Forms, the text-mode user interface library of 6502DOS's utilities.
 '
 ' A program includes KEYS.UXI, then GUI.UXI. The code runs from region 1, a RAM bank of its
-' own at $A000, and a CBO's list from region 2. A SUB or FUNCTION adds bytes only when called.
+' own at $A000, and a CBO's list and the memo from region 2. A SUB or FUNCTION adds bytes only
+' when called.
 
 #REGION_SLOT 1
 NAMESPACE GUI
@@ -95,7 +96,8 @@ NAMESPACE GUI
   ' CONTROL_LABEL_AT, CONTROL_TEXT_AT and CONTROL_MASK_AT are the addresses of the caller's
   ' caption, target and mask strings. For a CHECK, a RADIO or a CBO, CONTROL_TEXT_AT is the
   ' address of the caller's UBYTE, and CONTROL_MASK_AT of its choices. For a BUTTON, CONTROL_TEXT_AT is
-  ' its id, and CONTROL_MASK_AT the address of its caption.
+  ' its id, and CONTROL_MASK_AT the address of its caption. For a MEMO, CONTROL_TEXT_AT is its
+  ' height.
   ' Checklist: the arrays hold MOST_CONTROLS + 1 elements.
   CONST MOST_CONTROLS AS UBYTE = 48
   DIM CONTROL_OWNER(49) AS UBYTE, CONTROL_ROW(49) AS UBYTE, CONTROL_COLUMN(49) AS UBYTE
@@ -104,7 +106,7 @@ NAMESPACE GUI
   DIM CONTROL_LABEL_AT(49) AS UWORD, CONTROL_TEXT_AT(49) AS UWORD, CONTROL_MASK_AT(49) AS UWORD
   ' The kinds of control. A SAY is a KIND_FIELD of WIDTH 0.
   CONST KIND_FIELD AS UBYTE = 0, KIND_CHECK AS UBYTE = 1, KIND_RADIO AS UBYTE = 2
-  CONST KIND_BUTTON AS UBYTE = 3, KIND_CBO AS UBYTE = 4
+  CONST KIND_BUTTON AS UBYTE = 3, KIND_CBO AS UBYTE = 4, KIND_MEMO AS UBYTE = 5
   ' SHOW's events. A button's id is below them.
   CONST EV_DONE AS UBYTE = 253, EV_LEAVE AS UBYTE = 254, EV_CANCEL AS UBYTE = 255
   ' The form SHOW runs, 0 when the next SHOW starts a form afresh. The control SHOW gives the
@@ -641,6 +643,21 @@ NAMESPACE GUI
     RETURN MAKE_CHOICE(CONTROL, VALUE_AT, KIND_CBO)
   END FUNCTION
 
+  ' Makes a memo of the current form, a field of lines WIDTH columns by HEIGHT rows with the
+  ' caption CAPTION$ before its first row, and returns its control number, as SAYGET does. The
+  ' memo edits the text that MEMO_LOAD reads, MEMO_SAVE writes and MEMO_CLEAR empties: one text
+  ' a program, at most MEMO_SIZE bytes. In the memo Enter starts a new line and Up and Down
+  ' move through the text; Tab, Shift+Tab and Esc leave it. Esc does not put the text back. A
+  ' memo on the screen shows text MEMO_LOAD or MEMO_CLEAR changed when it next takes the focus.
+  ' ROW, COLUMN and FLAGS are SAYGET's. With AUTO as ROW, the form's next automatic line is
+  ' below the memo.
+  FUNCTION MEMO(ROW AS UBYTE, COLUMN AS UBYTE, CAPTION$ AS CONST, WIDTH AS UBYTE, HEIGHT AS UBYTE, FLAGS AS UBYTE = 0) AS UBYTE
+    DIM CONTROL AS UBYTE
+    CONTROL = SAYGET(ROW, COLUMN, CAPTION$, ORIGINAL$, WIDTH, "", FLAGS)
+    IF ROW = AUTO THEN PANEL_LAYOUT(CURRENT_FORM) = PANEL_LAYOUT(CURRENT_FORM) + HEIGHT - 1
+    RETURN MAKE_CHOICE(CONTROL, HEIGHT, KIND_MEMO)
+  END FUNCTION
+
   ' Returns the screen column of CONTROL's field, as SAYGET gives it.
   FUNCTION FIELD_COLUMN(CONTROL AS UBYTE) AS UBYTE
     DIM GAP AS UBYTE, SECTION AS UBYTE
@@ -837,12 +854,204 @@ NAMESPACE GUI
     SHOWN_FORM = 0
     RETURN 0
   END FUNCTION
+
+  ' The memo's text: the bytes from MEMO_TEXT up to MEMO_END, in region 2's bank past the
+  ' region's code and data. A line ends in LF. MEMO_CURSOR is the cursor's address in the text,
+  ' MEMO_TOP the address of the line on the memo's top row, and MEMO_LEFT the first column
+  ' shown. MEMO_END is 0 until the first MEMO_CLEAR.
+  ' Trap: region 2's code and data must end below MEMO_TEXT, 6144 bytes. The compile's REGION 2
+  ' line gives their size.
+  ' Trap: a read that fills $BFFF returns with the next RAM bank selected, and the region's code
+  ' is gone. The text stops at $BFFE.
+  CONST MEMO_TEXT AS UWORD = $B800, MEMO_SIZE AS UWORD = 2047
+  DIM MEMO_END AS UWORD, MEMO_CURSOR AS UWORD, MEMO_TOP AS UWORD, MEMO_LEFT AS UWORD
+  ' MEMO_LOAD's and MEMO_SAVE's results but 0.
+  CONST MEMO_MISSING AS UBYTE = 1, MEMO_CUT AS UBYTE = 2
+
+  ' Returns the address of the start of the memo's line that holds address AT.
+  FUNCTION LINE_START(AT AS UWORD) AS UWORD
+    DO WHILE AT > MEMO_TEXT
+      IF ContentsAt(AT - 1) = 10 THEN EXIT DO
+      AT = AT - 1
+    LOOP
+    RETURN AT
+  END FUNCTION
+
+  ' Returns the address of the LF that ends the memo's line that holds address AT, or MEMO_END
+  ' for the last line. An AT past MEMO_END is returned as it is.
+  FUNCTION LINE_END(AT AS UWORD) AS UWORD
+    DO WHILE AT < MEMO_END
+      IF ContentsAt(AT) = 10 THEN EXIT DO
+      AT = AT + 1
+    LOOP
+    RETURN AT
+  END FUNCTION
+
+  ' Puts the memo's cursor in the line that starts at START, COLUMN in, or at the line's end
+  ' when the line is shorter.
+  SUB CURSOR_TO(START AS UWORD, COLUMN AS UWORD)
+    MEMO_CURSOR = LINE_END(START)
+    IF START + COLUMN < MEMO_CURSOR THEN MEMO_CURSOR = START + COLUMN
+  END SUB
+
+  ' Draws the memo, WIDTH columns by HEIGHT rows from ROW and COLUMN, scrolled down and across
+  ' so that the cursor shows. A character below 32 shows as a space. With MORE_FLAGS DRAW_ONLY
+  ' it returns DRAW_ONLY. Else a character or Enter inserts at the cursor, Backspace and Delete
+  ' delete, and Left, Right, Up, Down, Home, End, PgUp and PgDn move the cursor; Left and Right
+  ' go on across the line's end. A full memo takes no more. It returns any other key.
+  FUNCTION MEMO_EDIT(ROW AS UBYTE, COLUMN AS UBYTE, WIDTH AS UBYTE, HEIGHT AS UBYTE, MORE_FLAGS AS UBYTE) AS UWORD
+    DIM PRESSED AS UWORD, START AS UWORD, SPOT AS UWORD, FINISH AS UWORD, CURSOR_COLUMN AS UWORD
+    DIM DRAWN_ROW AS UBYTE, CURSOR_ROW AS UBYTE, CHARACTER AS UBYTE, STEPS AS UBYTE, SCAN AS UBYTE
+    IF MEMO_END = 0 THEN MEMO_CLEAR()
+    DO
+      ' Scroll the cursor's line, from START, into the memo's rows, and its column into WIDTH.
+      START = LINE_START(MEMO_CURSOR)
+      CURSOR_COLUMN = MEMO_CURSOR - START
+      IF START < MEMO_TOP THEN MEMO_TOP = START
+      SPOT = START
+      REPEAT HEIGHT - 1
+        IF SPOT > MEMO_TOP THEN SPOT = LINE_START(SPOT - 1)
+      END REPEAT
+      IF SPOT > MEMO_TOP THEN MEMO_TOP = SPOT
+      IF CURSOR_COLUMN < MEMO_LEFT THEN MEMO_LEFT = CURSOR_COLUMN
+      IF CURSOR_COLUMN - MEMO_LEFT >= WIDTH THEN MEMO_LEFT = CURSOR_COLUMN - WIDTH + 1
+      ' Each row draws a line from MEMO_TOP on. Past the text's end SPOT runs on, and a row is
+      ' spaces.
+      SPOT = MEMO_TOP
+      DRAWN_ROW = ROW
+      REPEAT HEIGHT
+        IF SPOT = START THEN CURSOR_ROW = DRAWN_ROW
+        POS(1) = DRAWN_ROW
+        POS(0) = COLUMN
+        DRAWN_ROW = DRAWN_ROW + 1
+        FINISH = LINE_END(SPOT)
+        SPOT = SPOT + MEMO_LEFT
+        REPEAT WIDTH
+          CHARACTER = ContentsAt(SPOT)
+          IF SPOT >= FINISH OR CHARACTER < 32 THEN CHARACTER = 32
+          PRINT CHR$(CHARACTER);
+          SPOT = SPOT + 1
+        END REPEAT
+        SPOT = FINISH + 1
+      END REPEAT
+      IF MORE_FLAGS <> 0 THEN RETURN MORE_FLAGS
+      POS(1) = CURSOR_ROW
+      POS(0) = COLUMN + CURSOR_COLUMN - MEMO_LEFT
+      PRESSED = WAITKEY()
+      ' The scan code is the high byte, 0 for a plain key. PgUp and PgDn are Up and Down + 1.
+      CHARACTER = PRESSED
+      SCAN = ContentsAt(@PRESSED + 1)
+      STEPS = 1
+      IF SCAN = KEYS.SCAN_PGUP OR SCAN = KEYS.SCAN_PGDN THEN
+        SCAN = SCAN - 1
+        STEPS = HEIGHT
+      ENDIF
+      SELECT CASE SCAN
+        CASE KEYS.SCAN_LEFT
+          IF MEMO_CURSOR > MEMO_TEXT THEN MEMO_CURSOR = MEMO_CURSOR - 1
+        CASE KEYS.SCAN_RIGHT
+          IF MEMO_CURSOR < MEMO_END THEN MEMO_CURSOR = MEMO_CURSOR + 1
+        CASE KEYS.SCAN_HOME
+          MEMO_CURSOR = START
+        CASE KEYS.SCAN_END
+          MEMO_CURSOR = LINE_END(START)
+        CASE KEYS.SCAN_UP
+          REPEAT STEPS
+            IF START > MEMO_TEXT THEN START = LINE_START(START - 1)
+          END REPEAT
+          CURSOR_TO(START, CURSOR_COLUMN)
+        CASE KEYS.SCAN_DOWN
+          REPEAT STEPS
+            FINISH = LINE_END(START)
+            IF FINISH < MEMO_END THEN START = FINISH + 1
+          END REPEAT
+          CURSOR_TO(START, CURSOR_COLUMN)
+        CASE KEYS.SCAN_DELETE, 0
+          ' Backspace is a Delete after Left.
+          IF CHARACTER = KEYS.BACKSPACE THEN
+            IF MEMO_CURSOR = MEMO_TEXT THEN CONTINUE
+            MEMO_CURSOR = MEMO_CURSOR - 1
+            SCAN = KEYS.SCAN_DELETE
+          ENDIF
+          IF SCAN <> 0 THEN
+            IF MEMO_CURSOR = MEMO_END THEN CONTINUE
+            MEMO_END = MEMO_END - 1
+            SPOT = MEMO_CURSOR
+            DO WHILE SPOT < MEMO_END
+              ContentsAt(SPOT) = ContentsAt(SPOT + 1)
+              SPOT = SPOT + 1
+            LOOP
+            CONTINUE
+          ENDIF
+          IF CHARACTER = KEYS.ENTER THEN
+            CHARACTER = 10
+          ELSEIF CHARACTER < 32 THEN
+            RETURN PRESSED
+          ENDIF
+          IF MEMO_END = MEMO_TEXT + MEMO_SIZE THEN CONTINUE
+          SPOT = MEMO_END
+          DO WHILE SPOT > MEMO_CURSOR
+            ContentsAt(SPOT) = ContentsAt(SPOT - 1)
+            SPOT = SPOT - 1
+          LOOP
+          ContentsAt(SPOT) = CHARACTER
+          MEMO_END = MEMO_END + 1
+          MEMO_CURSOR = MEMO_CURSOR + 1
+        CASE ELSE
+          RETURN PRESSED
+      END SELECT
+    LOOP
+  END FUNCTION
+
+  ' Empties the memo and puts its cursor at the start.
+  SUB MEMO_CLEAR()
+    MEMO_END = MEMO_TEXT
+    MEMO_CURSOR = MEMO_TEXT
+    MEMO_TOP = MEMO_TEXT
+    MEMO_LEFT = 0
+  END SUB
+
+  ' Reads the file FILE_NAME$ into the memo, each CR dropped, and puts the cursor at the start.
+  ' Returns 0; MEMO_MISSING when the file does not open, and the memo is then empty; or MEMO_CUT
+  ' when the file is longer than MEMO_SIZE bytes, and the memo then holds the first MEMO_SIZE.
+  FUNCTION MEMO_LOAD(FILE_NAME$ AS CONST) AS UBYTE
+    DIM HANDLE AS UWORD, SPOT AS UWORD, FINISH AS UWORD, CHARACTER AS UBYTE, RESULT AS UBYTE
+    MEMO_CLEAR()
+    HANDLE = OPEN(FILE_NAME$, O.READ)
+    IF HANDLE = NOFILE THEN RETURN MEMO_MISSING
+    FINISH = MEMO_TEXT + READ(HANDLE, MEMO_TEXT, MEMO_SIZE)
+    RESULT = 0
+    IF READ(HANDLE, @CHARACTER, 1) <> 0 THEN RESULT = MEMO_CUT
+    CLOSE HANDLE
+    SPOT = MEMO_TEXT
+    DO WHILE SPOT < FINISH
+      CHARACTER = ContentsAt(SPOT)
+      IF CHARACTER <> 13 THEN
+        ContentsAt(MEMO_END) = CHARACTER
+        MEMO_END = MEMO_END + 1
+      ENDIF
+      SPOT = SPOT + 1
+    LOOP
+    RETURN RESULT
+  END FUNCTION
+
+  ' Writes the memo's text to the file FILE_NAME$, made or emptied first, each line ending in
+  ' LF. Returns 0, or MEMO_MISSING when the file does not open.
+  FUNCTION MEMO_SAVE(FILE_NAME$ AS CONST) AS UBYTE
+    DIM HANDLE AS UWORD
+    IF MEMO_END = 0 THEN MEMO_CLEAR()
+    HANDLE = OPEN(FILE_NAME$, O.WRITE)
+    IF HANDLE = NOFILE THEN RETURN MEMO_MISSING
+    WRITE HANDLE, MEMO_TEXT, MEMO_END - MEMO_TEXT
+    CLOSE HANDLE
+    RETURN 0
+  END FUNCTION
 #REGION_SLOT 1
 
   ' Runs INPUT2 on the field CONTROL, its FLAGS with MORE_FLAGS added, and returns INPUT2's key;
-  ' a CHECK or a RADIO runs PICK_CHOICE in its place, a BUTTON PUSH_BUTTON, and a CBO
-  ' DROP_LIST. A field, CHECK, RADIO or CBO takes the FIELD_FOCUS color, or the FIELD color
-  ' when MORE_FLAGS is DRAW_ONLY.
+  ' a CHECK or a RADIO runs PICK_CHOICE in its place, a BUTTON PUSH_BUTTON, a CBO DROP_LIST,
+  ' and a MEMO MEMO_EDIT. A field, CHECK, RADIO, CBO or MEMO takes the FIELD_FOCUS color, or
+  ' the FIELD color when MORE_FLAGS is DRAW_ONLY.
   FUNCTION EDIT_FIELD(CONTROL AS UBYTE, MORE_FLAGS AS UBYTE) AS UWORD
     DIM TARGET_AT AS UWORD, MASK_AT AS UWORD, COLUMN AS UBYTE
     IF MORE_FLAGS = 0 THEN
@@ -854,6 +1063,7 @@ NAMESPACE GUI
     COLUMN = FIELD_COLUMN(CONTROL)
     IF CONTROL_KIND(CONTROL) = KIND_BUTTON THEN RETURN PUSH_BUTTON(CONTROL, COLUMN, MORE_FLAGS)
     IF CONTROL_KIND(CONTROL) = KIND_CBO THEN RETURN DROP_LIST(CONTROL_ROW(CONTROL), COLUMN, CONTROL_WIDTH(CONTROL), CONTROL_MASK_AT(CONTROL), CONTROL_TEXT_AT(CONTROL), MORE_FLAGS)
+    IF CONTROL_KIND(CONTROL) = KIND_MEMO THEN RETURN MEMO_EDIT(CONTROL_ROW(CONTROL), COLUMN, CONTROL_WIDTH(CONTROL), CONTROL_TEXT_AT(CONTROL), MORE_FLAGS)
     IF CONTROL_KIND(CONTROL) <> KIND_FIELD THEN RETURN PICK_CHOICE(CONTROL, COLUMN, MORE_FLAGS)
     TARGET_AT = CONTROL_TEXT_AT(CONTROL)
     MASK_AT = CONTROL_MASK_AT(CONTROL)

@@ -1,0 +1,66 @@
+' GUIMEMO: GUI.MEMO, MEMO_LOAD, MEMO_SAVE and MEMO_CLEAR. The last lines give the string, then
+' the results kept, then the text each save wrote, each LF as /.
+' MEMO_LOAD: a missing file, a file of 2048 bytes, one past the memo, then M.TXT, "ab" CR LF
+' "cdefghijklmn" LF "x". A SAYGET, a MEMO 8 by 3 and a BUTTON "&Save", all AUTO.
+' Round 1: "Al" and Tab; in the memo Down, End, "Z" scrolls across, Home, Down, PgDn on the
+' last line, End, Enter, "y" scrolls down, Up three times to "ab" column 1, Backspace, Delete
+' twice joins the lines, Left at the start, PgDn; Tab, and Enter on the button returns 7.
+' Round 2: MEMO_CLEAR, and Esc returns EV_CANCEL. Then a save to a missing drive.
+#INCLUDE "KEYS.UXI"
+#INCLUDE "GUI.UXI"
+DIM KEPT(16) AS UBYTE, AT AS UBYTE, H AS UBYTE, N AS UWORD, F AS UWORD, I AS UWORD
+DIM B(40) AS UBYTE
+DIM N$ * 6, T$ * 40
+
+SUB KEEP(VALUE AS UBYTE)
+  KEPT(AT) = VALUE
+  AT = AT + 1
+END SUB
+
+SUB SHOW_FILE(FILE_NAME$)
+  F = OPEN(FILE_NAME$, O.READ)
+  N = READ(F, @B, 40)
+  CLOSE F
+  PRINT "[";
+  I = 0
+  DO WHILE I < N
+    IF B(I) = 10 THEN
+      PRINT "/";
+    ELSE
+      PRINT CHR$(B(I));
+    ENDIF
+    I = I + 1
+  LOOP
+  PRINT "]"
+END SUB
+
+AT = 0
+T$ = "ab" + CHR$(13) + CHR$(10) + "cdefghijklmn" + CHR$(10) + "x"
+F = OPEN("M.TXT", O.WRITE)
+WRITE F, @T$ + 2, LEN(T$)
+CLOSE F
+F = OPEN("BIG.TXT", O.WRITE)
+WRITE F, $C000, 2048
+CLOSE F
+KEEP(GUI.MEMO_LOAD("NONE.TXT"))
+KEEP(GUI.MEMO_LOAD("BIG.TXT"))
+KEEP(GUI.MEMO_LOAD("M.TXT"))
+H = GUI.CREATEFORM("Memo", 2, 0, 40, 12, GUI.FRAMED)
+KEEP(GUI.SAYGET(GUI.AUTO, GUI.AUTO, "Name", N$, 6))
+KEEP(GUI.MEMO(GUI.AUTO, GUI.AUTO, "Text", 8, 3))
+KEEP(GUI.BUTTON(GUI.AUTO, GUI.AUTO, "&Save", 7))
+KEEP(GUI.SHOW(H))
+KEEP(GUI.MEMO_SAVE("M2.TXT"))
+GUI.MEMO_CLEAR()
+KEEP(GUI.SHOW(H))
+KEEP(GUI.MEMO_SAVE("M3.TXT"))
+KEEP(GUI.MEMO_SAVE("Q:\M4.TXT"))
+POS(1) = 24
+POS(0) = 0
+PRINT "["; N$; "]"
+FOR I = 0 TO AT - 1
+  PRINT KEPT(I);
+NEXT I
+PRINT
+SHOW_FILE("M2.TXT")
+SHOW_FILE("M3.TXT")
