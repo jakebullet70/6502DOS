@@ -13,6 +13,8 @@
                   the slot, when the slot is 1 or more
     rg_pin_from(), rg_pin_to()  around the load of a STRING FUNCTION's result, or of a STRING
                   argument: what the code between names stays in low RAM
+    rg_forward()  in sb_call_argument, before sg_pass: a STRING parameter passed on as an
+                  address is noted
     rg_store()    sm_store to the constant address 0: stops the compile in a SUB of a region
     rg_asm()      in as_instruction, after as_choose: a write to $00 stops the compile in a SUB
                   of a region
@@ -41,7 +43,9 @@ at $A000 + the offset - g.rg_base[k]. A K_SEC_RGDATA value is at $A000 + g.rg_da
 value, where k is the region of the fixup's own code.
 
 A STRING argument passes the address of the caller's string. In a call from a region to a SUB
-outside it, what the argument's code names stays in low RAM.
+outside it, what the argument's code names stays in low RAM. So does what it names in a call
+to a SUB of the same region that passes the parameter on, as an address, to a SUB outside the
+region, or to another such SUB.
 Trap: a WORD that holds the address of a variable moved into a region, passed out of the
 region, points into the wrong bank.
 
@@ -62,9 +66,9 @@ the ranges of the SUBs moved.
 
 from uxc_code import cb_add, cb_get, cb_put, emit, fx_put, fx_read, rt_address_set, rt_get, \
     rt_use
-from uxc_defs import K_DV_MAX, K_F_ABS, K_FX_MAX, K_SEC_BSS, K_SEC_CODE, K_SEC_CONST, \
-    K_SEC_LABEL, K_SEC_REC, K_SEC_RGDATA, K_SEC_STR, K_SK_LABEL, K_SK_SUB, K_SY_END, K_TOP, \
-    K_TT_EOL, K_TT_NUM
+from uxc_defs import K_DV_MAX, K_EK_MEM, K_F_ABS, K_FX_MAX, K_SEC_BSS, K_SEC_CODE, K_SEC_CONST, \
+    K_SEC_LABEL, K_SEC_REC, K_SEC_RGDATA, K_SEC_STR, K_SEC_VAR, K_SK_LABEL, K_SK_SUB, \
+    K_SY_END, K_SY_READ_ONLY, K_TOP, K_TT_EOL, K_TT_NUM, K_TY_STR
 import uxc_dead
 import uxc_lex
 import uxc_rombank
@@ -113,10 +117,48 @@ def rg_pin_to(callee):
     """RG.PIN.TO. In a SUB of a region, the code since rg_pin_from loads the address that a
     STRING FUNCTION returns, callee 0, or a STRING argument to SUB callee. A caller in low RAM,
     or a callee outside the region, reads it with another bank selected, so what a fixup there
-    names stays in low RAM. rg_data drops the pin of an argument to a SUB of the same region."""
+    names stays in low RAM. rg_data drops the pin of an argument to a SUB of the same region,
+    unless that SUB is in rg_leaky."""
     if rg_in_region() != 0:
         g.rg_pins.append((g.sb_current, g.rg_pin_from - g.rg_sub_start,
                           g.cb_n - g.rg_sub_start, callee))
+
+
+def rg_forward(callee):
+    """RG.FORWARD. In a SUB of a region, with a STRING argument to SUB callee on top of the
+    value stack and g.sg_read_only set for an AS CONST parameter: when the argument is a STRING
+    parameter of the SUB that sg_pass passes on as an address, not as a copy, the pair goes into
+    g.rg_forwards. Clobbers g.sy_*."""
+    if rg_in_region() == 0:
+        return
+    i = g.ex_vn - 1
+    if g.ex_vk[i] != K_EK_MEM or g.ex_vs[i] != K_SEC_VAR:
+        return
+    g.sy_r = g.sb_current
+    uxc_sym.sy_get()
+    for n in range(g.sy_np, 0, -1):
+        g.sy_r = g.sb_current + n
+        uxc_sym.sy_get()
+        if g.sy_type == K_TY_STR and g.sy_val == g.ex_vv[i]:
+            # An AS CONST parameter passed to one that is not AS CONST is copied.
+            if (g.sy_flags & K_SY_READ_ONLY) == 0 or g.sg_read_only != 0:
+                g.rg_forwards.append((g.sb_current, callee))
+            return
+
+
+def rg_leaky():
+    """RG.LEAKY. The set of the SUBs of the regions that pass a STRING parameter on, as an
+    address, to a SUB outside their region, or to another SUB of the set."""
+    leaky = set()
+    grew = True
+    while grew:
+        grew = False
+        for caller, callee in g.rg_forwards:
+            if caller not in leaky:
+                if callee in leaky or rg_slot_of(callee) != rg_slot_of(caller):
+                    leaky.add(caller)
+                    grew = True
+    return leaky
 
 
 def rg_slot_of(record):
@@ -233,8 +275,9 @@ def rg_data():
     g.rg_data = [bytearray() for k in range(g.rg_count + 1)]
     g.rg_banked = [0] * (g.sy_n + 1)
     g.rg_pin_at = []
+    leaky = rg_leaky()
     for g.sy_r, pin_from, pin_to, callee in g.rg_pins:
-        if rg_slot_of(callee) == rg_slot_of(g.sy_r):
+        if rg_slot_of(callee) == rg_slot_of(g.sy_r) and callee not in leaky:
             continue
         uxc_sym.sy_get()
         if g.sy_kind == K_SK_SUB and (g.sy_flags & 1) != 0:

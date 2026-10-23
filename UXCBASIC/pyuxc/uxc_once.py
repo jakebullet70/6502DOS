@@ -56,6 +56,7 @@ def start(tpl_folder):
     g.rg_subs = []
     g.rg_sub_slots = []
     g.rg_pins = []
+    g.rg_forwards = []
     g.rg_sub_start = 0
     g.rg_pin_from = 0
     g.rg_image = 0

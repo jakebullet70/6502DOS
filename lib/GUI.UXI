@@ -1171,9 +1171,6 @@ NAMESPACE GUI
   END SUB
 
   ' The dialogs run from region 2, and reach the forms only through the SUBs of region 1.
-  ' Trap: a dialog's strings must be in low RAM, as the main program's literals, the variables
-  ' and the temps are. A literal of a SUB in a region is in that region's bank, which region 1
-  ' cannot read.
 #REGION_SLOT 2
   DIM DIALOG_WIDTH AS UBYTE
 
@@ -1221,8 +1218,6 @@ NAMESPACE GUI
     RETURN RESULT
   END FUNCTION
 
-  ' YESNO's literals must be in low RAM.
-#REGION_SLOT 0
   ' MSGBOX with the buttons &Yes and &No. Returns 1 for Yes, and 0 for No or Esc.
   FUNCTION YESNO(TITLE$ AS CONST, LINE1$ AS CONST, LINE2$ AS CONST = "", LINE3$ AS CONST = "") AS UBYTE
     IF MSGBOX(TITLE$, LINE1$, LINE2$, LINE3$, "&Yes", "&No") = 1 THEN RETURN 1

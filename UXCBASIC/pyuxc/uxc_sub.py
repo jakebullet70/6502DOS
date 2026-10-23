@@ -527,6 +527,7 @@ def sb_call_argument():
     if g.sb_parameter_type == K_TY_LONG:
         uxc_expr.ex_tol()
     if g.sb_parameter_type == K_TY_STR:
+        uxc_ramreg.rg_forward(g.sb_call_record[d])
         uxc_str.sg_pass()
         g.rg_pin_from = g.sb_call_pin[d]
         uxc_ramreg.rg_pin_to(g.sb_call_record[d])

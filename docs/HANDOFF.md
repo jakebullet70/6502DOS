@@ -4229,6 +4229,20 @@
             `GUISHOW` ok 0.4 s, `GUIBTN` 0.4, `GUICBO` 0.5, `HELPED` 1.3, `THEMED` 1.4. Build
             2253 ms, the new baseline. Owed to the doc batch: GUI.PLAN 4b's sizes and the
             YESNO slot. Next: 4b part 2, INPUTBOX and INPUTBOX2.
+          - Done (2026-10-23), pyuxc leak pins (the user's choice of three, after asking why
+            GPC had no such limit: GPC's GP.SUB copies a literal into a low-RAM variable, and
+            pyuxc's AS CONST passes the address). `rg_forward` in `sb_call_argument` notes a
+            region SUB that passes a STRING parameter on as an address; `rg_leaky` takes the
+            fixpoint (passes one to a SUB of another slot, or to a leaky SUB); `rg_data` keeps
+            the pin of a same-slot argument when the callee is leaky. YESNO moves to region 2
+            and the trap comment goes. GUIDLG: low RAM 1374 to 1294 (-80), region 2 3123 to
+            3207 (+84); HELPED and THEMED unchanged; leaky SUBs MSGBOX and YESNO. Pin-all was
+            measured and dropped: it kept HOT_BUTTON's 37-byte letters and a 257-byte global
+            out of region 1. Build 6017 ms (all utilities recompiled, as the compiler
+            changed), the new baseline. Tests: `GUIDLG` ok 0.6 s, `RGCALL` 0.4, `RGDATA` 0.5,
+            `BANKEXEC` 0.4, `HELPED` 1.1, `THEMED` 1.0, `GUISHOW` 0.4, `GUIBTN` 0.4. Owed to
+            the doc batch: UXC-HELP's #REGION_SLOT text on the pins. INPUTBOX's OK and Cancel
+            literals can now sit in region 2. Next: 4b part 2, INPUTBOX and INPUTBOX2.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
