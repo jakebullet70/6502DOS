@@ -4813,6 +4813,12 @@
             11 and drawn, closed 11, the end. A -gif frame showed the layout; the buttons were
             centered and the form cut by 2 rows. Build 4283 ms, the new baseline (4661 ms
             before the layout fix). Next: D4, the Lists demo.
+          - Done (2026-10-23), a fix: Enter opens a CBO's list, as Space does. DROP_LIST
+            returns neither key; SHOW's comment says Enter on a CBO opens its list, so a form
+            whose last control is a CBO cannot end on Enter. Region 2 +17 bytes (GUIDEMO
+            24442, region 2 5653, 491 left below $B800). GUICBO's round 1 opens Size with
+            Enter and ends on Esc (event 255, was 253); golden rewritten, 4.5 s. HELPED ok,
+            1.9 s. Next: D4, the Lists demo.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

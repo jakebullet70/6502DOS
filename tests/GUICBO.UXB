@@ -3,8 +3,8 @@
 ' A SAYGET, then a CBO "Color" of "Red|Green|Blue", 8 wide, and a CBO "Size" of "S|M|L", 4 wide,
 ' at row 8, column 2.
 ' Round 1: "Al" and Enter; on Color, Space opens the list on Green, Down, Down wraps to Red, Up
-' wraps to Blue, and Enter chooses it; "q" does nothing, and Tab; on Size, Space, Down and Esc
-' leave M; Enter returns EV_DONE.
+' wraps to Blue, and Enter chooses it; "q" does nothing, and Tab; on Size, Enter opens the list,
+' and Down and Esc leave M; Esc returns EV_CANCEL.
 ' Round 2: Tab, then Space and Esc on Color, and Esc returns EV_CANCEL.
 ' Last, 1 when the cell at 6, 9 under Color's list matches the form's cell at 6, 30, and 1 when
 ' the cell at 12, 7 under Size's list matches the cell at 12, 30.
