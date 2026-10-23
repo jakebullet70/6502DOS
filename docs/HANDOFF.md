@@ -4715,6 +4715,24 @@
             window is near. Build 2421 ms, the new baseline. Owed to the doc batch: UXC-HELP
             and GUI.PLAN on PICKFILE's typed paths. Next: the user's call: the paused doc
             batch (V1 done), a full suite, or After V1's PICKMENU, GRID, BROWSE.
+          - Done, D1 (2026-10-23), GUIDEMO's shell and Forms demo. GUIPICK left the card:
+            `SHOWN_TESTS` in tools/build.py is empty, and card/Utils/PICKT, which GUIPICK made
+            on the card, is deleted. New utility `src/utils/guidemo/GUIDEMO.UXB`, to
+            build/UTILS/GUIDEMO.COM: a main form (80 by 28 at row 1, framed, no shadow) under
+            a menu bar, Program (Exit, id 1) and Demos (Forms, id 10), with a button for each
+            id (Alt+F Forms, Alt+X Exit); Esc ends; the status line reports each demo's end.
+            Forms: a centered form 56 by 17, a SAY, the framed section Fields (Name PROPER,
+            Password PASSWORD, Phone mask "(###)-###-####", Age "##" VALIDATE refused while it
+            holds a space, Read only READ_ONLY), the framed TWO_COL section Case (UPPER, LOWER,
+            PROPER, plain), then &OK (1) and &Cancel (2). Plan, one demo menu a step: Controls
+            (CHECK, RADIO, BUTTON, CBO), Memo (MEMO, MEMO_LOAD, MEMO_SAVE), Lists (LIST with
+            LIST_MULTI, LISTBOX), Dialogs (MSGBOX, YESNO, INPUTBOX, INPUTBOX2), Files
+            (PICKFILE, PICKMANAGE), Look (THEME, THEME_FILE). Hot letters must not clash:
+            a main-form button's Alt+letter wins over a menu's. GUIDEMO 12362 bytes: region 1
+            6791 (1401 free), region 2 2259, region 3 357. No test: a scratch smoke run
+            (RUN UTILS\GUIDEMO.COM, Alt+F, a refused Age, OK, Esc) showed each screen and the
+            report; keys typed on the RUN line's heels were lost once, so Alt+F goes on its
+            own line. Build 2308 ms, the new baseline. Next: D2, the Controls demo.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

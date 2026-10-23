@@ -75,7 +75,7 @@ UTILITIES = os.path.join(ROOT, "src", "dos")
 UTILS = os.path.join(ROOT, "src", "utils")
 UTILS_OUT = os.path.join(BUILD, "UTILS")
 # The tests that also go to build/UTILS, for the user to run on the card.
-SHOWN_TESTS = ["GUIPICK"]
+SHOWN_TESTS = []
 TEMPLATES = os.path.join(ROOT, "UXCBASIC", "tpl")
 MSBASIC_SRC = os.path.join(ROOT, "MSBASIC", "src")
 BANK3_SRC = os.path.join(ROOT, "src", "bank3")

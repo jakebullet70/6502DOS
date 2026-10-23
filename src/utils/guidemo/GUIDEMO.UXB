@@ -1,0 +1,108 @@
+'=============================================================================================
+' -- GUIDEMO
+' -- shows what GUI Forms does. The main form has a menu bar and a button for each demo; the
+' -- menu item and the button open the same demo. After a demo, the status line, the screen's
+' -- last row, tells how it ended and what it returned.
+' --     F10, Alt+letter   open a menu
+' --     Alt+letter        press a button of the main form
+' --     Esc               end the program
+' -- The demos:
+' --     Forms     fields with captions, sections in one and two columns, a mask, the
+' --               PASSWORD, READ_ONLY, UPPER, LOWER and PROPER flags, and a VALIDATE field
+' --               that REFUSE holds until it takes two digits
+' -- Exit code 0.
+' --
+' -- From a prompt:
+' --     GUIDEMO
+'=============================================================================================
+#INCLUDE "DOS.UXI"
+#INCLUDE "KEYS.UXI"
+#INCLUDE "CONS.UXI"
+#INCLUDE "VERA.UXI"
+#INCLUDE "GUI.UXI"
+
+' The ids of the menu items and the buttons.
+CONST ID_EXIT AS UBYTE = 1, ID_FORMS AS UBYTE = 10
+
+DIM MAIN_FORM AS UBYTE, EVENT AS UBYTE, START_COLOR AS UBYTE
+DIM MESSAGE AS STRING * 79
+
+' The Forms demo's fields. A form keeps the addresses of its targets, so they are global.
+DIM PERSON_NAME AS STRING * 24, SECRET AS STRING * 12, PHONE AS STRING * 14
+DIM AGE AS STRING * 2, SHOWN_ONLY AS STRING * 24
+DIM SHOUT AS STRING * 12, QUIET AS STRING * 12, PROPER_NAME AS STRING * 12, PLAIN AS STRING * 12
+
+' Shows MESSAGE on the status line.
+SUB REPORT()
+  GUI.STATUS_LINE(MESSAGE)
+END SUB
+
+' The Forms demo: a form of two sections over the buttons OK and Cancel. Leaving the Age field
+' with a space in it is refused.
+SUB FORMS_DEMO()
+  DIM FORM AS UBYTE, AGE_FIELD AS UBYTE, RESULT AS UBYTE
+  FORM = GUI.CREATEFORM("Forms", GUI.CENTER, GUI.CENTER, 56, 17, GUI.FRAMED)
+  GUI.SAY(GUI.AUTO, 2, "Tab, Up and Down move. Esc cancels.")
+  GUI.STARTSECTION(FORM, "Fields", GUI.FRAMED)
+  GUI.SAYGET(GUI.AUTO, GUI.AUTO, "Name", PERSON_NAME, 24, "", GUI.PROPER)
+  GUI.SAYGET(GUI.AUTO, GUI.AUTO, "Password", SECRET, 12, "", GUI.PASSWORD)
+  GUI.SAYGET(GUI.AUTO, GUI.AUTO, "Phone", PHONE, 14, "(###)-###-####")
+  AGE_FIELD = GUI.SAYGET(GUI.AUTO, GUI.AUTO, "Age", AGE, 2, "##", GUI.VALIDATE)
+  GUI.SAYGET(GUI.AUTO, GUI.AUTO, "Read only", SHOWN_ONLY, 24, "", GUI.READ_ONLY)
+  GUI.STARTSECTION(FORM, "Case", GUI.FRAMED OR GUI.TWO_COL)
+  GUI.SAYGET(GUI.AUTO, GUI.AUTO, "Upper", SHOUT, 12, "", GUI.UPPER)
+  GUI.SAYGET(GUI.AUTO, GUI.AUTO, "Lower", QUIET, 12, "", GUI.LOWER)
+  GUI.SAYGET(GUI.AUTO, GUI.AUTO, "Proper", PROPER_NAME, 12, "", GUI.PROPER)
+  GUI.SAYGET(GUI.AUTO, GUI.AUTO, "Plain", PLAIN, 12)
+  GUI.ENDSECTION()
+  GUI.BUTTON(15, 17, "&OK", 1)
+  GUI.BUTTON(15, 27, "&Cancel", 2)
+  DO
+    RESULT = GUI.SHOW(FORM)
+    IF RESULT <> GUI.EV_LEAVE THEN EXIT DO
+    IF GUI.LEFT_FIELD = AGE_FIELD AND INSTR(AGE, " ") > 0 THEN GUI.REFUSE("Age takes two digits.")
+  LOOP
+  GUI.FREE(FORM)
+  IF RESULT = 1 THEN
+    MESSAGE = "Forms: OK. " + PERSON_NAME + ", " + AGE + ", " + PHONE
+  ELSE
+    MESSAGE = "Forms: cancelled, event " + STR$(RESULT)
+  ENDIF
+  REPORT()
+END SUB
+
+START_COLOR = DOS.GET_COLOR()
+GUI.THEME(DARK)
+GUI.USE_COLOR(GUI.ROLE.PAGE)
+PRINT CONS.CLEAR_SCREEN$;
+PERSON_NAME = "Ada Lovelace"
+PHONE = "(555)-010-1815"
+AGE = "36"
+SHOWN_ONLY = "This field reads only"
+
+' The main form fills the screen between the menu bar and the status line.
+MAIN_FORM = GUI.CREATEFORM("6502DOS GUI Demo", 1, 0, 80, 28, GUI.FRAMED OR GUI.NO_SHADOW)
+GUI.SAY(2, 3, "F10, or Alt with a menu's letter, opens the menus. Esc ends the program.")
+GUI.SAY(3, 3, "Each button opens the demo of the menu item with its name.")
+GUI.BUTTON(5, 3, "&Forms", ID_FORMS)
+GUI.BUTTON(5, 68, "E&xit", ID_EXIT)
+GUI.MENUBAR(MAIN_FORM)
+GUI.BEGINMENU("&Program")
+GUI.MENUITEM("E&xit", ID_EXIT)
+GUI.ENDMENU()
+GUI.BEGINMENU("&Demos")
+GUI.MENUITEM("&Forms", ID_FORMS)
+GUI.ENDMENU()
+MESSAGE = "Ready."
+REPORT()
+DO
+  EVENT = GUI.SHOW(MAIN_FORM)
+  SELECT CASE EVENT
+    CASE ID_FORMS
+      FORMS_DEMO()
+    CASE ID_EXIT, GUI.EV_CANCEL
+      EXIT DO
+  END SELECT
+LOOP
+DOS.SET_COLOR(START_COLOR)
+PRINT CONS.CLEAR_SCREEN$;
