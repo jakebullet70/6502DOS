@@ -360,7 +360,7 @@ NAMESPACE GUI
   ' Enter in the list of folders opens the folder or the drive chosen: .. opens the folder
   ' above, and a drive, [-A-] for A:, its current folder. Returns 0 for Cancel, for Esc, with
   ' no file chosen, or when no RAM bank is free. The current drive and folder do not change.
-  ' The dialog is 72 columns wide, and a path past 68 characters shows as its drive, ... and
+  ' The dialog is 74 columns wide, and a path past 68 characters shows as its drive, ... and
   ' its end. It takes a RAM bank while it is open. The lists hold 255 names in all. It changes
   ' DOS.CALL_TEXT and the DOS.FOUND_ variables.
   FUNCTION PICKFILE(TITLE$ AS CONST, MASK$ AS CONST, TARGET$) AS UBYTE
@@ -391,18 +391,18 @@ NAMESPACE GUI
       FOLDER = PICK_FOLDERS <> 0
       DIALOG_WIDTH = 68
       OPEN_DIALOG(TITLE$, PICK_ROWS + 3, "&OK", "&Cancel")
-      FIELD = SAYGET(1, 2, "File name:", TARGET$, 57, "", VALIDATE)
+      FIELD = SAYGET(2, 3, "File name:", TARGET$, 57, "", VALIDATE)
       ' A path past 68 characters shows as its drive, ... and its last 62 characters.
       IF LEN(DOS.CALL_TEXT) > 68 THEN
         PICK_PATH = LEFT$(DOS.CALL_TEXT, 3) + "..." + RIGHT$(DOS.CALL_TEXT, 62)
       ELSE
         PICK_PATH = DOS.CALL_TEXT
       ENDIF
-      SAY(2, 2, PICK_PATH)
-      SAY(3, 2, "Files")
-      SAY(3, 37, "Folders")
-      FOLDERS = LIST(4, 37, "", $A000, PICK_BANK, 32, PICK_FOLDERS, @FOLDER, PICK_ROWS, 33, VALIDATE)
-      FILES = LIST(4, 2, "", RECORD_AT(PICK_FOLDERS), PICK_BANK, 32, PICK_FILES, @CHOSEN, PICK_ROWS, 33, VALIDATE)
+      SAY(3, 3, PICK_PATH)
+      SAY(4, 3, "Files")
+      SAY(4, 38, "Folders")
+      FOLDERS = LIST(5, 38, "", $A000, PICK_BANK, 32, PICK_FOLDERS, @FOLDER, PICK_ROWS, 33, VALIDATE)
+      FILES = LIST(5, 3, "", RECORD_AT(PICK_FOLDERS), PICK_BANK, 32, PICK_FILES, @CHOSEN, PICK_ROWS, 33, VALIDATE)
       ' The form made again takes the same control numbers, so the focus goes back where it was.
       IF RESULT = 0 THEN
         PUT_DIALOG(FIELD)

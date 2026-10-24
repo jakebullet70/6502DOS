@@ -4858,6 +4858,16 @@
             MSGBOX 2, YESNO 0, INPUTBOX 1 Springfield, INPUTBOX2 1 Grace Hopper, closed. A -gif
             frame showed the layout; the form was widened from 50 to 54 for the second hint
             line. Build 2677 ms, the new baseline. Next: D6, the Files demo.
+          - Done (2026-10-24), dialog padding, the user's ask: OPEN_DIALOG's form is 6 columns
+            wider than DIALOG_WIDTH and 6 rows taller than its lines, with a blank row above the
+            lines and below the buttons and 2 blank columns each side. The lines start at row 2,
+            column 3, and the buttons sit at row ROWS + 3. MSGBOX, INPUTBOX, INPUTBOX2, LISTBOX
+            and PICKFILE (74 columns wide now) moved their controls by one row and one column.
+            Region sizes the same. Goldens of GUIDLG, GUIINP, GUILBOX and GUIPICK regenerated;
+            the result numbers at their ends are the same. GUIDLG ok 0.5 s, GUIINP 0.6, GUILBOX
+            0.5, GUIPICK 3.9 (as before). A -gif frame of
+            GUIDEMO's Message box showed the padding. Build 3898 ms, the new baseline (GUIDEMO,
+            HELPED and THEMED recompiled). Next: D6, the Files demo.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

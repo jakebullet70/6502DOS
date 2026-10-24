@@ -1512,8 +1512,9 @@ NAMESPACE GUI
 
   ' Makes a framed form centered on the screen, titled TITLE$, with ROWS rows for its lines, then
   ' a blank row, then the button BUTTON1$, id 1, and BUTTON2$ beside it, id 2, when it is not
-  ' empty. Puts the form's handle in DIALOG_FORM. The form is 4 columns wider than DIALOG_WIDTH,
-  ' its title or its buttons, whichever is widest. The lines go in from column 2.
+  ' empty. Puts the form's handle in DIALOG_FORM. The form is 6 columns wider than DIALOG_WIDTH,
+  ' its title or its buttons, whichever is widest. A blank row runs above the lines and below the
+  ' buttons. The lines go in from row 2, column 3.
   SUB OPEN_DIALOG(TITLE$ AS CONST, ROWS AS UBYTE, BUTTON1$ AS CONST, BUTTON2$ AS CONST)
     DIM FIRST AS UBYTE, SECOND AS UBYTE, BUTTONS AS UBYTE, COLUMN AS UBYTE
     ' A button is its caption less the &, between "< " and " >". Two have 2 columns between.
@@ -1523,9 +1524,9 @@ NAMESPACE GUI
     IF SECOND <> 0 THEN BUTTONS = FIRST + SECOND + 5
     IF BUTTONS > DIALOG_WIDTH THEN DIALOG_WIDTH = BUTTONS
     WIDEN(TITLE$)
-    DIALOG_FORM = CREATEFORM(TITLE$, CENTER, CENTER, DIALOG_WIDTH + 4, ROWS + 4, FRAMED)
-    COLUMN = HALF_GAP(DIALOG_WIDTH, BUTTONS) + 2
-    ROWS = ROWS + 2
+    DIALOG_FORM = CREATEFORM(TITLE$, CENTER, CENTER, DIALOG_WIDTH + 6, ROWS + 6, FRAMED)
+    COLUMN = HALF_GAP(DIALOG_WIDTH, BUTTONS) + 3
+    ROWS = ROWS + 3
     BUTTON(ROWS, COLUMN, BUTTON1$, 1)
     IF SECOND <> 0 THEN BUTTON(ROWS, COLUMN + FIRST + 2, BUTTON2$, 2)
   END SUB
@@ -1570,7 +1571,7 @@ NAMESPACE GUI
 
   ' Shows a framed form centered on the screen, titled TITLE$, with the lines LINE1$ to LINE3$,
   ' then the button BUTTON1$, and BUTTON2$ beside it when it is not empty. Returns 1 or 2 for the
-  ' button pressed, by Enter or its hot key, or EV_CANCEL for Esc. The form is 4 columns wider
+  ' button pressed, by Enter or its hot key, or EV_CANCEL for Esc. The form is 6 columns wider
   ' than its widest line, its title or its buttons. It is freed before MSGBOX returns, and the
   ' screen under it is put back, as RUN_DIALOG puts it back.
   FUNCTION MSGBOX(TITLE$ AS CONST, LINE1$ AS CONST, LINE2$ AS CONST = "", LINE3$ AS CONST = "", BUTTON1$ AS CONST = "&OK", BUTTON2$ AS CONST = "") AS UBYTE
@@ -1581,9 +1582,9 @@ NAMESPACE GUI
     IF WIDEN(LINE3$) <> 0 THEN ROWS = 3
     OPEN_DIALOG(TITLE$, ROWS, BUTTON1$, BUTTON2$)
     ' An empty line's SAY prints nothing.
-    SAY(1, 2, LINE1$)
-    SAY(2, 2, LINE2$)
-    SAY(3, 2, LINE3$)
+    SAY(2, 3, LINE1$)
+    SAY(3, 3, LINE2$)
+    SAY(4, 3, LINE3$)
     RETURN RUN_DIALOG(0)
   END FUNCTION
 
@@ -1602,9 +1603,9 @@ NAMESPACE GUI
     DIALOG_WIDTH = WIDTH
     WIDEN(PROMPT$)
     OPEN_DIALOG(TITLE$, 2, "&OK", "&Cancel")
-    SAY(1, 2, PROMPT$)
+    SAY(2, 3, PROMPT$)
     ' The buttons come first, so Enter in the field, the last control, returns EV_DONE.
-    RETURN RUN_DIALOG(GET(2, 2, TARGET$, WIDTH, MASK$, FLAGS))
+    RETURN RUN_DIALOG(GET(3, 3, TARGET$, WIDTH, MASK$, FLAGS))
   END FUNCTION
 
   ' INPUTBOX with two fields, TARGET1$ after PROMPT1$ and TARGET2$ after PROMPT2$ under it. The
@@ -1614,11 +1615,11 @@ NAMESPACE GUI
     DIM FIRST AS UBYTE, ENDS AS UBYTE
     DIALOG_WIDTH = LEN(PROMPT1$)
     WIDEN(PROMPT2$)
-    ENDS = DIALOG_WIDTH + 2
+    ENDS = DIALOG_WIDTH + 3
     DIALOG_WIDTH = DIALOG_WIDTH + WIDTH + 1
     OPEN_DIALOG(TITLE$, 2, "&OK", "&Cancel")
-    FIRST = SAYGET(1, ENDS - LEN(PROMPT1$), PROMPT1$, TARGET1$, WIDTH, MASK$, FLAGS)
-    SAYGET(2, ENDS - LEN(PROMPT2$), PROMPT2$, TARGET2$, WIDTH, MASK$, FLAGS)
+    FIRST = SAYGET(2, ENDS - LEN(PROMPT1$), PROMPT1$, TARGET1$, WIDTH, MASK$, FLAGS)
+    SAYGET(3, ENDS - LEN(PROMPT2$), PROMPT2$, TARGET2$, WIDTH, MASK$, FLAGS)
     RETURN RUN_DIALOG(FIRST)
   END FUNCTION
 
@@ -1638,7 +1639,7 @@ NAMESPACE GUI
     DIALOG_WIDTH = WIDTH
     OPEN_DIALOG(TITLE$, ROWS, "&OK", "&Cancel")
     ' The buttons come first, so Enter in the list, the last control, returns EV_DONE.
-    IF RUN_DIALOG(LIST(1, 2, "", ITEMS_AT, ITEMS_BANK, ITEM_LENGTH, COUNT, @CHOSEN, ROWS, WIDTH, FLAGS)) = 1 THEN RETURN CHOSEN
+    IF RUN_DIALOG(LIST(2, 3, "", ITEMS_AT, ITEMS_BANK, ITEM_LENGTH, COUNT, @CHOSEN, ROWS, WIDTH, FLAGS)) = 1 THEN RETURN CHOSEN
     RETURN 0
   END FUNCTION
 
