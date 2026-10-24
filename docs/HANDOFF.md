@@ -4999,6 +4999,21 @@
             move down 1. GUIDEMO.COM 42133 bytes, +390. Not yet checked on screen. Owed to the
             doc batch: UXC-HELP's regions section gets `REGION_BYTES`. Build 7695 ms with every
             program recompiled for the pyuxc change, then 3096 ms, the new baseline.
+          - Done (2026-10-24), the user's report: `cd hhh` (a missing directory) in ROMSHELL
+            printed garbage. `errmsg_table` is in ROM bank 0 at $C000+, and `DOS.ERRMSG` read
+            the message with `ContentsAt(R0)`; ROMSHELL runs in ROM bank 3, so it read its own
+            code. Every error message of ROMSHELL was broken; CMDSHELL.COM in RAM was not.
+            Fix: `api_errmsg` (call 39) takes a buffer in r0, 128 bytes, and copies the length
+            byte and the message into it; it walks the table with r1 and changes r1. Kernel +10
+            bytes. `monitor.s` `api_error` puts the message over `MONITOR_LINE`, +5 bytes, with
+            an `.assert` that `inc r0` reaches the text. `DOS.ERRMSG` passes `@CALL_TEXT + 1`
+            and lost its copy loop: 64 bytes less in each program that uses it (CMDSHELL.COM
+            21470, DOSAPI.COM 8352). `tests/HANDLES.S` and `tests/BANKTRAP.S` pass a buffer.
+            `tests/ROM3.IN` adds `CD HHH`, which gives `Path not found`. Build 7540 ms with
+            every program recompiled, the new baseline. Tests: ROM3 ok 0.5 s, HANDLES 0.4,
+            BANKTRAP 0.6, SHFILES 1.0, FILES 0.5, DOSAPI 0.9. Goldens regenerated: ROM3,
+            HANDLES and BANKTRAP for the new bytes, FILES for `RGBYTES.COM` on the card.
+            HANDLES' A after errmsg is now the length; A is not in the contract.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

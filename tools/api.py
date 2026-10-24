@@ -255,9 +255,9 @@ CALLS = [
     call(38, "ticks", None, "Gives the number of VSYNCs since boot.",
          out=[("r0 r1", "ticks")],
          written=True),
-    call(39, "errmsg", None, "Gives the message of an error number.",
-         in_=[("A", "error number")],
-         out=[("r0", "message, length-prefixed")],
+    call(39, "errmsg", None, "Gives the message of an error number. Changes r1.",
+         in_=[("A", "error number"), ("r0", "buffer, 128 bytes")],
+         out=[("r0", "buffer, filled with a length-prefixed message")],
          errors=[1],
          written=True),
     call(40, "con_out", 0x02, "Writes a character to the screen. A handle redirected does not "

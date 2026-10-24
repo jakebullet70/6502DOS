@@ -334,14 +334,16 @@ find_buffer:
 
 ; api_error: prints the message of error A, then the prompt.
 api_error:
+        ldx #<MONITOR_LINE    ; the message goes over the input line
+        stx r0
+        ldx #>MONITOR_LINE
+        stx r0+1
         jsr API_ERRMSG
-        lda (r0)
+        lda MONITOR_LINE        ; the length
         sta r1
         stz r1+1
-        inc r0
-        bne @write
-        inc r0+1
-@write:
+        inc r0                  ; the text
+        .assert <MONITOR_LINE <> $FF, error, "inc r0 reaches MONITOR_LINE's text"
         ldx #1                  ; stdout
         jsr API_WRITE
         ldy #0

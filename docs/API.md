@@ -57,7 +57,7 @@ Conventions:
 | `settime` | 36 | `$03AC` | 2Dh | `X` hours, 0 to 23<br>`Y` minutes<br>`A` seconds | none | 13 | yes |
 | `version` | 37 | `$03AF` | 30h | none | `A` major<br>`X` minor<br>`Y` patch | none | yes |
 | `ticks` | 38 | `$03B2` | none | none | `r0 r1` ticks | none | yes |
-| `errmsg` | 39 | `$03B5` | none | `A` error number | `r0` message, length-prefixed | 1 | yes |
+| `errmsg` | 39 | `$03B5` | none | `A` error number<br>`r0` buffer, 128 bytes | `r0` buffer, filled with a length-prefixed message | 1 | yes |
 | `con_out` | 40 | `$03B8` | 02h | `A` character | none | none | yes |
 | `con_in` | 41 | `$03BB` | 08h | none | `A` character | none | yes |
 | `con_cursor` | 42 | `$03BE` | none | `carry` set: get, clear: set<br>`X` row, to set; $80 or above: the cursor's state<br>`Y` column, to set | `X` row<br>`Y` column<br>`r0L` the screen's rows, on a get<br>`r0H` the screen's columns, on a get | none | yes |
@@ -113,7 +113,7 @@ Conventions:
 - `settime`: Sets the time of the RTC, and starts its oscillator.
 - `version`: Gives the system version.
 - `ticks`: Gives the number of VSYNCs since boot.
-- `errmsg`: Gives the message of an error number.
+- `errmsg`: Gives the message of an error number. Changes r1.
 - `con_out`: Writes a character to the screen. A handle redirected does not take it. It obeys CR, LF, BS, TAB, BEL and FF, skips $0F, and obeys these escape sequences of MS-DOS's ANSI.SYS: `Esc[r;cH` moves the cursor to row r, column c; `Esc[2J` clears the screen and puts the cursor home; `Esc[K` blanks from the cursor to the end of the line; `Esc[...m` takes 0 for the color `con_colour` last set, 7 to swap the foreground and the background, 30 to 37 for the foreground and 40 to 47 for the background. Rows and columns count from 1. A missing parameter is 0, and 0 means 1 in `Esc[r;cH`. A row or column past the edge means the last. A sequence takes up to 4 parameters, each modulo 256. Other sequences do nothing. Esc then a byte other than `[` shows that byte. `lib/CONS.UXI` names the sequences.
 - `con_in`: Waits for a key, without echo. An extended key gives two characters: 0, then its IBM PC BIOS scan code. The scan codes: Up $48, Down $50, Left $4B, Right $4D, Home $47, End $4F, PgUp $49, PgDn $51, Insert $52, Delete $53, F1 to F10 $3B to $44, with Shift $54 to $5D, with Ctrl $5E to $67, with Alt $68 to $71. Alt wins over Ctrl, and Ctrl over Shift. Ctrl+Left $73, Ctrl+Right $74, Ctrl+End $75, Ctrl+PgDn $76, Ctrl+Home $77, Ctrl+PgUp $84. Alt+1 to Alt+0, Alt+- and Alt+= $78 to $83. Alt with a letter gives the letter's scan code. Ctrl+2 gives 0, then 3. Ctrl with a letter, `[`, `\` or `]` gives $01 to $1D, Ctrl+6 $1E, Ctrl+- $1F. Ctrl with Space or with a key that gives a control character gives that character. Ctrl with any other key gives nothing, and so does Alt with a key other than a letter, a digit, - or =. `lib/KEYS.UXI` names every code.
 - `con_cursor`: Gets the cursor's row and column with carry set, moves the cursor with carry clear. The screen has 30 rows and 80 columns. With carry clear, X = $80 or above leaves the cursor where it is and sets whether it shows: bit 6 set hides it while a call waits for a key, clear shows it. A program's end shows it again. In UXCBASIC, `CURSOR OFF` hides it and `CURSOR ON` shows it.

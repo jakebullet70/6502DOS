@@ -10,6 +10,7 @@ r1      = $04
 index   = $50                   ; the offset of the next result
 handle  = $51
 RESULTS = $1200
+MESSAGE = $1280                 ; errmsg's buffer, 128 bytes
 
 .macro point address
         lda #<address
@@ -68,16 +69,15 @@ RESULTS = $1200
         ldx #20                 ; 11: write to handle 20: error 6
         jsr API_WRITE
         jsr save
-        lda #18                 ; 12: the message of error 18, written to handle 1
+        point MESSAGE           ; 12: the message of error 18, written to handle 1
+        lda #18
         jsr API_ERRMSG
         jsr save
-        lda (r0)
+        point (MESSAGE + 1)
+        lda MESSAGE
         sta r1
         stz r1+1
-        inc r0
-        bne :+
-        inc r0+1
-:       ldx #1
+        ldx #1
         jsr API_WRITE
         lda #99                 ; 13: the message of error 99: error 1
         jsr API_ERRMSG

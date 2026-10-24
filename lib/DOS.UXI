@@ -420,16 +420,11 @@ NAMESPACE DOS
 
   ' The message of error NUMBER. An unknown number gives "" and error 1.
   FUNCT ERRMSG(NUMBER AS UBYTE) AS STRING
-    DIM INDEX AS UBYTE, LENGTH AS UBYTE
     REG_A = NUMBER
+    R0 = @CALL_TEXT + 1
     SYS API_ERRMSG
     READ_ERR_STATUS()
     IF ERROR <> 0 THEN RETURN ""
-    LENGTH = ContentsAt(R0)
-    ContentsAt(@CALL_TEXT + 1) = LENGTH
-    FOR INDEX = 1 TO LENGTH
-      ContentsAt(@CALL_TEXT + 1 + INDEX) = ContentsAt(R0 + INDEX)
-    NEXT
     RETURN CALL_TEXT
   END FUNCT
 

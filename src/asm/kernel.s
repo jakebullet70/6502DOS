@@ -707,30 +707,39 @@ api_ioctl:
 @done:
         rts
 
+; api_errmsg: errmsg, call 39. Copies the message from ROM bank 0 to the caller's buffer at r0, so
+; a program in another ROM bank can read it. Changes r1.
 api_errmsg:
         tax
         lda #<errmsg_table
-        sta r0
+        sta r1
         lda #>errmsg_table
-        sta r0+1
+        sta r1+1
 @record:                        ; number, length, message
-        lda (r0)
+        lda (r1)
         beq bad_function
         sta drv_vector
-        inc r0
+        inc r1
         bne @length
-        inc r0+1
+        inc r1+1
 @length:
         cpx drv_vector
         beq @found
-        lda (r0)
+        lda (r1)
         sec
-        adc r0
-        sta r0
+        adc r1
+        sta r1
         bcc @record
-        inc r0+1
+        inc r1+1
         bra @record
 @found:
+        lda (r1)
+        tay
+@copy:                          ; the length byte and the message; each message is under 128
+        lda (r1),y
+        sta (r0),y
+        dey
+        bpl @copy
         clc
         rts
 bad_function:

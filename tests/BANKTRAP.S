@@ -165,7 +165,8 @@ CWD     = $A100                 ; 256 bytes
         jsr save
         jsr API_TICKS           ; 36
         jsr save
-        lda #2                  ; 37
+        point r0, CWD           ; 37: the message goes to the bank
+        lda #2
         jsr API_ERRMSG
         jsr save
         lda #0                  ; 38
