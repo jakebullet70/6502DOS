@@ -529,7 +529,7 @@ END SUB
 ' the status line and this form are then drawn again in the theme; the form stays.
 SUB LOOK_DEMO()
   DIM FORM AS UBYTE, RESULT AS UBYTE
-  FORM = GUI.CREATEFORM("Look", GUI.CENTER, GUI.CENTER, 54, 10, GUI.FRAMED)
+  FORM = GUI.CREATEFORM("Look", GUI.CENTER, GUI.CENTER, 56, 10, GUI.FRAMED)
   GUI.SAY(GUI.AUTO, 2, "Dark, Light and Gray choose a built-in theme. Load")
   GUI.SAY(GUI.AUTO, 2, "reads the theme file, as THEMED saves it.")
   GUI.SAYGET(4, 2, "Theme file", THEME_PATH, 24, "", GUI.UPPER)

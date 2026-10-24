@@ -4972,6 +4972,9 @@
             VERABOX.COM; its golden kept, not fixed. Build 4236 ms, the new baseline (GUIDEMO,
             HELPED, THEMED recompiled). Next: the user's call: PICKMENU in GUIDEMO, SHTAB, or
             GRID's plan.
+          - Done (2026-10-24), GUIDEMO's Look form 56 columns wide, was 54: the Close button
+            touched the right edge; now 2 columns clear each side. 0 bytes. No test covers
+            GUIDEMO. Build 3078 ms, the new baseline. Next: the user's call, as above.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
