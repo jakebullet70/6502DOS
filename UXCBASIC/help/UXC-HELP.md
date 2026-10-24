@@ -444,7 +444,9 @@ worked out by the compiler.
 
 A SUB takes a STRING parameter with no size: SUB SHOW(T$). The SUB works on the
 caller's string, so an assignment to T$ changes it. A literal argument is
-copied first, so the SUB cannot change the literal.
+copied first, so the SUB cannot change the literal. The literal "" is not
+copied: its size is 0, so an assignment to the parameter stores no character.
+A parameter T$ AS CONST takes a literal with no copy. See [[Subroutines]].
 
 Not yet: string arrays, a start value.
 
@@ -537,8 +539,16 @@ ContentsAtW(AddrOf(W)) = 1000
 - ContentsAtW(a) is the UWORD at a and a + 1, low byte first.
 - ContentsAtW(a) = v writes the UWORD v to a and a + 1.
 - The address is any UWORD expression: ContentsAt(P + 3) = 33.
-- A constant address or AddrOf(name) compiles to one load or store. Any other
-  address goes through a pointer at run time.
+- A constant address or AddrOf(name) compiles to one load or store.
+- ContentsAt(@X + B), with @X an address such as @X, AddrOf(X) or @S$ + 2,
+  and B a UBYTE variable, is LDY B, then LDA or STA X,Y: 6 bytes.
+- ContentsAt(P + B), with P a WORD or UWORD variable and B a UBYTE variable,
+  puts P in a zero-page pointer and B in Y: 15 bytes. B may come first:
+  ContentsAt(B + P).
+- Any other address goes through a pointer at run time. So do (P + B) in its
+  own brackets, P + B + 1, a BYTE B, and ContentsAtW.
+- Trap: ContentsAt(P + B) = v and ContentsAt(@X + B) = v read P and B after
+  v. A FUNCTION in v that changes P or B moves the store.
 - In ASM, AddrOf(name) is two bytes, as @name is.
 - PEEK and POKE work as well.
 - Case does not matter: AddrOf and ADDROF are the same word.
@@ -546,7 +556,112 @@ ContentsAtW(AddrOf(W)) = 1000
 - AddrOf(X with no closing bracket stops the compile with MISSING ).
 - ContentsAt 5 = 1 stops the compile with MISSING ( AFTER CONTENTSAT.
 
-See [[Arrays]], [[Strings]], [[Declarations]], [[ASM]].
+### StringAt
+
+StringAt(a) is the string whose block is at address a. a is a WORD
+expression, such as a WORD that holds @S$.
+
+```
+DIM NAMES(2) AS UWORD, FIRST$ * 12, SECOND$ * 12, I AS UBYTE
+SUB SHOUT(T$)
+  T$ = UCASE$(T$)
+END SUB
+FIRST$ = "ada"
+SECOND$ = "grace"
+NAMES(0) = @FIRST$
+NAMES(1) = @SECOND$
+FOR I = 0 TO 1
+  SHOUT(StringAt(NAMES(I)))
+  PRINT StringAt(NAMES(I)); LEN(StringAt(NAMES(I)))
+NEXT I
+```
+
+This prints ADA 3, then GRACE 5.
+
+- StringAt(a) works wherever a string is read: PRINT, LEN, ASC, the
+  compares, +, MID$.
+- Passed to a STRING parameter, the parameter is the string at a. An
+  assignment to the parameter changes that string.
+- Passed to an AS CONST parameter, it passes with no copy.
+- StringAt(a) cannot be assigned. StringAt(P) = "X" stops the compile with
+  UNDECLARED NAME STRINGAT. Pass it to a STRING parameter to change the string.
+- Through a WORD variable, or an array element at a constant index, StringAt
+  reads through that WORD. Any other a is stored in a hidden WORD, 2 bytes, of
+  the statement.
+- A string argument, such as StringAt("X"), stops the compile with TYPE
+  MISMATCH.
+- STRINGAT is a reserved word.
+
+See [[Arrays]], [[Strings]], [[Declarations]], [[ASM]], [[Pointers to SUBs]].
+
+## Pointers to SUBs
+
+DECLARE SUB or DECLARE FUNCTION names a signature. A variable, an array or a
+parameter AS that name is a pointer: a WORD that holds the address of a SUB or
+FUNCTION with that signature. @name takes the address, and CALL p WITH
+(arguments) calls through it.
+
+```
+DECLARE FUNCTION STEP_BY(N AS UWORD) AS UWORD
+DIM NEXT_VALUE AS STEP_BY, V AS UWORD
+FUNCTION DOUBLE(N AS UWORD) AS UWORD
+  RETURN N * 2
+END FUNCTION
+FUNCTION PLUS_ONE(N AS UWORD) AS UWORD
+  RETURN N + 1
+END FUNCTION
+NEXT_VALUE = @DOUBLE
+V = CALL NEXT_VALUE WITH (5)
+NEXT_VALUE = @PLUS_ONE
+PRINT V; CALL NEXT_VALUE WITH (V)
+```
+
+This prints 10  11.
+
+- DECLARE stands outside a SUB, in the main program or a namespace. DECLARE
+  is a reserved word.
+- DIM P AS name, DIM T(n) AS name and a parameter H AS name make pointers.
+- @name of a SUB or FUNCTION is allowed only where a pointer is wanted: in an
+  assignment to a pointer, or as the argument of a pointer parameter.
+- The SUB must match the signature: the same result type, the same number of
+  parameters, and each parameter of the same type, sign, AS CONST, and ENUM or
+  signature. The names and the defaults may differ.
+- CALL p WITH (arguments) is a statement. With a FUNCTION signature it also
+  works in an expression. p is a pointer variable, array element or parameter.
+- A pointer that holds 0 calls address 0. Test it first:
+  IF P <> 0 THEN CALL P WITH (1).
+- A call through a pointer counts as a call to each SUB whose @ was taken for
+  its signature. The SUBs of one signature share the memory of their
+  parameters.
+- A call is the argument stores, the pointer load and a 3-byte JSR. A program
+  that calls through a pointer links a 7-byte routine once.
+- A SUB whose @ is in code that runs is kept in the program.
+
+### Pointers in regions and ROM banks
+
+- @ of a SUB in a region is the address of its 7-byte veneer in low RAM,
+  wherever the @ is. A direct call from low RAM uses the same veneer. A call
+  through it goes through bank_call, about 145 cycles.
+- A pointer call in a region's code goes through the region's gate. A SUB in
+  low RAM that selects another bank returns with the region's bank selected.
+- With #ROMBANKS, a pointer holds an address in the first bank. @ of a SUB in
+  the second bank is the address of its veneer in the first. A pointer call in
+  the second bank runs through the bank switch at $FF89.
+
+### Errors with pointers
+
+- NO POINTER TYPE FOR @name: @ of a SUB where no pointer is wanted.
+- name DOES NOT MATCH signature: the SUB differs from the signature.
+- NOT A POINTER: name: CALL name WITH, and name is not a pointer.
+- MISSING WITH: CALL p with no WITH, as in CALL P(1).
+- SUB p HAS NO VALUE: CALL p WITH in an expression, with a SUB signature.
+- A CALL IN A POINTER: the pointer expression holds a call, as in
+  CALL T(F()) WITH (1).
+- DECLARE IN A SUB.
+- SUBS CALL EACH OTHER: a SUB calls through a pointer of its own signature,
+  or through a loop of such calls.
+
+See [[Subroutines]], [[Code in RAM banks]], [[Two ROM banks]].
 
 # Commands
 
@@ -829,6 +944,10 @@ POS(2) and POS(3) ask the DOS each time; no copy is stored.
 POS(0) = v moves the cursor to column v and keeps the row. POS(1) = v moves it
 to row v and keeps the column. v is any expression and is used as a UBYTE.
 
+POS(1) = v with v of 128 or more does not move the cursor. POS(1) = $C0 hides
+the cursor and POS(1) = $80 shows it. Write them as CURSOR OFF and CURSOR ON.
+See [[CURSOR ON and OFF]].
+
 The number in the brackets must be a number, not a variable or an expression.
 A read of anything but 0 to 3 is the compile error "POS NEEDS 0 TO 3". An assignment to anything but
 POS(0) or POS(1) is the compile error "POS NEEDS 0 OR 1".
@@ -843,6 +962,26 @@ PRINT POS(0)
 ```
 
 This prints 3 after ABC, then 10 starting at column 10.
+
+## CURSOR ON and OFF
+
+CURSOR OFF hides the cursor while the program waits for a key. CURSOR ON shows
+it again. Neither moves the cursor.
+
+```
+DIM K AS UWORD
+CURSOR OFF
+PRINT "PRESS A KEY"
+K = WAITKEY()
+CURSOR ON
+```
+
+- CURSOR OFF is the same code as POS(1) = $C0, and CURSOR ON as POS(1) = $80.
+- The cursor shows again when a program ends: this one, or one it runs.
+- CURSOR is not a reserved word. It is the statement only when ON or OFF
+  follows it, so a variable may be named CURSOR.
+
+See [[POS]], [[GETEXTKEY, WAITKEY and KEYMODS]].
 
 ## INPUT and LINPUT
 
@@ -965,6 +1104,55 @@ PRINT FIRST3$("WORLD") + "!"
   size of the destination.
 - A STRING result passed to a SUB or a FUNCTION is passed as a copy.
 
+### Default values
+
+= value after a parameter gives it a default. A call may leave out the
+trailing arguments that have defaults.
+
+```
+FUNCT TWICE(N AS UWORD, BY AS UWORD = 2) AS UWORD
+  RETURN N * BY
+END FUNCT
+PRINT TWICE(21); TWICE(21, 3)
+```
+
+This prints 42  63.
+
+- A number default is a constant expression with no brackets. It may name a
+  CONST. A variable stops the compile with BAD DEFAULT: name.
+- A STRING default is one string literal.
+- Each parameter after one with a default needs one, or the compile stops
+  with NO DEFAULT: name.
+- A call that leaves out an argument with no default stops the compile with
+  WRONG NUMBER OF ARGUMENTS.
+
+### AS CONST parameters
+
+T$ AS CONST makes a STRING parameter read-only. A literal argument is passed
+by its own address, with no copy.
+
+```
+SUB LABEL(ROW AS UBYTE, TEXT$ AS CONST, MARK$ AS CONST = "")
+  POS(1) = ROW
+  POS(0) = 0
+  PRINT TEXT$; MARK$
+END SUB
+LABEL(2, "NAME")
+LABEL(3, "PHONE", " *")
+```
+
+- AS CONST follows a name with the $ mark. N AS CONST and T AS STRING AS
+  CONST stop the compile with SYNTAX ERROR.
+- A string variable is passed by its address, as to a plain STRING parameter.
+- The address of a literal stays valid after the call, so a SUB may keep
+  AddrOf(TEXT$) and read the text later.
+- An assignment to the parameter, or INPUT or LINPUT into it, stops the
+  compile with CONST PARAMETER: name.
+- Passed on to a plain STRING parameter, it is copied first. Passed on to an
+  AS CONST parameter, it is passed as it is.
+- A default is one string literal: MASK$ AS CONST = "". A call that leaves the
+  argument out passes the literal with no copy.
+
 ### Locals
 
 Parameters, and names DIMed in a SUB or a FUNCTION, are its locals. In this
@@ -982,8 +1170,10 @@ one.
 - The locals of one SUB take at most 16384 bytes. The DIM that passes it stops
   the compile with LOCALS TOO BIG.
 - The SUBs of one level of the call graph share the memory of their locals.
-  The compiler does not see a call through a pointer or SYS. A SUB called that
-  way may share that memory with a SUB that is running.
+  The compiler does not see a call through SYS. A SUB called that way may
+  share that memory with a SUB that is running. A call through a pointer
+  counts as a call to each SUB whose @ was taken for its signature. See
+  [[Pointers to SUBs]].
 - The main program's variables are not locals. Each has its own address and
   keeps its value.
 
@@ -1308,7 +1498,8 @@ python pyuxc/pyuxc.py HELLO.UXB -I ../lib
 ```
 
 - -I FOLDER adds an include folder. It may be given more than once. lib/ at the
-  repo root holds BANK.UXI, CONS.UXI, DOS.UXI, HEAP.UXI, KEYS.UXI and STR.UXI.
+  repo root holds BANK.UXI, CONS.UXI, DOS.UXI, GUI.UXI, HEAP.UXI, KEYS.UXI,
+  PICKFILE.UXI, STR.UXI and VERA.UXI. See [[Including files]].
 - -o FOLDER is the folder of the PRG. The folder must exist. The default is
   the source's folder.
 - --result FILE writes the result line to FILE as well.
@@ -1344,6 +1535,17 @@ lines start with UXCBASIC 0.1 and COMPILING NAME.UXB.
   ERROR,N,MESSAGE. N is the line number. The exit status is 1. The first error
   stops the compile.
 
+### Limits
+
+- PROGRAM TOO BIG: the variables and the array space end past $9EFF, or the
+  code from its start address passes $FFFF. A SUB, or the main code between
+  two SUBs, past 64 KB of code stops it too. The images of the regions do not
+  count: see [[Code in RAM banks]].
+- OUT OF RAM BANKS: the compiler keeps its tables, its code and its fixups in
+  8 KB RAM banks, as on a 2 MB X16, and has used all 254.
+- TOO MANY NAMES: the program and its includes declare more than 2032 names.
+  The parameters, locals and hidden temps of each SUB count.
+
 See [[Including files]], [[Errors]].
 
 ## Including files
@@ -1362,9 +1564,26 @@ PRINT TWICE(21)
 - A file that is not found stops the compile with FILE NOT FOUND: NAME. An
   empty file counts as not found.
 - An included file cannot include another file. A #INCLUDE in one stops the
-  compile with #INCLUDE IN AN INCLUDED FILE.
+  compile with #INCLUDE IN AN INCLUDED FILE. The program includes what a
+  library needs, before the library.
 - An error in an included file reports the line of the #INCLUDE, with the file
   name and its own line: SYNTAX ERROR (LIB.UXI 2).
+
+The libraries in lib/ need these before them:
+
+- BANK.UXI and HEAP.UXI: DOS.UXI.
+- GUI.UXI: KEYS.UXI and VERA.UXI.
+- PICKFILE.UXI: KEYS.UXI, DOS.UXI, BANK.UXI, VERA.UXI and GUI.UXI.
+- CONS.UXI, DOS.UXI, KEYS.UXI, STR.UXI and VERA.UXI: none.
+
+```
+#INCLUDE "KEYS.UXI"
+#INCLUDE "DOS.UXI"
+#INCLUDE "BANK.UXI"
+#INCLUDE "VERA.UXI"
+#INCLUDE "GUI.UXI"
+#INCLUDE "PICKFILE.UXI"
+```
 
 See [[Strings]], [[Subroutines]].
 
@@ -1477,8 +1696,9 @@ SHOW(14)
 ```
 
 - At its start the program takes a free RAM bank for each region and copies
-  the region there from the file. No free bank stops it with OUT OF MEMORY.
-  The banks are freed when the program ends.
+  the region there from the file. No free bank stops it with OUT OF MEMORY,
+  and a fault reading the file with LOAD ERROR. The banks are freed when the
+  program ends.
 
 ### Calls and memory in regions
 
@@ -1488,8 +1708,14 @@ SHOW(14)
 - A string literal, a global variable or a run-time routine that only one
   region's code names moves into that region. The rest, the locals and the
   temps stay in low RAM.
-- A region holds 8192 bytes. The file holds each region after the variables,
-  so the file must fit low RAM with them.
+- A STRING argument passes the address of the caller's string. In a call from
+  a SUB of a region to a SUB outside that region, a literal or a global that
+  the argument names stays in low RAM. So does one passed to a SUB of the same
+  region that passes the parameter on with no copy, to a SUB outside the
+  region or to another such SUB.
+- A region holds 8192 bytes. The file holds each region's image after the
+  variables. The file may pass $9EFF: the start of the program reads the rest
+  of the images from the file.
 - An included file starts in its includer's slot, and the includer's slot
   holds again after it.
 - A run-time error in a region prints the bank with the address:
@@ -1498,6 +1724,30 @@ SHOW(14)
   across from each side, and the run-time error routine.
 - Trap: a WORD that holds the @ of a variable moved into a region points into
   that region's bank. Passed out of the region, it reads the wrong bank.
+- @ of a SUB in a region is the address of its veneer in low RAM. See
+  [[Pointers to SUBs]].
+
+### REGION_BYTES
+
+REGION_BYTES(n) gives the bytes of the region of slot n as a UWORD, the figure
+of the compile's REGION n: m BYTES line. REGION_BYTES(0) gives the bytes of all
+the regions together. A slot no region uses gives 0.
+
+```
+#REGION_SLOT 1
+SUB SHOW(N AS UWORD)
+  PRINT N * 3
+END SUB
+#REGION_SLOT 0
+SHOW(14)
+PRINT REGION_BYTES(1); REGION_BYTES(0)
+```
+
+- n is a number, 0 to 63. A CONST or any other n stops the compile with
+  REGION_BYTES NEEDS 0 TO 63.
+- The link writes the value into the code: 4 bytes, LDA # and LDY #. It
+  works in low RAM and in a region.
+- The value is not a constant to the compiler, so it is not folded.
 
 ### Errors in regions
 

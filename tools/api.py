@@ -143,8 +143,9 @@ CALLS = [
          out=[("A", "the heap's RAM bank"), ("r1", "the length byte's address in that bank")],
          errors=[8, 9],
          written=True),
-    call(17, "rmdir", 0x3A, ("Removes an empty directory. A directory that holds entries "
-          "other than . and .. gives error 5, the current directory of its drive error 16."),
+    call(17, "rmdir", 0x3A, ("Removes an empty directory. One \\ or / at the end of the path "
+          "is left out. A directory that holds entries other than . and .. gives error 5, the "
+          "current directory of its drive error 16."),
          in_=[("r0", "path")],
          errors=[3, 5, 15, 16, 21, 29, 30],
          written=True),
@@ -186,9 +187,10 @@ CALLS = [
          written=True),
     call(25, "exec", 0x4B, "Runs a program and returns when it ends. `exitcode` gives its "
          "code. The file starts with its load address, which must be $0801, and the rest loads "
-         "at $0801, up to $9EFF. A file with more stays open for `exec_rest`. A program that starts with a BASIC line `SYS n` starts at n, any other at "
-         "$0801. The program gets the command tail in its PSP at $0780: cut to 126 characters, "
-         "and followed by a CR that the length does not count. Its handles are copies of the "
+         "at $0801, up to $9EFF. A file that fills $0801-$9EFF stays open for `exec_rest`. A "
+         "program that starts with a BASIC line `SYS n` starts at n, any other at $0801. The "
+         "program gets the command tail in its PSP at $0780: cut to 126 characters, and "
+         "followed by a CR that the length does not count. Its handles are copies of the "
          "caller's. `exec` saves the caller's pages from $0700 to the page in its `PSP_TOP`, "
          "$0702, then its zero page from r0 to $7F, in a run of RAM banks from `bank_alloc`, and "
          "frees the run when the program ends. No free run gives error 8, and so does a fifth "
@@ -255,7 +257,9 @@ CALLS = [
     call(38, "ticks", None, "Gives the number of VSYNCs since boot.",
          out=[("r0 r1", "ticks")],
          written=True),
-    call(39, "errmsg", None, "Gives the message of an error number. Changes r1.",
+    call(39, "errmsg", None, ("Copies the message of an error number to the caller's buffer: "
+          "the length byte, then the text. A program in any ROM bank "
+          "can read it there. An unknown number gives error 1. Changes r1."),
          in_=[("A", "error number"), ("r0", "buffer, 128 bytes")],
          out=[("r0", "buffer, filled with a length-prefixed message")],
          errors=[1],

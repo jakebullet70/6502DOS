@@ -5040,6 +5040,32 @@
             PAUSE and WAIT, the script statements; END stays (the user's call: at the prompt it
             ends the shell, and `boot.s` runs it again). CMDSHELL.COM 21545 bytes, -21. Build
             2761 ms, the new baseline. Tests: SHTAB ok 1.3 s (golden unchanged).
+          - Closed (2026-10-24, the user's call): the SHTAB VERABOX item. Tab offering
+            `VERABOX.COM` after `VERSION` is right; the golden has it.
+          - Closed (2026-10-24, the user's call): the GUI work. GRID and BROWSE are not
+            planned. The full suite and the doc batches run again. Next: the doc batch of
+            everything owed since 2026-10-22 (the "Owed to the doc batch" lines from GUI step
+            1b on), then the full suite.
+          - Done (2026-10-24), the doc batch of the GUI work. UXC-HELP: ContentsAt's cost,
+            StringAt, Pointers to SUBs, AS CONST and default parameters, POS and CURSOR ON/OFF,
+            the include order, `#REGION_SLOT` pins, a file past $9EFF, Limits (PROGRAM TOO BIG,
+            OUT OF RAM BANKS, TOO MANY NAMES), REGION_BYTES; HELP-TXT rebuilt (MKHELP).
+            UXC-HELP has no section for GUI.UXI, CONS.UXI or VERA.UXI; the GUI library is
+            documented only in GUI.PLAN.md (untracked), rewritten as built. UXCBASIC.PLAN:
+            defaults, AS CONST, the shared `""`, StringAt, pointers (done), the limits, exec_rest,
+            REGION_BYTES. pyuxc README: SUB defaults, pyuxc-only features, the bank layout.
+            PLAN: the CONS row, call 39's buffer, call 52, rmdir's trailing `\`, section 7's
+            exec, the shell's Tab, HELPED, THEMED, GUIDEMO, the test card. HELP.TXT: Tab rules
+            in PROMPT, topics HELPED and THEMED. api.py: rmdir, exec, errmsg. GUI.UXI: the CBO
+            and STATUS_LINE comments. Bug found and fixed: commit 396e872 dropped the space in
+            `BUILTIN_NAMES$`'s `FILES LIST`, so Tab gave `FILESLIST`; CMDSHELL.COM 21546, +1.
+            `tests/SHTAB.IN` adds `FIL` Tab `HEL*` and `LIS` Tab `HELLO.TXT`. Build 5159 ms
+            (GUIDEMO, HELPED, THEMED recompiled), the new baseline. Tests: SHTAB ok 1.4 s,
+            CMDLETS 2.5, TED 1.8 (goldens rewritten for the two new HELP topics, diffed).
+            Left stale, found by the batch: PLAN's lib tables lack GUI, VERA, BANK and PICKFILE;
+            PLAN's call table lacks call 51 `bank_call`; PLAN's statement table lacks DIR, TYPE
+            and CALL; PLAN section 10's `\X` trap is stale; UXC-HELP's "79 bytes for the
+            loader" (R_RGLOAD now 147). Next: the full suite.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

@@ -66,8 +66,8 @@ The UXCBASIC library is the folder `lib/`. Each file holds one namespace of the 
 |---|---|---|
 | `lib/DOS.UXI` | `DOS` | one `SUB` or `FUNCTION` for each API call in section 4; the whole-file routines `EXISTS`, `SIZE` and `COPY` |
 | `lib/HEAP.UXI` | `HEAP` | the string heap calls and the system descriptors; include it after `DOS.UXI` |
-| `lib/KEYS.UXI` | `KEYS` | the characters and scan codes the console gives for keys, the modifier bits of `con_status`, and a `BIND` of `GETKEY`: `KEYS.SCAN_UP`, `KEYS.MOD_CTRL` |
-| `lib/CONS.UXI` | `CONS` | the escape sequences the console obeys, as string constants with plain names (`CONS.CSI$`, `CONS.REVERSE$`, `CONS.RED$`, `CONS.ON_WHITE$`, `CONS.CLEAR_EOL$`); `BIND`s of `PRINT`, `INPUT`, `LINPUT`, `POS`, and `NEWLINE` for `PRINT`; `LOCATE`, `PRINT_AT`, `PRINT_BOOL`, `SCREEN_ROWS`, `SCREEN_COLS` |
+| `lib/KEYS.UXI` | `KEYS` | the characters and scan codes the console gives for keys, the modifier bits of `con_status`, and `BIND`s of `GETKEY`, `GETEXTKEY`, `WAITKEY` and `KEYMODS`: `KEYS.SCAN_UP`, `KEYS.MOD_CTRL` |
+| `lib/CONS.UXI` | `CONS` | the escape sequences the console obeys, as string constants with plain names (`CONS.CSI$`, `CONS.REVERSE$`, `CONS.RED$`, `CONS.ON_WHITE$`, `CONS.CLEAR_EOL$`); `BIND`s of `PRINT`, `INPUT`, `LINPUT`, `POS`, `NEWLINE` for `PRINT`, and `CLS$` for `CLEAR_SCREEN$`; `CLS`, `LOCATE`, `PRINTAT`, `PRINT_BOOL`, `SCREEN_ROWS`, `SCREEN_COLS` |
 | `lib/STR.UXI` | `STR` | a `BIND` of each string built-in; `INSTR_REV` |
 
 - Every UXCBASIC program in 6502DOS calls the API through `DOS.UXI`. Each call goes to the
@@ -77,9 +77,14 @@ The UXCBASIC library is the folder `lib/`. Each file holds one namespace of the 
 - `DOS.STOP_KEY(mode)` sets the mode of the STOP key, Ctrl+C, with call 47. The modes are the
   members of `ENUM STOP`: `DOS.STOP.OFF` 0, `DOS.STOP.ENDS` 1, `DOS.STOP.CATCH` 2.
   `DOS.STOP_PRESSED()` gives 1 when Ctrl+C was pressed in `CATCH`, and clears the flag.
+- `CONS.PRINTAT(row, column, text, color)` prints `text` at `row` and `column` and leaves the
+  cursor after it. `text` is `AS CONST`, so a literal is not copied. `color` is the background
+  times 16 plus the foreground, 0 by default. A color other than 0 prints the text in that color
+  through call 46, then puts the console color back. 0 prints in the console color.
+- `CONS.CLS()` prints `CONS.CLEAR_SCREEN$`: it clears the screen and puts the cursor home.
 - A constant or a `BIND` adds no bytes to a program. pyuxc leaves out each `SUB` and `FUNCTION`
   that the program does not call.
-- A program holds at most 64 `BIND`s (`K_ALIASES` in pyuxc). `CONS.UXI` takes 5, `KEYS.UXI` 1
+- A program holds at most 64 `BIND`s (`K_ALIASES` in pyuxc). `CONS.UXI` takes 6, `KEYS.UXI` 4
   and `STR.UXI` 11.
 
 ## 3. Memory map
@@ -319,7 +324,8 @@ Calls, with the MS-DOS 2.0 function each matches:
 | `getdate`, `setdate`, `gettime`, `settime` | 2Ah–2Dh | the RTC |
 | `version` | 30h | the system version |
 | `ticks` | none | the VSYNC counter |
-| `errmsg` | none | the text of an error number |
+| `errmsg` | none | copies the text of an error number to a 128-byte buffer |
+| `exec_rest` | none | reads the part of the running program's file past `$9EFF` (section 7) |
 
 Errors use MS-DOS 2.0's numbers:
 
@@ -371,6 +377,7 @@ Errors use MS-DOS 2.0's numbers:
   fits.
 - rmdir of a read-only directory gives error 5. rename of a directory into another directory
   gives error 5.
+- rmdir leaves out one `\` or `/` at the end of the path: `rmdir` of `UTILS\` removes `UTILS`.
 - Each unit of a block driver gets the next drive letter from `C:`. The SD card is `C:`, and
   `C:` is the current drive at boot. There are 4 drive letters, `A:` to `D:`. The FAT32
   library serves one volume, `C:`.
@@ -494,7 +501,14 @@ Drivers follow MS-DOS 2.0's device drivers.
 - A `.COM` file loads at `$0801`, as an MS-DOS `.COM` file loads at offset `100h`. A relocatable
   format, like MS-DOS's `.EXE`, comes later with UXCBASIC's relocatable output (UXCBASIC plan §5).
 - A `.COM` file starts with its load address, which must be `$0801`: else `exec` gives error 11.
-  The rest loads at `$0801`, up to `$9EFF`: a larger file gives error 8.
+  The rest loads at `$0801`, up to `$9EFF`.
+- A file that fills `$0801–$9EFF` stays open, and bit 7 of `exec_open`, in the kernel's zero
+  page, is set. Call 52 `exec_rest`, entry `$03DC`, reads the rest: `r1` bytes to `r0`, from
+  where the last read ended, and gives the count read in `r1`. A count of 0 closes the file.
+  With no file open it gives error 6.
+- The file closes when the program ends and when it calls `exec`.
+- UXCBASIC's `R_RGLOAD` copies the part of a region's image below `$9F00` to its bank and reads
+  the rest with `exec_rest`. `T_RGEND` closes the file after the last region.
 - A program that starts with a BASIC line `SYS n`, as a UXCBASIC program does, starts at `n`. Any
   other program starts at `$0801`.
 - The PSP at `$0700`:
@@ -1074,6 +1088,51 @@ Short names:
   - It stops at each full screen; Esc or Ctrl+C there ends it. At most 256 names are listed.
   - When handle 1 is not the console (`ioctl` subfunction 0 lacks `$02`), the output is
     plain: no colors, no stops, no clear, and the lines drawn with `-`, `|` and `+`.
+- `HELPED [name]` is a utility, `HELPED.COM`, for the command line. It edits a text file of up
+  to 2047 bytes in a form of GUI Forms, `lib/GUI.UXI`.
+  - The form holds the field File, 12 characters in capitals; the list Folder, with `Current`,
+    `C:\UTILS` and `C:\DOS`; the check box Backup; the radio buttons Theme, with Dark, Light and
+    Gray; the memo Text, 64 columns by 12 rows; and the buttons Load, Save and Quit, pressed by
+    Alt+L, Alt+S and Alt+Q.
+  - The name starts as `name`, or `README.TXT`, in the current directory. That file loads at
+    the start.
+  - Load reads the file that the name and the folder give. A CR in the file is dropped. A file
+    over 2047 bytes loads its first 2047, and Save then writes nothing.
+  - Save writes the text to that file, each line ending in LF. With Backup checked, Save first
+    renames the old file to its name with the extension `.BAK`, in place of an old `.BAK`.
+  - The status line, the screen's last row, gives what Load and Save did.
+  - A theme chosen takes effect when a button ends the form.
+  - Quit or Esc ends it without saving and puts back the console color it started with. The
+    exit code is 0.
+- `THEMED [name]` is a utility, `THEMED.COM`, for the command line. It builds a color theme of
+  GUI Forms and saves it as a theme file, which `GUI.THEME_FILE` loads.
+  - A theme file holds 13 bytes, one color a role in `GUI.ROLE`'s order, each the background
+    times 16 plus the foreground.
+  - The name starts as `name` in capitals, or `CUSTOM`. A name with no extension, given or
+    typed, takes `.GTH`. That file loads at the start when it exists; else the theme starts as
+    DARK.
+  - The left of the screen is a sample form in the theme. The right lists the 13 roles, each
+    with a sample and its background and foreground as hex digits. A change shows at once.
+  - Up and Down choose a role. Left and Right step its background or foreground through the 16
+    colors. Tab switches between the background and the foreground. 1, 2 and 3 start again
+    from DARK, LIGHT and GRAY.
+  - L and S load and save. An input box asks for the name first; Cancel or Esc there keeps the
+    name and does nothing.
+  - Load of a file that does not exist shows `Not found:` in a message box. Save of a file
+    that exists asks `exists. Replace it?`, and No writes nothing. A file that does not open
+    for writing shows `Cannot write`.
+  - Esc ends it. When the theme differs from the one last loaded or saved, it asks `The theme
+    is not saved. Quit anyway?` first.
+  - The status line gives what Load and Save did. At the end the console color it started with
+    comes back. The exit code is 0.
+- `GUIDEMO` is a utility, `GUIDEMO.COM`, that shows each part of GUI Forms. It starts in the
+  GRAY theme.
+  - The main form has the menus Program (Memory, Exit) and Demos (Forms, Controls, Memo, Lists,
+    Dialogs, Files, Look), and a button for each item. F10, or Alt and a menu's letter, opens a
+    menu. Alt and a button's letter presses it. Esc ends the program.
+  - Memory shows the low RAM the program fills, the RAM banks by owner, the free bytes of the
+    string heap, and a map of the banks.
+  - The status line gives how each demo ended and what it returned. The exit code is 0.
 - `WHERE name [SILENT]` prints the path of the program the shell runs for `name`:
   `C:\DOS\HEAD.COM`. It is for the command line and scripts.
   - The look-up is the shell's. A name with an extension is looked for as typed, any other
@@ -1113,6 +1172,10 @@ Tab completion:
   the word and `*`, with `.*` added when its name part has no dot; a directory has a `\` after
   it, and a name that starts with `.` is left out. Then, for a first word, the `.SCOM`,
   `.COM` and `.CMD` files that match in each directory of `PATH$`, shown without the extension.
+- The statement names are `BUILTIN_NAMES$` in `CMDSHELL.UXI`. It leaves out the script
+  statements `ENDIF`, `ENDREP`, `GOSUB`, `GOTO`, `IF`, `INPUT`, `ONERROR`, `PAUSE`, `REM`,
+  `REPEAT`, `RETURN` and `WAIT`. `END` is in it.
+- After a first word `CD`, `CHDIR`, `RD` or `RMDIR`, Tab gives directories only.
 - Each Tab puts the next match in place of the word, and Shift+Tab the one before. After the
   last comes the first. A word with no match stays as it is.
 - A line that Tab did not leave starts again from its first match.
@@ -1209,8 +1272,9 @@ Folders:
   down from the entry with bit 6 to 1, hold one checksum, type 0 and cluster 0, and end at the
   8.3 entry whose checksum it holds. A run cut by a deleted entry, another run or the end of
   the directory is reported as an orphan.
-- Trap: `fatcheck.py` lists about 108 lost clusters on each test card. They are the program
-  block that `tests.py` reserves, which the FAT marks as used.
+- Trap: `fatcheck.py` lists lost clusters on each test card. They are the clusters of the
+  program block that `tests.py` reserves and the programs leave unused, which the FAT marks
+  as bad.
 - The emulator runs `x16emu -rom build/6502DOS.ROM -sdcard build/SD.IMG`.
 - `build.py` copies the ROM to `build/TEST.ROM` with the byte `boot_shell` 0, found through the
   label file. `TEST.ROM` boots to the monitor, `6502DOS.ROM` to the shell (section 8).
@@ -1219,7 +1283,9 @@ Folders:
 - The emulator's host file system needs the stock KERNAL. 6502DOS reads files only from the SD
   card image.
 - `tests.py` boots a test ROM headless and compares what it prints with a golden file, as in
-  UXCBASIC.
+  UXCBASIC. A test that has not printed its whole golden file within 5 s fails.
+- `tests.py --update` runs each test for 4.5 s (`UPDATE_SECONDS`) and writes `NAME.OUT` from
+  what it printed.
 - The test output channel is `x16emu -echo raw`. It prints A each time the PC reaches `$FFD2`,
   which jumps to `con_out`. Every console write goes through `$FFD2`.
 - Trap: x16emu turns on `-echo` only when ROM bank 0 holds `MIST` at `$FFF6`.
@@ -1232,8 +1298,10 @@ Folders:
 - A test types keys with `x16emu -bas`: first `tests/NAME.S`, a program that `tests.py`
   assembles to run at `$1000` and types in with the monitor's `E`, or `RUN NAME.COM` for
   `tests/NAME.UXB`; then the lines of `tests/NAME.IN`.
-- Every test runs with an SD card image that `tests.py` makes from `tests/sd`: 2 sectors per
-  cluster and 1024 clusters, so files cross sectors and clusters. Its root also holds the COM files in
+- Every test runs with an SD card image that `tests.py` makes from `tests/sd`: 256 MB, 2
+  sectors per cluster and 259079 clusters (`CLUSTERS`), so files cross sectors and clusters.
+  The programs go in a block of 4096 clusters (`RESERVE`) after the files of `tests/sd`. Its
+  root also holds the COM files in
   `build/bas`, each `tests/com/NAME.S` assembled to `NAME.COM` with its code from `$0801`, and each
   `tests/com/NAME.UXB` compiled to `NAME.COM`. A test runs these as child programs. x16emu prints
   `SD card attached.`, and `tests.py` drops that line.

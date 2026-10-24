@@ -663,8 +663,7 @@ NAMESPACE GUI
   ' down, and returns its control number, as SAYGET does. CHOICES$ holds the choices with |
   ' between them, as RADIO's does. The UBYTE at VALUE_AT is the chosen one, 0 for the first;
   ' pass it as @NAME. The field shows the choice and a down arrow in its last column. Space
-  ' opens the list, and the form is drawn again when it closes. ROW, COLUMN, CAPTION$ and
-  ' FLAGS are SAYGET's. The form keeps the address of CHOICES$, not a copy.
+  ' or Enter opens the list, as DROP_LIST does. ROW, COLUMN, CAPTION$ and FLAGS are SAYGET's. The form keeps the address of CHOICES$, not a copy.
   FUNCTION CBO(ROW AS UBYTE, COLUMN AS UBYTE, CAPTION$ AS CONST, CHOICES$ AS CONST, VALUE_AT AS UWORD, WIDTH AS UBYTE, FLAGS AS UBYTE = 0) AS UBYTE
     DIM CONTROL AS UBYTE
     CONTROL = SAYGET(ROW, COLUMN, CAPTION$, ORIGINAL$, WIDTH, CHOICES$, FLAGS)
@@ -1464,8 +1463,7 @@ NAMESPACE GUI
     RETURN CALL KIND_EDITOR(CONTROL_KIND(CONTROL)) WITH (CONTROL, COLUMN, MORE_FLAGS)
   END FUNCTION
 
-  ' Clears the screen's last row in the STATUS color, all but its last column, and prints
-  ' MESSAGE$ there, cut to fit.
+  ' Clears the screen's last row in the STATUS color and prints MESSAGE$ there, cut to fit.
   SUB STATUS_LINE(MESSAGE$ AS CONST)
     USE_COLOR(STATUS)
     SPAN_ROW = POS(2) - 1

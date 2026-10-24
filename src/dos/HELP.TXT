@@ -361,6 +361,9 @@ The keys and the quotes at the prompt:
   Tab completes the last word: a file or a directory, or, as the first word,
   a statement or a .SCOM, .COM or .CMD program on PATH$. Each Tab gives the
   next match, and Shift+Tab the one before.
+  After CD, CHDIR, RD and RMDIR, Tab gives directories only. As the first
+  word it leaves out ENDIF, ENDREP, GOSUB, GOTO, IF, INPUT, ONERROR, PAUSE,
+  REM, REPEAT, RETURN and WAIT.
   Up brings back the line before, and Down the line after. The last 8 lines
   are kept.
   A name with a space goes in quotes. Tab puts a match with a space in quotes.
@@ -474,3 +477,33 @@ HDIR [d:][path] [-1..-9] [-l] [-n -e -d -s] [-t] [-a] [-c] (Command line only)
   Examples:
     HDIR C:\DOCS -1t
     HDIR *.COM -s
+:HELPED
+HELPED [name]                   (Command line only)
+  Edits the text file name, or README.TXT, in a form. The text is 2047
+  bytes at most. A longer file loads cut, and Save then writes nothing.
+  Folder picks the current directory, C:\UTILS or C:\DOS.
+  With Backup checked, Save first renames the old file to NAME.BAK.
+  Theme picks Dark, Light or Gray. It takes effect at the next button.
+  Tab and Shift+Tab move between the controls.
+  Alt+L loads, Alt+S saves. Alt+Q or Esc ends without saving.
+  The last row tells what Load and Save did.
+  HELPED is in C:\UTILS.
+  Example:
+    HELPED HDIR.TXT
+:THEMED
+THEMED [name]                   (Command line only)
+  Builds a color theme for GUI programs in the file name, or CUSTOM.GTH.
+  A name with no extension takes .GTH. The file loads at the start when it
+  exists. Else the theme starts as Dark.
+  Up and Down choose a role. Left and Right step its color. Tab switches
+  between the background and the foreground. 1, 2 and 3 start again from
+  Dark, Light and Gray.
+  L loads and S saves. A dialog asks for the file name first; Esc there
+  keeps the name. A file not found, or one that cannot be written, shows a
+  message. Save asks before it writes over a file.
+  Esc ends. When the theme is not saved, a dialog asks first.
+  A theme file is 13 bytes, a color for each role: background * 16 +
+  foreground.
+  THEMED is in C:\UTILS.
+  Example:
+    THEMED BLUE.GTH

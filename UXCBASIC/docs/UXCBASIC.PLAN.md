@@ -165,10 +165,10 @@ the error.
 |---|---|
 | Data | `DIM` / `VAR`, assignment `name = expr`, `name(i) = expr` |
 | Control | `IF expr [THEN]` … `ELSEIF expr` … `ELSE` … `ENDIF`, `IF expr THEN statement`, `SELECT CASE v` … `CASE tests` … `CASE ELSE` … `END SELECT`, `DO [WHILE\|UNTIL c]` … `LOOP [WHILE\|UNTIL c]`, `FOR v = a TO b [STEP k]` … `NEXT`, `REPEAT [n]` … `END REPEAT`, `EXIT DO\|FOR\|REPEAT`, `CONTINUE`, `GOTO label` |
-| Subroutines | `SUB name(X AS UWORD, Y AS UBYTE)` … `ENDSUB`, `FUNCTION name(X AS UWORD) AS type` or `FUNCTION name$(S$)` … `ENDFUNCTION`, `[CALL] name(x, y)`, `RETURN [expr]`. `CALL` is optional; the brackets are required, even empty. |
+| Subroutines | `SUB name(X AS UWORD, Y AS UBYTE)` … `ENDSUB`, `FUNCTION name(X AS UWORD) AS type` or `FUNCTION name$(S$)` … `ENDFUNCTION`, `[CALL] name(x, y)`, `RETURN [expr]`. `CALL` is optional; the brackets are required, even empty. `DECLARE SUB name(...)` or `DECLARE FUNCTION name(...) AS type`, `CALL p WITH (x, y)` (pointers, §5 "Calling a `SUB` by address") |
 | Console | `PRINT item; item, …` (a trailing `;` drops the newline), `INPUT var`, `LINPUT L$`, `GETKEY` (a function, 0 when no key is waiting) |
 | Files | `F = OPEN(name$, mode)`, `N = READ(F, buf, max)`, `WRITE F, buf, n`, `CLOSE F`, `PRINT #F, …`, `INPUT #F, var`, `LINPUT #F, L$`, `EOF(F)`, `DIR "pattern"` |
-| Low level | `PEEK(a)`, `POKE a, v`, `ContentsAt(a)`, `ContentsAtW(a)` (read and assigned), `AddrOf(name)`, `SYS a`, `ASM $A9, $41, …` (raw bytes; `AddrOf(name)` or `@name` puts in a variable's address), `ASM` … `END ASM` (a block of byte lines) |
+| Low level | `PEEK(a)`, `POKE a, v`, `ContentsAt(a)`, `ContentsAtW(a)` (read and assigned), `StringAt(a)` (read only), `AddrOf(name)`, `SYS a`, `ASM $A9, $41, …` (raw bytes; `AddrOf(name)` or `@name` puts in a variable's address), `ASM` … `END ASM` (a block of byte lines) |
 
 - **Subroutines.** A `SUB` has no value. Its end is `ENDSUB` or `END SUB`. A `FUNCTION` has a
   value. Its end is `ENDFUNCTION` or `END FUNCTION`.
@@ -197,8 +197,45 @@ the error.
   - Parameters and locals are in the frame of the `SUB` or `FUNCTION`, named `sub.var` inside
     the compiler. A local does not keep its value between calls, and only its own `SUB` or
     `FUNCTION` can name it.
-  - A `UBYTE` or `UWORD` argument is passed by value. A string or an array is passed as a pointer
-    to it, so the `SUB` or `FUNCTION` works on the caller's data and no copy is made.
+  - A `UBYTE` or `UWORD` argument is passed by value. A string variable or an array is passed
+    as a pointer to it, so the `SUB` or `FUNCTION` works on the caller's data and no copy is
+    made.
+  - A string literal passed to a plain STRING parameter is copied into a temp first. A STRING
+    `FUNCTION`'s result passed to any STRING parameter is copied too. The literal `""` is
+    passed as one shared block, with no copy. Its max is 0, so a write into it stores no
+    character.
+  - `T$ AS CONST` is a STRING parameter the `SUB` may not write (pyuxc only). A literal
+    argument is passed at its own address, with no copy. An assignment, `INPUT` or `LINPUT`
+    into it stops the compile with `CONST PARAMETER: T$`. An `AS CONST` parameter passed on to
+    a plain STRING parameter is copied first. Tests SUBCONST, ERRCONSTLET and ERRCONSTIN.
+  - A parameter may have a default (pyuxc only): `WIDTH AS UBYTE = 40` or `TEXT$ = "NONE"`. A
+    call may leave out the trailing arguments that have defaults. Tests SUBDEF, ERRDEFORDER,
+    ERRDEFFEW and ERRDEFCONST.
+
+    ```
+    SUB SHOW(ROW AS UBYTE, TEXT$ AS CONST = "NONE", WIDTH AS UBYTE = 40)
+      PRINT ROW; TEXT$; WIDTH
+    END SUB
+    SHOW(1)
+    SHOW(3, "HI", 7)
+    ```
+
+    - After a parameter with a default, each parameter needs one. Else the compile stops with
+      `NO DEFAULT: name`.
+    - A STRING default is one string literal. A default holds no `(`. A number default must
+      fold to a constant at each call. Else the compile stops with `BAD DEFAULT: name`.
+    - The names in a default are looked up from the namespace of the `SUB` called.
+    - A call that leaves out a default compiles to the same code as one that writes it.
+    - A source holds at most 255 defaults (`K_SB_DEFAULTS`). Past that the compile stops with
+      `TOO MANY DEFAULTS`.
+    - A call that leaves out a parameter with no default stops the compile with
+      `WRONG NUMBER OF ARGUMENTS`.
+- **`StringAt(a)`** (pyuxc only). The string block at the WORD address `a`, anywhere a string
+  is read. Tests STRINGAT and ERRSTRAT.
+  - Passed to a STRING parameter, the parameter is the block at `a`, so a write in the `SUB`
+    changes that block. Passed to an `AS CONST` parameter, it is passed as it is.
+  - A string as `a` stops the compile with `TYPE MISMATCH`.
+  - `STRINGAT` is a reserved word. `StringAt(a) = x` is not built.
 - **IF** (decided 2026-10-09). The block form has any number of `ELSEIF` parts and one `ELSE`;
   `THEN` is optional at the end of the line. The one-line form `IF c THEN statement` has no
   `ELSE`, and a block statement after `THEN` is an error. `IF c THEN GOTO`, `EXIT` or
@@ -315,6 +352,10 @@ $0801  BASIC stub "10 SYS 2061"  (left out with UXC.NOSTUB; the code then starts
   A port to the new machine rewrites only that table.
 - Code plus data must end below `$9F00`. The array and string space must also end below
   `$9F00`.
+- A program with `#REGION_SLOT` regions carries their images after its variables, so its file
+  may pass `$9EFF`. `exec` loads the file up to `$9EFF` and leaves a longer file open. At
+  startup `R_RGLOAD` copies each image into its bank and reads the part past `$9EFF` with
+  `exec_rest`, call 52. `T_RGEND` then closes the file.
 
 **Zero page at run time.**
 
@@ -399,12 +440,23 @@ Every other option comes from `#DEFINE UXC.*` lines in the source.
    that were used. It then resolves every fixup, writes the PRG, and optionally writes the
    `.LST`.
 
-**Compiler memory.** pyuxc keeps the GPC UXC's banks, each a `bytearray` of 8,192 bytes.
-- The code buffer is `K_CODE_BANKS`, 5 banks: a program's code is at most 40,960 bytes. Past
-  that the compile stops with `PROGRAM TOO BIG`.
-- The symbol table is `K_SYM_BANKS`, 8 banks: 2,032 names, and the fixups `K_FIX_BANKS`, 8 banks: 8,192 fixups of 8 bytes.
-- The program and its arrays must end below `K_TOP`, `$9F00`, or the link stops with
-  `PROGRAM TOO BIG`.
+**Compiler memory.** pyuxc keeps its tables in banks, each a `bytearray` of 8,192 bytes.
+`uxc_bank` hands them out. Past `K_RAM_BANKS`, 254 banks, the compile stops with
+`OUT OF RAM BANKS`.
+- The symbol table is `K_SYM_BANKS`, 8 banks: 512 bytes of bucket heads, then 2,032 records of
+  32 bytes (`K_SY_MAX`). Past that the compile stops with `TOO MANY NAMES`. A ninth bank,
+  `g.sy_xbank`, holds the third byte of each record's value and of each `SUB`'s end.
+- The code buffer takes a bank each time it fills one. A code offset is 3 bytes.
+- A fixup is 10 bytes: its code offset (3 bytes), kind, section, value (3 bytes) and owner (2
+  bytes). A bank holds `K_FX_BANK`, 819 fixups. The fixups take a bank each time they fill one.
+- The low part, its code, literals, variables and array space, must end below `K_TOP`,
+  `$9F00`. Its code must also end by `$FFFF`, which matters for `#ORG` output. Past either the
+  link stops with `PROGRAM TOO BIG`.
+- A region holds at most 8,192 bytes, else `REGION n FULL`. A slot is 0 to 63.
+- A list of forward jumps keeps each link as a 2-byte offset from the start of its `SUB`'s
+  body, or of the main code since the last `END SUB`. An `ON CASE` keeps each target as a
+  2-byte offset from its jump to the dispatch. Past 65,535 the compile stops with
+  `PROGRAM TOO BIG`, so one `SUB` stops at 64 KB.
 
 **Errors.**
 - The first error stops the compiler. It prints `?<ERROR> IN <line>` and the line of source.
@@ -1241,7 +1293,14 @@ To do, not designed yet:
   RAM banks.
 
   - The startup takes a bank for each region with `bank_alloc` and copies the region's image
-    there from the file (`T_RGLOAD`, `R_RGLOAD`).
+    there from the file (`T_RGLOAD`, `R_RGLOAD`). The part of the file past `$9EFF` is read
+    with `exec_rest`, and `T_RGEND` closes the file after the last copy.
+  - `REGION_BYTES(n)` gives a UWORD: the bytes of the region of slot `n`, the figure of
+    pyuxc's `REGION` field, or of all regions for 0, or 0 for a slot no region uses. `n` is a
+    number literal from 0 to 63. Anything else stops the compile with
+    `REGION_BYTES NEEDS 0 TO 63`. It compiles to a `T_LDW_C` whose operand is a fixup of section `K_SEC_RGSIZE`, which the
+    link step fills after the regions' sizes are final. The value is not a constant, so it
+    does not fold. Tests RGBYTES (the repo root's `tests/`) and ERRRGBYTES.
   - A call across an edge goes to a 7-byte veneer on the caller's side, then to the region's
     9-byte gate, which calls the kernel's `bank_call`: the bank is saved, selected, and
     restored on return. About 145 cycles. A call within a side is a `JSR`.
@@ -1278,8 +1337,9 @@ To do, not designed yet:
     than the level of each `SUB` that calls it. The main program has level 0 and a pool of
     its own. The string temps, 257 bytes each, of all `SUB`s of one level share one pool, as
     big as the most any of them needs. The pools sit after the array space.
-  - A call the graph cannot see, through a pointer or `SYS`, breaks the sharing. No such call
-    exists today.
+  - A call the graph cannot see breaks the sharing. A call through a pointer is in the graph,
+    as a call of its signature (§5 "Calling a `SUB` by address"). A `SUB` reached by `SYS` is
+    not.
   - Locals: a `SUB`'s parameters, its `DIM`s (BYTE and WORD variables, arrays and strings)
     and its hidden words are locals in the `SUB`'s frame. The frames of all `SUB`s of one
     level share that level's pool with the level's temps: the frames below the pool's
@@ -1468,8 +1528,67 @@ To do, not designed yet:
   END SUB
   ```
 
-- **Calling a `SUB` by address** (user, 2026-10-13; for 6502DOS). `CALL AT P` calls the `SUB`
-  at the address in `P`, where `P = AddrOf(KOPEN)`. Driver vector tables need it.
+- **Calling a `SUB` by address** (user, 2026-10-13; for 6502DOS). Done in pyuxc as pointers
+  to `SUB`s (2026-10-23). A pointer has the type of a signature, and the compiler checks
+  each `@SUB` stored in it against the signature. `CALL AT P` is not built. Tests FPTR,
+  ERRPTRMATCH and ERRPTRCYCLE, and RGPTR in the repo root's `tests/`.
+
+  ```
+  DECLARE FUNCTION OPERATION(LEFT AS UBYTE, RIGHT AS UBYTE) AS UBYTE
+  DIM OPERATIONS(2) AS OPERATION, N AS UBYTE
+
+  FUNCTION ADD(A AS UBYTE, B AS UBYTE) AS UBYTE
+    RETURN A + B
+  END FUNCTION
+
+  FUNCTION LARGER(A AS UBYTE, B AS UBYTE) AS UBYTE
+    IF B > A THEN RETURN B
+    RETURN A
+  END FUNCTION
+
+  OPERATIONS(0) = @ADD
+  OPERATIONS(1) = @LARGER
+  FOR N = 0 TO 1
+    PRINT CALL OPERATIONS(N) WITH (6, 7)
+  NEXT N
+  ```
+
+  - `DECLARE SUB name(params)` or `DECLARE FUNCTION name(params) AS type` makes a signature: a
+    header with no body and no code. `DECLARE` is a reserved word. A `DECLARE` inside a `SUB`
+    stops the compile with `DECLARE IN A SUB`.
+  - `DIM P AS name`, `DIM T(n) AS name` and a parameter `H AS name`, where name is a signature,
+    make a pointer: a WORD whose symbol record holds the signature at `K_SY_SIGNATURE` (30).
+  - `@SUB` or `AddrOf(SUB)` is the address of the `SUB`'s code. It is allowed only where a
+    pointer is wanted: assigned to a pointer variable or element, or passed to a pointer
+    parameter. Anywhere else the compile stops with `NO POINTER TYPE FOR @name`.
+  - The `SUB` must match the signature: the result type, and parameters of the same number,
+    types, signs, `AS CONST`, and `ENUM` or signature. The names and the defaults may differ.
+    A `SUB` that does not match stops the compile with `name DOES NOT MATCH signature`.
+  - `CALL p WITH (args)` is a statement, or a value in an expression when the signature is a
+    `FUNCTION`. `p` is a pointer variable or element. A name that is not a pointer stops the
+    compile with `NOT A POINTER: name`, and no `WITH` with `MISSING WITH`.
+  - The arguments go into the signature's parameters. Then the pointer is loaded into A/Y,
+    and `T_ICALL` is `JSR R_ICALL`. `R_ICALL`, 7 bytes, linked once, stores A/Y in `ZP_PTR` and
+    runs `JMP (ZP_PTR)`. The call itself is 3 bytes.
+  - The pointer's text is compiled after the arguments, so it may hold no call. A call in it
+    stops the compile with `A CALL IN A POINTER`.
+  - Trap: nothing checks the pointer. A pointer of 0 jumps to `$0000`.
+  - Frames: each `SUB` whose `@` is taken for a signature gets a `K_SK_TARGET` record, and
+    `SB.POOLS` puts it at the signature's level. So the `SUB`s of one signature keep their
+    parameters at the same offsets in one pool. A call through a pointer is a call of its
+    signature in the call graph. A `SUB` whose `@` is taken for a signature, and that calls
+    through a pointer of that signature, has no level: the link stops with
+    `SUBS CALL EACH OTHER`.
+  - Dead code: `@SUB` is a `K_SEC_LABEL` fixup, so live code that takes it keeps the `SUB`.
+  - Regions: `@` of a `SUB` in a region is the address of its `T_FARCALL` veneer in low RAM,
+    wherever the `@` is. A `T_ICALL` in a region's code calls the region's `T_RGGATE` in place
+    of `R_ICALL`, so a call through a pointer from a region goes through `bank_call`. A veneer
+    is 7 bytes, none when the `SUB` already has one.
+  - `#ROMBANKS`: a pointer holds an address in the first bank. `@` of a `SUB` in the second
+    bank is the address of its veneer in the first bank. A `T_ICALL` in the second bank calls
+    `T_FAR` at `K_FAR` in place of `R_ICALL`, so the call runs in the first bank.
+  - Not built: a pointer `DIM ... AT`, a `FUNCTION` result of a pointer type, and a `TYPE`
+    field of a pointer type.
 - **Variables in banked RAM** (user, 2026-10-13; for 6502DOS). `DIM SFT(15) AT $A000 BANK 0`
   puts a table in a RAM bank. Each use of it selects the bank.
 - **Arrays that span RAM banks** (user, 2026-10-14). An array larger than 8 KB lives in banked

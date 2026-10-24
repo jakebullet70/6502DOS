@@ -130,7 +130,21 @@ The stock ROM is not supported. The command line has no target option. For `"650
 - A GPC routine is a function with the same name: `TP.LOAD` is `tp_load`.
 - A RAM bank is a `bytearray` of 8192 bytes. `g.ram` is the bank that `BANK` selected, and
   `PEEK($A000 + n)` is `g.ram[n]`. The symbol table, the code buffer and the fixups are such
-  banks, laid out as in the GPC UXC.
+  banks. `uxc_bank` hands them out and stops the compile with `OUT OF RAM BANKS` past
+  `K_RAM_BANKS`, 254.
+- These differ from the GPC UXC, so that a code offset can pass 65535:
+  - The symbol table is `K_SYM_BANKS`, 8 banks of the GPC UXC's layout, and a ninth bank,
+    `g.sy_xbank`, with the third byte of each record's value and of each `SUB`'s end.
+    `sy_end_get` and `sy_end_set` read and write the end.
+  - The code buffer and the fixups take a bank each time they fill one (`cb_put`, `fx_add`,
+    `fx_put`).
+  - A fixup is 10 bytes: its code offset (3 bytes), kind, section, value (3 bytes) and owner
+    (2 bytes). A bank holds `K_FX_BANK`, 819.
+  - A link in a list of forward jumps is a 2-byte offset from `g.jp_base` + 1, 0 for the end
+    of the list (`jp_encode` in `uxc_cond.py`). `g.jp_base` is the start of the current
+    `SUB`'s body, or of the main code since the last `END SUB`. An `ON CASE` keeps each target
+    as an offset from its jump to the dispatch. Either offset past 65535 stops the compile
+    with `PROGRAM TOO BIG`.
 - A source line is a `str` of latin-1 characters, one for each byte of the file.
 - `ER.STOP` raises `Stop`, and `compile_file` makes the result line from it.
 - pyuxc uses only what UXCBASIC can express: fixed tables, no recursion, the same passes.
@@ -150,7 +164,32 @@ The GPC UXC has none of these:
   (`uxc_dead.py`). It is on by default; `--keep-subs` and `--keep-vars` turn it off.
 - `#ORG` and `#DATA`, output for ROM (`dd_place_scan` in `uxc_dead.py`, `uxc_link.py`).
 - `#ROMBANKS`, a program in two ROM banks (`uxc_rombank.py`).
-- `#REGION_SLOT`, SUBs in RAM banks (`uxc_ramreg.py`).
+- `#REGION_SLOT`, SUBs in RAM banks (`uxc_ramreg.py`), and `REGION_BYTES(n)`
+  (`ex_region_bytes` in `uxc_expr.py`, `rg_bytes` in `uxc_ramreg.py`, a fixup of section
+  `K_SEC_RGSIZE`).
+- Default parameter values (`sb_default_read`, `sb_call_default` in `uxc_sub.py`); see below.
+- `AS CONST` STRING parameters (`sb_parameter` in `uxc_sub.py`, flag `K_SY_READ_ONLY`;
+  `sg_writable` and `sg_pass` in `uxc_str.py`).
+- Pointers to SUBs: `DECLARE SUB`, `DECLARE FUNCTION` and `CALL p WITH (...)` (the Pointers
+  part of `uxc_sub.py`, `K_SK_SIG`, `K_SK_TARGET`, `K_SY_SIGNATURE`).
+- `StringAt(a)` (`sg_string_at` in `uxc_str.py`).
+- `CURSOR ON` and `CURSOR OFF` (`sm_cursor` in `uxc_stmt.py`).
+
+## SUB defaults
+
+A parameter with `= default` in a `SUB` or `FUNCTION` header has a default.
+`docs/UXCBASIC.PLAN.md` section 1 has the rules.
+
+- The first pass reads each header. `sb_default_read` keeps the default's text, from after
+  the `=` to the `,` or `)`, in `g.sb_default_text`, at most `K_SB_DEFAULTS`, 255, in a
+  source.
+- The parameter's symbol record holds the default's number, 1 up, in byte 27, the byte that
+  holds a `SUB`'s parameter count. 0 is no default.
+- At a call, `sb_call_default` compiles each argument left out. It reads the default's text
+  in place of the line, with names looked up from the namespace of the `SUB` called, through
+  the same `sb_call_argument` as an argument written in the call. A call that leaves out a
+  default compiles to the same code as one that writes it.
+- Trap: one saved line serves, as a default holds no `(` and so no call.
 
 ## Differences in arithmetic
 
