@@ -19,6 +19,8 @@
 ' --               memo, Save writes the memo to it, and New empties the memo
 ' --     Lists     a list of planets and a list of toppings that takes marks; Pick chooses a
 ' --               planet in a list box
+' --     Dialogs   a button for each dialog: a message box with two buttons, a yes or no
+' --               question, an input box, and an input box of two fields
 ' -- Exit code 0.
 ' --
 ' -- From a prompt:
@@ -35,10 +37,12 @@
 ' The ids of the menu items and the buttons.
 CONST ID_EXIT AS UBYTE = 1, ID_MEMORY AS UBYTE = 2, ID_FORMS AS UBYTE = 10
 CONST ID_CONTROLS AS UBYTE = 11, ID_MEMO AS UBYTE = 12, ID_LISTS AS UBYTE = 13
-' The Controls demo's Show button, the Memo demo's Load, Save and New buttons, and the Lists
-' demo's Pick button.
+CONST ID_DIALOGS AS UBYTE = 14
+' The Controls demo's Show button, the Memo demo's Load, Save and New buttons, the Lists demo's
+' Pick button, and the Dialogs demo's buttons.
 CONST ID_SHOW AS UBYTE = 3, ID_LOAD AS UBYTE = 4, ID_SAVE AS UBYTE = 5, ID_NEW AS UBYTE = 6
-CONST ID_PICK AS UBYTE = 7
+CONST ID_PICK AS UBYTE = 7, ID_MESSAGE AS UBYTE = 8, ID_QUESTION AS UBYTE = 9
+CONST ID_INPUT AS UBYTE = 10, ID_TWO_FIELDS AS UBYTE = 11
 ' The choices of the Controls demo's radio buttons and combo box. A form keeps their addresses.
 CONST SIZES$ = "Small|Medium|Large", ALIGNS$ = "Left|Center|Right"
 CONST INKS$ = "Black|Red|Green|Yellow|Blue|Magenta|Cyan|White"
@@ -72,6 +76,9 @@ DIM MEMO_FILE AS STRING * 12
 ' each topping, padded with spaces. The planet and the topping chosen, 1 for the first.
 DIM PLANET_ITEMS AS STRING * 64, TOPPING_ITEMS AS STRING * 90
 DIM PLANET AS UBYTE, TOPPING AS UBYTE
+
+' The Dialogs demo's input boxes edit these.
+DIM CITY AS STRING * 20, FIRST_NAME AS STRING * 16, LAST_NAME AS STRING * 16
 
 ' The Memory popup's lines, and a row of the bank map for each 64 banks.
 DIM PROGRAM_LINE AS STRING * 68, LOW_FREE_LINE AS STRING * 68, BANKS_LINE AS STRING * 68
@@ -424,6 +431,50 @@ SUB LISTS_DEMO()
   REPORT()
 END SUB
 
+' The Dialogs demo: a button for each dialog, over the button Close. Each dialog's result goes
+' to the status line, and the form stays.
+SUB DIALOGS_DEMO()
+  DIM FORM AS UBYTE, RESULT AS UBYTE
+  FORM = GUI.CREATEFORM("Dialogs", GUI.CENTER, GUI.CENTER, 54, 10, GUI.FRAMED)
+  GUI.SAY(GUI.AUTO, 2, "Each button opens a dialog. The status line")
+  GUI.SAY(GUI.AUTO, 2, "tells what it returned. Esc in a dialog cancels.")
+  GUI.BUTTON(4, 4, "&Message", ID_MESSAGE)
+  GUI.BUTTON(4, 17, "&Yes or no", ID_QUESTION)
+  GUI.BUTTON(4, 32, "&Input", ID_INPUT)
+  GUI.BUTTON(6, 4, "&Two fields", ID_TWO_FIELDS)
+  GUI.BUTTON(6, 32, "&Close", 1)
+  DO
+    RESULT = GUI.SHOW(FORM)
+    SELECT CASE RESULT
+      CASE ID_MESSAGE
+        RESULT = GUI.MSGBOX("Message", "A message box shows up to three lines", "and one or two buttons. Each button", "returns its number.", "&First", "&Second")
+        MESSAGE = "Dialogs: MSGBOX returned " + DECIMAL(RESULT)
+      CASE ID_QUESTION
+        IF GUI.YESNO("Question", "Is the 6502 your favorite CPU?") THEN
+          MESSAGE = "Dialogs: YESNO returned 1, Yes"
+        ELSE
+          MESSAGE = "Dialogs: YESNO returned 0, No or Esc"
+        ENDIF
+      CASE ID_INPUT
+        RESULT = GUI.INPUTBOX("Input", "Which city do you live in?", CITY, 20, "", GUI.PROPER)
+        MESSAGE = "Dialogs: INPUTBOX returned " + DECIMAL(RESULT) + ", " + CITY
+      CASE ID_TWO_FIELDS
+        RESULT = GUI.INPUTBOX2("Two fields", "First name", FIRST_NAME, "Last name", LAST_NAME, 16, "", GUI.PROPER)
+        MESSAGE = "Dialogs: INPUTBOX2 returned " + DECIMAL(RESULT) + ", " + FIRST_NAME + " " + LAST_NAME
+      CASE ELSE
+        EXIT DO
+    END SELECT
+    REPORT()
+  LOOP
+  GUI.FREE(FORM)
+  IF RESULT = 1 THEN
+    MESSAGE = "Dialogs: closed"
+  ELSE
+    MESSAGE = "Dialogs: cancelled, event " + STR$(RESULT)
+  ENDIF
+  REPORT()
+END SUB
+
 SUb SEED_demo()
   PERSON_NAME = "Ada Lovelace"
   PHONE = "(555)-010-1815"
@@ -436,6 +487,9 @@ SUb SEED_demo()
   TOPPING_ITEMS = PADDED_ITEMS(TOPPINGS$, 10, 9)
   PLANET = 3
   TOPPING = 1
+  CITY = "Springfield"
+  FIRST_NAME = "Grace"
+  LAST_NAME = "Hopper"
 end sub
 
 
@@ -453,8 +507,9 @@ GUI.BUTTON(5, 3, "&Forms", ID_FORMS)
 GUI.BUTTON(5, 14, "&Controls", ID_CONTROLS)
 GUI.BUTTON(5, 28, "M&emo", ID_MEMO)
 GUI.BUTTON(5, 38, "&Lists", ID_LISTS)
-GUI.BUTTON(5, 56, "&Memory", ID_MEMORY)
-GUI.BUTTON(5, 68, "E&xit", ID_EXIT)
+GUI.BUTTON(5, 49, "D&ialogs", ID_DIALOGS)
+GUI.BUTTON(7, 3, "&Memory", ID_MEMORY)
+GUI.BUTTON(7, 15, "E&xit", ID_EXIT)
 GUI.MENUBAR(MAIN_FORM)
 GUI.BEGINMENU("&Program")
 GUI.MENUITEM("&Memory", ID_MEMORY)
@@ -465,6 +520,7 @@ GUI.MENUITEM("&Forms", ID_FORMS)
 GUI.MENUITEM("&Controls", ID_CONTROLS)
 GUI.MENUITEM("M&emo", ID_MEMO)
 GUI.MENUITEM("&Lists", ID_LISTS)
+GUI.MENUITEM("D&ialogs", ID_DIALOGS)
 GUI.ENDMENU()
 MESSAGE = "Ready."
 REPORT()
@@ -479,6 +535,8 @@ DO
       MEMO_DEMO()
     CASE ID_LISTS
       LISTS_DEMO()
+    CASE ID_DIALOGS
+      DIALOGS_DEMO()
     CASE ID_MEMORY
       MEMORY_INFO()
     CASE ID_EXIT, GUI.EV_CANCEL

@@ -4843,6 +4843,21 @@
             the first hint line. Trap for smoke keys: a line's end is Enter, and a last line
             without one is not typed. Tests: GUIMEMO ok 0.6 s, HELPED 1.3 s. Build 2468 ms, the
             new baseline (6290 ms with HELPED and THEMED recompiled). Next: D5, the Dialogs demo.
+          - Done, D5 (2026-10-24), GUIDEMO's Dialogs demo: Demos, Dialogs (id 14) and the
+            main-form button D&ialogs (Alt+I, as Alt+D opens the Demos menu; row 5, column 49).
+            Row 5 had no room, so &Memory and E&xit moved to row 7, columns 3 and 15. A centered
+            form 54 by 10: two SAY lines, then &Message (8), &Yes or no (9), &Input (10) at row
+            4 and &Two fields (11), &Close (1) at row 6. Each button runs its dialog and reports
+            the result on the status line; the form stays. Message: MSGBOX of three lines with
+            &First and &Second. Yes or no: YESNO. Input: INPUTBOX on `CITY` (STRING * 20, PROPER).
+            Two fields: INPUTBOX2 on `FIRST_NAME` and `LAST_NAME` (STRING * 16, PROPER). SEED_demo
+            sets Springfield, Grace and Hopper. GUIDEMO 31460 bytes, 2591 more: region 1 8039
+            (+62, 153 free), region 2 4517 (+747, MSGBOX, YESNO, INPUTBOX, INPUTBOX2), regions 3
+            and 4 the same, low RAM about +1782. Smoke run (a scratch test, deleted: Alt+I,
+            Alt+M, Alt+S, Alt+Y, Alt+N, Alt+I, Enter, Alt+T, Enter, Enter, Alt+C, Esc) 4.5 s:
+            MSGBOX 2, YESNO 0, INPUTBOX 1 Springfield, INPUTBOX2 1 Grace Hopper, closed. A -gif
+            frame showed the layout; the form was widened from 50 to 54 for the second hint
+            line. Build 2677 ms, the new baseline. Next: D6, the Files demo.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
