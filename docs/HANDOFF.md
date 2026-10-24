@@ -5077,6 +5077,10 @@
             keys and traps sit on the internal DROP_LIST and PULL_MENU; THEME_FILE's
             parameter lacks AS CONST; INPUTBOX2 does not give its results. Steps since the
             full suite: 1. Next: the full suite.
+          - Working tree at the hand-off (2026-10-24): `src/utils/guidemo/GUIDEMO.UXB` holds
+            the user's uncommitted edits, and `UXCBASIC/docs/GUI.PLAN.md` stays untracked;
+            leave both. Open, the user's call: UXC-HELP topics for PICKFILE.UXI, VERA.UXI and
+            CONS.UXI; the GUI.UXI contract fixes above; the stale items left by the doc batch.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
