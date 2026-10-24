@@ -3,7 +3,8 @@
 ; exec copies the parent's PSP, memory and zero page to RAM banks, gives the child copies of the
 ; parent's handles and the command tail in the same PSP, loads the program and calls its start.
 ; exit, or RTS from the start, closes the child's handles and copies the parent back. keep does
-; the same but keeps the child's banks.
+; the same but keeps the child's banks. A file that fills $0801-$9EFF stays open, and exec_rest
+; reads the rest of it.
 
 .setcpu "65C02"
 
@@ -11,7 +12,7 @@
 .include "api.inc"
 .include "far.inc"
 
-.export api_exec, api_exit, api_exitcode, api_keep, exec_break
+.export api_exec, api_exec_rest, api_exit, api_exitcode, api_keep, exec_break
 .import handles_inherit, handles_close, heap_exec, heap_exit, CHROUT, con_hide
 .import api_bank_alloc, api_bank_free, bank_exit
 .import jsrfar, bank0, lib_open, lib_read, lib_close
@@ -30,6 +31,7 @@ copy_high:    .res 2            ; parent_copy: a page of the save
 copy_back:    .res 1            ; parent_copy: bit 7 set to copy to the parent
 exec_entry:   .res 2            ; the load address, then the program's start
 save_bank:    .res EXEC_LEVELS  ; the first bank of each level's save
+exec_open:    .res 1            ; bit 7 set while the running program's file is open
 
 .segment "KERNELRAM"
 
@@ -46,21 +48,16 @@ api_exec:
         lda #ERR_NO_MEMORY
         rts                     ; carry set
 @open:
+        jsr rest_close          ; exec_file takes the new program's file
         lda #0                  ; read; carry clear: no create
         FARCALL lib_open
         bcc @opened
         rts
 @opened:
         sta exec_file
-        lda file_size+2         ; the load address, then up to PROGRAM_SIZE bytes
+        lda file_size+1         ; the load address, then a byte at least
+        ora file_size+2
         ora file_size+3
-        bne @too_big
-        lda file_size
-        cmp #<(PROGRAM_SIZE + 3)
-        lda file_size+1
-        sbc #>(PROGRAM_SIZE + 3)
-        bcs @too_big
-        lda file_size+1
         bne @fits
         lda file_size
         cmp #3
@@ -94,12 +91,23 @@ api_exec:
         sta r0
         lda #>PROGRAM
         sta r0+1
-        lda #$FF                ; the rest of the file
+        lda #<PROGRAM_SIZE      ; up to PROGRAM_END
         sta r1
+        lda #>PROGRAM_SIZE
         sta r1+1
         jsr exec_read
         bcs exec_fail
+        lda r1                  ; a full area stays open for exec_rest
+        eor #<PROGRAM_SIZE
+        bne @short
+        lda r1+1
+        eor #>PROGRAM_SIZE
+        bne @short
+        dec exec_open           ; $FF: exec_open is 0 since rest_close
+        bra @loaded
+@short:
         jsr exec_close
+@loaded:
         jsr find_start
         pla
         pha
@@ -117,7 +125,6 @@ api_exec:
 @full:                          ; no run of banks for the save
         pla
         sta RAM_BANK
-@too_big:
         lda #ERR_NO_MEMORY
 @refused:                       ; the program file is open
         pha
@@ -135,13 +142,28 @@ exec_fail:                      ; A = the error; the child has not run
         sec
         bra exec_unwind
 
-; exec_read: reads r1 bytes of the program file to r0. Returns carry set and A = the error.
-; Changes X and Y.
-exec_read:
-        jsr bank0
-        lda exec_file
-        FARCALL lib_read
-        bra exec_bank
+; api_exec_rest: exec_rest, call 52. Reads r1 bytes of the running program's file to r0, or
+; closes the file for r1 = 0.
+api_exec_rest:
+        bit exec_open
+        bpl @none
+        lda r1
+        ora r1+1
+        bne exec_read
+        jsr rest_close
+        clc
+        rts
+@none:
+        lda #ERR_BAD_HANDLE
+        sec
+        rts
+
+; rest_close: closes the running program's file when exec left it open. Changes A, X and Y.
+rest_close:
+        bit exec_open
+        bpl exec_open_rts
+        stz exec_open
+        ; fall through
 
 ; exec_close: closes the program file. Changes A, X and Y.
 exec_close:
@@ -151,7 +173,16 @@ exec_close:
 exec_bank:
         ldx saved_bank          ; keeps A and carry
         stx RAM_BANK
+exec_open_rts:
         rts
+
+; exec_read: reads r1 bytes of the program file to r0. Returns carry set and A = the error.
+; Changes X and Y.
+exec_read:
+        jsr bank0
+        lda exec_file
+        FARCALL lib_read
+        bra exec_bank
 
 api_keep:
         ldy #BANK_KEPT
@@ -206,6 +237,7 @@ exec_quit:
 exec_unwind:
         sta exec_result
         php
+        jsr rest_close
         jsr handles_close
         jsr heap_exit
         ldy #0                  ; free the child's banks

@@ -186,7 +186,7 @@ CALLS = [
          written=True),
     call(25, "exec", 0x4B, "Runs a program and returns when it ends. `exitcode` gives its "
          "code. The file starts with its load address, which must be $0801, and the rest loads "
-         "at $0801. A program that starts with a BASIC line `SYS n` starts at n, any other at "
+         "at $0801, up to $9EFF. A file with more stays open for `exec_rest`. A program that starts with a BASIC line `SYS n` starts at n, any other at "
          "$0801. The program gets the command tail in its PSP at $0780: cut to 126 characters, "
          "and followed by a CR that the length does not count. Its handles are copies of the "
          "caller's. `exec` saves the caller's pages from $0700 to the page in its `PSP_TOP`, "
@@ -365,6 +365,14 @@ CALLS = [
          in_=[("A", "RAM bank"), ("r0", "routine"), ("X", "the routine's X")],
          out=[("A", "the routine's A"), ("X", "the routine's X"), ("Y", "the routine's Y"),
               ("carry", "the routine's carry")],
+         written=True),
+    call(52, "exec_rest", None, ("Reads the part of the running program's file past $9EFF, "
+          "which `exec` leaves open: r1 bytes to r0, from where the last read ended. A buffer at "
+          "$A000-$BFFF is in the selected RAM bank. A count of 0 closes the file. The file also "
+          "closes when the program ends or calls `exec`. Error 6 when the file is not open."),
+         in_=[("r0", "buffer"), ("r1", "count, 0 to close the file")],
+         out=[("r1", "the count read, fewer at the end of the file")],
+         errors=[6],
          written=True),
 ]
 

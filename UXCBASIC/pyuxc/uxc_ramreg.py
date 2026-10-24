@@ -26,7 +26,7 @@
     rg_split()    then: cut the regions' SUBs out of the code into g.rg_code and their fixups
                   into g.rg_fix, then add the gates and the veneers in low RAM
     rg_image_of(), rg_max()  in sg_maxes: a moved variable's string maxes go into g.rg_data
-    rg_load()     first in the startup work: T_RGFROM, then a T_RGLOAD a region
+    rg_load()     first in the startup work: T_RGFROM, a T_RGLOAD a region, then T_RGEND
     rg_runtime()  after the startup work: move into a region the runtime records that only its
                   code names
     rg_place()    after the variables: append each region's code, its veneers, its data and
@@ -36,9 +36,11 @@
 
 The regions are numbered 1 up, k, in the order of their slots. $00 selects the RAM bank at
 $A000. The file holds the regions' images after the variables, where the array space starts,
-one after the other. T_RGLOAD, first in the startup work, takes a free RAM bank for each, copies
-its image to $A000 there, and writes the bank into the region's gate. The array space, the temps
-and the data records then cover the images. A code offset from g.rg_base[k] on is in region k,
+one after the other. exec loads the file up to $9EFF and leaves a longer file open. T_RGLOAD,
+first in the startup work, takes a free RAM bank for each, copies its image to $A000 there, the
+part past $9EFF read from the file by exec_rest, and writes the bank into the region's gate.
+T_RGEND then closes the file. The array space, the temps and the data records then cover the
+images. A code offset from g.rg_base[k] on is in region k,
 at $A000 + the offset - g.rg_base[k]. A K_SEC_RGDATA value is at $A000 + g.rg_data_at[k] + the
 value, where k is the region of the fixup's own code.
 
@@ -71,7 +73,7 @@ from uxc_code import cb_add, cb_get, cb_put, emit, fx_put, fx_read, rt_address_s
 from uxc_defs import K_DV_MAX, K_EK_MEM, K_F_ABS, K_FX_MAX, K_SEC_BSS, K_SEC_CODE, K_SEC_CONST, \
     K_SEC_LABEL, K_SEC_LOW, K_SEC_REC, K_SEC_RGDATA, K_SEC_STR, K_SEC_VAR, K_SK_LABEL, \
     K_SK_SUB, \
-    K_SY_END, K_SY_READ_ONLY, K_TOP, K_TT_EOL, K_TT_NUM, K_TY_STR
+    K_SY_END, K_SY_READ_ONLY, K_TT_EOL, K_TT_NUM, K_TY_STR
 import uxc_dead
 import uxc_lex
 import uxc_rombank
@@ -576,7 +578,7 @@ def rg_veneer():
 def rg_load():
     """RG.LOAD. T_RGFROM points at the start of the array space, where rg_place puts the
     images; then each region's T_RGLOAD copies its g.rg_size[k] bytes and writes its bank into
-    its gate."""
+    its gate; then T_RGEND closes the program's file."""
     g.sl_s[0] = K_SEC_BSS
     g.sl_v[0] = 0
     emit(T.T_RGFROM)
@@ -588,6 +590,7 @@ def rg_load():
         g.sl_s[1] = K_SEC_CODE
         g.sl_v[1] = g.rg_gate_at[k] + K_RG_GATE_BANK
         emit(T.T_RGLOAD)
+    emit(T.T_RGEND)
 
 
 def rg_runtime():
@@ -705,8 +708,6 @@ def rg_place():
             emit(record_id)
         if g.cb_n - g.rg_base[k] != g.rg_size[k]:
             er_stop("REGION SIZE CHANGED")
-    if g.lk_org + g.cb_n > K_TOP:
-        er_stop("PROGRAM TOO BIG")
 
 
 def rg_region_of(at):

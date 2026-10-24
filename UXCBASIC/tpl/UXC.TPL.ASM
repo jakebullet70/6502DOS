@@ -217,9 +217,13 @@ T_FARCALL .block
 ; placeholders, and pyuxc never emits them for it.
         .if UXDOS == 0
 API_R0  = $02
+API_R1  = $04
 API_BANK_ALLOC = 0
 API_BANK_CALL = 0
+API_EXEC_REST = 0
         .endif
+; The end of low RAM: exec loads a program up to here, and exec_rest reads the rest of the file.
+LOW_END = $9f00
 
 ; #REGION_SLOT: the gate between low RAM and one region, one a region, in low RAM. A T_FARCALL
 ; enters with the SUB's address in A/Y. bank_call calls it with the region's bank selected, then
@@ -260,8 +264,9 @@ T_RGLOAD .block
         .endblock
 
 ; #REGION_SLOT: take a RAM bank and copy A/Y bytes, 1 or more, from ZP_PTR to $A000 there.
-; Out: A the bank, ZP_PTR just past the bytes. No bank free stops with OUT OF MEMORY. Keeps X and
-; the caller's bank.
+; The bytes from LOW_END on come from the program's file, by exec_rest. Out: A the bank, ZP_PTR
+; just past the bytes copied, at most LOW_END. No bank free stops with OUT OF MEMORY, and a read
+; fault with LOAD ERROR. Keeps X and the caller's bank. Changes r0 and r1.
 ; Trap: the images lie where the array space, the temps and the data records go, so nothing may
 ; write there before the last copy ends.
 R_RGLOAD .block
@@ -269,8 +274,8 @@ R_RGLOAD .block
         phx
         ldx $00
         phx                     ; the caller's bank
-        pha                     ; the rest
-        phy                     ; the whole pages
+        sta API_R1              ; the size
+        sty API_R1+1
         lda #1
         jsr API_BANK_ALLOC
         bcc got
@@ -279,8 +284,30 @@ got     sta $00
         stz ZP_DST
         lda #$a0
         sta ZP_DST+1
+        sec                     ; r0: the bytes from ZP_PTR to LOW_END, at most the size
+        lda #<LOW_END
+        sbc ZP_PTR
+        tax
+        lda #>LOW_END
+        sbc ZP_PTR+1
+        cmp API_R1+1
+        bcc less
+        bne all
+        cpx API_R1
+        bcc less
+all     ldx API_R1
+        lda API_R1+1
+less    stx API_R0
+        sta API_R0+1
+        sec                     ; r1: the bytes the file holds
+        lda API_R1
+        sbc API_R0
+        sta API_R1
+        lda API_R1+1
+        sbc API_R0+1
+        sta API_R1+1
         ldy #0
-        plx                     ; the whole pages
+        ldx API_R0+1            ; the whole pages
 page    beq part
 whole   lda (ZP_PTR),y
         sta (ZP_DST),y
@@ -290,7 +317,7 @@ whole   lda (ZP_PTR),y
         inc ZP_DST+1
         dex
         bra page
-part    plx                     ; the rest
+part    ldx API_R0              ; the rest
         beq done
 rest    lda (ZP_PTR),y
         sta (ZP_DST),y
@@ -303,7 +330,18 @@ rest    lda (ZP_PTR),y
         sta ZP_PTR
         bcc done
         inc ZP_PTR+1
-done    lda $00
+done    lda API_R1
+        ora API_R1+1
+        beq loaded
+        sty API_R0              ; the read goes on where the copy ended
+        lda ZP_DST+1
+        sta API_R0+1
+        jsr API_EXEC_REST
+        bcc loaded
+        #rec jsr, R_ERROR
+        .byte 10
+        .text "LOAD ERROR"
+loaded  lda $00
         plx
         stx $00
         plx
@@ -393,6 +431,16 @@ T_STW_SY .block
         #aby sta, S0
         pla
         #aby sta, S0, 1
+        #endtpl
+        .endblock
+
+; #REGION_SLOT, at startup after the last T_RGLOAD: closes the program's file, which exec leaves
+; open when it fills low RAM. It returns error 6 when the file is not open.
+T_RGEND .block
+        #tpl
+        stz API_R1
+        stz API_R1+1
+        jsr API_EXEC_REST
         #endtpl
         .endblock
 

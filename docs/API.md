@@ -70,6 +70,7 @@ Conventions:
 | `con_edit` | 49 | `$03D3` | none | `r0` buffer | `A` the key that ended the line: $0D Enter, $09 Tab, 0 an extended key<br>`X` scan code, 0 for Enter and Tab<br>`Y` modifiers: $01 Shift, $04 Caps Lock on, $40 Alt, $80 Ctrl | none | yes |
 | `con_screen` | 50 | `$03D6` | none | `r0` buffer | none | none | yes |
 | `bank_call` | 51 | `$03D9` | none | `A` RAM bank<br>`r0` routine<br>`X` the routine's X | `A` the routine's A<br>`X` the routine's X<br>`Y` the routine's Y<br>`carry` the routine's carry | none | yes |
+| `exec_rest` | 52 | `$03DC` | none | `r0` buffer<br>`r1` count, 0 to close the file | `r1` the count read, fewer at the end of the file | 6 | yes |
 
 ## What each call does
 
@@ -98,7 +99,7 @@ Conventions:
 - `diskfree`: Gives the size and free space of a drive. The free clusters are the count in the FS info sector.
 - `con_line`: Reads a line from the console with editing. Byte 0 of the buffer holds the most characters it takes, CR included, from 1 to 254. The call puts the length read, CR not included, in byte 1 and the text after it, ended by CR. Tab does nothing.
 - `con_status`: Tells whether a key is waiting, and which modifier keys are held. `lib/KEYS.UXI` names the modifier bits.
-- `exec`: Runs a program and returns when it ends. `exitcode` gives its code. The file starts with its load address, which must be $0801, and the rest loads at $0801. A program that starts with a BASIC line `SYS n` starts at n, any other at $0801. The program gets the command tail in its PSP at $0780: cut to 126 characters, and followed by a CR that the length does not count. Its handles are copies of the caller's. `exec` saves the caller's pages from $0700 to the page in its `PSP_TOP`, $0702, then its zero page from r0 to $7F, in a run of RAM banks from `bank_alloc`, and frees the run when the program ends. No free run gives error 8, and so does a fifth program inside 4.
+- `exec`: Runs a program and returns when it ends. `exitcode` gives its code. The file starts with its load address, which must be $0801, and the rest loads at $0801, up to $9EFF. A file with more stays open for `exec_rest`. A program that starts with a BASIC line `SYS n` starts at n, any other at $0801. The program gets the command tail in its PSP at $0780: cut to 126 characters, and followed by a CR that the length does not count. Its handles are copies of the caller's. `exec` saves the caller's pages from $0700 to the page in its `PSP_TOP`, $0702, then its zero page from r0 to $7F, in a run of RAM banks from `bank_alloc`, and frees the run when the program ends. No free run gives error 8, and so does a fifth program inside 4.
 - `exit`: Ends the program and returns to its parent. `RTS` from the program's start is `exit` with code 0. Does not return, except with error 1 when no program is running.
 - `exitcode`: Gives the exit code of the last program that ended.
 - `keep`: Ends the program as `exit` does, but keeps its RAM banks and its IRQ hook. Nothing frees the banks. Does not return, except with error 1 when no program is running.
@@ -125,6 +126,7 @@ Conventions:
 - `con_edit`: Edits a line from the console, as `con_line` reads one, from the text in the buffer: byte 1 holds its length, 0 for none, and the text follows it. The call shows the text first. Enter, Tab or an extended key ends the line. Tab and the extended key are not echoed, and leave the cursor after the text. The registers come back as `con_getkey` gives them.
 - `con_screen`: Reads a line from the console with the full-screen editor, into a buffer as `con_line` fills it. The cursor moves over the whole screen, and Enter returns the text of the cursor's row without the blanks at its end: from the column the call started at on the row it started at, from column 0 on any other row. A line is one row. The keys: the arrows; Ctrl+Left and Ctrl+Right a word; Home the top left corner; End after the row's text; Ctrl+Home clears the screen; Ctrl+End blanks to the end of the row; Esc blanks the row; Ins turns insert mode on or off, and a cursor move turns it off; Del and Backspace delete; Tab moves to the next column of 8, and in insert mode opens blanks. A Ctrl+C in break mode 2 ends the line with no text. When handle 0 is a file, the call is `con_line`.
 - `bank_call`: Calls the routine at r0 with RAM bank A selected, then selects the caller's RAM bank again. The routine gets X, and its A, X, Y and carry come back. The routine may make calls, `bank_call` among them.
+- `exec_rest`: Reads the part of the running program's file past $9EFF, which `exec` leaves open: r1 bytes to r0, from where the last read ended. A buffer at $A000-$BFFF is in the selected RAM bank. A count of 0 closes the file. The file also closes when the program ends or calls `exec`. Error 6 when the file is not open.
 
 ## Errors
 
