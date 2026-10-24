@@ -4981,7 +4981,7 @@
             and is START next time. The status line shows the number returned and the fruit,
             or "Esc" for 0. ID_POPUP = 17. GUIDEMO.COM 41743 bytes, was 40447: +1296, most of
             it PICKMENU itself, linked for the first time. No test covers GUIDEMO; the user
-            checks it on screen. Build 3101 ms, the new baseline. Next: the user's call, SHTAB
+            checked it on screen, and it works. Build 3101 ms, the new baseline. Next: the user's call, SHTAB
             or GRID's plan.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
