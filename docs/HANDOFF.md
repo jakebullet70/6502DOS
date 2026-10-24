@@ -4983,6 +4983,22 @@
             it PICKMENU itself, linked for the first time. No test covers GUIDEMO; the user
             checked it on screen, and it works. Build 3101 ms, the new baseline. Next: the user's call, SHTAB
             or GRID's plan.
+          - Done (2026-10-24), `REGION_BYTES(n)` in pyuxc and GUIDEMO's Memory form revised.
+            `REGION_BYTES(n)`, n a number 0 to 63, gives a UWORD: the bytes of the region of
+            slot n, the same figure as pyuxc's REGION line, or of all regions for 0, or 0 for a
+            slot no region uses. Other n: REGION_BYTES NEEDS 0 TO 63. It compiles to a
+            `T_LDW_C` (4 bytes, `lda #`/`ldy #`) whose operand is a fixup of the new section
+            `K_SEC_RGSIZE` (10), value n; `lk_fix` calls `rg_bytes` (`uxc_ramreg.py`) after
+            the regions' sizes are final. The result is in A/Y, not a constant, so it is not
+            folded. Also in `sg_scan_known`'s list. No asm. New tests: RGBYTES (`tests/`,
+            slots 1 and 3, read from low RAM and from a region: 5, 60, 65) ok 0.4 s;
+            ERRRGBYTES (`UXCBASIC/tests/`) ok 0.0 s; RGCALL ok 0.4 s; goldens local.
+            The Memory form, 74x24 (was 23): row 1 `Low RAM ... 38655 bytes: N used, M free`;
+            new row 9 `Loaded N bytes of GUIDEMO's code and data, in its banks`, from
+            `REGION_BYTES(0)` (23240 now: regions 8094, 5440, 7443, 2263); the rows after it
+            move down 1. GUIDEMO.COM 42133 bytes, +390. Not yet checked on screen. Owed to the
+            doc batch: UXC-HELP's regions section gets `REGION_BYTES`. Build 7695 ms with every
+            program recompiled for the pyuxc change, then 3096 ms, the new baseline.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

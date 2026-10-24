@@ -33,6 +33,7 @@
                   its runtime records
     rg_code_address()  in lk_fix: the address of code offset g.lk_v
     rg_data_address()  in lk_fix: the address of the K_SEC_RGDATA fixup read
+    rg_bytes()    in lk_fix: the value of the K_SEC_RGSIZE fixup read, REGION_BYTES(n)
 
 The regions are numbered 1 up, k, in the order of their slots. $00 selects the RAM bank at
 $A000. The file holds the regions' images after the variables, where the array space starts,
@@ -724,6 +725,17 @@ def rg_code_address():
             g.lk_v = K_RG_ORG + g.lk_v - g.rg_base[k]
             return
     g.lk_v = g.lk_org + g.lk_v
+
+
+def rg_bytes():
+    """RG.BYTES. In lk_fix, with a K_SEC_RGSIZE fixup read: g.lk_v, the bytes of the region of
+    slot g.fx_v, or of all regions for 0, or 0 for a slot no region uses."""
+    g.lk_v = 0
+    if g.rg_on == 0:
+        return
+    for k in range(1, g.rg_count + 1):
+        if g.fx_v == 0 or g.fx_v == g.rg_slots[k - 1]:
+            g.lk_v = g.lk_v + g.rg_size[k]
 
 
 def rg_data_address():

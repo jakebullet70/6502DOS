@@ -20,7 +20,7 @@ from uxc_defs import K_EK_ADDR, K_EK_CMP, K_EK_CONST, K_EK_JMP, K_EK_MEM, K_EK_R
     K_EO_ADD, K_EO_AND, K_EO_DIV, K_EO_EQ, K_EO_GE, K_EO_GT, K_EO_INDEX, K_EO_LAND, K_EO_LE, \
     K_EO_LOR, K_EO_LT, K_EO_MINUS, K_EO_MOD, K_EO_MUL, K_EO_NE, K_EO_NOT, K_EO_OR, K_EO_PAR, \
     K_EO_PEEK, K_EO_SHL, K_EO_SHR, K_EO_STRINGAT, K_EO_SUB, K_EO_WORDPEEK, K_EO_XOR, K_EX_DEPTH, K_EX_MAX, \
-    K_OP_GE, K_OP_LE, K_OP_NE, K_OP_SHL, K_OP_SHR, K_SEC_BSS, K_SEC_CONST, K_SK_ARRAY, \
+    K_OP_GE, K_OP_LE, K_OP_NE, K_OP_SHL, K_OP_SHR, K_SEC_BSS, K_SEC_CONST, K_SEC_RGSIZE, K_SK_ARRAY, \
     K_SK_CONST, K_SK_SUB, K_SY_SIGNED, K_TT_NAME, K_TT_NUM, K_TT_OP, K_TT_STR, K_TY_BYTE, \
     K_TY_LONG, K_TY_RECORD, K_TY_STR, K_TY_WORD
 import uxc_cond
@@ -120,6 +120,8 @@ def ex_operand():
         return ex_key(T.T_KEYMODS, K_TY_BYTE)
     if g.tk_s == "POS":
         return ex_pos()
+    if g.tk_s == "REGION_BYTES":
+        return ex_region_bytes()
     if g.tk_s == "NOFILE":
         g.ex_k = K_EK_CONST
         g.ex_s = K_SEC_CONST
@@ -289,6 +291,34 @@ def ex_pos():
     g.ex_s = K_SEC_CONST
     g.ex_v = 0
     g.ex_ty = K_TY_BYTE
+    ex_pushv()
+    uxc_lex.lx_next()
+    return _OPERATOR
+
+
+def ex_region_bytes():
+    """EX.REGION.BYTES. REGION_BYTES(n): the bytes of the region of slot n in A/Y, or of all
+    regions for 0, and 0 for a slot no region uses. n must be a number, 0 to 63. The link step
+    writes the value into a T_LDW_C, so the result is in A/Y, not a constant to fold."""
+    uxc_lex.lx_next()
+    if g.tk_t != K_TT_OP or g.tk_k != 40:
+        er_stop("MISSING ( AFTER REGION_BYTES")
+    uxc_lex.lx_next()
+    if g.tk_t != K_TT_NUM or g.tk_v > 63:
+        er_stop("REGION_BYTES NEEDS 0 TO 63")
+    g.ex_region_slot = g.tk_v
+    uxc_lex.lx_next()
+    if g.tk_t != K_TT_OP or g.tk_k != 41:
+        er_stop("MISSING )")
+    g.ex_fb = g.ex_vn
+    ex_flush()
+    g.sl_s[0] = K_SEC_RGSIZE
+    g.sl_v[0] = g.ex_region_slot
+    emit(T.T_LDW_C)
+    g.ex_k = K_EK_REG
+    g.ex_s = K_SEC_CONST
+    g.ex_v = 0
+    g.ex_ty = K_TY_WORD
     ex_pushv()
     uxc_lex.lx_next()
     return _OPERATOR
