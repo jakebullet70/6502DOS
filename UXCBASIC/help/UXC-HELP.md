@@ -584,7 +584,8 @@ This prints ADA 3, then GRACE 5.
   assignment to the parameter changes that string.
 - Passed to an AS CONST parameter, it passes with no copy.
 - StringAt(a) cannot be assigned. StringAt(P) = "X" stops the compile with
-  UNDECLARED NAME STRINGAT. Pass it to a STRING parameter to change the string.
+  STRINGAT CANNOT BE ASSIGNED. Pass it to a STRING parameter to change the
+  string.
 - Through a WORD variable, or an array element at a constant index, StringAt
   reads through that WORD. Any other a is stored in a hidden WORD, 2 bytes, of
   the statement.
@@ -1486,6 +1487,461 @@ SYS $FFD2                    ' CHROUT prints A
 
 See [[ASM]], [[Declarations]].
 
+# Libraries
+
+## The GUI library
+
+GUI.UXI, in lib/, draws text-mode forms, menus and dialogs. Its names are in
+the namespace GUI.
+
+- GUI.UXI needs KEYS.UXI, then VERA.UXI, before it. See [[Including files]].
+- A SUB or FUNCTION of the library adds bytes only when a program calls it.
+- Rows and columns count from 0.
+- A form, a section, a control and a menu keep the address of each title,
+  caption, target, mask and choices string passed to them, not a copy.
+- A parameter shown with = value has a default. AS CONST marks a read-only
+  STRING parameter. See Default values and AS CONST parameters in
+  [[Subroutines]].
+
+### Forms
+
+A form is a window of controls. A program makes the form, adds its controls,
+then calls SHOW, which runs the form until an event and returns it. FREE
+gives the form's slots back.
+
+```
+FUNCTION CREATEFORM(TITLE$ AS CONST, ROW AS UBYTE, COLUMN AS UBYTE,
+  WIDTH AS UBYTE, HEIGHT AS UBYTE, FLAGS AS UBYTE = 0) AS UBYTE
+SUB STARTSECTION(HANDLE AS UBYTE, TITLE$ AS CONST, FLAGS AS UBYTE = 0)
+SUB ENDSECTION()
+FUNCTION SHOW(HANDLE AS UBYTE) AS UBYTE
+SUB FREE(HANDLE AS UBYTE)
+```
+
+- CREATEFORM makes a form WIDTH columns by HEIGHT rows, its top left corner
+  at ROW and COLUMN on the screen, and returns its handle. CENTER (255) as
+  ROW or COLUMN centers it. WIDTH is at least 6 and HEIGHT at least 2.
+- The controls made after CREATEFORM go in that form. CREATEFORM ends a
+  section still open.
+- STARTSECTION opens a section of the form HANDLE on the form's next
+  automatic line, 1 column in from each side. Its top row holds TITLE$. The
+  controls placed with AUTO go in it until ENDSECTION or the next
+  STARTSECTION.
+- ENDSECTION ends the open section. The form's next automatic line moves
+  below it. With no section open it does nothing.
+- FREE frees the form HANDLE, its sections and its controls. FREE(0) does
+  nothing.
+
+FLAGS of CREATEFORM and STARTSECTION, added together:
+
+- FRAMED (1) draws a form in a box of double lines, a section in a box of
+  single lines.
+- TWO_COL (2) puts a section's AUTO controls in two columns, left then
+  right. ONE_COL (0) is one column.
+- NO_SHADOW (4) leaves out a form's shadow. A section has no shadow.
+
+- Forms and sections take one panel each, at most 12 together. CREATEFORM
+  returns 0 when all 12 are in use. STARTSECTION then opens no section, and
+  the controls go on the form's lines.
+- A program has at most 48 controls. A control routine returns 0 when all 48
+  are in use.
+
+### SHOW
+
+SHOW draws a form new to it whole, gives the focus to its first control and
+reads keys. It returns one of these:
+
+- EV_DONE (253): Enter on the last control, or a form whose only controls
+  are SAYs.
+- EV_CANCEL (255): Esc. SHOW(0) also returns EV_CANCEL.
+- EV_LEAVE (254): the user left a VALIDATE field, or pressed a key such as
+  F2 that the field passes on. GUI.LEFT_FIELD holds the field's control
+  number and GUI.LEFT_KEY the key.
+- A button's ID, or a menu item's ID.
+
+- A form is new to SHOW after EV_DONE, EV_CANCEL or FREE, and when another
+  form was shown last.
+- The next SHOW after a button gives that button the focus.
+- After EV_LEAVE for a field the user left, the next SHOW moves the focus
+  on. After EV_LEAVE for another key, it keeps the focus on the field.
+- A form shown again after a MSGBOX keeps its focus and is not drawn again.
+
+### Controls
+
+Each control routine makes a control of the current form and returns its
+control number. The focus moves through the controls in the order they were
+made.
+
+```
+FUNCTION SAYGET(ROW AS UBYTE, COLUMN AS UBYTE, CAPTION$ AS CONST,
+  TARGET$, WIDTH AS UBYTE, MASK$ AS CONST = "", FLAGS AS UBYTE = 0)
+FUNCTION GET(ROW AS UBYTE, COLUMN AS UBYTE, TARGET$, WIDTH AS UBYTE,
+  MASK$ AS CONST = "", FLAGS AS UBYTE = 0)
+FUNCTION SAY(ROW AS UBYTE, COLUMN AS UBYTE, CAPTION$ AS CONST)
+FUNCTION CHECK(ROW AS UBYTE, COLUMN AS UBYTE, CAPTION$ AS CONST,
+  VALUE_AT AS UWORD, FLAGS AS UBYTE = 0)
+FUNCTION RADIO(ROW AS UBYTE, COLUMN AS UBYTE, CAPTION$ AS CONST,
+  CHOICES$ AS CONST, VALUE_AT AS UWORD, FLAGS AS UBYTE = 0)
+FUNCTION BUTTON(ROW AS UBYTE, COLUMN AS UBYTE, CAPTION$ AS CONST,
+  ID AS UBYTE)
+FUNCTION CBO(ROW AS UBYTE, COLUMN AS UBYTE, CAPTION$ AS CONST,
+  CHOICES$ AS CONST, VALUE_AT AS UWORD, WIDTH AS UBYTE,
+  FLAGS AS UBYTE = 0)
+FUNCTION MEMO(ROW AS UBYTE, COLUMN AS UBYTE, CAPTION$ AS CONST,
+  WIDTH AS UBYTE, HEIGHT AS UBYTE, FLAGS AS UBYTE = 0)
+FUNCTION LIST(ROW AS UBYTE, COLUMN AS UBYTE, CAPTION$ AS CONST,
+  ITEMS_AT AS UWORD, ITEMS_BANK AS UBYTE, ITEM_LENGTH AS UBYTE,
+  COUNT AS UBYTE, VALUE_AT AS UWORD, ROWS AS UBYTE, WIDTH AS UBYTE,
+  FLAGS AS UBYTE = 0)
+```
+
+Each returns UBYTE. Placement:
+
+- ROW and COLUMN count from the form's top left corner.
+- AUTO (254) as ROW takes the form's next automatic line and moves it down.
+  For a MEMO or a LIST, the next automatic line is below the control.
+- AUTO as COLUMN takes the column 3 in from the form's edge, or in a TWO_COL
+  section that column and the form's middle in turn. The control is then the
+  open section's. A control placed at another column has no section.
+- In a section with AUTO as COLUMN, a field starts a space after the
+  section's longest caption, so the fields line up.
+
+The controls:
+
+- SAYGET: a field that edits TARGET$ with INPUT2, WIDTH characters wide,
+  with CAPTION$ before it. MASK$ and FLAGS are INPUT2's, and FLAGS may add
+  VALIDATE (32). A WIDTH of 0 makes a SAY.
+- GET: SAYGET with no caption.
+- SAY: CAPTION$ with no field. It takes no focus.
+- CHECK: [X] or [ ] with CAPTION$ after it. The UBYTE at VALUE_AT is 1 when
+  checked, 0 when clear. Space, Left and Right check and clear it.
+- RADIO: CHOICES$ holds the choices with | between them. "Red|Green|Blue"
+  draws (*) Red ( ) Green ( ) Blue. The UBYTE at VALUE_AT is the choice, 0
+  for the first. Space and Right choose the next, Left the one before, both
+  wrapping.
+- BUTTON: < CAPTION$ >. Enter on it, or its hot key from any control of the
+  form, makes SHOW return ID. ID is below EV_DONE.
+- CBO: a combo box, a field WIDTH columns wide with a down arrow in its last
+  column. CHOICES$ and VALUE_AT are as RADIO's. Space or Enter opens the
+  list. Up and Down move through it, wrapping, Enter chooses, and Esc leaves
+  the choice as it was.
+- MEMO: a field of lines WIDTH by HEIGHT. See the Memo section.
+- LIST: a list of ROWS rows of WIDTH columns. See the Lists section.
+
+Pass the UBYTE of VALUE_AT as @NAME. See [[Pointers]].
+
+WARNING: a CBO's list takes the rows from ROW + 1 to ROW + 2 + the number
+of choices, and does not scroll.
+
+### Fields and INPUT2
+
+INPUT2 edits a field on its own, outside a form. SAYGET and GET use it.
+
+```
+FUNCTION INPUT2(ROW AS UBYTE, COLUMN AS UBYTE, TARGET$, WIDTH AS UBYTE,
+  MASK$ AS CONST = "", FLAGS AS UBYTE = 0) AS UWORD
+```
+
+- The field is at ROW and COLUMN on the screen, WIDTH characters wide.
+  TARGET$ takes at most its own size in characters. Longer text scrolls
+  inside the field.
+- Left, Right, Home, End, Backspace, Delete and Insert edit. Insert switches
+  insert and type-over, and the mode holds from one call to the next.
+- Enter, Tab, Esc and every other extended key end the edit. INPUT2 returns
+  the key as WAITKEY() gives it. KEYMODS() tells Shift+Tab from Tab. See
+  [[GETEXTKEY, WAITKEY and KEYMODS]].
+- Esc puts back the text the field started with.
+- At the end the field is drawn again from its first character, and the
+  cursor is left after the field.
+
+FLAGS, added together:
+
+- PASSWORD (1) shows each character as *.
+- READ_ONLY (2) lets the cursor move but not the text change.
+- UPPER (4) and LOWER (8) set the case of a typed letter.
+- PROPER (16) makes a typed letter upper case at the start of the text or
+  after a space, lower case elsewhere.
+- DRAW_ONLY (64) draws the field and returns DRAW_ONLY with no key read.
+
+MASK$ fixes the field's length, at most TARGET$'s size. # takes a digit, A
+a letter and X any character. The mask's other characters are fixed, and
+the cursor skips them. TARGET$ is cut or padded to the mask's length. A
+masked field types over, and Delete and Backspace put a space.
+"(###)-###-####" is a phone number.
+
+WARNING: a field that ends in the screen's last column moves the cursor to
+the next line.
+
+### Memo
+
+A program has one memo text, at most MEMO_SIZE (2047) bytes. Every MEMO
+control edits it.
+
+```
+SUB MEMO_CLEAR()
+FUNCTION MEMO_LOAD(FILE_NAME$ AS CONST) AS UBYTE
+FUNCTION MEMO_SAVE(FILE_NAME$ AS CONST) AS UBYTE
+```
+
+- In the memo, Enter starts a new line and Up and Down move through the
+  text. Tab, Shift+Tab and Esc leave it. Esc does not put the text back.
+- MEMO_CLEAR empties the text and puts the cursor at the start.
+- MEMO_LOAD reads a file into the text, each CR dropped, and puts the cursor
+  at the start. It returns 0, MEMO_MISSING (1) when the file does not open
+  and the text is then empty, or MEMO_CUT (2) when the file is longer than
+  MEMO_SIZE and the text holds its first MEMO_SIZE bytes.
+- MEMO_SAVE writes the text to a file, made or emptied first, each line
+  ending in LF. It returns 0, or MEMO_MISSING when the file does not open.
+- A memo on the screen shows a change by MEMO_LOAD or MEMO_CLEAR when it
+  next takes the focus.
+
+### Lists
+
+The items of LIST and LISTBOX are COUNT records of ITEM_LENGTH bytes from
+ITEMS_AT, each a string padded with zeros. ITEMS_BANK is the RAM bank, with
+the items at $A000 to $BFFF, or 0 for low RAM.
+
+- The UBYTE at VALUE_AT is the item chosen, 1 for the first, or 0 for none.
+  The item chosen is in the MENU_SELECTED color.
+- Up, Down, PgUp, PgDn, Home and End move the choice. A letter moves it to
+  the next item that starts with that letter.
+- The list scrolls by the fewest rows that show the item chosen. A ^ in the
+  last column of the top row and a v on the bottom row mark items above and
+  below.
+- With LIST_MULTI (128) in FLAGS, Space marks and unmarks the item chosen,
+  and a * before an item shows its mark.
+- A program has at most MOST_LISTS (4) lists. LIST returns 0 when all are in
+  use.
+
+MARKED(INDEX AS UBYTE) AS UBYTE returns 1 when item INDEX is marked, else
+0. INDEX is 1 for the first item.
+
+WARNING: one list at a time has marks. LIST with LIST_MULTI clears them.
+
+### Menus
+
+A form can have a menu bar on the screen's top row. SHOW draws the bar after
+the form.
+
+```
+SUB MENUBAR(HANDLE AS UBYTE)
+SUB BEGINMENU(TITLE$ AS CONST)
+SUB MENUITEM(CAPTION$ AS CONST, ID AS UBYTE)
+SUB ENDMENU()
+```
+
+- MENUBAR gives the form HANDLE an empty bar and takes it from the form that
+  had it. MENUBAR(0) takes the bar away.
+- BEGINMENU adds a menu titled TITLE$ after the menus before it. The items
+  made after it go in it, up to ENDMENU.
+- MENUITEM adds an item. Choosing it makes SHOW return ID, 1 to 252. The
+  focus stays where it was.
+- A bar holds at most MOST_MENUS (8) menus and MOST_ITEMS (40) items. Past 8
+  menus BEGINMENU does nothing and the items go in the last menu. Past 40
+  items MENUITEM does nothing.
+- A menu needs one item at least.
+
+WARNING: FREE leaves the bar to the handle, and the next form made may take
+that handle. Call MENUBAR(0) before FREE of the form with the bar.
+
+WARNING: a menu takes the rows from 1 to 2 + its number of items, and does
+not scroll.
+
+PICKMENU shows a popup menu on its own, with no form.
+
+```
+FUNCTION PICKMENU(ROW AS UBYTE, COLUMN AS UBYTE, TITLE$ AS CONST,
+  CHOICES$ AS CONST, START AS UBYTE = 1) AS UBYTE
+```
+
+- The box is at ROW and COLUMN in the MENU color, with TITLE$ in its top
+  edge. CHOICES$ holds the choices with | between them: "&Open|&Save|E&xit".
+- START is the choice selected first.
+- PICKMENU returns the choice, 1 for the first, or 0 after Esc. The screen
+  under the box is put back.
+- The box is 3 columns wider than the longest choice, 4 wider than TITLE$
+  when that is wider, and stays off the screen's last column.
+
+WARNING: the box takes the rows from ROW to ROW + 1 + the number of choices,
+and does not scroll.
+
+### Dialogs
+
+A dialog is a framed form centered on the screen. It is freed before it
+returns, and the screen under it is put back.
+
+```
+FUNCTION MSGBOX(TITLE$ AS CONST, LINE1$ AS CONST, LINE2$ AS CONST = "",
+  LINE3$ AS CONST = "", BUTTON1$ AS CONST = "&OK",
+  BUTTON2$ AS CONST = "") AS UBYTE
+FUNCTION YESNO(TITLE$ AS CONST, LINE1$ AS CONST, LINE2$ AS CONST = "",
+  LINE3$ AS CONST = "") AS UBYTE
+FUNCTION INPUTBOX(TITLE$ AS CONST, PROMPT$ AS CONST, TARGET$,
+  WIDTH AS UBYTE, MASK$ AS CONST = "", FLAGS AS UBYTE = 0) AS UBYTE
+FUNCTION INPUTBOX2(TITLE$ AS CONST, PROMPT1$ AS CONST, TARGET1$,
+  PROMPT2$ AS CONST, TARGET2$, WIDTH AS UBYTE, MASK$ AS CONST = "",
+  FLAGS AS UBYTE = 0) AS UBYTE
+FUNCTION LISTBOX(TITLE$ AS CONST, ITEMS_AT AS UWORD,
+  ITEMS_BANK AS UBYTE, ITEM_LENGTH AS UBYTE, COUNT AS UBYTE,
+  ROWS AS UBYTE, FLAGS AS UBYTE = 0) AS UBYTE
+```
+
+- MSGBOX shows up to three lines, then BUTTON1$, and BUTTON2$ beside it when
+  it is not empty. It returns 1 or 2 for the button pressed, or EV_CANCEL
+  for Esc. The form is 6 columns wider than its widest line, title or
+  buttons.
+- YESNO is MSGBOX with &Yes and &No. It returns 1 for Yes, 0 for No or Esc.
+- INPUTBOX shows PROMPT$ over a field that edits TARGET$, then &OK and
+  &Cancel. MASK$ and FLAGS are INPUT2's. The focus starts in the field. It
+  returns 1 for OK or Enter in the field, 2 for Cancel, or EV_CANCEL for
+  Esc. Esc puts back the field's text. TARGET$ keeps what was typed
+  otherwise.
+- INPUTBOX2 is INPUTBOX with two fields, which line up. Both take WIDTH,
+  MASK$ and FLAGS. Enter in the first field moves to the second, and Enter
+  in the second is OK.
+- LISTBOX shows a list of ROWS rows over &OK and &Cancel. The items and
+  FLAGS are LIST's. The focus starts on the first item. It returns the item
+  chosen, 1 for the first, for OK or Enter, and 0 for Cancel, Esc, or a
+  COUNT of 0.
+  With LIST_MULTI, MARKED reads the marks after it returns.
+
+WARNING: with MOST_LISTS lists in use, LISTBOX shows no list, and OK returns
+1.
+
+### Drawing
+
+```
+SUB BOX(ROW AS UBYTE, COLUMN AS UBYTE, WIDTH AS UBYTE, HEIGHT AS UBYTE,
+  STYLE AS ENUM.LINES = SINGLE)
+SUB HLINE(ROW AS UBYTE, COLUMN AS UBYTE, LENGTH AS UBYTE,
+  STYLE AS ENUM.LINES = SINGLE)
+SUB VLINE(ROW AS UBYTE, COLUMN AS UBYTE, LENGTH AS UBYTE,
+  STYLE AS ENUM.LINES = SINGLE)
+SUB STATUS_LINE(MESSAGE$ AS CONST)
+```
+
+- ENUM LINES has SINGLE and DOUBLE, CP437's single and double lines. See
+  [[ENUM]].
+- BOX draws a box WIDTH by HEIGHT, its top left corner at ROW and COLUMN,
+  and clears its inside to spaces. WIDTH and HEIGHT are at least 2. It takes
+  the current console color.
+- HLINE draws a line across, LENGTH columns. LENGTH is at least 2.
+- VLINE draws a line down, LENGTH rows.
+- STATUS_LINE clears the screen's last row in the STATUS color and prints
+  MESSAGE$ there, cut to fit.
+
+WARNING: a box that ends in the screen's last column moves the cursor to the
+next line, and on the last row that scrolls the screen.
+
+### Colors and themes
+
+A theme gives a color to each member of ENUM ROLE, in this order:
+
+```
+PAGE, FRAME, TITLE, TEXT, FIELD, FIELD_FOCUS, BUTTON, BUTTON_FOCUS,
+HOT_KEY, DISABLED, MENU, MENU_SELECTED, STATUS
+```
+
+A color is the background times 16 plus the foreground, as DOS.SET_COLOR
+takes it.
+
+```
+SUB THEME(KIND AS ENUM.THEMES)
+SUB THEME_FILE(FILE_NAME$)
+SUB USE_COLOR(WHICH AS ENUM.ROLE)
+```
+
+- THEME makes a built-in theme current: DARK, LIGHT or GRAY.
+- THEME_FILE reads a theme from a file of up to 13 bytes, one color a role
+  in ROLE's order. A role past the file's end takes DARK's color, and so
+  does every role when the file cannot be opened.
+- USE_COLOR sets the console color to the theme's color for WHICH, for the
+  characters written after it.
+- Before the first THEME the theme is DARK.
+
+The built-in themes, as background,foreground for each role in order:
+
+```
+DARK  0,0 0,12 0,2 0,15 15,0 1,0 12,0 1,0 0,2 0,12 11,1 12,0 11,1
+LIGHT 1,1 1,11 1,6 1,0 15,0 12,1 6,12 6,1 1,14 1,12 15,0 6,1 6,1
+GRAY  11,0 14,0 14,0 14,1 15,0 1,0 11,1 1,0 0,2 14,12 12,1 14,1 12,0
+```
+
+### Keys
+
+- Tab, Down and Enter move the focus to the next control. Shift+Tab and Up
+  move it to the one before. The focus wraps and skips each SAY.
+- Enter on a CBO opens its list. Enter on a button presses it.
+- An & in a button's caption marks the letter after it. "&Save" draws
+  < Save > with its S in the HOT_KEY color, and Alt+S presses it from any
+  control of the form.
+- F10 opens the first menu of the bar. Alt with a menu's & letter opens that
+  menu.
+- In a menu, Up and Down move through the items, and Left and Right open the
+  menu before or after, all wrapping. Enter or an item's hot letter chooses
+  the item. Esc closes the menu.
+- In PICKMENU, Up and Down move through the choices, wrapping. Enter or a
+  choice's hot letter chooses.
+
+### Size
+
+The bytes of each region, from pyuxc's REGION lines. The test programs also
+hold their own test code. GUIDEMO is src/utils/guidemo/GUIDEMO.UXB.
+
+```
+Program   Uses                 File    Rgn 1  Rgn 2  Rgn 3  Rgn 4
+GUIEDIT   INPUT2               3422    2314
+GUIFORM   forms, no controls   3059    1475    271
+GUISHOW   fields and SHOW      8559    6411    349     44
+GUICBO    a CBO                9539    6457   1174    451
+GUIMENU   menus               10475    6575   2312    451
+GUIDLG    MSGBOX, YESNO       10216    6748   1408    451
+GUIMEMO   a memo              12014    6705    596     44   2231
+GUILBOX   LISTBOX             12099    6873   1322   2202
+GUIPMENU  PICKMENU, no SHOW    3128     418   1166    407
+GUIDEMO   every part          42133    8094   5440   7443   2263
+```
+
+- The library's code runs from region 1. A CBO's list, the menus and the
+  dialogs run from region 2, the lists from region 3 beside VERA.UXI, and
+  the memo from region 4. See [[Code in RAM banks]].
+- Region 3 holds VERA.UXI's routines. 44 bytes of it is VERA.PUT_CELL, which
+  STATUS_LINE calls.
+- A region holds 8192 bytes. Region 4's code and data end below $B800, 6144
+  bytes.
+- Low RAM, 38655 bytes from $0801 to $9EFF, holds a 9-byte gate and a
+  10-byte loader call for each region, and a 7-byte veneer on the caller's
+  side for each SUB called across a region's edge.
+- A CBO's list, a menu and a dialog save the screen under them on VERA.UXI's
+  stack, and put it back when they close. When the stack has no room for a
+  CBO's list, a menu or PICKMENU's box, it is cleared in its place and the
+  next SHOW draws the form again.
+
+### Example
+
+```
+#INCLUDE "KEYS.UXI"
+#INCLUDE "VERA.UXI"
+#INCLUDE "GUI.UXI"
+CONST SIZES$ = "Small|Medium|Large"
+DIM PERSON_NAME AS STRING * 24, BOLD AS UBYTE, TEXT_SIZE AS UBYTE
+DIM FORM AS UBYTE, RESULT AS UBYTE
+GUI.THEME(GRAY)
+FORM = GUI.CREATEFORM("Order", GUI.CENTER, GUI.CENTER, 44, 11, GUI.FRAMED)
+GUI.STARTSECTION(FORM, "Style", GUI.FRAMED)
+GUI.SAYGET(GUI.AUTO, GUI.AUTO, "Name", PERSON_NAME, 24, "", GUI.PROPER)
+GUI.CHECK(GUI.AUTO, GUI.AUTO, "Bold", @BOLD)
+GUI.RADIO(GUI.AUTO, GUI.AUTO, "Size", SIZES$, @TEXT_SIZE)
+GUI.ENDSECTION()
+GUI.BUTTON(8, 12, "&OK", 1)
+GUI.BUTTON(8, 21, "&Cancel", 2)
+RESULT = GUI.SHOW(FORM)
+GUI.FREE(FORM)
+IF RESULT = 1 THEN GUI.STATUS_LINE("Saved.")
+```
+
+Alt+O or Enter on OK makes SHOW return 1. Esc returns EV_CANCEL.
+
 # The compiler
 
 ## Compiling
@@ -1572,7 +2028,7 @@ PRINT TWICE(21)
 The libraries in lib/ need these before them:
 
 - BANK.UXI and HEAP.UXI: DOS.UXI.
-- GUI.UXI: KEYS.UXI and VERA.UXI.
+- GUI.UXI: KEYS.UXI and VERA.UXI. See [[The GUI library]].
 - PICKFILE.UXI: KEYS.UXI, DOS.UXI, BANK.UXI, VERA.UXI and GUI.UXI.
 - CONS.UXI, DOS.UXI, KEYS.UXI, STR.UXI and VERA.UXI: none.
 

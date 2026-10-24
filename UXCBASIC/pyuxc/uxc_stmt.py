@@ -102,6 +102,8 @@ def sm_stmt():
     if g.sm_w == "CONTENTSAT" or g.sm_w == "CONTENTSATW":
         sm_contents()
         return
+    if g.sm_w == "STRINGAT":
+        er_stop("STRINGAT CANNOT BE ASSIGNED")
     if g.sm_w == "POS":
         sm_pos()
         return

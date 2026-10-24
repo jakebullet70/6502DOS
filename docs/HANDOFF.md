@@ -5066,6 +5066,17 @@
             PLAN's call table lacks call 51 `bank_call`; PLAN's statement table lacks DIR, TYPE
             and CALL; PLAN section 10's `\X` trap is stale; UXC-HELP's "79 bytes for the
             loader" (R_RGLOAD now 147). Next: the full suite.
+          - Done (2026-10-24): UXC-HELP gains `# Libraries` with the topic "The GUI library"
+            (GUI.UXI's public routines, keys, colors, the size, an example that compiles:
+            9383 bytes). PICKFILE.UXI, VERA.UXI and CONS.UXI have no topic yet. pyuxc: a
+            statement that starts with `StringAt` stops with STRINGAT CANNOT BE ASSIGNED, not
+            UNDECLARED NAME STRINGAT; new test `ERRSTRAS` ok 0.0 s; ERRSTRAT ok, STRINGAT ok
+            0.9 s. GUI.UXI contracts to fix at the next touch: MARKED's INDEX counts from 1,
+            the comment says item 0; REFUSE and LEFT_FIELD/LEFT_KEY are used by GUIDEMO but
+            have no public contract; BUTTON does not say what ID 0 does; CBO's and MENUITEM's
+            keys and traps sit on the internal DROP_LIST and PULL_MENU; THEME_FILE's
+            parameter lacks AS CONST; INPUTBOX2 does not give its results. Steps since the
+            full suite: 1. Next: the full suite.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
