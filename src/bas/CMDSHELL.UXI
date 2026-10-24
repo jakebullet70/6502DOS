@@ -103,10 +103,12 @@ DIM SKIP_DEPTH AS UBYTE
 ' as the last Tab left it. COMPLETE_STEM is the word Tab completes, from position
 ' COMPLETE_START of the line; COMPLETE_START is 0 before the first Tab of a line.
 ' COMPLETE_COMMAND is 1 when the word is a first word with no directory part and no dot.
+' COMPLETE_FOLDERS is 1 when the first word is CD, CHDIR, RD or RMDIR.
 ' COMPLETE_INDEX is the match on show, from 0, or 255 for none.
 DIM PROMPT_COLUMN AS UBYTE
 DIM COMPLETE_TEXT AS STRING * 128, COMPLETE_STEM AS STRING * 128
-DIM COMPLETE_START AS UBYTE, COMPLETE_COMMAND AS UBYTE, COMPLETE_INDEX AS UBYTE
+DIM COMPLETE_START AS UBYTE, COMPLETE_COMMAND AS UBYTE, COMPLETE_FOLDERS AS UBYTE
+DIM COMPLETE_INDEX AS UBYTE
 ' The last HISTORY_SIZE lines typed at the prompt are VARBANK's system strings HISTORY_FIRST
 ' up, a ring. HISTORY_NEXT is the slot in the ring, from 0, the next line goes to.
 ' HISTORY_BACK is the count of lines Up went back, 0 for the line typed.
@@ -1767,13 +1769,19 @@ END FUNCT
 
 ' Takes each name that matches PROGRAM_PATH to TAKE_MATCH, and returns 1 when one is the match
 ' wanted. ATTRIBUTES is DOS.ATTR_DIRECTORY for files and directories, each directory with a \ on
-' its end, or 0 for programs, each without its extension. A name that starts with . is left out.
+' its end, or 0 for programs, each without its extension. A name that starts with . is left out,
+' and so is a file when COMPLETE_FOLDERS is 1.
 FUNCT TAKE_FILES(ATTRIBUTES AS UBYTE) AS UBYTE
   DOS.FINDFIRST(PROGRAM_PATH, ATTRIBUTES)
   DO WHILE DOS.ERROR = 0
     MATCH_NAME = DOS.FOUND_NAME
     IF ATTRIBUTES = 0 THEN MATCH_NAME = LEFT$(MATCH_NAME, INSTR(MATCH_NAME, ".") - 1)
-    IF DOS.FOUND_ATTRIBUTES AND DOS.ATTR_DIRECTORY THEN MATCH_NAME = MATCH_NAME + "\"
+    IF DOS.FOUND_ATTRIBUTES AND DOS.ATTR_DIRECTORY
+      MATCH_NAME = MATCH_NAME + "\"
+    ELSEIF COMPLETE_FOLDERS
+      ' A file: the . makes the test below leave it out.
+      MATCH_NAME = "."
+    ENDIF
     IF ASC(MATCH_NAME) <> 46
       IF TAKE_MATCH() THEN RETURN 1
     ENDIF
@@ -1783,7 +1791,8 @@ FUNCT TAKE_FILES(ATTRIBUTES AS UBYTE) AS UBYTE
 END FUNCT
 
 ' Puts match MATCH_WANTED of COMPLETE_STEM in MATCH_NAME, and returns 1. The matches are the
-' built-in statements when COMPLETE_COMMAND is 1, then the files and directories, then the .SCOM,
+' built-in statements when COMPLETE_COMMAND is 1, then the files and directories, or only the
+' directories when COMPLETE_FOLDERS is 1, then the .SCOM,
 ' .COM and .CMD programs on PATH$ when COMPLETE_COMMAND is 1. Returns 0 when there are not that
 ' many, with their count in MATCH_SEEN.
 FUNCT FIND_MATCH() AS UBYTE
@@ -1843,11 +1852,20 @@ SUB COMPLETE_WORD()
     IF CURRENT_CHAR() = 34 THEN CURSOR = CURSOR + 1
     COMPLETE_STEM = MID$(LINE_TEXT, CURSOR)
     COMPLETE_COMMAND = 0
-    IF COMPLETE_STEM <> "" AND INSTR(COMPLETE_STEM, ".") = 0
-      IF DIRECTORY_LENGTH(COMPLETE_STEM) = 0
-        CURSOR = 1
-        SKIP_SPACES()
-        IF CURSOR = COMPLETE_START THEN COMPLETE_COMMAND = 1
+    COMPLETE_FOLDERS = 0
+    CURSOR = 1
+    SKIP_SPACES()
+    IF CURSOR = COMPLETE_START
+      IF COMPLETE_STEM <> "" AND INSTR(COMPLETE_STEM, ".") = 0
+        IF DIRECTORY_LENGTH(COMPLETE_STEM) = 0 THEN COMPLETE_COMMAND = 1
+      ENDIF
+    ELSE
+      READ_NAME()
+      IF CURRENT_CHAR() = 32
+        SELECT CASE NAME_TEXT
+          CASE "CD", "CHDIR", "RD", "RMDIR"
+            COMPLETE_FOLDERS = 1
+        END SELECT
       ENDIF
     ENDIF
     COMPLETE_INDEX = 255

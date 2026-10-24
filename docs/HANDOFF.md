@@ -5014,6 +5014,17 @@
             BANKTRAP 0.6, SHFILES 1.0, FILES 0.5, DOSAPI 0.9. Goldens regenerated: ROM3,
             HANDLES and BANKTRAP for the new bytes, FILES for `RGBYTES.COM` on the card.
             HANDLES' A after errmsg is now the length; A is not in the contract.
+          - Done (2026-10-24), the user's ask: after `CD`, `CHDIR`, `RD` and `RMDIR`, Tab
+            offers directories only. `COMPLETE_WORD` reads the first word with `READ_NAME`
+            and sets `COMPLETE_FOLDERS`; `TAKE_FILES` leaves a file out when it is set. The
+            user's report that `CD g<Tab>` gave GOSUB and GOTO did not reproduce, on the test
+            card or on `build/SD.IMG` with `startup.cmd`; the user was asked for the keys.
+            CMDSHELL.COM 21616 bytes, +146 (the SELECT CASE of 4 names is most of it).
+            `tests/SHTAB.IN` adds `CD G` (no match: the GUI*.COM files are left out),
+            `CHDIR UTILS/` (gives `SRC\` only) and `RD UT`. Found: `RD UTILS\`, as Tab leaves
+            it, gives `Path not found`; rmdir does not take a trailing `\`, chdir does. Asm,
+            the user's call. Build 3232 ms, the new baseline. Tests: SHTAB regenerated (still
+            has the VERABOX line, the open SHTAB item), ROM3 ok 0.5 s.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
