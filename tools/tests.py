@@ -10,9 +10,9 @@ and reads what the ROM writes through $FFD2. It passes when that output equals N
 fails when the output departs from NAME.OUT or when NAME.OUT is not complete within 5 s.
 
 Every test runs with the SD card image build/tests/SD.IMG, which tools/mksd.py makes from
-tests/sd at the start: 2 sectors per cluster, 1024 clusters, the files dated 2026-10-13. Its
-root also holds build/bas/NAME.COM, from tools/build.py, tests/com/NAME.S assembled to
-NAME.COM: the load address $0801, then the code from $0801, and tests/com/NAME.UXB and
+tests/sd at the start: 256 MB, 2 sectors per cluster, 259079 clusters, the files dated
+2026-10-13. Its root also holds build/bas/NAME.COM, from tools/build.py, tests/com/NAME.S
+assembled to NAME.COM: the load address $0801, then the code from $0801, and tests/com/NAME.UXB and
 tests/NAME.UXB compiled to NAME.COM. Its folder DOS is build/DOS, the commandlets from
 tools/build.py, and its folder UTILS is build/UTILS. Each test gets a new copy of the image.
 
@@ -59,6 +59,9 @@ KEYS = os.path.join(OBJ, "keys.txt")
 SD_FOLDER = os.path.join(TESTS, "sd")
 SD_IMAGE = os.path.join(OBJ, "SD.IMG")
 RUN_IMAGE = os.path.join(OBJ, "RUN.IMG")
+# The test card: 256 MB at 2 sectors per cluster, and a block of 4 MB for the programs.
+CLUSTERS = 259079
+RESERVE = 4096
 CC65 = os.path.join(ROOT, "tools", "cc65", "bin")
 COM_FOLDER = os.path.join(TESTS, "com")
 BAS_OUT = os.path.join(ROOT, "build", "bas")
@@ -237,8 +240,8 @@ def main():
             programs.append(folder)
     # The programs go in a block of their own, so the free space and the clusters of the files
     # of tests/sd stay the same when a program changes.
-    mksd.make(SD_FOLDER, SD_IMAGE, sectors_per_cluster=2, clusters=1024,
-              date=datetime.date(2026, 10, 13), extra=programs, reserve=512, root_clusters=2)
+    mksd.make(SD_FOLDER, SD_IMAGE, sectors_per_cluster=2, clusters=CLUSTERS,
+              date=datetime.date(2026, 10, 13), extra=programs, reserve=RESERVE, root_clusters=2)
     failed = []
     started = time.time()
     count = len(outs)

@@ -775,25 +775,31 @@ NAMESPACE GUI
 
   ' PRINT_HOT runs from region 2, beside the menus. It reads the theme, so COLORS$ is in low RAM.
 #REGION_SLOT 2
-  ' Prints the caption at CAPTION_AT in WHICH's color, which is the console's color. The & is
+  ' Prints item NUMBER of the caption at CAPTION_AT in WHICH's color, which is the console's
+  ' color. A | ends an item; the first item is 1, and a caption with no | is one item. The & is
   ' not printed, and the letter after it takes WHICH's background and the HOT_KEY color's
-  ' foreground. Returns that letter in lower case with bit 7 set, or 0 for a caption with no &.
-  FUNCTION PRINT_HOT(CAPTION_AT AS UWORD, WHICH AS ENUM.ROLE) AS UBYTE
-    DIM HOT AS UBYTE, LETTER AS UBYTE, CHARACTER AS UBYTE, SPOT AS UBYTE
+  ' foreground. Returns that letter in lower case with bit 7 set, or 0 for an item with no &.
+  FUNCTION PRINT_HOT(CAPTION_AT AS UWORD, WHICH AS ENUM.ROLE, NUMBER AS UBYTE = 1) AS UBYTE
+    DIM HOT AS UBYTE, LETTER AS UBYTE, CHARACTER AS UBYTE, SPOT AS UBYTE, ITEM AS UBYTE
     HOT = (ContentsAt(@COLORS$ + 2 + WHICH) AND $F0) OR (ContentsAt(@COLORS$ + 2 + ROLE.HOT_KEY) AND 15)
     LETTER = 0
+    ITEM = 1
     SPOT = 2
     REPEAT ContentsAt(CAPTION_AT + 1)
       CHARACTER = ContentsAt(CAPTION_AT + SPOT)
       SPOT = SPOT + 1
-      IF CHARACTER = ASC("&") THEN
-        LETTER = ContentsAt(CAPTION_AT + SPOT) OR $A0
-        CALL_A = HOT
-        CALL_P = 0
-        SYS CON_COLOR_CALL
-      ELSE
-        PRINT CHR$(CHARACTER);
-        USE_COLOR(WHICH)
+      IF CHARACTER = ASC("|") THEN
+        ITEM = ITEM + 1
+      ELSEIF ITEM = NUMBER THEN
+        IF CHARACTER = ASC("&") THEN
+          LETTER = ContentsAt(CAPTION_AT + SPOT) OR $A0
+          CALL_A = HOT
+          CALL_P = 0
+          SYS CON_COLOR_CALL
+        ELSE
+          PRINT CHR$(CHARACTER);
+          USE_COLOR(WHICH)
+        ENDIF
       ENDIF
     END REPEAT
     RETURN LETTER
@@ -1239,6 +1245,86 @@ NAMESPACE GUI
       NUMBER = NUMBER + 1
     END REPEAT
   END SUB
+
+  ' Opens a box at ROW and COLUMN in the MENU color of the choices CHOICES$, separated by |,
+  ' with TITLE$ centered in its top edge, and returns the number of the choice chosen, from 1,
+  ' or 0 after Esc. The & marks a choice's hot letter, as in "&Open|&Save|E&xit". START is the
+  ' choice selected first, in the MENU_SELECTED color. The box is 3 columns wider than the
+  ' longest choice, and 4 wider than TITLE$ when that is wider, and stays off the screen's last
+  ' column. Up and Down move through the choices, wrapping. Enter, or a choice's hot letter,
+  ' chooses the choice. Then the screen under the box is put back. When VERA.SAVE_RECT has no
+  ' room, the box is cleared in its place, and SHOWN_FORM is set to 0 for SHOW to draw the form
+  ' again.
+  ' Trap: the box takes the rows from ROW to ROW + 1 + the number of choices, and does not
+  ' scroll.
+  FUNCTION PICKMENU(ROW AS UBYTE, COLUMN AS UBYTE, TITLE$ AS CONST, CHOICES$ AS CONST, START AS UBYTE = 1) AS UBYTE
+    DIM CHOICES_AT AS UWORD, PRESSED AS UWORD, COUNT AS UBYTE, WIDTH AS UBYTE, LENGTH AS UBYTE
+    DIM SPOT AS UBYTE, LETTER AS UBYTE, CHOSEN AS UBYTE, SAVED AS UBYTE, WHICH AS ENUM.ROLE
+    CHOICES_AT = AddrOf(CHOICES$)
+    COUNT = 1
+    WIDTH = ContentsAt(AddrOf(TITLE$) + 1) + 1
+    LENGTH = 0
+    SPOT = 2
+    REPEAT ContentsAt(CHOICES_AT + 1)
+      LENGTH = LENGTH + 1
+      IF ContentsAt(CHOICES_AT + SPOT) = ASC("|") THEN
+        COUNT = COUNT + 1
+        LENGTH = 0
+      ENDIF
+      IF LENGTH > WIDTH THEN WIDTH = LENGTH
+      SPOT = SPOT + 1
+    END REPEAT
+    WIDTH = WIDTH + 3
+    IF COLUMN + WIDTH >= POS(3) THEN COLUMN = POS(3) - 1 - WIDTH
+    CURSOR OFF
+    SAVED = VERA.SAVE_RECT(ROW, COLUMN, WIDTH, COUNT + 2)
+    USE_COLOR(ROLE.MENU)
+    BOX(ROW, COLUMN, WIDTH, COUNT + 2)
+    LENGTH = ContentsAt(AddrOf(TITLE$) + 1)
+    IF LENGTH <> 0 THEN
+      POS(1) = ROW
+      POS(0) = COLUMN + HALF_GAP(WIDTH, LENGTH + 2)
+      PRINT " ";
+      PRINT_HOT(AddrOf(TITLE$), ROLE.MENU)
+      PRINT " ";
+    ENDIF
+    CHOSEN = 0
+    ' No key yet: a plain key's low byte with bit 7 set is a hot letter.
+    PRESSED = 0
+    DO
+      LETTER = ContentsAt(@PRESSED) OR $A0
+      SPOT = 1
+      REPEAT COUNT
+        WHICH = ROLE.MENU
+        IF SPOT = START THEN WHICH = ROLE.MENU_SELECTED
+        USE_COLOR(WHICH)
+        POS(1) = ROW + SPOT
+        POS(0) = COLUMN + 1
+        PRINT " ";
+        IF PRINT_HOT(CHOICES_AT, WHICH, SPOT) = LETTER THEN CHOSEN = SPOT
+        REPEAT COLUMN + WIDTH - 1 - POS(0)
+          PRINT " ";
+        END REPEAT
+        SPOT = SPOT + 1
+      END REPEAT
+      IF PRESSED = KEYS.ENTER THEN CHOSEN = START
+      IF CHOSEN <> 0 THEN EXIT DO
+      PRESSED = WAITKEY()
+      IF PRESSED = KEYS.KEY_UP THEN START = START - 1
+      IF PRESSED = KEYS.KEY_DOWN THEN START = START + 1
+      IF START = 0 THEN START = COUNT
+      IF START > COUNT THEN START = 1
+    LOOP UNTIL PRESSED = KEYS.ESC
+    IF SAVED THEN
+      VERA.RESTORE_RECT()
+    ELSE
+      ' Each theme's PAGE color has the same foreground as background, so the box clears.
+      USE_COLOR(ROLE.PAGE)
+      BOX(ROW, COLUMN, WIDTH, COUNT + 2)
+      SHOWN_FORM = 0
+    ENDIF
+    RETURN CHOSEN
+  END FUNCTION
 
   ' Opens a menu of the bar of the form HANDLE when PRESSED, as WAITKEY() gives it, is F10 or
   ' Alt with a menu's hot letter; F10 opens the first menu. Returns 0 at once for any other key.

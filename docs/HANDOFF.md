@@ -4952,6 +4952,26 @@
             one line after GUIDEMO's: an Enter between them presses the focused button.
             build/tests/SD.IMG is stale until tests.py runs. Build 2831 ms (GUIDEMO only recompiled), the new baseline. GUIDEMO's demo plan is
             done. Next: the user's call: the paused doc batch, the full suite, or more GUI work.
+          - Decided (the user, 2026-10-24): After V1 goes on with `GUI.PICKMENU`; GRID and
+            BROWSE are planned when reached. PICKMENU's box closes itself, as DROP_LIST's list.
+          - Done (2026-10-24), `GUI.PICKMENU(ROW, COLUMN, TITLE$ AS CONST, CHOICES$ AS CONST,
+            START AS UBYTE = 1) AS UBYTE`, region 2 of `lib/GUI.UXI`: a box in the MENU color of
+            the |-separated choices, TITLE$ centered in its top edge; & marks hot letters. Box
+            width: the longest choice + 3, or TITLE$ + 4; it stays off the last column. Up and
+            Down wrap, Enter or a hot letter chooses, Esc returns 0; VERA.SAVE_RECT puts the
+            screen back (no room: cleared, SHOWN_FORM 0). `PRINT_HOT` takes `NUMBER AS UBYTE =
+            1`, the |-item to print (+41 bytes, +5 a call site). A first cut shared a `POPUP`
+            routine with PULL_MENU: every menu program +395 bytes, so PICKMENU is standalone
+            (about 880 bytes, only in programs that call it; menu programs +56). New test
+            GUIPMENU (5 rounds, then the cell under the box): ok 0.5 s; GUIMENU 0.4, GUIBTN 0.5,
+            GUIDLG 0.6. The test card did not hold GUIPMENU (512-cluster program block full);
+            by the user's call it is now 256 MB: `tools/tests.py` CLUSTERS 259079 (2 sectors a
+            cluster), RESERVE 4096. Goldens rewritten for the figures (local): CMDLETS, DIRS,
+            HDIR, HDIRRED; FILES, HDIRARG and TREE were stale (program sizes, new files) and
+            rewritten too. SHTAB fails since VERABOX.COM (2026-10-23): Tab completes VER to
+            VERABOX.COM; its golden kept, not fixed. Build 4236 ms, the new baseline (GUIDEMO,
+            HELPED, THEMED recompiled). Next: the user's call: PICKMENU in GUIDEMO, SHTAB, or
+            GRID's plan.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

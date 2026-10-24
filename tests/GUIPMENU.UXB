@@ -1,0 +1,35 @@
+' GUIPMENU: GUI.PICKMENU. The last line gives each round's choice, then 1 when the cell at 5, 12
+' under the box is put back.
+' Rounds 1 to 4 open "Pick" over "&Open|&Save|E&xit" at 3, 10.
+' Round 1: Down and Enter choose 2.
+' Round 2: START 3; Down wraps to 1, Up wraps to 3, and Enter chooses 3.
+' Round 3: s, Save's hot letter, chooses 2.
+' Round 4: Left and Right do nothing, and Esc returns 0.
+' Round 5: "A long title" over "A|B", wider than its choices; Enter chooses 1.
+#INCLUDE "KEYS.UXI"
+#INCLUDE "VERA.UXI"
+#INCLUDE "GUI.UXI"
+DIM KEPT(8) AS UBYTE, AT AS UBYTE, N AS UBYTE, UNDER AS UWORD
+
+SUB KEEP(VALUE AS UBYTE)
+  KEPT(AT) = VALUE
+  AT = AT + 1
+END SUB
+
+AT = 0
+POS(1) = 5
+POS(0) = 12
+PRINT "Z";
+UNDER = VERA.GET_CELL(5, 12)
+KEEP(GUI.PICKMENU(3, 10, "Pick", "&Open|&Save|E&xit"))
+KEEP(GUI.PICKMENU(3, 10, "Pick", "&Open|&Save|E&xit", 3))
+KEEP(GUI.PICKMENU(3, 10, "Pick", "&Open|&Save|E&xit"))
+KEEP(GUI.PICKMENU(3, 10, "Pick", "&Open|&Save|E&xit"))
+KEEP(GUI.PICKMENU(3, 10, "A long title", "A|B"))
+KEEP(VERA.GET_CELL(5, 12) = UNDER)
+POS(1) = 24
+POS(0) = 0
+FOR N = 0 TO AT - 1
+  PRINT KEPT(N);
+NEXT N
+PRINT
