@@ -22,7 +22,7 @@ target's code, so the table follows the code when the link step moves it.
 The entry on the nesting stack: g.ns_fl[] is the jump to the dispatch, g.ns_ex[] the jumps
 out, g.ns_p[] the count of CASEs, g.ns_el[] 1 after CASE ELSE and g.ns_top[] its body,
 g.ns_va[] and g.ns_lv[] the lowest and the highest value so far. The targets are words in
-g.cs_bank at g.cs_base, 0 for none.
+g.cs_bank at g.cs_base, 0 for none, else the target's offset from g.ns_fl[].
 
     cs_on() cs_case() cs_end()    the statements
     cs_before()                   the first statement after ON CASE must be a CASE
@@ -106,7 +106,9 @@ def cs_case():
         cs_get()
         if g.cs_w != 0:
             er_stop("CASE VALUE TWICE")
-        g.cs_w = g.cb_n
+        g.cs_w = g.cb_n - g.ns_fl[g.ct_i]
+        if g.cs_w > 65535:
+            er_stop("PROGRAM TOO BIG")
         cs_put()
         if g.cs_v < g.ns_va[g.ct_i]:
             g.ns_va[g.ct_i] = g.cs_v
@@ -189,6 +191,8 @@ def cs_table():
         cs_get()
         if g.cs_w == 0:
             g.cs_w = g.cs_default
+        else:
+            g.cs_w = g.cs_w + g.ns_fl[g.ct_i]
         g.fx_at = g.cb_n
         g.fx_k = K_F_LO
         if g.cs_byte != 0:

@@ -133,6 +133,7 @@ def cb_init():
     g.cn_n = 0
     uxc_code.rt_clear()
     g.cb_n = 0
+    g.jp_base = 0
     g.fx_n = 0
     g.sp_n = 0
 

@@ -35,7 +35,7 @@ with the ranges of the SUBs moved.
 
 from uxc_code import cb_add, cb_get, emit, fx_put, fx_read, rt_get, rt_place, rt_use
 from uxc_defs import K_F_ABS, K_F_REC, K_F_REC_HI, K_FAR, K_FAR_END, K_SEC_CODE, K_SEC_CONST, \
-    K_SEC_LABEL, K_SEC_REC, K_SK_LABEL, K_SK_SUB, K_SY_END
+    K_SEC_LABEL, K_SEC_REC, K_SK_LABEL, K_SK_SUB
 import uxc_dead
 import uxc_link
 import uxc_sym
@@ -55,8 +55,8 @@ def rb_ranges():
         g.sy_r = g.rb_r
         uxc_sym.sy_get()
         if g.sy_kind == K_SK_SUB and (g.sy_flags & 1) != 0:
-            ranges.append((g.sy_val - 3, g.ram[g.sy_ad + K_SY_END] +
-                           256 * g.ram[g.sy_ad + K_SY_END + 1], g.rb_r))
+            uxc_sym.sy_end_get()
+            ranges.append((g.sy_val - 3, g.sy_end, g.rb_r))
     ranges.sort()
     g.rb_from = [r[0] for r in ranges]
     g.rb_to = [r[1] for r in ranges]

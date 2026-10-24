@@ -33,7 +33,7 @@ Each is allowed once. The first pass reads them, so they hold for the whole sour
 they stand.
 
 A call is a K_SEC_LABEL fixup to the SUB's record, owned by the caller. A SUB's code runs from
-the JMP around it, 3 bytes before its value, to the word at K_SY_END of its record. Every
+the JMP around it, 3 bytes before its value, to the end at K_SY_END of its record. Every
 reference into the code is a fixup, or the value of a LABEL or SUB record, so cutting a range
 moves the code after it down and changes only those. A SUB left out becomes a K_SK_DEAD record,
 and so do the call records and temps it owned, so SB.POOLS gives them no room.
@@ -51,7 +51,7 @@ none once dd_strip has dropped the fixups in the code cut.
 from uxc_code import cb_get, cb_put, fx_put, fx_read, rt_clear, rt_use
 from uxc_defs import K_DD_MAX, K_DS_MAX, K_DV_MAX, K_FRAME_BASE, K_RT_LIST, K_SEC_BSS, \
     K_SEC_CODE, K_SEC_LABEL, K_SEC_REC, K_SEC_STR, K_SEC_VAR, K_SK_ARRAY, K_SK_CALL, K_SK_DEAD, K_SK_LABEL, K_SK_SUB, \
-    K_SK_VAR, K_SY_BLOCK, K_SY_END, K_SY_FIXED, K_SY_LIVE, K_SY_TEMP, K_TT_EOL, K_TT_NAME, \
+    K_SK_VAR, K_SY_BLOCK, K_SY_FIXED, K_SY_LIVE, K_SY_TEMP, K_TT_EOL, K_TT_NAME, \
     K_TP_DATA, K_TT_NUM, K_TT_OP, K_TY_STR
 import uxc_lex
 import uxc_name
@@ -133,7 +133,8 @@ def dd_range():
         er_stop("TOO MANY SUBS TO LEAVE OUT")
     g.dd_from[g.dd_n] = g.sy_val - 3
     g.ram[g.sy_ad + 2] = K_SK_DEAD
-    g.dd_to[g.dd_n] = g.ram[g.sy_ad + K_SY_END] + 256 * g.ram[g.sy_ad + K_SY_END + 1]
+    uxc_sym.sy_end_get()
+    g.dd_to[g.dd_n] = g.sy_end
     # SB.SCAN adds the SUB records in source order, which is code order.
     if g.dd_from[g.dd_n] < g.dd_last:
         er_stop("SUBS OUT OF ORDER")
@@ -219,10 +220,11 @@ def dd_records():
             g.sy_val = g.dd_at
             uxc_sym.sy_set()
         if g.sy_kind == K_SK_SUB and (g.sy_flags & 1) != 0:
-            g.dd_at = g.ram[g.sy_ad + K_SY_END] + 256 * g.ram[g.sy_ad + K_SY_END + 1]
+            uxc_sym.sy_end_get()
+            g.dd_at = g.sy_end
             dd_shift()
-            g.ram[g.sy_ad + K_SY_END] = g.dd_at & 255
-            g.ram[g.sy_ad + K_SY_END + 1] = g.dd_at >> 8
+            g.sy_end = g.dd_at
+            uxc_sym.sy_end_set()
     g.dd_at = g.lk_init_at
     dd_shift()
     g.lk_init_at = g.dd_at

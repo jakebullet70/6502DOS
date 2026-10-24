@@ -4909,6 +4909,32 @@
             to the doc batch: UXCBASIC.PLAN.md line 405 (the limits), UXC-HELP's PROGRAM TOO
             BIG and OUT OF RAM BANKS. Tests: RGMULTI ok 0.5 s, RGRUN 0.4, RGDATA 0.5. Build
             7039 ms, the new baseline (every program recompiled). Next: D7, the Look demo.
+          - Done (2026-10-24), the user's ruling that the compiler's limit is the machine's:
+            pyuxc's code passes 64 KB, Python only. The runtime needs no change: `R_RGLOAD`
+            reads each region with exec_rest from a file read in order. Changes:
+            - A fixup is 10 bytes, `K_FX_BANK` = 819 a bank: a 3-byte code offset and a 3-byte
+              value. `K_CODE_MAX` and its stops in `cb_add`, `fx_add`, `fx_put` are gone.
+            - The symbol table claims a 9th bank, `g.sy_xbank`: the third byte of record r's
+              value at r * 2, of a SUB's end at r * 2 + 1. `sy_end_get`/`sy_end_set` replace
+              the raw K_SY_END reads in uxc_dead, uxc_ramreg, uxc_rombank and uxc_sub.
+            - A jump list in the code keeps each link as its offset from `g.jp_base` + 1 (0
+              ends the list), `jp_encode` in uxc_cond. `g.jp_base` is the start of the current
+              SUB's body, or of the main code since the last END SUB; SUB INSIDE A BLOCK keeps
+              every list in one of them.
+            - ON CASE keeps each target as its offset from `g.ns_fl[]`, the jump to the
+              dispatch.
+            - lk_link checks `lk_org` + the low part's size against 64 KB, not the whole file.
+            - The machine limit is enforced by the checks already there: the low part by
+              `K_TOP`, each region by REGION n FULL, 63 slots by #REGION_SLOT IS 0 TO 63. A
+              link or CASE offset past 64 KB inside one SUB stops with PROGRAM TOO BIG.
+            Every built program byte-identical to the old compiler's. Scratch check
+            (bigtest.py, runbig.py): 20 regions, 142264-byte file, 27024 fixups, compiled and
+            run on TEST.ROM from a scratch 4 MB card: printed 6600 and 15932 as expected, 0.9
+            s. It does not fit the test card's 512-cluster extra block, so it is not a test.
+            Tests: RGMULTI ok 0.4 s, RGRUN 0.5, RGDATA 0.5, ONCASE 0.5, JUMPOUT 0.5. Build 7764
+            ms, the new baseline. Owed to the doc batch: UXCBASIC.PLAN.md line 405 and
+            UXC-HELP's PROGRAM TOO BIG (now: low part past 64 KB, a SUB past 64 KB). Next: D7,
+            the Look demo; region 3 has 749 bytes free.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

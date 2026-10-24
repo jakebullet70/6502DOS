@@ -133,11 +133,12 @@ def lk_link():
             g.cb_b = 0
             cb_add()
     # The region's image follows, where the array space starts.
+    g.lk_low_n = g.cb_n
     if g.rg_on != 0:
         uxc_ramreg.rg_place()
     # The array space follows, outside the file.
     g.lk_bss = g.lk_var + g.vr_n
-    if g.lk_bss + g.bs_n > K_TOP or g.lk_org + g.cb_n > 65536:
+    if g.lk_bss + g.bs_n > K_TOP or g.lk_org + g.lk_low_n > 65536:
         er_stop("PROGRAM TOO BIG")
     if g.lk_apart != 0 and g.lk_data < g.lk_org + g.cb_n and g.lk_org < g.lk_bss + g.bs_n:
         er_stop("#DATA OVERLAPS THE CODE")

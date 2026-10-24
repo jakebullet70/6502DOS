@@ -19,14 +19,14 @@
     cs_clear() cs_put() cs_get()       the ON CASE targets in g.cs_bank, for UXC-CASE.BL
     sp_copy()                          append the strings to the code
 
-UXC-CODE.BL has the layout of a fixup and of the code buffer. Offset n of the code is index
+uxc_defs.py has the layout of a fixup. UXC-CODE.BL has the layout of the code buffer. Offset n of the code is index
 n MOD 8192 of g.cb_bank[n // 8192]. cb_put, fx_add and fx_put take a bank when the offset is past the
 last one. A K_RT_ address is index K_RT_x - $A000 of g.rt_bank.
 """
 
 import os
 
-from uxc_defs import K_CODE_MAX, K_CS_SIZE, K_F_ABS, K_F_HI, K_F_LO, K_F_REC, K_F_REC_HI, K_F_SELF, \
+from uxc_defs import K_CS_SIZE, K_F_ABS, K_F_HI, K_F_LO, K_F_REC, K_F_REC_HI, K_F_SELF, K_FX_BANK, \
     K_RT_ADDR, K_RT_LIST, K_RT_USED, K_SEC_CODE, K_SEC_CONST, K_SEC_REC, K_TP_DATA
 import uxc_tpl as T
 from uxc_state import er_stop, g, uxc_bank
@@ -66,8 +66,6 @@ def cb_get():
 
 
 def cb_add():
-    if g.cb_n >= K_CODE_MAX:
-        er_stop("PROGRAM TOO BIG")
     g.cb_at = g.cb_n
     cb_put()
     g.cb_n = g.cb_n + 1
@@ -100,63 +98,54 @@ def sp_add():
 
 
 def fx_add():
-    if g.fx_at >= K_CODE_MAX:
-        er_stop("PROGRAM TOO BIG")
-    g.fx_off = g.fx_n * 8
-    g.fx_bi = g.fx_off // 8192
+    g.fx_bi = g.fx_n // K_FX_BANK
     while g.fx_bi >= len(g.fx_bank):
         uxc_bank()
         g.fx_bank.append(g.uxc_b)
     g.ram = g.fx_bank[g.fx_bi]
-    g.fx_ad = g.fx_off - g.fx_bi * 8192
-    g.fx_hi = g.fx_at // 256
-    g.ram[g.fx_ad] = g.fx_at - g.fx_hi * 256
-    g.ram[g.fx_ad + 1] = g.fx_hi
-    g.ram[g.fx_ad + 2] = g.fx_k
-    g.ram[g.fx_ad + 3] = g.fx_s
-    g.fx_hi = g.fx_v // 256
-    g.ram[g.fx_ad + 4] = g.fx_v - g.fx_hi * 256
-    g.ram[g.fx_ad + 5] = g.fx_hi
-    g.fx_hi = g.sb_current // 256
-    g.ram[g.fx_ad + 6] = g.sb_current - g.fx_hi * 256
-    g.ram[g.fx_ad + 7] = g.fx_hi
+    g.fx_ad = (g.fx_n - g.fx_bi * K_FX_BANK) * 10
+    g.ram[g.fx_ad] = g.fx_at & 255
+    g.ram[g.fx_ad + 1] = (g.fx_at >> 8) & 255
+    g.ram[g.fx_ad + 2] = g.fx_at >> 16
+    g.ram[g.fx_ad + 3] = g.fx_k
+    g.ram[g.fx_ad + 4] = g.fx_s
+    g.ram[g.fx_ad + 5] = g.fx_v & 255
+    g.ram[g.fx_ad + 6] = (g.fx_v >> 8) & 255
+    g.ram[g.fx_ad + 7] = g.fx_v >> 16
+    g.ram[g.fx_ad + 8] = g.sb_current & 255
+    g.ram[g.fx_ad + 9] = g.sb_current >> 8
     g.fx_n = g.fx_n + 1
 
 
 def fx_put():
     """FX.PUT. Write fixup g.fx_i from g.fx_at g.fx_k g.fx_s g.fx_v g.fx_ow."""
-    if g.fx_at >= K_CODE_MAX:
-        er_stop("PROGRAM TOO BIG")
-    g.fx_off = g.fx_i * 8
-    g.fx_bi = g.fx_off // 8192
+    g.fx_bi = g.fx_i // K_FX_BANK
     while g.fx_bi >= len(g.fx_bank):
         uxc_bank()
         g.fx_bank.append(g.uxc_b)
     g.ram = g.fx_bank[g.fx_bi]
-    g.fx_ad = g.fx_off - g.fx_bi * 8192
-    g.fx_hi = g.fx_at // 256
-    g.ram[g.fx_ad] = g.fx_at - g.fx_hi * 256
-    g.ram[g.fx_ad + 1] = g.fx_hi
-    g.ram[g.fx_ad + 2] = g.fx_k
-    g.ram[g.fx_ad + 3] = g.fx_s
-    g.fx_hi = g.fx_v // 256
-    g.ram[g.fx_ad + 4] = g.fx_v - g.fx_hi * 256
-    g.ram[g.fx_ad + 5] = g.fx_hi
-    g.fx_hi = g.fx_ow // 256
-    g.ram[g.fx_ad + 6] = g.fx_ow - g.fx_hi * 256
-    g.ram[g.fx_ad + 7] = g.fx_hi
+    g.fx_ad = (g.fx_i - g.fx_bi * K_FX_BANK) * 10
+    g.ram[g.fx_ad] = g.fx_at & 255
+    g.ram[g.fx_ad + 1] = (g.fx_at >> 8) & 255
+    g.ram[g.fx_ad + 2] = g.fx_at >> 16
+    g.ram[g.fx_ad + 3] = g.fx_k
+    g.ram[g.fx_ad + 4] = g.fx_s
+    g.ram[g.fx_ad + 5] = g.fx_v & 255
+    g.ram[g.fx_ad + 6] = (g.fx_v >> 8) & 255
+    g.ram[g.fx_ad + 7] = g.fx_v >> 16
+    g.ram[g.fx_ad + 8] = g.fx_ow & 255
+    g.ram[g.fx_ad + 9] = g.fx_ow >> 8
 
 
 def fx_read():
-    g.fx_off = g.fx_i * 8
-    g.fx_bi = g.fx_off // 8192
+    g.fx_bi = g.fx_i // K_FX_BANK
     g.ram = g.fx_bank[g.fx_bi]
-    g.fx_ad = g.fx_off - g.fx_bi * 8192
-    g.fx_at = g.ram[g.fx_ad] + 256 * g.ram[g.fx_ad + 1]
-    g.fx_k = g.ram[g.fx_ad + 2]
-    g.fx_s = g.ram[g.fx_ad + 3]
-    g.fx_v = g.ram[g.fx_ad + 4] + 256 * g.ram[g.fx_ad + 5]
-    g.fx_ow = g.ram[g.fx_ad + 6] + 256 * g.ram[g.fx_ad + 7]
+    g.fx_ad = (g.fx_i - g.fx_bi * K_FX_BANK) * 10
+    g.fx_at = g.ram[g.fx_ad] + 256 * g.ram[g.fx_ad + 1] + 65536 * g.ram[g.fx_ad + 2]
+    g.fx_k = g.ram[g.fx_ad + 3]
+    g.fx_s = g.ram[g.fx_ad + 4]
+    g.fx_v = g.ram[g.fx_ad + 5] + 256 * g.ram[g.fx_ad + 6] + 65536 * g.ram[g.fx_ad + 7]
+    g.fx_ow = g.ram[g.fx_ad + 8] + 256 * g.ram[g.fx_ad + 9]
 
 
 def emit(record_id):

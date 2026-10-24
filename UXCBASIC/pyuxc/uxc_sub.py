@@ -19,7 +19,7 @@
 from uxc_code import emit
 from uxc_defs import K_EK_ADDR, K_EK_CONST, K_EK_REG, K_EX_DEPTH, K_FRAME_MAX, K_JP_LIST, K_NS_IFL, K_NS_MAX, \
     K_SB_DEFAULTS, K_SB_DEPTH, K_SEC_BSS, K_SEC_CONST, K_SEC_LABEL, K_SEC_VAR, K_SK_ARRAY, K_SK_CALL, K_SK_SIG, \
-    K_SK_SUB, K_SK_TARGET, K_SK_VAR, K_SY_END, K_SY_ENUM_PARAMETER, K_SY_ENUM_TYPE, K_SY_SIGNATURE, \
+    K_SK_SUB, K_SK_TARGET, K_SK_VAR, K_SY_ENUM_PARAMETER, K_SY_ENUM_TYPE, K_SY_SIGNATURE, \
     K_SY_LEVEL, K_SY_LIVE, K_SY_POOL, K_SY_READ_ONLY, K_SY_SIGNED, K_SY_TEMP, K_SY_TEMPS, K_TT_EOL, K_TT_NAME, K_TT_OP, \
     K_TT_STR, K_TY_BYTE, K_TY_LONG, K_TY_STR, K_TY_WORD
 import uxc_cond
@@ -292,6 +292,7 @@ def sb_sub():
     g.jp_b = T.T_BRA
     uxc_cond.jp_br()
     g.sb_around = g.jp_h
+    g.jp_base = g.cb_n
     g.sy_r = g.sb_current
     uxc_sym.sy_get()
     g.sy_val = g.cb_n
@@ -345,9 +346,9 @@ def sb_endsub():
     g.jp_l = g.sb_around
     uxc_cond.jp_here()
     g.sy_r = g.sb_current
-    g.sb_field = K_SY_END
-    g.sb_word = g.cb_n
-    sb_field_set()
+    g.sy_end = g.cb_n
+    uxc_sym.sy_end_set()
+    g.jp_base = g.cb_n
     for g.sb_i in range(0, K_NS_MAX + 1):
         g.hv_ad[g.sb_i] = g.sb_saved_hidden[g.sb_i]
     g.sb_current = 0

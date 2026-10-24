@@ -123,8 +123,9 @@ K_F_REC_HI = 6
 # they fill one. K.RAM.BANKS is the free banks of a 2 MB X16: 256 less bank 0 and VARBANK.
 K_SYM_BANKS = 8
 K_RAM_BANKS = 254
-# A fixup keeps a code offset in 2 bytes, so the code is at most 64 KB.
-K_CODE_MAX = 65536
+# A fixup is 10 bytes: its code offset (3 bytes), kind, section, value (3 bytes) and owner
+# (word). A bank holds K.FX.BANK of them.
+K_FX_BANK = 819
 
 # The runtime record table, in bank RT.BANK, for at most 1024 records: a byte per record
 # that is 1 once it is used, the used ids in order as words, and each record's address.

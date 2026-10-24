@@ -52,8 +52,10 @@ def jp_br():
         g.sl_s[0] = K_SEC_LABEL
         g.sl_v[0] = g.jp_v
     if g.jp_k == K_JP_LIST:
+        g.jp_e = g.jp_h
+        jp_encode()
         g.sl_s[0] = K_SEC_CONST
-        g.sl_v[0] = g.jp_h
+        g.sl_v[0] = g.jp_e
         g.jp_h = g.cb_n + 1
     emit(T.T_JMP)
 
@@ -104,12 +106,25 @@ def jp_fix():
         g.jp_n = g.jp_n + 256 * g.cb_b
         g.cb_b = 0
         cb_put()
+        if g.jp_n != 0:
+            g.jp_n = g.jp_n + g.jp_base - 1
         g.fx_at = g.jp_l
         g.fx_k = K_F_ABS
         g.fx_s = g.jp_fs
         g.fx_v = g.jp_fv
         fx_add()
         g.jp_l = g.jp_n
+
+
+def jp_encode():
+    """JP.ENCODE. g.jp_e, the head of a list as a jump in the list keeps it: 0 for none, else
+    its code offset less g.jp_base, + 1. g.jp_base is where the code of this SUB, or of the
+    main program since the last SUB, starts, and a list lies in one of them."""
+    if g.jp_e == 0:
+        return
+    g.jp_e = g.jp_e - g.jp_base + 1
+    if g.jp_e > 65535:
+        er_stop("PROGRAM TOO BIG")
 
 
 def jp_merge():
@@ -129,10 +144,12 @@ def jp_merge():
         g.jp_n = g.jp_n + 256 * g.cb_b
         if g.jp_n == 0:
             break
-        g.jp_a = g.jp_n
-    g.jp_hi = g.jp_m // 256
+        g.jp_a = g.jp_n + g.jp_base - 1
+    g.jp_e = g.jp_m
+    jp_encode()
+    g.jp_hi = g.jp_e // 256
     g.cb_at = g.jp_a
-    g.cb_b = g.jp_m - g.jp_hi * 256
+    g.cb_b = g.jp_e - g.jp_hi * 256
     cb_put()
     g.cb_at = g.jp_a + 1
     g.cb_b = g.jp_hi

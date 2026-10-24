@@ -73,7 +73,7 @@ from uxc_code import cb_add, cb_get, cb_put, emit, fx_put, fx_read, rt_address_s
 from uxc_defs import K_DV_MAX, K_EK_MEM, K_F_ABS, K_SEC_BSS, K_SEC_CODE, K_SEC_CONST, \
     K_SEC_LABEL, K_SEC_LOW, K_SEC_REC, K_SEC_RGDATA, K_SEC_STR, K_SEC_VAR, K_SK_LABEL, \
     K_SK_SUB, \
-    K_SY_END, K_SY_READ_ONLY, K_TT_EOL, K_TT_NUM, K_TY_STR
+    K_SY_READ_ONLY, K_TT_EOL, K_TT_NUM, K_TY_STR
 import uxc_dead
 import uxc_lex
 import uxc_rombank
@@ -209,8 +209,8 @@ def rg_ranges():
         uxc_sym.sy_get()
         if g.sy_kind == K_SK_SUB and (g.sy_flags & 1) != 0 and g.rg_r in g.rg_subs:
             slot = g.rg_sub_slots[g.rg_subs.index(g.rg_r)]
-            ranges.append((g.sy_val - 3, g.ram[g.sy_ad + K_SY_END] +
-                           256 * g.ram[g.sy_ad + K_SY_END + 1], g.rg_r, slot))
+            uxc_sym.sy_end_get()
+            ranges.append((g.sy_val - 3, g.sy_end, g.rg_r, slot))
             if slot not in g.rg_slots:
                 g.rg_slots.append(slot)
     if len(ranges) == 0:
