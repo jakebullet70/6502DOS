@@ -4819,6 +4819,30 @@
             24442, region 2 5653, 491 left below $B800). GUICBO's round 1 opens Size with
             Enter and ends on Esc (event 255, was 253); golden rewritten, 4.5 s. HELPED ok,
             1.9 s. Next: D4, the Lists demo.
+          - Done, D4 (2026-10-24), GUIDEMO's Lists demo: Demos, Lists (id 13) and the main-form
+            button &Lists (Alt+L, column 38). A centered form 56 by 12: two SAY lines, LIST
+            Planet (8 items of 8 bytes, 4 rows, 9 wide, at 4, 8), LIST Toppings with LIST_MULTI
+            (10 items of 9 bytes, 5 rows, 11 wide, at 4, 28), then &OK (1), &Pick (`ID_PICK` 7)
+            and &Cancel (2) at row 10. Pick runs LISTBOX "Planets" on the planet items, sets
+            the planet when one is chosen, and draws the list again with EDIT_FIELD DRAW_ONLY;
+            the form stays. OK reports the planet and the marked toppings (`LISTS_TEXT`). The
+            items are `PLANET_ITEMS` and `TOPPING_ITEMS` (STRING * 64 and * 90, passed as @ + 2),
+            built once in SEED_demo by `PADDED_ITEMS` from the | lists PLANETS$ and TOPPINGS$,
+            padded with spaces, through CHOICE_NAME. The marks clear each time the demo opens.
+            Region 2 would have been 6365 bytes, past MEMO_TEXT ($B800, 6144): LISTBOX and the
+            dialog code cost 712. By the user's choice the memo moved to region 4 in GUI.UXI
+            (`#REGION_SLOT 4` from the memo's text comment through MEMO_SAVE, then back to 2 for
+            the menus); the trap comment now names region 4. A memo program (GUIDEMO, HELPED,
+            GUIMEMO) takes one more bank. GUIDEMO 28869 bytes, 4427 more: region 1 7977 (+73,
+            215 free), region 2 3770, region 3 2156 (+1755, the lists), region 4 2595 (the memo,
+            3549 left below $B800), low RAM about +1890. HELPED 15614, region 4 2597. Region 1
+            is near full for Dialogs and Files. Smoke run (a scratch test, deleted: Alt+L, Down,
+            "j", Tab, Space, "o", Space, "o", End, Space, Alt+P, Down 3 times, Enter, Alt+O,
+            Esc) 4.5 s: "picked Mars", then "Lists: OK. Mars, toppings: Cheese Olives Garlic",
+            then the end. A -gif frame showed the layout; the form was widened from 50 to 56 for
+            the first hint line. Trap for smoke keys: a line's end is Enter, and a last line
+            without one is not typed. Tests: GUIMEMO ok 0.6 s, HELPED 1.3 s. Build 2468 ms, the
+            new baseline (6290 ms with HELPED and THEMED recompiled). Next: D5, the Dialogs demo.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

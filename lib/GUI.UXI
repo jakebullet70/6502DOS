@@ -1,9 +1,10 @@
 ' GUI.UXI: GUI Forms, the text-mode user interface library of 6502DOS's utilities.
 '
 ' A program includes KEYS.UXI, VERA.UXI, then GUI.UXI. The code runs from region 1, a RAM bank
-' of its own at $A000, a CBO's list, the memo, the menus and the dialogs from region 2, and the
-' lists from region 3, beside VERA.UXI. A SUB or FUNCTION adds bytes only when called. A CBO's list, a menu and a dialog save the screen
-' under them on VERA.UXI's stack, and put it back when they close.
+' of its own at $A000, a CBO's list, the menus and the dialogs from region 2, the lists from
+' region 3, beside VERA.UXI, and the memo from region 4. A SUB or FUNCTION adds bytes only when
+' called. A CBO's list, a menu and a dialog save the screen under them on VERA.UXI's stack, and
+' put it back when they close.
 
 #REGION_SLOT 1
 NAMESPACE GUI
@@ -957,11 +958,13 @@ NAMESPACE GUI
     RETURN 0
   END FUNCTION
 
-  ' The memo's text: the bytes from MEMO_TEXT up to MEMO_END, in region 2's bank past the
+  ' The memo runs from region 4, with its text.
+#REGION_SLOT 4
+  ' The memo's text: the bytes from MEMO_TEXT up to MEMO_END, in region 4's bank past the
   ' region's code and data. A line ends in LF. MEMO_CURSOR is the cursor's address in the text,
   ' MEMO_TOP the address of the line on the memo's top row, and MEMO_LEFT the first column
   ' shown. MEMO_END is 0 until the first MEMO_CLEAR.
-  ' Trap: region 2's code and data must end below MEMO_TEXT, 6144 bytes. The compile's REGION 2
+  ' Trap: region 4's code and data must end below MEMO_TEXT, 6144 bytes. The compile's REGION 4
   ' line gives their size.
   ' Trap: a read that fills $BFFF returns with the next RAM bank selected, and the region's code
   ' is gone. The text stops at $BFFE.
@@ -1150,6 +1153,7 @@ NAMESPACE GUI
     RETURN 0
   END FUNCTION
 
+#REGION_SLOT 2
   ' The menu bar. MENU_FORM is the form that shows it, 0 for none. The menus are 1 to
   ' MENU_COUNT: MENU_TITLE_AT is the address of a menu's title, and MENU_FIRST its first item;
   ' a menu's items run up to the next menu's first. DRAW_BAR puts a menu's column on the bar in

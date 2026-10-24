@@ -17,6 +17,8 @@
 ' --               the buttons OK, Show and Cancel; Show reports the choices and keeps the form
 ' --     Memo      a memo of 2047 bytes at most, and a file name; Load reads the file into the
 ' --               memo, Save writes the memo to it, and New empties the memo
+' --     Lists     a list of planets and a list of toppings that takes marks; Pick chooses a
+' --               planet in a list box
 ' -- Exit code 0.
 ' --
 ' -- From a prompt:
@@ -32,12 +34,17 @@
 
 ' The ids of the menu items and the buttons.
 CONST ID_EXIT AS UBYTE = 1, ID_MEMORY AS UBYTE = 2, ID_FORMS AS UBYTE = 10
-CONST ID_CONTROLS AS UBYTE = 11, ID_MEMO AS UBYTE = 12
-' The Controls demo's Show button, and the Memo demo's Load, Save and New buttons.
+CONST ID_CONTROLS AS UBYTE = 11, ID_MEMO AS UBYTE = 12, ID_LISTS AS UBYTE = 13
+' The Controls demo's Show button, the Memo demo's Load, Save and New buttons, and the Lists
+' demo's Pick button.
 CONST ID_SHOW AS UBYTE = 3, ID_LOAD AS UBYTE = 4, ID_SAVE AS UBYTE = 5, ID_NEW AS UBYTE = 6
+CONST ID_PICK AS UBYTE = 7
 ' The choices of the Controls demo's radio buttons and combo box. A form keeps their addresses.
 CONST SIZES$ = "Small|Medium|Large", ALIGNS$ = "Left|Center|Right"
 CONST INKS$ = "Black|Red|Green|Yellow|Blue|Magenta|Cyan|White"
+' The Lists demo's items.
+CONST PLANETS$ = "Mercury|Venus|Earth|Mars|Jupiter|Saturn|Uranus|Neptune"
+CONST TOPPINGS$ = "Cheese|Olives|Onion|Pepper|Mushroom|Ham|Pineapple|Basil|Tomato|Garlic"
 
 ' The kernel's table of bank owners, in RAM bank 0, as src/asm/mem.inc and banks.s lay it out.
 ' Trap: a change to BANK_OWNER or its owner codes there must change these.
@@ -60,6 +67,11 @@ DIM TEXT_SIZE AS UBYTE, TEXT_ALIGN AS UBYTE, INK_CHOICE AS UBYTE
 
 ' The Memo demo's file name.
 DIM MEMO_FILE AS STRING * 12
+
+' The Lists demo's items, as LIST takes them: a record of 8 bytes for each planet and of 9 for
+' each topping, padded with spaces. The planet and the topping chosen, 1 for the first.
+DIM PLANET_ITEMS AS STRING * 64, TOPPING_ITEMS AS STRING * 90
+DIM PLANET AS UBYTE, TOPPING AS UBYTE
 
 ' The Memory popup's lines, and a row of the bank map for each 64 banks.
 DIM PROGRAM_LINE AS STRING * 68, LOW_FREE_LINE AS STRING * 68, BANKS_LINE AS STRING * 68
@@ -355,6 +367,63 @@ SUB MEMO_DEMO()
   REPORT()
 END SUB
 
+' The first COUNT choices of CHOICES$, each cut or padded with spaces to LENGTH characters.
+FUNCTION PADDED_ITEMS(CHOICES$ AS CONST, COUNT AS UBYTE, LENGTH AS UBYTE) AS STRING
+  DIM TEXT AS STRING * 90, NUMBER AS UBYTE
+  TEXT = ""
+  FOR NUMBER = 0 TO COUNT - 1
+    TEXT = TEXT + LEFT$(CHOICE_NAME(CHOICES$, NUMBER) + "         ", LENGTH)
+  NEXT
+  RETURN TEXT
+END FUNCTION
+
+' The Lists demo's planet chosen, and the toppings marked, or None.
+FUNCTION LISTS_TEXT() AS STRING
+  DIM TEXT AS STRING * 70, NUMBER AS UBYTE
+  TEXT = ""
+  FOR NUMBER = 1 TO 10
+    IF GUI.MARKED(NUMBER) THEN TEXT = TEXT + " " + CHOICE_NAME(TOPPINGS$, NUMBER - 1)
+  NEXT
+  IF TEXT = "" THEN TEXT = " None"
+  RETURN CHOICE_NAME(PLANETS$, PLANET - 1) + ", toppings:" + TEXT
+END FUNCTION
+
+' The Lists demo: a list of planets and a list of toppings that takes marks, over the buttons
+' OK, Pick and Cancel. Pick chooses a planet in a list box, and the form stays. A list shows a
+' new choice only when it is drawn, so the demo draws the planets again. The marks clear each
+' time the demo opens, as LIST with LIST_MULTI clears them.
+SUB LISTS_DEMO()
+  DIM FORM AS UBYTE, PLANET_FIELD AS UBYTE, RESULT AS UBYTE, NUMBER AS UBYTE
+  FORM = GUI.CREATEFORM("Lists", GUI.CENTER, GUI.CENTER, 56, 12, GUI.FRAMED)
+  GUI.SAY(GUI.AUTO, 2, "Up, Down, PgUp, PgDn, Home, End and a letter move.")
+  GUI.SAY(GUI.AUTO, 2, "Space marks a topping. Pick opens a list box.")
+  PLANET_FIELD = GUI.LIST(4, 8, "Planet", @PLANET_ITEMS + 2, 0, 8, 8, @PLANET, 4, 9)
+  GUI.LIST(4, 28, "Toppings", @TOPPING_ITEMS + 2, 0, 9, 10, @TOPPING, 5, 11, GUI.LIST_MULTI)
+  GUI.BUTTON(10, 12, "&OK", 1)
+  GUI.BUTTON(10, 21, "&Pick", ID_PICK)
+  GUI.BUTTON(10, 32, "&Cancel", 2)
+  DO
+    RESULT = GUI.SHOW(FORM)
+    IF RESULT <> ID_PICK THEN EXIT DO
+    NUMBER = GUI.LISTBOX("Planets", @PLANET_ITEMS + 2, 0, 8, 8, 4)
+    IF NUMBER = 0 THEN
+      MESSAGE = "Lists: Pick cancelled"
+    ELSE
+      PLANET = NUMBER
+      GUI.EDIT_FIELD(PLANET_FIELD, GUI.DRAW_ONLY)
+      MESSAGE = "Lists: picked " + CHOICE_NAME(PLANETS$, PLANET - 1)
+    ENDIF
+    REPORT()
+  LOOP
+  GUI.FREE(FORM)
+  IF RESULT = 1 THEN
+    MESSAGE = "Lists: OK. " + LISTS_TEXT()
+  ELSE
+    MESSAGE = "Lists: cancelled, event " + STR$(RESULT)
+  ENDIF
+  REPORT()
+END SUB
+
 SUb SEED_demo()
   PERSON_NAME = "Ada Lovelace"
   PHONE = "(555)-010-1815"
@@ -363,6 +432,10 @@ SUb SEED_demo()
   BOLD = 1
   TEXT_SIZE = 1
   MEMO_FILE = "MEMO.TXT"
+  PLANET_ITEMS = PADDED_ITEMS(PLANETS$, 8, 8)
+  TOPPING_ITEMS = PADDED_ITEMS(TOPPINGS$, 10, 9)
+  PLANET = 3
+  TOPPING = 1
 end sub
 
 
@@ -379,6 +452,7 @@ GUI.SAY(3, 3, "Each button opens the demo of the menu item with its name.")
 GUI.BUTTON(5, 3, "&Forms", ID_FORMS)
 GUI.BUTTON(5, 14, "&Controls", ID_CONTROLS)
 GUI.BUTTON(5, 28, "M&emo", ID_MEMO)
+GUI.BUTTON(5, 38, "&Lists", ID_LISTS)
 GUI.BUTTON(5, 56, "&Memory", ID_MEMORY)
 GUI.BUTTON(5, 68, "E&xit", ID_EXIT)
 GUI.MENUBAR(MAIN_FORM)
@@ -390,6 +464,7 @@ GUI.BEGINMENU("&Demos")
 GUI.MENUITEM("&Forms", ID_FORMS)
 GUI.MENUITEM("&Controls", ID_CONTROLS)
 GUI.MENUITEM("M&emo", ID_MEMO)
+GUI.MENUITEM("&Lists", ID_LISTS)
 GUI.ENDMENU()
 MESSAGE = "Ready."
 REPORT()
@@ -402,6 +477,8 @@ DO
       CONTROLS_DEMO()
     CASE ID_MEMO
       MEMO_DEMO()
+    CASE ID_LISTS
+      LISTS_DEMO()
     CASE ID_MEMORY
       MEMORY_INFO()
     CASE ID_EXIT, GUI.EV_CANCEL
