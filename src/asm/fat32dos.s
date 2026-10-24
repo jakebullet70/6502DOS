@@ -269,9 +269,13 @@ lib_open:
         jmp lib_bank
 
 ; api_rmdir: rmdir, call 17. The current directory of the path's drive gives ERR_CURRENT_DIR.
-; Selects RAM bank 0 while it runs and keeps the caller's bank in saved_bank.
+; A \ at the end of the path is left out. Selects RAM bank 0 while it runs and keeps the
+; caller's bank in saved_bank.
 api_rmdir:
-        jsr lib_enter
+        jsr lib_take
+        bcs @bank
+        jsr path_trim
+        jsr lib_split
         bcs @bank
         jsr name_check
         lda #ERR_NO_PATH        ; keeps carry
@@ -563,11 +567,12 @@ cwd_build:
 ; current directory, and points fat32_ptr at the name part. Returns carry set and A = the error,
 ; with no context taken. Changes X and Y.
 lib_enter:
-        lda RAM_BANK
-        sta saved_bank
-        stz RAM_BANK
-        jsr path_start
-        bcs @done
+        jsr lib_take
+        bcc lib_split
+        rts
+
+; lib_split: lib_enter after lib_take.
+lib_split:
         lda #0                  ; the volume
         jsr fat32_alloc_context
         bcs @taken
@@ -603,7 +608,6 @@ lib_enter:
         adc #0
         sta fat32_ptr+1
         clc
-@done:
         rts
 @drop:
         jsr lib_errno
@@ -613,6 +617,37 @@ lib_enter:
         jsr lib_close
         pla
         sec
+        rts
+
+; lib_take: selects RAM bank 0, keeps the caller's bank in saved_bank, and takes the path at r0
+; with path_start. Returns carry set and A = the error. Changes X and Y.
+lib_take:
+        lda RAM_BANK
+        sta saved_bank
+        stz RAM_BANK
+        jmp path_start
+
+; path_trim: leaves out the / at the end of lib_path, unless it is the root's, and sets
+; lib_slash to the / before it, $FF when none. Changes A and X.
+path_trim:
+        ldx lib_slash
+        beq @done               ; the root's /
+        inx
+        beq @done               ; no /
+        lda lib_path,x
+        bne @done               ; a name after the last /
+        dex
+        stz lib_path,x
+@back:
+        dex
+        cpx #$FF
+        beq @set
+        lda lib_path,x
+        cmp #'/'
+        bne @back
+@set:
+        stx lib_slash
+@done:
         rts
 
 ; cwd_set: makes the current directory of drive lib_dpb the library's, with cluster 0 for the

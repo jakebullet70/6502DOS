@@ -5025,6 +5025,17 @@
             it, gives `Path not found`; rmdir does not take a trailing `\`, chdir does. Asm,
             the user's call. Build 3232 ms, the new baseline. Tests: SHTAB regenerated (still
             has the VERABOX line, the open SHTAB item), ROM3 ok 0.5 s.
+          - Done (2026-10-24), the user's ask: the keys were `G` and Tab as the first word,
+            at the prompt; Tab gave GOSUB and GOTO. `BUILTIN_NAMES$` leaves out the statements
+            that do nothing at the prompt: ENDIF, ENDREP, GOSUB, GOTO, ONERROR, REM, REPEAT,
+            RETURN. CMDSHELL.COM 21566 bytes, -50. Kernel, the user's go: `api_rmdir` leaves
+            out a `\` at the end of the path (`path_trim`), so `RD UTILS\` as Tab leaves it
+            works. `lib_enter` is split in `lib_take` (bank and `path_start`) and `lib_split`
+            (the context and the directory part); rmdir calls `path_trim` between them. Bank 1
+            about +42 bytes; each `lib_enter` call +6 cycles. `tests/SHTAB.IN` adds `MD ZD`,
+            `RD ZD\`, `CD ZD` (Path not found: removed) and `GO` Tab (no match). Build 3278 ms,
+            the new baseline. Tests: SHTAB regenerated 4.9 s (--update), ROM3 ok 0.5 s,
+            SHFILES 1.0, SHREDIR 2.2.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
