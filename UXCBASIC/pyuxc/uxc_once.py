@@ -3,8 +3,8 @@
     start(tpl_folder)   claim the banks, load the templates, run the first pass, open the
                         source for the second, and emit the program's start
     finish()            the link step, the PRG and the result line
-    cb_init()           claim the banks of the code buffer, the fixups, the strings and the
-                        records
+    cb_init()           claim the banks of the strings, the records and the ON CASE targets;
+                        the code buffer and the fixups take theirs as they grow
     er_report()         the error message on the screen and in g.ui_line
 
 GPC UXC reads the source name and the result file from UXC.INPUT (UI.READ). pyuxc has them
@@ -17,7 +17,7 @@ import uxc_asm
 import uxc_code
 from uxc_code import emit
 import uxc_dead
-from uxc_defs import K_CODE_BANKS, K_FIX_BANKS, K_ORG
+from uxc_defs import K_ORG
 import uxc_flow
 import uxc_lex
 import uxc_link
@@ -122,12 +122,6 @@ def finish():
 
 
 def cb_init():
-    for g.cb_i in range(K_CODE_BANKS):
-        uxc_bank()
-        g.cb_bank[g.cb_i] = g.uxc_b
-    for g.cb_i in range(K_FIX_BANKS):
-        uxc_bank()
-        g.fx_bank[g.cb_i] = g.uxc_b
     uxc_bank()
     g.sp_bank = g.uxc_b
     uxc_bank()

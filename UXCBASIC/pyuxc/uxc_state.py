@@ -15,8 +15,8 @@ er_stop is ER.STOP: it raises Stop, and pyuxc.compile_file reports the error. Th
 rewrite reports the error and ENDs at the same point.
 """
 
-from uxc_defs import K_ALIASES, K_ASM_LABELS, K_CODE_BANKS, K_DD_MAX, K_DS_MAX, K_DV_MAX, \
-    K_EX_MAX, K_FIX_BANKS, K_NS_MAX, K_SB_DEFAULTS, K_SB_DEPTH, K_SYM_BANKS
+from uxc_defs import K_ALIASES, K_ASM_LABELS, K_DD_MAX, K_DS_MAX, K_DV_MAX, K_EX_MAX, K_NS_MAX, \
+    K_RAM_BANKS, K_SB_DEFAULTS, K_SB_DEPTH, K_SYM_BANKS
 
 
 class State:
@@ -38,14 +38,15 @@ class NotPorted(Exception):
 def new():
     g.__dict__.clear()
     g.screen = []
+    g.uxc_banks = 0
     dim()
 
 
 def dim():
     """The DIMs at the top of UXC.BASL."""
     g.sy_bank = [0] * K_SYM_BANKS
-    g.cb_bank = [0] * K_CODE_BANKS
-    g.fx_bank = [0] * K_FIX_BANKS
+    g.cb_bank = []
+    g.fx_bank = []
     g.em_b = [0] * 256
     g.sl_s = [0] * 4
     g.sl_v = [0] * 4
@@ -105,8 +106,11 @@ def put(text):
 
 
 def uxc_bank():
-    """UXC.BANK. A free RAM bank in g.uxc_b. GPC UXC stops with OUT OF RAM BANKS when the
-    X16 has none left; pyuxc has no limit."""
+    """UXC.BANK. A free RAM bank in g.uxc_b. The compile stops with OUT OF RAM BANKS after
+    K_RAM_BANKS banks."""
+    if g.uxc_banks >= K_RAM_BANKS:
+        er_stop("OUT OF RAM BANKS")
+    g.uxc_banks = g.uxc_banks + 1
     g.uxc_b = bytearray(8192)
 
 

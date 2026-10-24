@@ -20,13 +20,14 @@
     sp_copy()                          append the strings to the code
 
 UXC-CODE.BL has the layout of a fixup and of the code buffer. Offset n of the code is index
-n MOD 8192 of g.cb_bank[n // 8192]. A K_RT_ address is index K_RT_x - $A000 of g.rt_bank.
+n MOD 8192 of g.cb_bank[n // 8192]. cb_put, fx_add and fx_put take a bank when the offset is past the
+last one. A K_RT_ address is index K_RT_x - $A000 of g.rt_bank.
 """
 
 import os
 
-from uxc_defs import K_CODE_BANKS, K_CS_SIZE, K_F_ABS, K_F_HI, K_F_LO, K_F_REC, K_F_REC_HI, K_F_SELF, \
-    K_FX_MAX, K_RT_ADDR, K_RT_LIST, K_RT_USED, K_SEC_CODE, K_SEC_CONST, K_SEC_REC, K_TP_DATA
+from uxc_defs import K_CODE_MAX, K_CS_SIZE, K_F_ABS, K_F_HI, K_F_LO, K_F_REC, K_F_REC_HI, K_F_SELF, \
+    K_RT_ADDR, K_RT_LIST, K_RT_USED, K_SEC_CODE, K_SEC_CONST, K_SEC_REC, K_TP_DATA
 import uxc_tpl as T
 from uxc_state import er_stop, g, uxc_bank
 
@@ -51,6 +52,9 @@ def tp_load(folder):
 
 def cb_put():
     g.cb_bi = g.cb_at // 8192
+    while g.cb_bi >= len(g.cb_bank):
+        uxc_bank()
+        g.cb_bank.append(g.uxc_b)
     g.ram = g.cb_bank[g.cb_bi]
     g.ram[g.cb_at - g.cb_bi * 8192] = g.cb_b
 
@@ -62,7 +66,7 @@ def cb_get():
 
 
 def cb_add():
-    if g.cb_n >= K_CODE_BANKS * 8192:
+    if g.cb_n >= K_CODE_MAX:
         er_stop("PROGRAM TOO BIG")
     g.cb_at = g.cb_n
     cb_put()
@@ -96,10 +100,13 @@ def sp_add():
 
 
 def fx_add():
-    if g.fx_n >= K_FX_MAX:
-        er_stop("TOO MANY FIXUPS")
+    if g.fx_at >= K_CODE_MAX:
+        er_stop("PROGRAM TOO BIG")
     g.fx_off = g.fx_n * 8
     g.fx_bi = g.fx_off // 8192
+    while g.fx_bi >= len(g.fx_bank):
+        uxc_bank()
+        g.fx_bank.append(g.uxc_b)
     g.ram = g.fx_bank[g.fx_bi]
     g.fx_ad = g.fx_off - g.fx_bi * 8192
     g.fx_hi = g.fx_at // 256
@@ -118,8 +125,13 @@ def fx_add():
 
 def fx_put():
     """FX.PUT. Write fixup g.fx_i from g.fx_at g.fx_k g.fx_s g.fx_v g.fx_ow."""
+    if g.fx_at >= K_CODE_MAX:
+        er_stop("PROGRAM TOO BIG")
     g.fx_off = g.fx_i * 8
     g.fx_bi = g.fx_off // 8192
+    while g.fx_bi >= len(g.fx_bank):
+        uxc_bank()
+        g.fx_bank.append(g.uxc_b)
     g.ram = g.fx_bank[g.fx_bi]
     g.fx_ad = g.fx_off - g.fx_bi * 8192
     g.fx_hi = g.fx_at // 256

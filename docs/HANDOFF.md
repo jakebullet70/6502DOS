@@ -4896,6 +4896,19 @@
             Alt+C, Alt+X ended, and a second GUIDEMO ran and ended. Build 6905 ms, the new
             baseline (DOS.UXI and the template changed: every program recompiled). Next: D7,
             the Look demo; region 3 has 749 bytes free.
+          - Done (2026-10-24), the user's plan C: pyuxc's code buffer and fixups take a bank
+            each time they fill one (`cb_put`, `fx_add`, `fx_put`). `K_CODE_BANKS`,
+            `K_FIX_BANKS` and `K_FX_MAX` are gone. `uxc_bank` counts its banks and stops with
+            OUT OF RAM BANKS past `K_RAM_BANKS` = 254, a 2 MB X16 less bank 0 and VARBANK.
+            `K_CODE_MAX` = 65536: a fixup keeps a code offset in 2 bytes, so `cb_add`,
+            `fx_add` and `fx_put` stop with PROGRAM TOO BIG at 64 KB of code. The symbol table
+            keeps its 8 banks (2032 symbols). Every built program and BANK3.BIN are
+            byte-identical to the old compiler's (85 files). Scratch check (bigtest.py): 8
+            regions, 49396 bytes of code and 13679 fixups compiled; 11 regions stopped with
+            PROGRAM TOO BIG. Past 64 KB needs 3-byte code offsets in fixups and symbols. Owed
+            to the doc batch: UXCBASIC.PLAN.md line 405 (the limits), UXC-HELP's PROGRAM TOO
+            BIG and OUT OF RAM BANKS. Tests: RGMULTI ok 0.5 s, RGRUN 0.4, RGDATA 0.5. Build
+            7039 ms, the new baseline (every program recompiled). Next: D7, the Look demo.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

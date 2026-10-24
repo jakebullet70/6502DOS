@@ -119,10 +119,12 @@ K_F_SELF = 4
 K_F_REC = 5
 K_F_REC_HI = 6
 
-# Banked RAM, in banks from BANKMGR.
-K_CODE_BANKS = 5
+# Banked RAM, in banks from BANKMGR. The code buffer and the fixups take a bank each time
+# they fill one. K.RAM.BANKS is the free banks of a 2 MB X16: 256 less bank 0 and VARBANK.
 K_SYM_BANKS = 8
-K_FIX_BANKS = 10
+K_RAM_BANKS = 254
+# A fixup keeps a code offset in 2 bytes, so the code is at most 64 KB.
+K_CODE_MAX = 65536
 
 # The runtime record table, in bank RT.BANK, for at most 1024 records: a byte per record
 # that is 1 once it is used, the used ids in order as words, and each record's address.
@@ -146,9 +148,6 @@ K_DD_MAX = 512
 K_DV_MAX = 1024
 # The most string literals UXC-DEAD.BL logs. A literal takes at least 2 of the 8192 bytes.
 K_DS_MAX = 4096
-
-# A fixup is 8 bytes, so K.FX.MAX fills the K.FIX.BANKS banks.
-K_FX_MAX = 10240
 
 # The two-character operators, in TK.K. A one-character operator is its character.
 K_OP_NE = 256

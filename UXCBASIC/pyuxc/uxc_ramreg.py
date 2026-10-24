@@ -70,7 +70,7 @@ the ranges of the SUBs moved.
 
 from uxc_code import cb_add, cb_get, cb_put, emit, fx_put, fx_read, rt_address_set, rt_get, \
     rt_use
-from uxc_defs import K_DV_MAX, K_EK_MEM, K_F_ABS, K_FX_MAX, K_SEC_BSS, K_SEC_CODE, K_SEC_CONST, \
+from uxc_defs import K_DV_MAX, K_EK_MEM, K_F_ABS, K_SEC_BSS, K_SEC_CODE, K_SEC_CONST, \
     K_SEC_LABEL, K_SEC_LOW, K_SEC_REC, K_SEC_RGDATA, K_SEC_STR, K_SEC_VAR, K_SK_LABEL, \
     K_SK_SUB, \
     K_SY_END, K_SY_READ_ONLY, K_TT_EOL, K_TT_NUM, K_TY_STR
@@ -683,8 +683,6 @@ def rg_place():
         for g.cb_b in g.rg_code[k]:
             cb_add()
         for g.fx_at, g.fx_k, g.fx_s, g.fx_v, g.fx_ow in g.rg_fix[k]:
-            if g.fx_n >= K_FX_MAX:
-                er_stop("TOO MANY FIXUPS")
             g.fx_at = g.fx_at + g.rg_base[k]
             if g.fx_s == K_SEC_CODE:
                 g.fx_v = g.fx_v + g.rg_base[k]
