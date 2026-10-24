@@ -23,6 +23,8 @@
 ' --               question, an input box, and an input box of two fields
 ' --     Files     a mask, and two buttons that open the file dialog with it: Open picks a
 ' --               file, and Manage adds the keys of a file manager
+' --     Look      a button for each built-in theme, and a theme file's name with a button
+' --               that loads it; the screen is drawn again in the theme chosen
 ' -- Exit code 0.
 ' --
 ' -- From a prompt:
@@ -40,13 +42,15 @@
 ' The ids of the menu items and the buttons.
 CONST ID_EXIT AS UBYTE = 1, ID_MEMORY AS UBYTE = 2, ID_FORMS AS UBYTE = 10
 CONST ID_CONTROLS AS UBYTE = 11, ID_MEMO AS UBYTE = 12, ID_LISTS AS UBYTE = 13
-CONST ID_DIALOGS AS UBYTE = 14, ID_FILES AS UBYTE = 15
+CONST ID_DIALOGS AS UBYTE = 14, ID_FILES AS UBYTE = 15, ID_LOOK AS UBYTE = 16
 ' The Controls demo's Show button, the Memo demo's Load, Save and New buttons, the Lists demo's
-' Pick button, the Dialogs demo's buttons, and the Files demo's Open and Manage buttons.
+' Pick button, the Dialogs demo's buttons, the Files demo's Open and Manage buttons, and the
+' Look demo's theme buttons; its Load button is ID_LOAD.
 CONST ID_SHOW AS UBYTE = 3, ID_LOAD AS UBYTE = 4, ID_SAVE AS UBYTE = 5, ID_NEW AS UBYTE = 6
 CONST ID_PICK AS UBYTE = 7, ID_MESSAGE AS UBYTE = 8, ID_QUESTION AS UBYTE = 9
 CONST ID_INPUT AS UBYTE = 10, ID_TWO_FIELDS AS UBYTE = 11, ID_OPEN AS UBYTE = 12
-CONST ID_MANAGE AS UBYTE = 13
+CONST ID_MANAGE AS UBYTE = 13, ID_DARK AS UBYTE = 14, ID_LIGHT AS UBYTE = 15
+CONST ID_GRAY AS UBYTE = 16
 ' The choices of the Controls demo's radio buttons and combo box. A form keeps their addresses.
 CONST SIZES$ = "Small|Medium|Large", ALIGNS$ = "Left|Center|Right"
 CONST INKS$ = "Black|Red|Green|Yellow|Blue|Magenta|Cyan|White"
@@ -86,6 +90,9 @@ DIM CITY AS STRING * 20, FIRST_NAME AS STRING * 16, LAST_NAME AS STRING * 16
 
 ' The Files demo's mask, and the full path of the file picked.
 DIM FILE_MASK AS STRING * 12, PICKED_FILE AS STRING * 80
+
+' The Look demo's theme file.
+DIM THEME_PATH AS STRING * 24
 
 ' The Memory popup's lines, and a row of the bank map for each 64 banks.
 DIM PROGRAM_LINE AS STRING * 68, LOW_FREE_LINE AS STRING * 68, BANKS_LINE AS STRING * 68
@@ -517,6 +524,51 @@ SUB FILES_DEMO()
   REPORT()
 END SUB
 
+' The Look demo: a theme file's name over the buttons Dark, Light, Gray, Load and Close. Dark,
+' Light and Gray make a built-in theme current, and Load the theme in the file. The main form,
+' the status line and this form are then drawn again in the theme; the form stays.
+SUB LOOK_DEMO()
+  DIM FORM AS UBYTE, RESULT AS UBYTE
+  FORM = GUI.CREATEFORM("Look", GUI.CENTER, GUI.CENTER, 54, 10, GUI.FRAMED)
+  GUI.SAY(GUI.AUTO, 2, "Dark, Light and Gray choose a built-in theme. Load")
+  GUI.SAY(GUI.AUTO, 2, "reads the theme file, as THEMED saves it.")
+  GUI.SAYGET(4, 2, "Theme file", THEME_PATH, 24, "", GUI.UPPER)
+  GUI.BUTTON(6, 3, "&Dark", ID_DARK)
+  GUI.BUTTON(6, 13, "&Light", ID_LIGHT)
+  GUI.BUTTON(6, 24, "&Gray", ID_GRAY)
+  GUI.BUTTON(6, 34, "L&oad", ID_LOAD)
+  GUI.BUTTON(6, 44, "&Close", 1)
+  DO
+    RESULT = GUI.SHOW(FORM)
+    SELECT CASE RESULT
+      CASE ID_DARK
+        GUI.THEME(DARK)
+        MESSAGE = "Look: THEME(DARK)"
+      CASE ID_LIGHT
+        GUI.THEME(LIGHT)
+        MESSAGE = "Look: THEME(LIGHT)"
+      CASE ID_GRAY
+        GUI.THEME(GRAY)
+        MESSAGE = "Look: THEME(GRAY)"
+      CASE ID_LOAD
+        GUI.THEME_FILE(THEME_PATH)
+        MESSAGE = "Look: THEME_FILE(" + THEME_PATH + "); DARK when it cannot be read"
+      CASE ELSE
+        EXIT DO
+    END SELECT
+    ' SHOW draws this form whole again, as another form was drawn last.
+    GUI.DRAW_WHOLE(MAIN_FORM)
+    REPORT()
+  LOOP
+  GUI.FREE(FORM)
+  IF RESULT = 1 THEN
+    MESSAGE = "Look: closed"
+  ELSE
+    MESSAGE = "Look: cancelled, event " + STR$(RESULT)
+  ENDIF
+  REPORT()
+END SUB
+
 SUb SEED_demo()
   PERSON_NAME = "Ada Lovelace"
   PHONE = "(555)-010-1815"
@@ -533,6 +585,7 @@ SUb SEED_demo()
   FIRST_NAME = "Grace"
   LAST_NAME = "Hopper"
   FILE_MASK = "*.*"
+  THEME_PATH = "UTILS\CUSTOM-LIGHT.GTH"
 end sub
 
 
@@ -547,11 +600,12 @@ MAIN_FORM = GUI.CREATEFORM("6502DOS GUI Demo", 1, 0, 80, 28, GUI.FRAMED OR GUI.N
 GUI.SAY(2, 3, "F10, or Alt with a menu's letter, opens the menus. Esc ends the program.")
 GUI.SAY(3, 3, "Each button opens the demo of the menu item with its name.")
 GUI.BUTTON(5, 3, "&Forms", ID_FORMS)
-GUI.BUTTON(5, 14, "&Controls", ID_CONTROLS)
-GUI.BUTTON(5, 28, "M&emo", ID_MEMO)
-GUI.BUTTON(5, 38, "&Lists", ID_LISTS)
-GUI.BUTTON(5, 49, "D&ialogs", ID_DIALOGS)
-GUI.BUTTON(5, 62, "File&s", ID_FILES)
+GUI.BUTTON(5, 13, "&Controls", ID_CONTROLS)
+GUI.BUTTON(5, 26, "M&emo", ID_MEMO)
+GUI.BUTTON(5, 35, "&Lists", ID_LISTS)
+GUI.BUTTON(5, 45, "D&ialogs", ID_DIALOGS)
+GUI.BUTTON(5, 57, "File&s", ID_FILES)
+GUI.BUTTON(5, 67, "L&ook", ID_LOOK)
 GUI.BUTTON(7, 3, "&Memory", ID_MEMORY)
 GUI.BUTTON(7, 15, "E&xit", ID_EXIT)
 GUI.MENUBAR(MAIN_FORM)
@@ -566,6 +620,7 @@ GUI.MENUITEM("M&emo", ID_MEMO)
 GUI.MENUITEM("&Lists", ID_LISTS)
 GUI.MENUITEM("D&ialogs", ID_DIALOGS)
 GUI.MENUITEM("File&s", ID_FILES)
+GUI.MENUITEM("L&ook", ID_LOOK)
 GUI.ENDMENU()
 MESSAGE = "Ready."
 REPORT()
@@ -584,6 +639,8 @@ DO
       DIALOGS_DEMO()
     CASE ID_FILES
       FILES_DEMO()
+    CASE ID_LOOK
+      LOOK_DEMO()
     CASE ID_MEMORY
       MEMORY_INFO()
     CASE ID_EXIT, GUI.EV_CANCEL

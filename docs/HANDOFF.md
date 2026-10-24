@@ -4935,6 +4935,23 @@
             ms, the new baseline. Owed to the doc batch: UXCBASIC.PLAN.md line 405 and
             UXC-HELP's PROGRAM TOO BIG (now: low part past 64 KB, a SUB past 64 KB). Next: D7,
             the Look demo; region 3 has 749 bytes free.
+          - Done, D7 (2026-10-24), GUIDEMO's Look demo: Demos, Look (id 16) and the main-form
+            button L&ook (Alt+O). Row 5's demo buttons now sit 1 column apart, from column 3:
+            Forms 3, Controls 13, Memo 26, Lists 35, Dialogs 45, Files 57, Look 67. A centered
+            form 54 by 10: two SAY lines, SAYGET Theme file (`THEME_PATH`, STRING * 24, UPPER,
+            seeded UTILS\CUSTOM-LIGHT.GTH), then &Dark (14), &Light (15), &Gray (16), L&oad
+            (ID_LOAD, 4) and &Close (1) at row 6. Dark, Light and Gray call `GUI.THEME`, Load
+            `GUI.THEME_FILE`; then `GUI.DRAW_WHOLE(MAIN_FORM)` and the status line redraw the
+            screen in the new theme, and the next SHOW draws the Look form whole, as another
+            form was drawn last. GUIDEMO 40391 bytes, 1128 more: region 1 8089 (+90,
+            THEME_FILE; 103 free), region 2 4512, region 3 7443 (749 free), region 4 2263
+            (-332: the file runtime, once only the memo's, moved to low RAM with THEME_FILE),
+            low part 18084 (+1370). Smoke runs on build/SD.IMG (its Utils has the .GTH files;
+            the test card has none): Alt+O, Alt+L showed LIGHT; Alt+O, Alt+D, Alt+O loaded
+            CUSTOM-LIGHT.GTH; Alt+O, Alt+G, Alt+C, Alt+X ended at the prompt. The keys go on
+            one line after GUIDEMO's: an Enter between them presses the focused button.
+            build/tests/SD.IMG is stale until tests.py runs. Build 2831 ms (GUIDEMO only recompiled), the new baseline. GUIDEMO's demo plan is
+            done. Next: the user's call: the paused doc batch, the full suite, or more GUI work.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
