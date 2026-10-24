@@ -21,6 +21,8 @@
 ' --               planet in a list box
 ' --     Dialogs   a button for each dialog: a message box with two buttons, a yes or no
 ' --               question, an input box, and an input box of two fields
+' --     Files     a mask, and two buttons that open the file dialog with it: Open picks a
+' --               file, and Manage adds the keys of a file manager
 ' -- Exit code 0.
 ' --
 ' -- From a prompt:
@@ -33,16 +35,18 @@
 #INCLUDE "GUI.UXI"
 #INCLUDE "BANK.UXI"
 #INCLUDE "HEAP.UXI"
+#INCLUDE "PICKFILE.UXI"
 
 ' The ids of the menu items and the buttons.
 CONST ID_EXIT AS UBYTE = 1, ID_MEMORY AS UBYTE = 2, ID_FORMS AS UBYTE = 10
 CONST ID_CONTROLS AS UBYTE = 11, ID_MEMO AS UBYTE = 12, ID_LISTS AS UBYTE = 13
-CONST ID_DIALOGS AS UBYTE = 14
+CONST ID_DIALOGS AS UBYTE = 14, ID_FILES AS UBYTE = 15
 ' The Controls demo's Show button, the Memo demo's Load, Save and New buttons, the Lists demo's
-' Pick button, and the Dialogs demo's buttons.
+' Pick button, the Dialogs demo's buttons, and the Files demo's Open and Manage buttons.
 CONST ID_SHOW AS UBYTE = 3, ID_LOAD AS UBYTE = 4, ID_SAVE AS UBYTE = 5, ID_NEW AS UBYTE = 6
 CONST ID_PICK AS UBYTE = 7, ID_MESSAGE AS UBYTE = 8, ID_QUESTION AS UBYTE = 9
-CONST ID_INPUT AS UBYTE = 10, ID_TWO_FIELDS AS UBYTE = 11
+CONST ID_INPUT AS UBYTE = 10, ID_TWO_FIELDS AS UBYTE = 11, ID_OPEN AS UBYTE = 12
+CONST ID_MANAGE AS UBYTE = 13
 ' The choices of the Controls demo's radio buttons and combo box. A form keeps their addresses.
 CONST SIZES$ = "Small|Medium|Large", ALIGNS$ = "Left|Center|Right"
 CONST INKS$ = "Black|Red|Green|Yellow|Blue|Magenta|Cyan|White"
@@ -79,6 +83,9 @@ DIM PLANET AS UBYTE, TOPPING AS UBYTE
 
 ' The Dialogs demo's input boxes edit these.
 DIM CITY AS STRING * 20, FIRST_NAME AS STRING * 16, LAST_NAME AS STRING * 16
+
+' The Files demo's mask, and the full path of the file picked.
+DIM FILE_MASK AS STRING * 12, PICKED_FILE AS STRING * 80
 
 ' The Memory popup's lines, and a row of the bank map for each 64 banks.
 DIM PROGRAM_LINE AS STRING * 68, LOW_FREE_LINE AS STRING * 68, BANKS_LINE AS STRING * 68
@@ -475,6 +482,41 @@ SUB DIALOGS_DEMO()
   REPORT()
 END SUB
 
+' The Files demo: a mask over the buttons Open, Manage and Close. Open and Manage show the file
+' dialog with the mask, and the file picked goes to the status line; the form stays.
+SUB FILES_DEMO()
+  DIM FORM AS UBYTE, RESULT AS UBYTE
+  FORM = GUI.CREATEFORM("Files", GUI.CENTER, GUI.CENTER, 58, 10, GUI.FRAMED)
+  GUI.SAY(GUI.AUTO, 2, "Open picks a file. Manage adds these keys in a list:")
+  GUI.SAY(GUI.AUTO, 2, "Del deletes, F2 renames, F5 copies, F7 makes a folder.")
+  GUI.SAYGET(4, 2, "Mask", FILE_MASK, 12, "", GUI.UPPER)
+  GUI.BUTTON(6, 12, "&Open", ID_OPEN)
+  GUI.BUTTON(6, 23, "&Manage", ID_MANAGE)
+  GUI.BUTTON(6, 36, "&Close", 1)
+  DO
+    RESULT = GUI.SHOW(FORM)
+    SELECT CASE RESULT
+      CASE ID_OPEN
+        RESULT = GUI.PICKFILE("Open", FILE_MASK, PICKED_FILE)
+        MESSAGE = "Files: PICKFILE returned " + DECIMAL(RESULT)
+      CASE ID_MANAGE
+        RESULT = GUI.PICKMANAGE("Manage", FILE_MASK, PICKED_FILE)
+        MESSAGE = "Files: PICKMANAGE returned " + DECIMAL(RESULT)
+      CASE ELSE
+        EXIT DO
+    END SELECT
+    IF RESULT = 1 THEN MESSAGE = MESSAGE + ", " + PICKED_FILE
+    REPORT()
+  LOOP
+  GUI.FREE(FORM)
+  IF RESULT = 1 THEN
+    MESSAGE = "Files: closed"
+  ELSE
+    MESSAGE = "Files: cancelled, event " + STR$(RESULT)
+  ENDIF
+  REPORT()
+END SUB
+
 SUb SEED_demo()
   PERSON_NAME = "Ada Lovelace"
   PHONE = "(555)-010-1815"
@@ -490,6 +532,7 @@ SUb SEED_demo()
   CITY = "Springfield"
   FIRST_NAME = "Grace"
   LAST_NAME = "Hopper"
+  FILE_MASK = "*.*"
 end sub
 
 
@@ -508,6 +551,7 @@ GUI.BUTTON(5, 14, "&Controls", ID_CONTROLS)
 GUI.BUTTON(5, 28, "M&emo", ID_MEMO)
 GUI.BUTTON(5, 38, "&Lists", ID_LISTS)
 GUI.BUTTON(5, 49, "D&ialogs", ID_DIALOGS)
+GUI.BUTTON(5, 62, "File&s", ID_FILES)
 GUI.BUTTON(7, 3, "&Memory", ID_MEMORY)
 GUI.BUTTON(7, 15, "E&xit", ID_EXIT)
 GUI.MENUBAR(MAIN_FORM)
@@ -521,6 +565,7 @@ GUI.MENUITEM("&Controls", ID_CONTROLS)
 GUI.MENUITEM("M&emo", ID_MEMO)
 GUI.MENUITEM("&Lists", ID_LISTS)
 GUI.MENUITEM("D&ialogs", ID_DIALOGS)
+GUI.MENUITEM("File&s", ID_FILES)
 GUI.ENDMENU()
 MESSAGE = "Ready."
 REPORT()
@@ -537,6 +582,8 @@ DO
       LISTS_DEMO()
     CASE ID_DIALOGS
       DIALOGS_DEMO()
+    CASE ID_FILES
+      FILES_DEMO()
     CASE ID_MEMORY
       MEMORY_INFO()
     CASE ID_EXIT, GUI.EV_CANCEL

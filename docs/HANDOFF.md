@@ -4868,6 +4868,34 @@
             0.5, GUIPICK 3.9 (as before). A -gif frame of
             GUIDEMO's Message box showed the padding. Build 3898 ms, the new baseline (GUIDEMO,
             HELPED and THEMED recompiled). Next: D6, the Files demo.
+          - Done (2026-10-24), the user's call after D6 overflowed: a program file may pass
+            $9EFF. GUIDEMO with PICKFILE was 39178 bytes, 523 past low RAM, and needed 8214
+            fixups of pyuxc's 8192. ROM: `exec` loads at most $0801-$9EFF; a file that fills it
+            stays open (`exec_open`, KERNELZP, bit 7). New call 52 `exec_rest` ($03DC, tools/api.py):
+            r1 bytes to r0 from the open file, r1 = 0 closes it, error 6 when none is open. The
+            file also closes in `exec_unwind` and at the next `exec`. The old size check (error
+            8 for a big file) is gone. exec.s +37 bytes of CODE, 1 of zero page, 3 in the call
+            table. Template: `R_RGLOAD` copies an image's part below `LOW_END` ($9F00) and
+            reads the rest with exec_rest, LOAD ERROR on a fault; new record `T_RGEND` (id 289)
+            closes the file after the last T_RGLOAD. R_RGLOAD 71 to 147 bytes, +83 a region
+            program with T_RGEND. pyuxc: `rg_place` no longer checks the images against K_TOP;
+            `K_FIX_BANKS` 8 to 10, `K_FX_MAX` 10240. Owed to the doc batch: UXCBASIC.PLAN.md
+            line 405 (8 fixup banks, 8192 fixups); PLAN section 7 on exec and the file size.
+            Tests: RGRUN ok 0.6 s, RGMULTI 0.4, BANKEXEC 0.4, RGERR 0.4, RGDATA 0.4, GUIPICK
+            3.9, EXEC 0.7, RGCALL 0.5, RGPASS 0.4, RGPTR 0.4, HELPED 1.2. No test reads a file
+            past $9EFF but GUIDEMO's smoke runs; an asm test of exec_rest is open.
+          - Done, D6 (2026-10-24), GUIDEMO's Files demo: Demos, Files (id 15) and the main-form
+            button File&s (Alt+S, row 5, column 62). Includes PICKFILE.UXI. A centered form 58
+            by 10: two SAY lines (Manage's keys), SAYGET Mask (`FILE_MASK`, 12, UPPER, seeded
+            *.*), then &Open (12), &Manage (13) and &Close (1) at row 6. Open runs PICKFILE and
+            Manage PICKMANAGE on the mask into `PICKED_FILE` (STRING * 80); the status line
+            gets the result and, for 1, the path; the form stays. GUIDEMO 39263 bytes: region 1
+            7999 (193 free), region 2 4512, region 3 7443 (749 free), region 4 2595, low part
+            16714. Smoke runs (scratch keys, -gif): Alt+S, Alt+O, Tab, Tab, Enter gave
+            "PICKFILE returned 1, C:\ARGS.COM"; Alt+M, Esc gave "PICKMANAGE returned 0"; Alt+S,
+            Alt+C, Alt+X ended, and a second GUIDEMO ran and ended. Build 6905 ms, the new
+            baseline (DOS.UXI and the template changed: every program recompiled). Next: D7,
+            the Look demo; region 3 has 749 bytes free.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
