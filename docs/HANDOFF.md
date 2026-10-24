@@ -5036,6 +5036,10 @@
             `RD ZD\`, `CD ZD` (Path not found: removed) and `GO` Tab (no match). Build 3278 ms,
             the new baseline. Tests: SHTAB regenerated 4.9 s (--update), ROM3 ok 0.5 s,
             SHFILES 1.0, SHREDIR 2.2.
+          - Done (2026-10-24), the user's ask: `BUILTIN_NAMES$` also leaves out IF, INPUT,
+            PAUSE and WAIT, the script statements; END stays (the user's call: at the prompt it
+            ends the shell, and `boot.s` runs it again). CMDSHELL.COM 21545 bytes, -21. Build
+            2761 ms, the new baseline. Tests: SHTAB ok 1.3 s (golden unchanged).
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.
