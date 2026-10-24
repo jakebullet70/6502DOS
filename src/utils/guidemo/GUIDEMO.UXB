@@ -107,7 +107,7 @@ DIM MAP_ROW0 AS STRING * 68, MAP_ROW1 AS STRING * 68, MAP_ROW2 AS STRING * 68
 DIM MAP_ROW3 AS STRING * 68
 
 ' Shows MESSAGE on the status line.
-SUB REPORT()
+SUB SHOW_FOOTER()
   GUI.STATUS_LINE(MESSAGE)
 END SUB
 
@@ -225,28 +225,29 @@ SUB MEMORY_INFO()
   KEPT_LINE = "  Kept     " + DECIMAL(KEPT_BANKS) + " banks of programs that ended with keep"
   HEAP_LINE = "Strings    " + DECIMAL(HEAP.STR_GC()) + " bytes free in the string heap, bank " + DECIMAL(ContentsAt(HEAP.PSP_HEAP))
 
-  FORM = GUI.CREATEFORM("Memory", GUI.CENTER, GUI.CENTER, 74, 24, GUI.FRAMED)
-  GUI.SAY(1, 2, LOW_LINE)
-  GUI.SAY(2, 2, PROGRAM_LINE)
-  GUI.SAY(3, 2, LOW_FREE_LINE)
-  GUI.SAY(5, 2, BANKS_LINE)
-  GUI.SAY(6, 2, SYSTEM_LINE)
-  GUI.SAY(7, 2, FREE_BANKS_LINE)
-  GUI.SAY(8, 2, OWN_LINE)
-  GUI.SAY(9, 2, LOADED_LINE)
-  GUI.SAY(10, 2, CALLERS_LINE)
-  GUI.SAY(11, 2, KEPT_LINE)
-  GUI.SAY(13, 2, HEAP_LINE)
-  GUI.SAY(15, 2, "Bank map   S system  . free  G GUIDEMO  C callers  K kept")
-  GUI.SAY(16, 2, MAP_ROW0)
-  GUI.SAY(17, 2, MAP_ROW1)
-  GUI.SAY(18, 2, MAP_ROW2)
-  GUI.SAY(19, 2, MAP_ROW3)
+  // form starts here
+  FORM = GUI.CREATEFORM("Memory", GUI.CENTER, GUI.CENTER, 73, 24, GUI.FRAMED)
+  GUI.SAY(2, 2, LOW_LINE)
+  GUI.SAY(3, 2, PROGRAM_LINE)
+  GUI.SAY(4, 2, LOW_FREE_LINE)
+  GUI.SAY(6, 2, BANKS_LINE)
+  GUI.SAY(7, 2, SYSTEM_LINE)
+  GUI.SAY(8, 2, FREE_BANKS_LINE)
+  GUI.SAY(9, 2, OWN_LINE)
+  GUI.SAY(10, 2, LOADED_LINE)
+  GUI.SAY(11, 2, CALLERS_LINE)
+  GUI.SAY(12, 2, KEPT_LINE)
+  GUI.SAY(14, 2, HEAP_LINE)
+  GUI.SAY(16, 2, "Bank map   S system  . free  G GUIDEMO  C callers  K kept")
+  GUI.SAY(17, 2, MAP_ROW0)
+  GUI.SAY(18, 2, MAP_ROW1)
+  GUI.SAY(19, 2, MAP_ROW2)
+  GUI.SAY(20, 2, MAP_ROW3)
   GUI.BUTTON(21, 33, "&OK", 1)
-  GUI.SHOW(FORM)
-  GUI.FREE(FORM)
+  GUI.SHOW(FORM) '--- show form
+  GUI.FREE(FORM) '--- free it
   MESSAGE = "Memory: " + DECIMAL(FREE_BANKS) + " banks free, GUIDEMO has " + DECIMAL(OWN_BANKS)
-  REPORT()
+  SHOW_FOOTER()
 END SUB
 
 
@@ -282,7 +283,7 @@ SUB FORMS_DEMO()
   ELSE
     MESSAGE = "Forms: cancelled, event " + STR$(RESULT)
   ENDIF
-  REPORT()
+  SHOW_FOOTER()
 END SUB
 
 ' Choice NUMBER of CHOICES$, whose choices have | between them, counted from 0.
@@ -334,7 +335,7 @@ SUB CONTROLS_DEMO()
     RESULT = GUI.SHOW(FORM)
     IF RESULT <> ID_SHOW THEN EXIT DO
     MESSAGE = "Controls: " + CONTROLS_TEXT()
-    REPORT()
+    SHOW_FOOTER()
   LOOP
   GUI.FREE(FORM)
   IF RESULT = 1 THEN
@@ -342,7 +343,7 @@ SUB CONTROLS_DEMO()
   ELSE
     MESSAGE = "Controls: cancelled, event " + STR$(RESULT)
   ENDIF
-  REPORT()
+  SHOW_FOOTER()
 END SUB
 
 ' The bytes of text in the memo.
@@ -389,7 +390,7 @@ SUB MEMO_DEMO()
       CASE ELSE
         EXIT DO
     END SELECT
-    REPORT()
+    SHOW_FOOTER()
   LOOP
   GUI.FREE(FORM)
   IF RESULT = 1 THEN
@@ -397,7 +398,7 @@ SUB MEMO_DEMO()
   ELSE
     MESSAGE = "Memo: cancelled, event " + STR$(RESULT)
   ENDIF
-  REPORT()
+  SHOW_FOOTER()
 END SUB
 
 ' The first COUNT choices of CHOICES$, each cut or padded with spaces to LENGTH characters.
@@ -446,7 +447,7 @@ SUB LISTS_DEMO()
       GUI.EDIT_FIELD(PLANET_FIELD, GUI.DRAW_ONLY)
       MESSAGE = "Lists: picked " + CHOICE_NAME(PLANETS$, PLANET - 1)
     ENDIF
-    REPORT()
+    SHOW_FOOTER()
   LOOP
   GUI.FREE(FORM)
   IF RESULT = 1 THEN
@@ -454,7 +455,7 @@ SUB LISTS_DEMO()
   ELSE
     MESSAGE = "Lists: cancelled, event " + STR$(RESULT)
   ENDIF
-  REPORT()
+  SHOW_FOOTER()
 END SUB
 
 ' The Dialogs demo: a button for each dialog, over the button Close. Each dialog's result goes
@@ -501,7 +502,7 @@ SUB DIALOGS_DEMO()
       CASE ELSE
         EXIT DO
     END SELECT
-    REPORT()
+    SHOW_FOOTER()
   LOOP
   GUI.FREE(FORM)
   IF RESULT = 1 THEN
@@ -509,7 +510,7 @@ SUB DIALOGS_DEMO()
   ELSE
     MESSAGE = "Dialogs: cancelled, event " + STR$(RESULT)
   ENDIF
-  REPORT()
+  SHOW_FOOTER()
 END SUB
 
 ' The Files demo: a mask over the buttons Open, Manage and Close. Open and Manage show the file
@@ -536,7 +537,7 @@ SUB FILES_DEMO()
         EXIT DO
     END SELECT
     IF RESULT = 1 THEN MESSAGE = MESSAGE + ", " + PICKED_FILE
-    REPORT()
+    SHOW_FOOTER()
   LOOP
   GUI.FREE(FORM)
   IF RESULT = 1 THEN
@@ -544,7 +545,7 @@ SUB FILES_DEMO()
   ELSE
     MESSAGE = "Files: cancelled, event " + STR$(RESULT)
   ENDIF
-  REPORT()
+  SHOW_FOOTER()
 END SUB
 
 ' The Look demo: a theme file's name over the buttons Dark, Light, Gray, Load and Close. Dark,
@@ -581,7 +582,7 @@ SUB LOOK_DEMO()
     END SELECT
     ' SHOW draws this form whole again, as another form was drawn last.
     GUI.DRAW_WHOLE(MAIN_FORM)
-    REPORT()
+    SHOW_FOOTER()
   LOOP
   GUI.FREE(FORM)
   IF RESULT = 1 THEN
@@ -589,7 +590,7 @@ SUB LOOK_DEMO()
   ELSE
     MESSAGE = "Look: cancelled, event " + STR$(RESULT)
   ENDIF
-  REPORT()
+  SHOW_FOOTER()
 END SUB
 
 SUb SEED_demo()
@@ -647,7 +648,7 @@ GUI.MENUITEM("File&s", ID_FILES)
 GUI.MENUITEM("L&ook", ID_LOOK)
 GUI.ENDMENU()
 MESSAGE = "Ready."
-REPORT()
+SHOW_FOOTER()
 DO
   EVENT = GUI.SHOW(MAIN_FORM)
   SELECT CASE EVENT
