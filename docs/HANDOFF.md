@@ -4975,6 +4975,14 @@
           - Done (2026-10-24), GUIDEMO's Look form 56 columns wide, was 54: the Close button
             touched the right edge; now 2 columns clear each side. 0 bytes. No test covers
             GUIDEMO. Build 3078 ms, the new baseline. Next: the user's call, as above.
+          - Done (2026-10-24), PICKMENU in GUIDEMO: the Dialogs demo's Popup button, at (6,20),
+            opens GUI.PICKMENU at screen row 17, column 33, under the button, titled "Fruit",
+            with FRUITS$ = "&Apple|&Banana|&Cherry|&Grape|&Lemon". FRUIT keeps the last choice
+            and is START next time. The status line shows the number returned and the fruit,
+            or "Esc" for 0. ID_POPUP = 17. GUIDEMO.COM 41743 bytes, was 40447: +1296, most of
+            it PICKMENU itself, linked for the first time. No test covers GUIDEMO; the user
+            checks it on screen. Build 3101 ms, the new baseline. Next: the user's call, SHTAB
+            or GRID's plan.
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

@@ -50,13 +50,15 @@ CONST ID_SHOW AS UBYTE = 3, ID_LOAD AS UBYTE = 4, ID_SAVE AS UBYTE = 5, ID_NEW A
 CONST ID_PICK AS UBYTE = 7, ID_MESSAGE AS UBYTE = 8, ID_QUESTION AS UBYTE = 9
 CONST ID_INPUT AS UBYTE = 10, ID_TWO_FIELDS AS UBYTE = 11, ID_OPEN AS UBYTE = 12
 CONST ID_MANAGE AS UBYTE = 13, ID_DARK AS UBYTE = 14, ID_LIGHT AS UBYTE = 15
-CONST ID_GRAY AS UBYTE = 16
+CONST ID_GRAY AS UBYTE = 16, ID_POPUP AS UBYTE = 17
 ' The choices of the Controls demo's radio buttons and combo box. A form keeps their addresses.
 CONST SIZES$ = "Small|Medium|Large", ALIGNS$ = "Left|Center|Right"
 CONST INKS$ = "Black|Red|Green|Yellow|Blue|Magenta|Cyan|White"
 ' The Lists demo's items.
 CONST PLANETS$ = "Mercury|Venus|Earth|Mars|Jupiter|Saturn|Uranus|Neptune"
 CONST TOPPINGS$ = "Cheese|Olives|Onion|Pepper|Mushroom|Ham|Pineapple|Basil|Tomato|Garlic"
+' The Dialogs demo's popup menu. Each choice starts with its hot letter.
+CONST FRUITS$ = "&Apple|&Banana|&Cherry|&Grape|&Lemon"
 
 ' The kernel's table of bank owners, in RAM bank 0, as src/asm/mem.inc and banks.s lay it out.
 ' Trap: a change to BANK_OWNER or its owner codes there must change these.
@@ -87,6 +89,8 @@ DIM PLANET AS UBYTE, TOPPING AS UBYTE
 
 ' The Dialogs demo's input boxes edit these.
 DIM CITY AS STRING * 20, FIRST_NAME AS STRING * 16, LAST_NAME AS STRING * 16
+' The fruit chosen last in the popup menu, 1 for the first.
+DIM FRUIT AS UBYTE
 
 ' The Files demo's mask, and the full path of the file picked.
 DIM FILE_MASK AS STRING * 12, PICKED_FILE AS STRING * 80
@@ -456,6 +460,7 @@ SUB DIALOGS_DEMO()
   GUI.BUTTON(4, 17, "&Yes or no", ID_QUESTION)
   GUI.BUTTON(4, 32, "&Input", ID_INPUT)
   GUI.BUTTON(6, 4, "&Two fields", ID_TWO_FIELDS)
+  GUI.BUTTON(6, 20, "&Popup", ID_POPUP)
   GUI.BUTTON(6, 32, "&Close", 1)
   DO
     RESULT = GUI.SHOW(FORM)
@@ -475,6 +480,16 @@ SUB DIALOGS_DEMO()
       CASE ID_TWO_FIELDS
         RESULT = GUI.INPUTBOX2("Two fields", "First name", FIRST_NAME, "Last name", LAST_NAME, 16, "", GUI.PROPER)
         MESSAGE = "Dialogs: INPUTBOX2 returned " + DECIMAL(RESULT) + ", " + FIRST_NAME + " " + LAST_NAME
+      CASE ID_POPUP
+        ' The menu opens under the Popup button: the form is centered on the screen's 30 rows.
+        RESULT = GUI.PICKMENU(17, 33, "Fruit", FRUITS$, FRUIT)
+        MESSAGE = "Dialogs: PICKMENU returned " + DECIMAL(RESULT)
+        IF RESULT = 0 THEN
+          MESSAGE = MESSAGE + ", Esc"
+        ELSE
+          FRUIT = RESULT
+          MESSAGE = MESSAGE + ", " + MID$(CHOICE_NAME(FRUITS$, RESULT - 1), 2)
+        ENDIF
       CASE ELSE
         EXIT DO
     END SELECT
@@ -584,6 +599,7 @@ SUb SEED_demo()
   CITY = "Springfield"
   FIRST_NAME = "Grace"
   LAST_NAME = "Hopper"
+  FRUIT = 1
   FILE_MASK = "*.*"
   THEME_PATH = "UTILS\CUSTOM-LIGHT.GTH"
 end sub
