@@ -1,0 +1,16 @@
+' EDITBIG: EDIT holds a file of 40800 bytes in its RAM banks. EDITBIG writes C:\BIG.TXT: 850
+' lines of 48 bytes, each LINE, its number in 4 digits, a space, 36 letters and digits, and CR
+' LF. In EDITBIG.IN, EDIT types TOP at the text's start, goes to the empty last line with PgDn,
+' types END there and saves, so the gap crosses every bank. HEAD and TAIL show both ends, and
+' FILES shows 40806 bytes.
+#INCLUDE "DOS.UXI"
+DIM LINE_TEXT AS STRING * 48, HANDLE AS UWORD, NUMBER AS UWORD
+HANDLE = DOS.CREATE_FILE("C:\BIG.TXT", 0)
+FOR NUMBER = 1 TO 850
+  LINE_TEXT = "LINE " + CHR$(48 + NUMBER / 1000) + CHR$(48 + NUMBER / 100 MOD 10)
+  LINE_TEXT = LINE_TEXT + CHR$(48 + NUMBER / 10 MOD 10) + CHR$(48 + NUMBER MOD 10)
+  LINE_TEXT = LINE_TEXT + " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789" + CHR$(13) + CHR$(10)
+  DOS.WRITE_FILE(HANDLE, @LINE_TEXT + 2, LEN(LINE_TEXT))
+NEXT
+DOS.CLOSE_FILE(HANDLE)
+PRINT "BIG.TXT WRITTEN"

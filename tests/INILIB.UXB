@@ -1,0 +1,44 @@
+' INILIB: INI.UXI, READ_KEY$ and WRITE_KEY on C:\6502DOS.INI.
+#INCLUDE "DOS.UXI"
+#INCLUDE "INI.UXI"
+DIM HANDLE AS UWORD, TEXT$ * 80
+
+SUB SHOW_FILE()
+  HANDLE = OPEN("C:\6502DOS.INI", O.READ)
+  DO WHILE NOT EOF(HANDLE)
+    LINPUT #HANDLE, TEXT$
+    PRINT "|"; TEXT$
+  LOOP
+  CLOSE HANDLE
+END SUB
+
+' 1: no file, the fallback
+PRINT "1 ["; INI.READ_KEY$("EDIT", "TABS", "8"); "]"
+
+' 2: the first write makes the file and the section; a new key, a second section, a change
+INI.WRITE_KEY("EDIT", "TABS", "4")
+INI.WRITE_KEY("EDIT", "THEME", "DARK")
+INI.WRITE_KEY("SHELL", "PROMPT", "$P$G")
+INI.WRITE_KEY("EDIT", "TABS", "2")
+INI.WRITE_KEY("EDIT", "HELP", "C:\DOS\EDIT.HLP")
+SHOW_FILE()
+
+' 3: reads, a missing key, a missing section, a key that is the start of another
+PRINT "3 "; INI.READ_KEY$("EDIT", "TABS", "8"); " "; INI.READ_KEY$("SHELL", "PROMPT", "?")
+PRINT "3 "; INI.READ_KEY$("SHELL", "TABS", "NONE"); " "; INI.READ_KEY$("NOPE", "TABS", "NONE")
+PRINT "3 "; INI.READ_KEY$("EDIT", "TAB", "NONE")
+
+' 4: names match in any case; a value with = in it; other lines are kept
+HANDLE = OPEN("C:\6502DOS.INI", O.APPEND)
+PRINT #HANDLE, ""
+PRINT #HANDLE, "; a comment"
+PRINT #HANDLE, "[Misc]"
+PRINT #HANDLE, "Name=Ada"
+CLOSE HANDLE
+INI.WRITE_KEY("MISC", "SUM", "A=B")
+PRINT "4 "; INI.READ_KEY$("MISC", "NAME", "?"); " "; INI.READ_KEY$("MISC", "SUM", "?")
+SHOW_FILE()
+
+' 5: no C:\6502DOS.$$$ is left
+DOS.FINDFIRST("C:\6502DOS.$$$", 0)
+PRINT "5 E"; DOS.ERROR

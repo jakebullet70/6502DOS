@@ -1,0 +1,80 @@
+' INI.UXI: the settings file C:\6502DOS.INI, which any program may read and change.
+'
+' The file is text in sections. A line [NAME] starts section NAME. A line KEY=VALUE in a
+' section sets KEY. Section and key names match in any case; pass them in capitals. A value is
+' the rest of its line after the =. A line is at most 255 characters. Other lines are kept.
+'
+'   [EDIT]
+'   TABS=4
+'
+' Include DOS.UXI before it.
+
+NAMESPACE INI
+  CONST FILE_NAME$ = "C:\6502DOS.INI", TEMPORARY$ = "C:\6502DOS.$$$"
+  DIM IN_SECTION AS UBYTE
+
+  ' 1 when TEXT$ is a line KEY$=... inside section SECTION$, else 0. A line [NAME] sets
+  ' IN_SECTION to 1 when NAME is SECTION$, else to 0. Clear IN_SECTION before the first line.
+  FUNCTION IS_KEY(TEXT$ AS CONST, SECTION$ AS CONST, KEY$ AS CONST) AS UBYTE
+    IF ASC(TEXT$) = 91
+      IN_SECTION = 0
+      IF UCASE$(TEXT$) = "[" + SECTION$ + "]" THEN IN_SECTION = 1
+      RETURN 0
+    ENDIF
+    IF IN_SECTION = 0 THEN RETURN 0
+    IF UCASE$(LEFT$(TEXT$, LEN(KEY$) + 1)) = KEY$ + "=" THEN RETURN 1
+    RETURN 0
+  END FUNCTION
+
+  ' The value of KEY$ in SECTION$, or FALLBACK$ when the file, the section or the key is
+  ' missing.
+  FUNCTION READ_KEY$(SECTION$ AS CONST, KEY$ AS CONST, FALLBACK$ AS CONST)
+    DIM HANDLE AS UWORD, TEXT$ * 255
+    HANDLE = OPEN(FILE_NAME$, O.READ)
+    IN_SECTION = 0
+    DO WHILE NOT EOF(HANDLE)
+      LINPUT #HANDLE, TEXT$
+      IF IS_KEY(TEXT$, SECTION$, KEY$)
+        CLOSE HANDLE
+        RETURN MID$(TEXT$, LEN(KEY$) + 2)
+      ENDIF
+    LOOP
+    CLOSE HANDLE
+    RETURN FALLBACK$
+  END FUNCTION
+
+  ' Sets KEY$ in SECTION$ to VALUE$. The file is copied to C:\6502DOS.$$$ with the key's line
+  ' changed, or added at the end of its section; a missing section is added at the end. Then
+  ' the file is deleted and C:\6502DOS.$$$ takes its name. Nothing changes when C:\6502DOS.$$$
+  ' cannot be made.
+  SUB WRITE_KEY(SECTION$ AS CONST, KEY$ AS CONST, VALUE$ AS CONST)
+    DIM SOURCE AS UWORD, TARGET AS UWORD, TEXT$ * 255, DONE AS UBYTE
+    TARGET = OPEN(TEMPORARY$, O.WRITE)
+    IF TARGET = NOFILE THEN RETURN
+    SOURCE = OPEN(FILE_NAME$, O.READ)
+    IN_SECTION = 0
+    DONE = 0
+    DO WHILE NOT EOF(SOURCE)
+      LINPUT #SOURCE, TEXT$
+      ' The next section starts: the key goes at the end of this one.
+      IF ASC(TEXT$) = 91 AND IN_SECTION = 1 AND DONE = 0
+        PRINT #TARGET, KEY$; "="; VALUE$
+        DONE = 1
+      ENDIF
+      IF IS_KEY(TEXT$, SECTION$, KEY$)
+        IF DONE = 0 THEN PRINT #TARGET, KEY$; "="; VALUE$
+        DONE = 1
+      ELSE
+        PRINT #TARGET, TEXT$
+      ENDIF
+    LOOP
+    IF DONE = 0
+      IF IN_SECTION = 0 THEN PRINT #TARGET, "["; SECTION$; "]"
+      PRINT #TARGET, KEY$; "="; VALUE$
+    ENDIF
+    CLOSE SOURCE
+    CLOSE TARGET
+    DOS.DELETE(FILE_NAME$)
+    DOS.RENAME(TEMPORARY$, FILE_NAME$)
+  END SUB
+END NAMESPACE

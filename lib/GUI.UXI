@@ -1201,11 +1201,16 @@ NAMESPACE GUI
 
   ' Adds the item CAPTION$ to the menu BEGINMENU opened, after the items before it. Choosing the
   ' item makes SHOW return ID, as a button's id; ID is 1 to 252. The & marks its hot letter. The menu keeps the
-  ' address of CAPTION$, not a copy. Past MOST_ITEMS items MENUITEM does nothing.
+  ' address of CAPTION$, not a copy. Past MOST_ITEMS items MENUITEM does nothing. A CAPTION$ of
+  ' "-" is a separator, a line across the menu that the cursor passes over; its ID is not used.
+  ' Trap: a menu's first item is not a separator.
   SUB MENUITEM(CAPTION$ AS CONST, ID AS UBYTE)
     IF ITEM_COUNT = MOST_ITEMS THEN RETURN
     ITEM_COUNT = ITEM_COUNT + 1
     ITEM_CAPTION_AT(ITEM_COUNT) = AddrOf(CAPTION$)
+    ' PULL_MENU knows a separator by its id 0. Its length byte is 1 and its character "-"; a
+    ' string compare would put the runtime's compare in the low part.
+    IF ContentsAt(AddrOf(CAPTION$) + 1) = 1 AND ContentsAt(AddrOf(CAPTION$) + 2) = ASC("-") THEN ID = 0
     ITEM_ID(ITEM_COUNT) = ID
   END SUB
 
@@ -1328,7 +1333,8 @@ NAMESPACE GUI
   ' Opens a menu of the bar of the form HANDLE when PRESSED, as WAITKEY() gives it, is F10 or
   ' Alt with a menu's hot letter; F10 opens the first menu. Returns 0 at once for any other key.
   ' The open menu's title takes the MENU_SELECTED color, and its items drop down under it in a
-  ' box, the selected item in MENU_SELECTED. Up and Down move through the items, wrapping, and
+  ' box, the selected item in MENU_SELECTED. Up and Down move through the items, wrapping and
+  ' passing over the separators, and
   ' Left and Right open the menu before or after, wrapping. Enter, or an item's hot letter,
   ' chooses the item; Esc closes the menu. Then the screen under the menu is put back, its title
   ' drawn again, and PULL_MENU returns the item's id, or 0 after Esc. When VERA.SAVE_RECT has no
@@ -1389,22 +1395,33 @@ NAMESPACE GUI
           WHICH = ROLE.MENU
           IF SPOT = ITEM THEN WHICH = ROLE.MENU_SELECTED
           USE_COLOR(WHICH)
-          POS(1) = SPOT - FIRST + 2
-          POS(0) = COLUMN + 1
-          PRINT " ";
-          IF PRINT_HOT(ITEM_CAPTION_AT(SPOT), WHICH) = LETTER THEN CHOSEN = SPOT
-          REPEAT COLUMN + WIDTH - 1 - POS(0)
+          IF ITEM_ID(SPOT) = 0 THEN
+            ' A separator: a line with the T of CP437, 195 and 180, at each side of the box.
+            SPAN_ROW = SPOT - FIRST + 2
+            SPAN_COLUMN = COLUMN
+            SPAN_LENGTH = WIDTH
+            SPAN(195, LINE_ACROSS, 180)
+          ELSE
+            POS(1) = SPOT - FIRST + 2
+            POS(0) = COLUMN + 1
             PRINT " ";
-          END REPEAT
+            IF PRINT_HOT(ITEM_CAPTION_AT(SPOT), WHICH) = LETTER THEN CHOSEN = SPOT
+            REPEAT COLUMN + WIDTH - 1 - POS(0)
+              PRINT " ";
+            END REPEAT
+          ENDIF
           SPOT = SPOT + 1
         END REPEAT
         IF PRESSED = KEYS.ENTER THEN CHOSEN = ITEM
         IF CHOSEN <> 0 THEN EXIT DO
         PRESSED = WAITKEY()
-        IF PRESSED = KEYS.KEY_UP THEN ITEM = ITEM - 1
-        IF PRESSED = KEYS.KEY_DOWN THEN ITEM = ITEM + 1
-        IF ITEM < FIRST THEN ITEM = LAST
-        IF ITEM > LAST THEN ITEM = FIRST
+        ' Up and Down step on past a separator; another key leaves ITEM on an item.
+        DO
+          IF PRESSED = KEYS.KEY_UP THEN ITEM = ITEM - 1
+          IF PRESSED = KEYS.KEY_DOWN THEN ITEM = ITEM + 1
+          IF ITEM < FIRST THEN ITEM = LAST
+          IF ITEM > LAST THEN ITEM = FIRST
+        LOOP UNTIL ITEM_ID(ITEM) <> 0
       LOOP UNTIL PRESSED = KEYS.ESC OR PRESSED = KEYS.KEY_LEFT OR PRESSED = KEYS.KEY_RIGHT
       IF SAVED THEN
         VERA.RESTORE_RECT()

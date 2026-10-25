@@ -1,7 +1,9 @@
 ' GUIMENU: GUI.MENUBAR, GUI.BEGINMENU, GUI.MENUITEM and GUI.ENDMENU. A form under a menu bar
-' of File and Help, with the button "&Go" (id 5). The keys: F10 opens File, Down, Right opens
-' Help, Left opens File again, Esc closes it, and Enter on Go returns 5. Alt+H opens Help and
-' Enter chooses About, 3. F10 and x choose Exit, 2. Alt+G presses Go, 5. Esc returns 255. The
+' of File, with a separator between Open and Exit, and Help, with the button "&Go" (id 5). The
+' keys: F10 opens File, Down passes the separator to Exit, Right opens Help, Left opens File
+' again, Esc closes it, and Enter on Go returns 5. Alt+H opens Help and Enter chooses About, 3.
+' F10, Up to Exit, Up past the separator and Enter choose Open, 1. F10 and x choose Exit, 2.
+' Alt+G presses Go, 5. Esc returns 255. The
 ' last line gives each result, then 1 when the cell at 2, 3, under the File menu, matches the
 ' form's cell at 2, 30.
 #INCLUDE "KEYS.UXI"
@@ -14,6 +16,7 @@ GUI.BUTTON(3, 2, "&Go", 5)
 GUI.MENUBAR(H)
 GUI.BEGINMENU("&File")
 GUI.MENUITEM("&Open", 1)
+GUI.MENUITEM("-", 0)
 GUI.MENUITEM("E&xit", 2)
 GUI.ENDMENU()
 GUI.BEGINMENU("&Help")

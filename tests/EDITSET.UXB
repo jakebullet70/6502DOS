@@ -1,0 +1,13 @@
+' EDITSET: EDIT takes its options from C:\6502DOS.INI. In EDITSET.IN, Up from the end of a
+' line of a tab and Z lands at column 5 for tabs of 4, so X goes in after abcde. F3 with Match
+' case finds Two, not two. The save writes LF line ends: 21 bytes.
+' The second EDIT makes the tabs 3, so Up from the end of TAB Z puts Y after abcd. Its save,
+' with BAK=1, keeps the first save as NEW.BAK.
+#INCLUDE "DOS.UXI"
+#INCLUDE "INI.UXI"
+INI.WRITE_KEY("EDIT", "THEME", "light")
+INI.WRITE_KEY("EDIT", "TABS", "4")
+INI.WRITE_KEY("EDIT", "MATCHCASE", "1")
+INI.WRITE_KEY("EDIT", "FIND", "Two")
+INI.WRITE_KEY("EDIT", "LINEENDS", "lf")
+INI.WRITE_KEY("EDIT", "BAK", "1")

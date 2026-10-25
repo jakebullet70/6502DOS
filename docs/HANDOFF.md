@@ -5081,6 +5081,262 @@
             the user's uncommitted edits, and `UXCBASIC/docs/GUI.PLAN.md` stays untracked;
             leave both. Open, the user's call: UXC-HELP topics for PICKFILE.UXI, VERA.UXI and
             CONS.UXI; the GUI.UXI contract fixes above; the stale items left by the doc batch.
+          - Build (2026-10-24): 1700 ms, the ROM only (1.53 s), the new baseline. The card
+            step deleted `startup.cmd` and `Utils` from the card. They were restored to `card/`
+            from a 05:31 copy of `build/`. The next build, 1950 ms, the new baseline, put
+            `startup.cmd` and `Utils/CUSTOM-DARK.GTH`, `CUSTOM-GRAY.GTH` and `CUSTOM-LIGHT.GTH`
+            on `build/SD.IMG` and in `build/SD.SUM`. Open: why the old image lacked the
+            mixed-case root names. `mksd.read` lists them in the new image.
+          - EDIT, the user's ask (2026-10-24): a copy of TED with a GUI, after MS-DOS EDIT:
+            pull-down menus, Find and Change dialogs. TED stays as it is. Steps: E1 the copy,
+            the screen and the menus; E2 Find (Match case, Whole word), F3 repeat, Change
+            (Change All only, the user's call); E3 New, Open, Save As through PICKFILE, the
+            save question before them; E4 a theme item in the Help menu (the user's call), docs
+            (HELP.TXT topic, PLAN).
+          - Done, E1 (2026-10-24): `src/dos/EDIT.UXB` and `EDIT.HLP`, copied from TED, built to
+            `C:\DOS\EDIT.COM`. GRAY theme; a form `EDIT_FORM` 80 by 28 at row 1, FRAMED and
+            NO_SHADOW, its title `FILE_NAME`, holds the box and the menu bar; text rows 2 to 27,
+            columns 1 to 78 (`TEXT_TOP`, `TEXT_ROWS` 26, `LEFT_EDGE`, `COLUMNS` 78); the status
+            row by `GUI.STATUS_LINE`, its right part (`*`, Ln, Col) at column 58. SHOW_ROW
+            blanks with spaces, not CLEAR_EOL$, which would take the box's right edge. The
+            hardware scroll is gone (it moved the bar): a move below the page draws the page.
+            DRAW draws the form whole when `NEED_SCREEN` is set or `GUI.SHOWN_FORM` is not
+            EDIT_FORM (a menu or dialog with no VERA room), then CURSOR ON. Menus: File (Save,
+            Exit), Edit (Cut, Copy, Paste, Clear), Help (Keys, DOS Help, About). F10 or
+            `GUI.ALT_LETTER(KEY) <> 0` calls `GUI.PULL_MENU(EDIT_FORM, KEY)`; an item's id is
+            the control key it does, and `MENU_KEY` turns ID_CLEAR into Del, ID_DOS_HELP into
+            Shift+F1, and shows About's MSGBOX. Ctrl+Q with changes asks in a MSGBOX (Yes, No,
+            Esc back). Shift+F1 asks the topic in an INPUTBOX. A save writes `EDIT.$$$`. The
+            console color at the start is put back. Bytes: EDIT.COM 23021 (TED 11648): region 1
+            6676 (1516 free), region 2 3175, region 3 401, low part of the file 12769. New test
+            `EDIT` (`tests/EDIT.IN`, local `.OUT`): TED's runs, plus the dialog's Esc and Alt+Y,
+            Alt+N, the menus by F10, Right, Left, Esc and the hot letters of Edit and File, Help
+            Keys and About, Shift+F1 with MEM and with zz. Golden read run by run. EDIT ok
+            2.7 s, TED ok 1.8 s. Build 2585 ms, the new baseline. Steps since the full suite:
+            2. Seen, not fixed: a topic not in HELP.TXT clears the screen before No help for
+            shows, as in TED. Next: E2.
+          - Done, E2 (2026-10-24): Search menu (Find Ctrl+F, Repeat Last Find F3, Change
+            Ctrl+R). `ASK_FIND(CHANGING)` builds the dialog with `GUI.OPEN_DIALOG`, two
+            `GUI.CHECK`s (Match Upper/Lowercase, Whole Word) and the fields last, so Enter in
+            the last field is OK; Find has OK and Cancel, Change has Change All and Cancel.
+            `FIND_AGAIN` searches from the cursor to the end, then from the start
+            (`SEARCH`, `MATCH_AT`, `CAPITAL`), moves there by `GO_TO`, and selects the match
+            (ANCHOR, SELECTING 1), the cursor after it; else Match not found. `CHANGE_ALL`
+            walks the text once, the gap following the matches, and keeps the cursor's line
+            and the page's top line (`LINE_AT`), as the fields hold no line end; the count
+            shows on the status row. ASK_FIND, ASK_QUIT, MENU_KEY and the new MAKE_MENUS sit
+            in `#REGION_SLOT 2` beside GUI's dialogs, so their strings leave low RAM (1213
+            bytes saved there). EDIT.HLP: one line for Alt+F E S H, one for ^F F3 ^R, ^S and
+            ^Q on one line; 26 lines. Bytes: EDIT.COM 25835: region 1 7311 (881 free; CHECK
+            and PICK_CHOICE linked), region 2 4361, region 3 401, low part 13762 (E1 12769).
+            Test `EDIT` adds a run on DOCS\FIND.TXT: finds cut by Ctrl+X to show what each
+            selected, Whole Word and Match case by Tab and Space, F3's wrap, Change All twice,
+            Repeat with no match, Esc on Change; TYPE gives ` dog dog ster` and `dog.`. EDIT ok
+            3.4 s, TED ok 1.9 s. Builds 2409 ms, then 1665 ms, the new baseline. Steps since
+            the full suite: 3. Next: E3.
+          - Done, E2b (2026-10-24, the user's ask): `SEARCH` sends a position to `MATCH_AT`
+            only when its byte OR 32 equals FIND_TEXT's first byte OR 32, so most positions
+            cost one BYTE_AT and a compare, not MATCH_AT's call and two CAPITALs. +53 bytes
+            (EDIT.COM 25888). A prefilter walking the pool by address, past the gap, cost +216
+            and was dropped. EDIT ok 3.6 s. Build 2788 ms, the new baseline. Steps since the
+            full suite: 4. Next: E3.
+          - Done, E3 (2026-10-24): File menu New, Open..., Save, Save As..., Exit. Includes
+            BANK.UXI and PICKFILE.UXI. In `#REGION_SLOT 2`: `START_TEXT` (gap after the text,
+            cursor and page at its start, MODIFIED 0, NEED_SCREEN 1), `MAKE_UNTITLED` (FILE_NAME
+            UNTITLED, `NAMED` 0, empty, CR_ENDS 1), `SAVE_AS` (PICKFILE "Save As", mask *.TXT;
+            `GUI.YESNO` Replace it? for a file that exists; `KEPT` restores FILE_NAME on a
+            failed save), `SAVE_FILE` (SAVE, or SAVE_AS when NAMED is 0; Ctrl+S and the menu's
+            Save), `ASK_SAVE` (was ASK_QUIT; before New, Open, Exit), `OPEN_TEXT` (errors in a
+            MSGBOX; a file that does not open keeps the text, as LOAD leaves EDITED_FILE NOFILE;
+            one that fails after it opened gives UNTITLED). MENU_KEY does New, Open, Save As
+            and About and returns 0. `LOAD` returns 0, an error number, or `TOO_LARGE` (254),
+            and prints nothing; the start prints the error and ends with 2, ERR_NOT_FOUND gives
+            New file. Bytes: EDIT.COM 33825: region 1 7466 (726 free), region 2 5543 (2649
+            free), region 3 6187 (2005 free), low part 14629 (+814; E3's own code +4, PICKFILE's
+            low-RAM part +810). Test `EDIT` adds a run on DOCS\E3.TXT: Save As DOCS\SAVED.TXT,
+            New, Ctrl+S on UNTITLED with No to Replace, Open with No to the save question and
+            File not found for NOPE.TXT, Open SAVED.TXT, X, Ctrl+S; TYPE gives `Xabc`. Golden
+            read. EDIT ok 3.9 s. Build 3345 ms, the new baseline. Steps since the full suite:
+            5.
+          - Done, E3b (2026-10-24): EDIT with no file name starts an empty UNTITLED through
+            MAKE_UNTITLED, as MS-DOS EDIT does; Required parameter missing is gone. EDIT.COM
+            33795 bytes, 30 fewer. Test `EDIT`'s bare `EDIT` run now quits with Ctrl+Q; the
+            golden shows the UNTITLED screen, read. EDIT ok 4.3 s. Build 3027 ms, the new
+            baseline. Steps since the full suite: 6; the next step runs it. Next: E4.
+          - Done (2026-10-24), the full suite: 101 tests, 7 failed, 137.9 s. All 7 were stale
+            goldens from work committed before E1, and were updated, diffed and re-run ok:
+            CLOCKCMD (uptime 6 s to 7 s, the 256 MB card's longer boot; ok 1.9 s), DISK (one
+            byte of f33.txt's entry, the new card layout; 0.5 s), FILES (CMDSHELL.COM 21546;
+            0.5 s), HDIR and HDIRARG (GUIMENU and GUIPMENU sizes, RGBYTES.COM; 1.5 s, 1.3 s),
+            TREE (RGBYTES.COM, DOS\EDIT.COM and EDIT.HLP; 2.1 s), THEMED (dialogs 2 columns
+            wider, commit cf664fb; 1.3 s). Near the 5 s limit in the suite: EDIT 4.7 s,
+            GUIPICK 5.0 s. Steps since the full suite: 0.
+          - The user's choice (2026-10-24): a text INI, `C:\6502DOS.INI` (the name is Claude's
+            default; the user may change it); all eight EDIT options: theme, tab width 2/4/8,
+            Find defaults (last text, Match case, Whole word), line ends for new files, a .BAK on
+            save, the help path, recent files 1 to 4 in the File menu; and E4 becomes an Options
+            menu (Display..., Help Path...) as MS-DOS EDIT has, in place of a theme item in Help.
+          - Done, I1 (2026-10-24): `lib/INI.UXI`, NAMESPACE INI. `INI.READ_KEY$(SECTION$, KEY$,
+            FALLBACK$)` gives a key's value or FALLBACK$. `INI.WRITE_KEY(SECTION$, KEY$,
+            VALUE$)` copies the file to `C:\6502DOS.$$$` with the line changed, or added at the
+            end of its section (a missing section is added at the end), then deletes the file and
+            renames the $$$ file over it. Names match in any case (UCASE$); other lines are kept.
+            `IS_KEY` is the shared line test; `IN_SECTION` its state. All parameters are AS CONST.
+            Needs DOS.UXI. Test `INILIB` (new, `tests/INILIB.UXB`, no .IN): fallback with no
+            file; writes that make the file and section, add a key, add a second section, change
+            a key; reads, a missing key and section, TAB not matching TABS=; a hand-written
+            `[Misc]` `Name=Ada` read as MISC NAME; a value `A=B`; a comment and blank line kept;
+            no $$$ left (E 2). Golden read. INILIB ok 1.0 s. Cost in EDIT (scratch compiles):
+            READ_KEY$ alone +943 B and both +1472 B in the low part; included under `#REGION_SLOT
+            2` instead, region 2 +1343 B (402 of it runtime) and the low part +148 B. Plan: include
+            it in region 3 (2005 free) or 2 (2649 free). Steps since the full suite: 1.
+          - Done, I2 (2026-10-24): EDIT's `READ_SETTINGS`, under `#REGION_SLOT 3` with
+            `#INCLUDE "INI.UXI"`, runs before the file loads. Keys of `[EDIT]`, default in
+            brackets: THEME DARK, LIGHT or [GRAY] (any case); TABS 2, 4 or [8]; MATCHCASE and
+            WHOLEWORD 1 or [0]; FIND [none]; LINEENDS [CRLF] or LF (any case); HELP
+            [C:\DOS\EDIT.HLP]. New: `TAB_MASK` (tab stop - 1) in NEXT_COLUMN and SHOW_ROW's tab
+            loop; `NEW_ENDS` for a new file, UNTITLED, or a file with no line end; `HELP_NAME`
+            STRING * 80 in place of CONST HELP_NAME$; the `GUI.THEME(GRAY)` at the start went.
+            BAK waits for I4. EDIT.COM 35381 B, 1586 more; region 3 7792 B, 400 free (402 of it
+            runtime); region 2 2648 free; the low part 20 B less. Build 4119 ms, the new
+            baseline. Test `EDITSET` (new, `tests/EDITSET.UXB` writes the INI, `.IN` runs EDIT):
+            Up from the end of TAB Z puts X after abcde (tabs 4); F3 with FIND=Two and Match
+            case finds Two, not two; F1 shows `C:\HELLO.TXT`; the save gives 21 bytes, LF ends.
+            EDIT reads no INI on the test card, so `tests/EDIT.OUT` is unchanged. Tests: `EDIT`
+            ok 4.7 s, `EDITSET` ok 1.4 s. The EDIT.UXB header comment lists the keys. Steps
+            since the full suite: 2.
+          - Done, I3 (2026-10-24): EDIT's Options menu, between Search and Help: Display...
+            (ID_DISPLAY 207) and Help Path... (ID_HELP_PATH 208), done in MENU_KEY. Region 2:
+            `ASK_DISPLAY`, radios "Colors:" Gray|Dark|Light on `THEME_CHOICE` and "Tab Stops:"
+            8|4|2 on `TAB_CHOICE` (globals, 0 to 2); OK calls USE_DISPLAY and WRITE_DISPLAY and
+            sets NEED_SCREEN; Cancel and Esc put the choices back. `ASK_HELP_PATH`, INPUTBOX of
+            HELP_NAME 40 wide, KEPT holds it for Cancel; OK calls WRITE_HELP. The INI code moved
+            to a new region 5 (`#REGION_SLOT 5` before `#INCLUDE "INI.UXI"`): READ_SETTINGS sets
+            the choices, `USE_DISPLAY` sets the theme and `TAB_MASK = 7 >> TAB_CHOICE`,
+            `WRITE_DISPLAY` writes THEME and TABS, `WRITE_HELP` HELP. Region 3 and region 2
+            were each too full for it (REGION n FULL). Sizes: EDIT.COM 36857 B (1476 more);
+            region 1 7566 B (626 free; GUI.RADIO's code), region 2 5990 B (2202 free), region 3
+            6187 B (2005 free), region 5 2388 B (5804 free); the low part 147 B more. Build 3102
+            ms, the new baseline. EDITSET.IN runs EDIT a second time: Alt+O D, Right, Esc; Alt+O
+            D, Right, Tab, Right, Enter; Alt+O H, 4 Backspaces, .BAD, Enter; then TYPE of the INI
+            shows THEME=GRAY, TABS=2, HELP=C:\HELLO.BAD. Golden read and correct. EDIT.OUT:
+            "Options" in each menu bar, and the menu walk (F10, Right x3, Left) passes Options;
+            `--update` stops at 4.5 s, before EDIT ends, so the golden is the new output to the
+            walk's resync spliced with the old tail, checked by a normal run. Tests: `EDITSET` ok
+            1.9 s, `EDIT` ok 4.5 s. The EDIT.UXB header comment lists the Options menu. Steps
+            since the full suite: 3.
+          - Done, I4 and the user's ask "add 3 to tabs" (2026-10-25): Tab Stops 8|4|3|2,
+            TAB_CHOICE 0 to 3. `TAB_SIZE` replaces TAB_MASK: USE_DISPLAY sets `8 >> TAB_CHOICE`,
+            or `5 - TAB_CHOICE` from 2 up; NEXT_COLUMN gives `COLUMN + TAB_SIZE - COLUMN MOD
+            TAB_SIZE`; SHOW_ROW's tab loop runs to `TAB_END` from NEXT_COLUMN, one MOD a tab.
+            TABS=3 reads as choice 2; WRITE_DISPLAY writes `CHR$(48 + TAB_SIZE)`. BAK: `[EDIT]
+            BAK=1` (default 0) sets the global `BACKUP`. SAVE calls `CLEAR_OLD` (region 5): with
+            BACKUP = 1 it deletes NAME.BAK (the extension after the last \, / or : replaced, or
+            added) and renames the file to it; else, or when the file is a .BAK, it deletes the
+            file; not found is no error. INI-only, no dialog item (MS-DOS EDIT has none). Sizes:
+            EDIT.COM 37438 B (581 more); region 5 2860 B (5332 free); regions 1 to 3 unchanged;
+            the low part 109 B more. Build 5556 ms (the ROM rebuilt too), the new baseline.
+            EDITSET: the UXB writes BAK=1; the second EDIT picks tabs 3 (Display Right on tabs
+            from 4), then Down Down End Up Y Ctrl+S; TYPE NEW.TXT shows abcdYeXfgh, TYPE NEW.BAK
+            the first save, the INI TABS=3 and BAK=1. Golden read and correct. Tests: `EDITSET`
+            ok 2.1 s, `EDIT` ok 4.6 s (unchanged golden). Steps since the full suite: 4.
+          - Done, the user's ask "a menu separator" (2026-10-25): `GUI.MENUITEM("-", 0)` is a
+            separator, as GPC's MENU.INC had. MENUITEM gives it id 0 (a test of the length byte
+            and the "-", not a string compare, which put the runtime's compare in EDIT's low
+            part). PULL_MENU draws it as SPAN(195, LINE_ACROSS, 180) across the box, and Up and
+            Down step past it. Trap in the contract: a menu's first item is not a separator.
+            Region 2 of EDIT 150 B more (2052 free), EDIT.COM 37588 B, the low part unchanged.
+            Build 5131 ms, the new baseline. GUIMENU: Open, -, Exit; a new IN line F10 Up Up
+            Enter gives 1; golden read (the ├──┤ row shows). Tests: `GUIMENU` ok 0.6 s, `EDIT`
+            ok 4.9 s (unchanged golden; near the limit). At the next full suite HDIR, HDIRARG and
+            TREE may show GUIMENU.COM's new size. Steps since the full suite: 5.
+          - Done, I5 (2026-10-25): recent files. Globals RECENT_1 to RECENT_4, STRING * 63 (260
+            B of RAM), hold the captions "&N C:\FULL\PATH", in capitals. File menu: New, Open,
+            Save, Save As, -, the recent files that are not "", -, Exit; the - before Exit is
+            always there. Ids ID_RECENT 209 to 212. MAKE_MENUS is CREATEFORM plus MAKE_BAR
+            (region 2), which ADD_RECENT calls again once EDIT_FORM is not 0 (main sets it 0
+            first). Region 5: ADD_RECENT makes FILE_NAME full by GUI.SET_PATH (PICKFILE's, region
+            3) for a name with no drive, skips a name over 60 characters or already first,
+            drops the same name or else the fourth, pokes the digits, and writes one key
+            `RECENT=a|b|c|d` to [EDIT]; NEXT_RECENT splits it in READ_SETTINGS; RECENT_NAME gives
+            a slot's path. ADD_RECENT runs after a load that worked (start, Open) and after each
+            save that worked. OPEN_TEXT(RECENT) takes 0 for the file dialog or 1 to 4; it reads
+            the recent name into its local CHOSEN before ASK_SAVE, whose save may reorder the
+            list. Sizes: EDIT.COM 39718 B (2130 more); region 2 6404 B (1788 free); region 5
+            4676 B (1816 more, 525 of it runtime; 3516 free); regions 1 and 3 unchanged; the
+            low part about 50 B more, plus the locals CHOSEN 82, TEXT 252, LIST 257 (their
+            levels may share). Build 3281 ms (EDIT only), the new baseline. The EDIT test ran
+            past 5 s (an INI write on each new file opened or saved), so EDIT.IN is split:
+            lines 24 on are the new EDIT2.IN (local, fresh disk, so NOSUCH.TXT is a new file
+            there), which ends with EDIT, Alt+F 2 (opens FIND.TXT, now first) and TYPE of the
+            INI. Goldens rewritten and read: only the File menu, the picker's list, New file and
+            the RECENT line differ. Tests: `EDIT` ok 2.6 s, `EDIT2` ok 3.6 s, `EDITSET` ok 2.3
+            s. Steps since the full suite: 6; the next step runs it.
+          - Next steps: the full suite; then the docs batch (HELP.TXT topic, PLAN, UXC-HELP's
+            library list, the GUI separator in UXC-HELP's GUI topic). Open: write FIND and the
+            recent files at exit only, not on each Find and save, to spare the disk. Saving to
+            try: region 5's 1816 B.
+          - `docs/EDIT.PLAN.md` (2026-10-25): steps E1 to E10, EDIT brought up to UXCEDIT, the
+            GPC editor in `attic/gpc/src/UXCEDIT`: the text in RAM banks, three documents, the
+            missing menu items and keys, undo. The user's answers (2026-10-25): E1 keeps the gap
+            buffer and moves it to banks; Ctrl+G is Go to Line; Delete Line Ctrl+L, Undo Ctrl+Z,
+            Redo Ctrl+Y as UXCEDIT; F7 the next document (F6 Find, as UXCEDIT); the keys help is
+            TED's and goes, EDIT's own help to come. The plan carries them.
+          - Done, the user's ask "remove our help" (2026-10-25): F1 and Ctrl+G do nothing; Help
+            Keys, Options Help Path, ASK_HELP_PATH, WRITE_HELP, HELP_NAME, CTRL_G, ID_HELP_PATH
+            and `[EDIT] HELP=` are gone (ID_RECENT is 208); `src/dos/EDIT.HLP` deleted. SHOW_TEXT
+            shows DOS help only, no parameter. The status row is ` F10=Menu  ` + MESSAGE. Help
+            menu: DOS Help, About; About's third line went. EDIT.COM 39245 B (473 less). Build
+            5654 ms, the new baseline. Tests: EDIT2.IN line 7 lost its raw Ctrl+G and the space
+            after it, so the run still quits by Ctrl+Q with no changes (the .IN files hold raw
+            control bytes; read them with od -c); EDITSET.IN lost F1 Space and Alt+O H .BAD;
+            EDITSET.UXB no longer writes HELP. Goldens diffed: EDIT (status row, Options menu
+            narrower), EDIT2 (the two keys-help screens), EDITSET (HELP= line). `EDIT` ok 2.9 s,
+            `EDIT2` ok 3.6 s, `EDITSET` ok 2.3 s.
+          - The full suite (2026-10-25): 104 tests, 5 failed, 128.7 s: FILES, HDIR, HDIRARG,
+            TREE, GUIPICK. The goldens of FILES (ok 0.8 s), HDIR (2.1 s) and HDIRARG (1.9 s) were
+            updated: EDITSET.COM and INILIB.COM new, GUIMENU.COM larger. TREE (also DOS\EDIT.HLP
+            gone) and GUIPICK fail and stay so. The user (2026-10-25): while EDIT is the work, run
+            only EDIT's tests (EDIT, EDIT2, EDITSET), no full suite and no other goldens; TREE and
+            GUIPICK run only when code they rely on changes. Steps since the full suite: 0.
+          - Done, E1 (2026-10-25): EDIT's gap buffer is in RAM banks. ROOM bytes in
+            BANK_COUNT banks from BANK.ALLOC(1), up to 8 (65535 bytes); PAGE_BANK(256) maps
+            the high byte of a buffer place to its bank. SELECT_PLACE selects a place's bank
+            and gives its address; BYTE_AT does the same inline. TEXT_COPY copies between the
+            buffer and low RAM a bank at a time; MOVE_GAP goes through RUN_BUFFER (255 B).
+            GROW takes a bank (gap moved to the end first); MAKE_ROOM grows until the gap
+            holds n. INSERT, PASTE and CHANGE_ALL call MAKE_ROOM. LOAD reads 255 B runs into
+            RUN_BUFFER, turns CR LF and CR into LF there (AFTER_CR carries a CR across runs),
+            and copies them in; no bank gives DOS.ERR_NO_MEMORY, past 65535 TOO_LARGE.
+            WRITE_PART writes a bank's run at a time. A new text takes no bank. POOL_START,
+            POOL_END, PSP_TOP and COPY_CLIP are gone; the clipboard stays at $9700 (E2).
+            The kernel's read and write take a buffer at $A000 in the caller's bank
+            (fat32.s x16_banked_copy). EDIT.COM 40081 B (+836); regions 1 7562, 2 6185, 3
+            6187, 5 4562; low part about 15.6 KB. Build 3421 ms, the new baseline. New test
+            EDITBIG (EDITBIG.UXB writes C:\BIG.TXT, 850 lines, 40800 B; .IN types TOP at the
+            start and END after 34 PgDn, saves; HEAD, TAIL, FILES 40806). Tests: `EDIT` ok
+            2.8 s, `EDIT2` 3.4, `EDITSET` 1.9, `EDITBIG` 3.5. Not measured: the time of a
+            40 KB gap move at 8 MHz. Owed to the doc batch: EDIT.PLAN (E1 sizes), PLAN's
+            EDIT entry if it names the pool. Steps since the full suite: 1. Next: E2, the
+            clipboard in a bank.
+          - Done, E1b (2026-10-25, the user's ask): TEXT_COPY's byte loops are one ASM loop
+            (whole pages, then the rest) through $22 and $24, the runtime's ZP_PTR and
+            ZP_TMP; about 16 cycles a byte. After an arrow, Home, End, PgUp or PgDn
+            (NAVIGATING 1) the main loop drops the waiting repeats of that key, so a held key
+            stops where it is let go; the first other key is kept in PENDING and handled next.
+            The page is drawn when no key waits and PENDING is 0. A forced draw after each
+            navigation key was tried and dropped: each draw echoes the page, and EDITBIG ran
+            past 5 s. Trap: a test that types the same navigation key twice in a row loses the
+            second; put F1 (a no-op) between them. EDITBIG.IN types F1 after each PgDn;
+            EDITSET.IN types Down F1 Down. EDIT.COM 40144 B (+63). Build 3556 ms; it ends in
+            PermissionError, as the user's x16emu holds build/SD.IMG, after EDIT.COM is
+            compiled. With x16emu closed: build 2140 ms (the baseline); `EDITBIG` ok 3.1 s,
+            `EDIT` 2.6, `EDIT2` 3.6, `EDITSET` 1.9. `card/BIG.TXT` (git-ignored) is the 40800
+            bytes EDITBIG.COM writes, so build/SD.IMG has C:\BIG.TXT for trying EDIT by hand.
+            Steps since the full suite: 2. Next: E2.
+          EDIT is paused after E1b (2026-10-25); the user moved to other work. On return:
+          E2, then the owed doc batch (EDIT.PLAN's E1 sizes, PLAN's EDIT entry, the HELP.TXT
+          topic, UXC-HELP's library list, the GUI separator, the recent-files docs).
      4. Relocation (section 12 item 7) is optional after 3.
      5. Any time: `HELP NAME` with no topic in `HELP.TXT` reads `NAME.TXT` beside the command.
      PLAN sections 3, 7, 11 and 13 take items 2 to 5 at the doc batch after each is agreed.

@@ -1,0 +1,1670 @@
+'=============================================================================================
+' -- EDIT file, the 6502DOS Editor
+' -- edits a text file on the full screen, in GUI Forms' GRAY theme: a menu bar on the top
+' -- row, the file name in the top edge of a box of double lines, 26 rows of 78 columns of text
+' -- in the box, and a status row with F10=Menu, a message, the line and the column
+' -- of the cursor. For the command line, not for scripts.
+' -- F10 opens the File menu, and Alt with a menu's letter opens that menu. File: New, Open,
+' -- Save, Save As, the recent files, Exit. The recent files are the last 4 opened or saved, as
+' -- full paths of up to 60 characters, the last first; 1 to 4 opens one, after the save
+' -- question. Edit: Cut, Copy, Paste, Clear. Search: Find, Repeat Last Find,
+' -- Change. Options: Display. Help: DOS Help, About. A menu item does what its key does.
+' -- Display chooses the colors, Gray, Dark or Light, and the tab stops, 8, 4, 3 or 2. OK
+' -- writes C:\6502DOS.INI.
+' -- New, Open and Exit first ask to save text with changes. New gives an empty text named
+' -- UNTITLED. Open and Save As ask the file in the file dialog, its mask *.TXT. A file that
+' -- does not open shows its error in a dialog and keeps the text; one that fails while it
+' -- loads leaves an empty UNTITLED. Save As asks before it replaces a file. Save, Ctrl+S and
+' -- the save question do Save As for UNTITLED.
+' -- Ctrl+F asks the text to find in a dialog, with the check boxes Match Upper/Lowercase and
+' -- Whole Word, then finds it. F3 finds the same text again. A find starts at the cursor,
+' -- goes on from the text's start, selects the match and puts the cursor after it; with no
+' -- match the status row shows Match not found. Ctrl+R asks the text to find and the text to
+' -- put in its place, with the same check boxes; Change All changes every match in the text
+' -- and shows the count on the status row.
+' -- Left and Right move the cursor one character, Up and Down one line. Up and Down keep the
+' -- column the cursor came from. Home and End go to the start and the end of the line. PgUp
+' -- and PgDn move 26 lines. The view moves sideways 8 columns at a time to keep the cursor
+' -- on screen. Ctrl+S saves the file. Ctrl+Q ends it, clears the screen and prints
+' -- EDIT - The 6502DOS Editor... Bye!; text with changes first asks to save it in a dialog:
+' -- Yes saves, No does not, and Esc goes back to the text.
+' -- Shift+F1 asks the topic of DOS help in a dialog, with the word at the cursor, its letters
+' -- and digits, filled in. OK shows the topic from C:\DOS\HELP.TXT until a key is pressed, or
+' -- with no topic the topic names. A topic not in HELP.TXT shows No help for TOPIC on the
+' -- status row. A HELP.TXT that does not open shows its error on the status row.
+' -- Ctrl+C is a key, not the STOP key. A save writes EDIT.$$$ in the file's directory, then
+' -- gives it the file's name, so a failed save keeps the file as it was. With BAK=1 the old
+' -- file is kept, renamed to the extension .BAK. Lines end in LF
+' -- when the file's first line did, else in CR LF; a new file's lines end in CR LF.
+' -- A typed character goes in at the cursor; there is no overwrite mode. Enter splits the
+' -- line, Tab puts in a tab, Backspace takes out the character before the cursor and Delete
+' -- the one under it; at a line's end they join two lines.
+' -- Shift with a cursor key selects, from where the cursor was; the selection shows in
+' -- reverse video. Another key but Ctrl+C ends it. Delete and Backspace take out the selection
+' -- when there is one, and do not put it on the clipboard. Ctrl+C copies the selection to the
+' -- clipboard, and Ctrl+X cuts it; with no selection they take the cursor's line and its line
+' -- end. Ctrl+V puts the clipboard in at the cursor. The clipboard holds 2048 bytes; a larger
+' -- selection shows Selection too large. The status row shows * before the line once
+' -- the text has changed. Insufficient memory shows there when the text holds 65535 bytes or
+' -- no RAM bank is free.
+' -- A line ends at CR, LF or CR LF; the text keeps LF. A tab goes to the next column that is
+' -- a multiple of the tab stop, 8 at the start. Another character below 32 shows as ".".
+' -- The section [EDIT] of C:\6502DOS.INI changes the defaults, read at the start: THEME=DARK
+' -- or LIGHT for the GRAY theme, TABS=2, 3 or 4 for 8, MATCHCASE=1 and WHOLEWORD=1 to check
+' -- those boxes, FIND= the text to find, LINEENDS=LF for a new file's CR LF, and BAK=1 to
+' -- keep the old file on a save. RECENT= holds the recent files, separated
+' -- by |; EDIT writes it when they change.
+' -- The text takes up to 8 RAM banks and holds 65535 bytes; the clipboard takes $9700 to $9EFF.
+' -- A larger file prints File too large, and one with no RAM bank left Insufficient memory;
+' -- both give exit code 2. A file that does not exist gives an empty text, and the
+' -- status row says New file. No file name gives an empty UNTITLED. A second name prints
+' -- Too many parameters and gives exit code 1. A file that does not open for
+' -- another reason prints its error message and gives exit code 2. Exit code 0 otherwise.
+' -- The console color at the start is put back at the end.
+' --
+' -- From a prompt:
+' --     EDIT DOCS\README.TXT
+' --     EDIT "MY NOTES.TXT"
+'=============================================================================================
+#INCLUDE "DOS.UXI"
+#INCLUDE "HEAP.UXI"
+#INCLUDE "KEYS.UXI"
+#INCLUDE "CONS.UXI"
+#INCLUDE "BANK.UXI"
+#INCLUDE "VERA.UXI"
+#INCLUDE "GUI.UXI"
+#INCLUDE "PICKFILE.UXI"
+CONST SLOT_P1 AS UBYTE = 0, SLOT_P2 AS UBYTE = 1
+
+' The text shows on screen rows TEXT_TOP to TEXT_TOP + TEXT_ROWS - 1, from screen column
+' LEFT_EDGE, COLUMNS wide, inside the box of the form EDIT_FORM. The status row is the
+' screen's last; its right part starts at column STATUS_RIGHT.
+CONST TEXT_TOP AS UBYTE = 2, TEXT_ROWS AS UBYTE = 26
+CONST LEFT_EDGE AS UBYTE = 1, COLUMNS AS UBYTE = 78, STATUS_RIGHT AS UBYTE = 58
+CONST SHIFT_STEP AS UBYTE = 8, NO_MARK AS UBYTE = 255
+CONST CTRL_C AS UBYTE = 3, LF AS UBYTE = 10, CTRL_Q AS UBYTE = 17, CTRL_S AS UBYTE = 19
+CONST CTRL_V AS UBYTE = 22, CTRL_X AS UBYTE = 24
+CONST CTRL_F AS UBYTE = 6, CTRL_R AS UBYTE = 18, KEY_F3 AS UWORD = (KEYS.SCAN_F1 + 2) * 256
+' SEARCH's answer when the text is not found. The fields of the Find and Change dialogs are
+' FIND_WIDTH wide, after a caption of FIND_CAPTION columns and a space.
+CONST NO_MATCH AS UWORD = $FFFF, FIND_WIDTH AS UBYTE = 30, FIND_CAPTION AS UBYTE = 10
+CONST CLIPBOARD AS UWORD = $9700, CLIP_SIZE AS UWORD = 2048
+' The text's banks show at WINDOW_START up to WINDOW_END. A buffer of MAX_BANKS banks holds
+' MAX_ROOM bytes, the most a UWORD counts. MOVE_GAP and LOAD pass RUN_SIZE bytes at a time.
+CONST WINDOW_START AS UWORD = $A000, WINDOW_END AS UWORD = $C000, BANK_SIZE AS UWORD = 8192
+CONST MAX_BANKS AS UBYTE = 8, MAX_ROOM AS UWORD = 65535, RUN_SIZE AS UBYTE = 255
+CONST DOS_HELP_NAME$ = "C:\DOS\HELP.TXT"
+' The menu items' ids. An item that a key does takes that key's code as its id; MENU_KEY turns
+' the other ids into their keys.
+CONST ID_CLEAR AS UBYTE = 200, ID_DOS_HELP AS UBYTE = 201, ID_ABOUT AS UBYTE = 202
+CONST ID_FIND_AGAIN AS UBYTE = 203, ID_NEW AS UBYTE = 204, ID_OPEN AS UBYTE = 205
+CONST ID_SAVE_AS AS UBYTE = 206, ID_DISPLAY AS UBYTE = 207
+' The recent files are ID_RECENT to ID_RECENT + 3.
+CONST ID_RECENT AS UBYTE = 208
+' LOAD's answer for a file larger than MAX_ROOM.
+CONST TOO_LARGE AS UBYTE = 254
+
+
+DIM FILE_NAME AS STRING * 80, STATUS AS STRING * 120, MESSAGE AS STRING * 40
+DIM EDITED_FILE AS UWORD
+' NAMED is 0 for UNTITLED. PICKED gets the file dialog's path; KEPT holds FILE_NAME while a
+' new name is tried.
+DIM NAMED AS UBYTE, PICKED AS STRING * 80, KEPT AS STRING * 80
+' The recent files, the last opened or saved first, as the File menu's captions: &1 to &4, a
+' space and the full path in capitals; "" for none.
+DIM RECENT_1 AS STRING * 63, RECENT_2 AS STRING * 63, RECENT_3 AS STRING * 63
+DIM RECENT_4 AS STRING * 63
+' The form that holds the box, the title and the menu bar, and the console color at the start.
+DIM EDIT_FORM AS UBYTE, START_COLOR AS UBYTE
+' The text is a gap buffer of ROOM bytes in BANK_COUNT RAM banks. Byte PLACE of the buffer is
+' at WINDOW_START + PLACE MOD 8192 in bank PAGE_BANK(PLACE >> 8). Positions 0 to TEXT_LENGTH
+' count the text's bytes. The bytes from GAP_POSITION on lie GAP_SIZE bytes further on.
+DIM PAGE_BANK(256) AS UBYTE, BANK_COUNT AS UBYTE, ROOM AS UWORD
+DIM TEXT_LENGTH AS UWORD, GAP_POSITION AS UWORD, GAP_SIZE AS UWORD
+DIM RUN_BUFFER(RUN_SIZE) AS UBYTE
+' CR_ENDS is 1 when the file's first line ends in CR. A save then writes each LF as CR LF,
+' from CR_LF. A new file, or one with no line end, takes NEW_ENDS.
+DIM CR_ENDS AS UBYTE, CR_LF(2) AS UBYTE, NEW_ENDS AS UBYTE
+' A tab goes to the next column that is a multiple of TAB_SIZE.
+' THEME_CHOICE is the theme, GRAY, DARK or LIGHT for 0 to 2. TAB_CHOICE is the tabs, 8, 4, 3
+' or 2 columns for 0 to 3. BACKUP is 1 when a save keeps the old file as a .BAK.
+DIM BACKUP AS UBYTE
+DIM TAB_SIZE AS UBYTE, THEME_CHOICE AS UBYTE, TAB_CHOICE AS UBYTE
+' LINE_BEGIN is where the cursor's line starts. GOAL is the column Up and Down aim for.
+' NAVIGATING is 1 while an arrow, Home, End, PgUp or PgDn key is handled. PENDING is a key
+' taken from the keyboard and not yet handled, or 0.
+DIM CURSOR AS UWORD, CURSOR_LINE AS UWORD, LINE_BEGIN AS UWORD
+DIM CURSOR_COLUMN AS UWORD, GOAL AS UWORD, VERTICAL AS UBYTE, NAVIGATING AS UBYTE
+DIM PENDING AS UWORD
+DIM TOP AS UWORD, TOP_LINE AS UWORD, LEFT_COLUMN AS UWORD
+' NEED_SCREEN asks for the form, the menu bar and the page to be drawn again; NEED_PAGE for the
+' page; NEED_ROW for line ROW_LINE, which starts at ROW_START.
+DIM NEED_SCREEN AS UBYTE, NEED_PAGE AS UBYTE, NEED_ROW AS UBYTE
+DIM ROW_LINE AS UWORD, ROW_START AS UWORD
+DIM MODIFIED AS UBYTE
+' The selection runs from ANCHOR to the cursor while SELECTING is 1. SHOW_ROW marks the
+' positions SELECTION_BEGIN up to SELECTION_END; both are 0 with no selection.
+DIM ANCHOR AS UWORD, SELECTING AS UBYTE, SELECTION_BEGIN AS UWORD, SELECTION_END AS UWORD
+DIM NEW_BEGIN AS UWORD, NEW_END AS UWORD, OLD_LINE AS UWORD
+DIM CLIP_LENGTH AS UWORD
+DIM ROW_TEXT(COLUMNS) AS UBYTE
+DIM KEY AS UWORD, MODIFIERS AS UBYTE, STEPS AS UBYTE, QUIT AS UBYTE
+' The topic Shift+F1 asks for, as typed.
+DIM TOPIC AS STRING * 20
+' The Find and Change dialogs' fields and check boxes. FIND_LENGTH is the length of FIND_TEXT.
+DIM FIND_TEXT AS STRING * 30, CHANGE_TEXT AS STRING * 30
+DIM MATCH_CASE AS UBYTE, WHOLE_WORD AS UBYTE, FIND_LENGTH AS UBYTE
+
+
+
+
+' Selects the bank of byte PLACE of the buffer, and returns the byte's address. Trap: the text
+' routines run in the low part, as a region runs from the window the text's banks use.
+FUNCT SELECT_PLACE(PLACE AS UWORD) AS UWORD
+  DIM PAGE AS UBYTE
+  PAGE = ContentsAt(@PLACE + 1)
+  ContentsAt(BANK.RAM_BANK) = ContentsAt(@PAGE_BANK + PAGE)
+  RETURN (PLACE AND (BANK_SIZE - 1)) OR WINDOW_START
+END FUNCT
+
+
+
+' The byte at position PLACE of the text. SELECT_PLACE's work is done here, for speed.
+FUNCT BYTE_AT(PLACE AS UWORD) AS UBYTE
+  DIM PAGE AS UBYTE
+  IF PLACE >= GAP_POSITION THEN PLACE = PLACE + GAP_SIZE
+  PAGE = ContentsAt(@PLACE + 1)
+  ContentsAt(BANK.RAM_BANK) = ContentsAt(@PAGE_BANK + PAGE)
+  RETURN ContentsAt((PLACE AND (BANK_SIZE - 1)) OR WINDOW_START)
+END FUNCT
+
+
+
+' Copies COUNT bytes between the buffer, from byte PLACE on, and low RAM, from ADDRESS on: into
+' the buffer when INTO is 1, out of it when INTO is 0.
+SUB TEXT_COPY(PLACE AS UWORD, ADDRESS AS UWORD, COUNT AS UWORD, INTO AS UBYTE)
+  DIM WINDOW AS UWORD, RUN AS UWORD, SOURCE AS UWORD, TARGET AS UWORD
+  DO WHILE COUNT > 0
+    WINDOW = SELECT_PLACE(PLACE)
+    RUN = WINDOW_END - WINDOW
+    IF RUN > COUNT THEN RUN = COUNT
+    PLACE = PLACE + RUN
+    COUNT = COUNT - RUN
+    SOURCE = WINDOW
+    TARGET = ADDRESS
+    IF INTO = 1 THEN
+      SOURCE = ADDRESS
+      TARGET = WINDOW
+    END IF
+    ADDRESS = ADDRESS + RUN
+    ' Copies RUN bytes from SOURCE to TARGET: the whole pages, then the rest. $22 and $24 are
+    ' the runtime's ZP_PTR and ZP_TMP, free between statements.
+    ASM
+        lda @SOURCE
+        sta $22
+        lda @SOURCE + 1
+        sta $23
+        lda @TARGET
+        sta $24
+        lda @TARGET + 1
+        sta $25
+        phx
+        ldy #0
+        ldx @RUN + 1
+        beq part
+page:   lda ($22),y
+        sta ($24),y
+        iny
+        bne page
+        inc $23
+        inc $25
+        dex
+        bne page
+part:   ldx @RUN
+        beq done
+rest:   lda ($22),y
+        sta ($24),y
+        iny
+        dex
+        bne rest
+done:   plx
+    END ASM
+  LOOP
+END SUB
+
+
+
+' Moves the gap to position PLACE. The bytes pass through RUN_BUFFER, as the bank they come
+' from and the bank they go to may differ.
+SUB MOVE_GAP(PLACE AS UWORD)
+  DIM COUNT AS UWORD
+  IF GAP_SIZE = 0 THEN GAP_POSITION = PLACE
+  DO WHILE GAP_POSITION > PLACE
+    COUNT = GAP_POSITION - PLACE
+    IF COUNT > RUN_SIZE THEN COUNT = RUN_SIZE
+    GAP_POSITION = GAP_POSITION - COUNT
+    TEXT_COPY(GAP_POSITION, @RUN_BUFFER, COUNT, 0)
+    TEXT_COPY(GAP_POSITION + GAP_SIZE, @RUN_BUFFER, COUNT, 1)
+  LOOP
+  DO WHILE GAP_POSITION < PLACE
+    COUNT = PLACE - GAP_POSITION
+    IF COUNT > RUN_SIZE THEN COUNT = RUN_SIZE
+    TEXT_COPY(GAP_POSITION + GAP_SIZE, @RUN_BUFFER, COUNT, 0)
+    TEXT_COPY(GAP_POSITION, @RUN_BUFFER, COUNT, 1)
+    GAP_POSITION = GAP_POSITION + COUNT
+  LOOP
+END SUB
+
+
+
+' Takes one more RAM bank for the buffer, and puts the gap at the text's end, so the gap grows
+' by the bank. Returns 1, or 0 when MAX_BANKS are taken or no bank is free.
+FUNCT GROW() AS UBYTE
+  DIM NUMBER AS UBYTE, PAGE AS UBYTE, ADDED AS UWORD
+  IF BANK_COUNT = MAX_BANKS THEN RETURN 0
+  NUMBER = BANK.ALLOC(1)
+  IF NUMBER = 0 THEN RETURN 0
+  MOVE_GAP(TEXT_LENGTH)
+  ' The bank's 32 pages of PAGE_BANK; PAGE wraps to 0 after the eighth bank's.
+  PAGE = BANK_COUNT * 32
+  DO
+    PAGE_BANK(PAGE) = NUMBER
+    PAGE = PAGE + 1
+  LOOP UNTIL (PAGE AND 31) = 0
+  BANK_COUNT = BANK_COUNT + 1
+  ADDED = BANK_SIZE
+  IF BANK_COUNT = MAX_BANKS THEN ADDED = BANK_SIZE - 1
+  ROOM = ROOM + ADDED
+  GAP_SIZE = GAP_SIZE + ADDED
+  RETURN 1
+END FUNCT
+
+
+
+' Grows the buffer until the gap holds NEEDED bytes. Returns 1, or 0 when it cannot.
+FUNCT MAKE_ROOM(NEEDED AS UWORD) AS UBYTE
+  DO WHILE GAP_SIZE < NEEDED
+    IF GROW() = 0 THEN RETURN 0
+  LOOP
+  RETURN 1
+END FUNCT
+
+
+
+' Asks for the cursor's row to be drawn again. A row already asked for on another line gives
+' the whole page, since the edit may have moved where that line starts.
+SUB CHANGED_ROW()
+  IF NEED_ROW = 1 AND ROW_LINE <> CURSOR_LINE THEN NEED_PAGE = 1
+  NEED_ROW = 1
+  ROW_LINE = CURSOR_LINE
+  ROW_START = LINE_BEGIN
+END SUB
+
+
+
+' Puts CHARACTER into the text at the cursor and moves the cursor past it. LF starts a new
+' line. A full buffer that cannot grow sets MESSAGE instead.
+SUB INSERT(CHARACTER AS UBYTE)
+  IF MAKE_ROOM(1) = 0 THEN
+    MESSAGE = "Insufficient memory"
+  ELSE
+    MOVE_GAP(CURSOR)
+    ContentsAt(SELECT_PLACE(GAP_POSITION)) = CHARACTER
+    GAP_POSITION = GAP_POSITION + 1
+    GAP_SIZE = GAP_SIZE - 1
+    TEXT_LENGTH = TEXT_LENGTH + 1
+    CURSOR = CURSOR + 1
+    MODIFIED = 1
+    IF CHARACTER = LF THEN
+      LINE_BEGIN = CURSOR
+      CURSOR_LINE = CURSOR_LINE + 1
+      NEED_PAGE = 1
+    ELSE
+      CHANGED_ROW()
+    END IF
+  END IF
+END SUB
+
+
+
+' Takes the byte at position PLACE out of the text.
+SUB REMOVE(PLACE AS UWORD)
+  MOVE_GAP(PLACE)
+  GAP_SIZE = GAP_SIZE + 1
+  TEXT_LENGTH = TEXT_LENGTH - 1
+  MODIFIED = 1
+END SUB
+
+
+
+' Where the line that holds position PLACE starts.
+FUNCT LINE_START(PLACE AS UWORD) AS UWORD
+  DO WHILE PLACE > 0
+    IF BYTE_AT(PLACE - 1) = LF THEN EXIT DO
+    PLACE = PLACE - 1
+  LOOP
+  RETURN PLACE
+END FUNCT
+
+
+
+' Where the line that holds position PLACE ends: its LF, or TEXT_LENGTH.
+FUNCT LINE_END(PLACE AS UWORD) AS UWORD
+  DO WHILE PLACE < TEXT_LENGTH
+    IF BYTE_AT(PLACE) = LF THEN EXIT DO
+    PLACE = PLACE + 1
+  LOOP
+  RETURN PLACE
+END FUNCT
+
+
+
+' The screen column after CHARACTER, shown at column COLUMN.
+FUNCT NEXT_COLUMN(CHARACTER AS UBYTE, COLUMN AS UWORD) AS UWORD
+  IF CHARACTER = KEYS.TAB THEN RETURN COLUMN + TAB_SIZE - COLUMN MOD TAB_SIZE
+  RETURN COLUMN + 1
+END FUNCT
+
+
+
+
+' The screen column of position PLACE on the line that starts at START.
+FUNCT COLUMN_OF(START AS UWORD, PLACE AS UWORD) AS UWORD
+  DIM COLUMN AS UWORD
+  COLUMN = 0
+  DO WHILE START < PLACE
+    COLUMN = NEXT_COLUMN(BYTE_AT(START), COLUMN)
+    START = START + 1
+  LOOP
+  RETURN COLUMN
+END FUNCT
+
+
+
+
+' The position on the line that starts at START nearest to screen column GOAL, not past it.
+FUNCT POSITION_AT(START AS UWORD, GOAL AS UWORD) AS UWORD
+  DIM COLUMN AS UWORD, CHARACTER AS UBYTE
+  COLUMN = 0
+  DO WHILE START < TEXT_LENGTH
+    CHARACTER = BYTE_AT(START)
+    IF CHARACTER = LF THEN EXIT DO
+    COLUMN = NEXT_COLUMN(CHARACTER, COLUMN)
+    IF COLUMN > GOAL THEN EXIT DO
+    START = START + 1
+  LOOP
+  RETURN START
+END FUNCT
+
+
+
+' Moves LINE_BEGIN and CURSOR_LINE to the line below. Returns 1, or 0 on the last line.
+FUNCT LINE_DOWN() AS UBYTE
+  DIM FINISH AS UWORD
+  FINISH = LINE_END(LINE_BEGIN)
+  IF FINISH >= TEXT_LENGTH THEN RETURN 0
+  LINE_BEGIN = FINISH + 1
+  CURSOR_LINE = CURSOR_LINE + 1
+  RETURN 1
+END FUNCT
+
+
+
+' Moves LINE_BEGIN and CURSOR_LINE to the line above. Returns 1, or 0 on the first line.
+FUNCT LINE_UP() AS UBYTE
+  IF LINE_BEGIN = 0 THEN RETURN 0
+  LINE_BEGIN = LINE_START(LINE_BEGIN - 1)
+  CURSOR_LINE = CURSOR_LINE - 1
+  RETURN 1
+END FUNCT
+
+
+
+' Takes positions BEGIN up to FINISH out of the text and puts the cursor at BEGIN. The cursor
+' must be at BEGIN or FINISH, or between them on one line.
+SUB REMOVE_PART(BEGIN AS UWORD, FINISH AS UWORD)
+  DIM PLACE AS UWORD
+  MOVE_GAP(FINISH)
+  IF CURSOR = FINISH THEN
+    PLACE = BEGIN
+    DO WHILE PLACE < FINISH
+      IF BYTE_AT(PLACE) = LF THEN CURSOR_LINE = CURSOR_LINE - 1
+      PLACE = PLACE + 1
+    LOOP
+  END IF
+  ' The part lies just before the gap, so the gap takes it in.
+  GAP_POSITION = BEGIN
+  GAP_SIZE = GAP_SIZE + FINISH - BEGIN
+  TEXT_LENGTH = TEXT_LENGTH - (FINISH - BEGIN)
+  CURSOR = BEGIN
+  LINE_BEGIN = LINE_START(BEGIN)
+  MODIFIED = 1
+  NEED_PAGE = 1
+END SUB
+
+
+
+' Puts the selection on the clipboard, or the cursor's line and its line end when there is
+' none. CUT = 1 also takes it out of the text. A part over CLIP_SIZE bytes sets MESSAGE
+' instead.
+SUB TAKE(CUT AS UBYTE)
+  DIM BEGIN AS UWORD, FINISH AS UWORD
+  BEGIN = SELECTION_BEGIN
+  FINISH = SELECTION_END
+  IF FINISH = BEGIN THEN
+    BEGIN = LINE_BEGIN
+    FINISH = LINE_END(BEGIN)
+    IF FINISH < TEXT_LENGTH THEN FINISH = FINISH + 1
+  END IF
+  IF FINISH - BEGIN > CLIP_SIZE THEN
+    MESSAGE = "Selection too large"
+    RETURN
+  END IF
+  MOVE_GAP(FINISH)
+  CLIP_LENGTH = FINISH - BEGIN
+  TEXT_COPY(BEGIN, CLIPBOARD, CLIP_LENGTH, 0)
+  IF CUT = 1 AND CLIP_LENGTH > 0 THEN REMOVE_PART(BEGIN, FINISH)
+END SUB
+
+
+
+' Puts the clipboard into the text at the cursor and moves the cursor past it. A full buffer
+' that cannot grow sets MESSAGE instead.
+SUB PASTE()
+  DIM LINES AS UWORD, PLACE AS UWORD
+  IF MAKE_ROOM(CLIP_LENGTH) = 0 THEN
+    MESSAGE = "Insufficient memory"
+    RETURN
+  END IF
+  IF CLIP_LENGTH = 0 THEN RETURN
+  MOVE_GAP(CURSOR)
+  TEXT_COPY(GAP_POSITION, CLIPBOARD, CLIP_LENGTH, 1)
+  LINES = 0
+  PLACE = CLIPBOARD
+  DO WHILE PLACE < CLIPBOARD + CLIP_LENGTH
+    IF ContentsAt(PLACE) = LF THEN LINES = LINES + 1
+    PLACE = PLACE + 1
+  LOOP
+  GAP_POSITION = GAP_POSITION + CLIP_LENGTH
+  GAP_SIZE = GAP_SIZE - CLIP_LENGTH
+  TEXT_LENGTH = TEXT_LENGTH + CLIP_LENGTH
+  CURSOR = CURSOR + CLIP_LENGTH
+  MODIFIED = 1
+  IF LINES = 0 THEN
+    CHANGED_ROW()
+  ELSE
+    CURSOR_LINE = CURSOR_LINE + LINES
+    LINE_BEGIN = LINE_START(CURSOR)
+    NEED_PAGE = 1
+  END IF
+END SUB
+
+
+
+
+' Writes ROW_TEXT from index FIRST up to LAST.
+SUB PUT_RUN(FIRST AS UBYTE, LAST AS UBYTE)
+  IF LAST > FIRST THEN WRITE 1, @ROW_TEXT + FIRST, LAST - FIRST
+END SUB
+
+
+
+' Shows the line that starts at START on text row ROW, from column LEFT_COLUMN, and blanks
+' the rest of the row up to the box's right edge. The selected part shows in reverse video, a
+' selected line end as one space. START past TEXT_LENGTH gives a blank row. Returns where the
+' next line starts, past TEXT_LENGTH when none does.
+FUNCT SHOW_ROW(ROW AS UBYTE, START AS UWORD) AS UWORD
+  DIM COLUMN AS UWORD, LAST AS UWORD, COUNT AS UBYTE, CHARACTER AS UBYTE
+  DIM MARKED AS UBYTE, MARK_FROM AS UBYTE, MARK_TO AS UBYTE, TAB_END AS UWORD
+  POS(1) = ROW + TEXT_TOP
+  POS(0) = LEFT_EDGE
+  COUNT = 0
+  ' ROW_TEXT is marked from MARK_FROM up to MARK_TO.
+  MARK_FROM = NO_MARK
+  MARK_TO = 0
+  IF START <= TEXT_LENGTH THEN
+    COLUMN = 0
+    LAST = LEFT_COLUMN + COLUMNS
+    CHARACTER = 0
+    DO WHILE START < TEXT_LENGTH
+      CHARACTER = BYTE_AT(START)
+      MARKED = 0
+      IF START >= SELECTION_BEGIN AND START < SELECTION_END THEN
+        MARKED = 1
+        IF MARK_FROM = NO_MARK THEN MARK_FROM = COUNT
+      END IF
+      START = START + 1
+      IF CHARACTER = LF THEN
+        IF MARKED = 1 AND COLUMN >= LEFT_COLUMN AND COLUMN < LAST THEN
+          ROW_TEXT(COUNT) = KEYS.SPACE
+          COUNT = COUNT + 1
+          MARK_TO = COUNT
+        END IF
+        EXIT DO
+      END IF
+      IF CHARACTER = KEYS.TAB THEN
+        TAB_END = NEXT_COLUMN(KEYS.TAB, COLUMN)
+        DO
+          IF COLUMN >= LEFT_COLUMN AND COLUMN < LAST THEN
+            ROW_TEXT(COUNT) = KEYS.SPACE
+            COUNT = COUNT + 1
+          END IF
+          COLUMN = COLUMN + 1
+        LOOP UNTIL COLUMN = TAB_END
+      ELSE
+        IF COLUMN >= LEFT_COLUMN AND COLUMN < LAST THEN
+          IF CHARACTER < KEYS.SPACE THEN CHARACTER = ASC(".")
+          ROW_TEXT(COUNT) = CHARACTER
+          COUNT = COUNT + 1
+        END IF
+        COLUMN = COLUMN + 1
+      END IF
+      IF MARKED = 1 THEN MARK_TO = COUNT
+    LOOP
+    IF CHARACTER <> LF THEN START = TEXT_LENGTH + 1
+  END IF
+  IF MARK_FROM = NO_MARK THEN
+    MARK_FROM = COUNT
+    MARK_TO = COUNT
+  END IF
+  PUT_RUN(0, MARK_FROM)
+  IF MARK_TO > MARK_FROM THEN
+    PRINT CONS.REVERSE$;
+    PUT_RUN(MARK_FROM, MARK_TO)
+    PRINT CONS.NORMAL$;
+  END IF
+  ' Spaces, not CLEAR_EOL$, blank the rest, which would take the box's right edge too.
+  DO WHILE COUNT < COLUMNS
+    ROW_TEXT(COUNT) = KEYS.SPACE
+    COUNT = COUNT + 1
+  LOOP
+  PUT_RUN(MARK_TO, COUNT)
+  RETURN START
+END FUNCT
+
+
+
+' Shows the page from line TOP.
+SUB SHOW_PAGE()
+  DIM ROW AS UBYTE, START AS UWORD
+  START = TOP
+  FOR ROW = 0 TO TEXT_ROWS - 1
+    START = SHOW_ROW(ROW, START)
+  NEXT
+END SUB
+
+
+
+' Shows the status row: F10=Menu and MESSAGE at the left; at STATUS_RIGHT a * when the
+' text has changed, the line and the column. The right part ends before the screen's last
+' column, so the screen does not scroll.
+SUB SHOW_STATUS()
+  GUI.STATUS_LINE(LEFT$(" F10=Menu  " + MESSAGE, STATUS_RIGHT - 1))
+  IF MODIFIED = 1 THEN
+    STATUS = "*"
+  ELSE
+    STATUS = " "
+  END IF
+  STATUS = STATUS + " Ln" + STR$(CURSOR_LINE + 1) + "  Col" + STR$(CURSOR_COLUMN + 1)
+  POS(0) = STATUS_RIGHT
+  PRINT STATUS;
+END SUB
+
+
+
+' Shows the topic TOPIC of DOS_HELP_NAME$ on a clear screen
+' until a key is pressed, then asks for the page. In the file a line :HEADING starts the topic
+' HEADING, in capitals, up to the next such line. With no topic the lines before the first
+' heading show, then the headings. A TOPIC not in the file sets MESSAGE to No help for TOPIC.
+' Each LF goes out after a CR, since the console's LF keeps the column. A file that does not
+' open sets MESSAGE to its error.
+SUB SHOW_TEXT()
+  DIM HELP_FILE AS UWORD, COUNT AS UWORD, PLACE AS UWORD, CHARACTER AS UBYTE
+  DIM AT_LINE_START AS UBYTE, IN_HEADING AS UBYTE, SHOWING AS UBYTE, MATCHING AS UBYTE
+  DIM LETTER AS UBYTE, TOPIC_LENGTH AS UBYTE, TOPIC_LETTER AS UBYTE
+  HELP_FILE = DOS.OPEN_FILE(DOS_HELP_NAME$, DOS.ACCESS_READ)
+  TOPIC_LENGTH = LEN(TOPIC)
+  IF HELP_FILE = NOFILE THEN
+    MESSAGE = DOS.ERRMSG(DOS.ERROR)
+    RETURN
+  END IF
+  GUI.USE_COLOR(GUI.ROLE.TEXT)
+  PRINT CONS.CLEAR_SCREEN$;
+  CONS.LOCATE(2, 0)
+  SHOWING = 0
+  IF TOPIC_LENGTH = 0 THEN SHOWING = 1
+  IN_HEADING = 0
+  AT_LINE_START = 1
+  DO
+    COUNT = DOS.READ_FILE(HELP_FILE, @ROW_TEXT, COLUMNS)
+    PLACE = 0
+    DO WHILE PLACE < COUNT
+      CHARACTER = ROW_TEXT(PLACE)
+      PLACE = PLACE + 1
+      IF AT_LINE_START = 1 AND CHARACTER = ASC(":") THEN
+        IF SHOWING = 1 AND TOPIC_LENGTH <> 0 THEN
+          COUNT = 0
+          EXIT DO
+        END IF
+        SHOWING = 0
+        IN_HEADING = 1
+        MATCHING = 1
+        LETTER = 0
+      ELSEIF IN_HEADING = 1 THEN
+        IF CHARACTER = LF THEN
+          IN_HEADING = 0
+          IF LETTER = TOPIC_LENGTH THEN SHOWING = MATCHING
+          IF TOPIC_LENGTH = 0 THEN PRINT " ";
+        ELSE
+          IF TOPIC_LENGTH = 0 THEN
+            DOS.REG_A = CHARACTER
+            SYS DOS.API_CON_OUT
+          END IF
+          TOPIC_LETTER = ContentsAt(@TOPIC + 2 + LETTER)
+          IF TOPIC_LETTER >= ASC("a") THEN TOPIC_LETTER = TOPIC_LETTER - 32
+          IF LETTER >= TOPIC_LENGTH OR TOPIC_LETTER <> CHARACTER THEN MATCHING = 0
+          LETTER = LETTER + 1
+        END IF
+      ELSEIF SHOWING = 1 THEN
+        IF CHARACTER = LF THEN
+          DOS.REG_A = KEYS.ENTER
+          SYS DOS.API_CON_OUT
+        END IF
+        DOS.REG_A = CHARACTER
+        SYS DOS.API_CON_OUT
+      END IF
+      AT_LINE_START = CHARACTER = LF
+    LOOP
+  LOOP UNTIL COUNT < COLUMNS
+  DOS.CLOSE_FILE(HELP_FILE)
+  NEED_SCREEN = 1
+  IF SHOWING = 0 AND TOPIC_LENGTH <> 0 THEN
+    MESSAGE = "No help for " + TOPIC
+    RETURN
+  END IF
+  KEY = WAITKEY()
+END SUB
+
+
+
+' 1 when CHARACTER is a letter or a digit.
+FUNCT IS_WORD(CHARACTER AS UBYTE) AS UBYTE
+  IF CHARACTER >= ASC("a") THEN CHARACTER = CHARACTER - 32
+  IF CHARACTER >= ASC("A") AND CHARACTER <= ASC("Z") THEN RETURN 1
+  RETURN CHARACTER >= ASC("0") AND CHARACTER <= ASC("9")
+END FUNCT
+
+
+
+' Asks the topic of DOS help in a dialog, with the word at the cursor, then shows that topic
+' of DOS_HELP_NAME$ after OK.
+SUB SHOW_DOS_HELP()
+  DIM START AS UWORD, FINISH AS UWORD
+  START = CURSOR
+  DO WHILE START > 0
+    IF IS_WORD(BYTE_AT(START - 1)) = 0 THEN EXIT DO
+    START = START - 1
+  LOOP
+  FINISH = CURSOR
+  DO WHILE FINISH < TEXT_LENGTH
+    IF IS_WORD(BYTE_AT(FINISH)) = 0 THEN EXIT DO
+    FINISH = FINISH + 1
+  LOOP
+  IF FINISH - START > 19 THEN FINISH = START + 19
+  TOPIC = ""
+  DO WHILE START < FINISH
+    TOPIC = TOPIC + CHR$(BYTE_AT(START))
+    START = START + 1
+  LOOP
+  IF GUI.INPUTBOX("DOS Help", "Topic, or none for the list:", TOPIC, 20) = 1 THEN SHOW_TEXT()
+END SUB
+
+
+
+' CHARACTER in capitals when it is a small letter, else CHARACTER.
+FUNCT CAPITAL(CHARACTER AS UBYTE) AS UBYTE
+  IF CHARACTER >= ASC("a") AND CHARACTER <= ASC("z") THEN RETURN CHARACTER - 32
+  RETURN CHARACTER
+END FUNCT
+
+
+
+' 1 when FIND_TEXT is in the text at position PLACE. With MATCH_CASE = 0 a letter matches in
+' either case. With WHOLE_WORD = 1 no letter or digit touches the match on either side.
+FUNCT MATCH_AT(PLACE AS UWORD) AS UBYTE
+  DIM INDEX AS UBYTE, FOUND AS UBYTE, WANTED AS UBYTE
+  IF PLACE + FIND_LENGTH > TEXT_LENGTH THEN RETURN 0
+  INDEX = 0
+  DO WHILE INDEX < FIND_LENGTH
+    FOUND = BYTE_AT(PLACE + INDEX)
+    WANTED = ContentsAt(@FIND_TEXT + 2 + INDEX)
+    IF MATCH_CASE = 0 THEN
+      FOUND = CAPITAL(FOUND)
+      WANTED = CAPITAL(WANTED)
+    END IF
+    IF FOUND <> WANTED THEN RETURN 0
+    INDEX = INDEX + 1
+  LOOP
+  IF WHOLE_WORD = 1 THEN
+    IF PLACE > 0 THEN
+      IF IS_WORD(BYTE_AT(PLACE - 1)) = 1 THEN RETURN 0
+    END IF
+    PLACE = PLACE + FIND_LENGTH
+    IF PLACE < TEXT_LENGTH THEN
+      IF IS_WORD(BYTE_AT(PLACE)) = 1 THEN RETURN 0
+    END IF
+  END IF
+  RETURN 1
+END FUNCT
+
+
+
+' The first position from FROM up to LIMIT where FIND_TEXT is, or NO_MATCH. Only a position
+' whose byte equals FIND_TEXT's first byte with bit 5 set in both goes to MATCH_AT.
+FUNCT SEARCH(FROM AS UWORD, LIMIT AS UWORD) AS UWORD
+  DIM FIRST AS UBYTE
+  FIRST = ContentsAt(@FIND_TEXT + 2) OR 32
+  DO WHILE FROM < LIMIT
+    IF (BYTE_AT(FROM) OR 32) = FIRST THEN
+      IF MATCH_AT(FROM) = 1 THEN RETURN FROM
+    END IF
+    FROM = FROM + 1
+  LOOP
+  RETURN NO_MATCH
+END FUNCT
+
+
+
+' Where line NUMBER starts; the first line is 0.
+FUNCT LINE_AT(NUMBER AS UWORD) AS UWORD
+  DIM PLACE AS UWORD
+  PLACE = 0
+  DO WHILE NUMBER > 0
+    PLACE = LINE_END(PLACE) + 1
+    NUMBER = NUMBER - 1
+  LOOP
+  RETURN PLACE
+END FUNCT
+
+
+
+' Moves the cursor to position PLACE, and LINE_BEGIN and CURSOR_LINE with it.
+SUB GO_TO(PLACE AS UWORD)
+  IF PLACE < LINE_BEGIN THEN
+    LINE_BEGIN = 0
+    CURSOR_LINE = 0
+  END IF
+  DO WHILE LINE_END(LINE_BEGIN) < PLACE
+    LINE_DOWN()
+  LOOP
+  CURSOR = PLACE
+END SUB
+
+
+
+' Finds FIND_TEXT from the cursor to the end of the text, then from the start. Selects the
+' match and puts the cursor after it, or sets MESSAGE to Match not found. An empty FIND_TEXT
+' does nothing.
+SUB FIND_AGAIN()
+  DIM PLACE AS UWORD
+  FIND_LENGTH = LEN(FIND_TEXT)
+  IF FIND_LENGTH = 0 THEN RETURN
+  PLACE = SEARCH(CURSOR, TEXT_LENGTH)
+  IF PLACE = NO_MATCH THEN PLACE = SEARCH(0, CURSOR)
+  IF PLACE = NO_MATCH THEN
+    MESSAGE = "Match not found"
+    RETURN
+  END IF
+  GO_TO(PLACE + FIND_LENGTH)
+  ANCHOR = PLACE
+  SELECTING = 1
+END SUB
+
+
+
+' Changes each FIND_TEXT in the text to CHANGE_TEXT, from the start, and sets MESSAGE to the
+' count changed, or to Match not found. The cursor keeps its line, and its column as near as
+' the line allows; the page keeps its top line. A full buffer that cannot grow stops it, with
+' Insufficient memory.
+' An empty FIND_TEXT does nothing.
+SUB CHANGE_ALL()
+  DIM PLACE AS UWORD, COUNT AS UWORD, CHANGE_LENGTH AS UBYTE
+  FIND_LENGTH = LEN(FIND_TEXT)
+  IF FIND_LENGTH = 0 THEN RETURN
+  CHANGE_LENGTH = LEN(CHANGE_TEXT)
+  COUNT = 0
+  PLACE = 0
+  DO
+    PLACE = SEARCH(PLACE, TEXT_LENGTH)
+    IF PLACE = NO_MATCH THEN EXIT DO
+    IF CHANGE_LENGTH > FIND_LENGTH THEN
+      IF MAKE_ROOM(CHANGE_LENGTH - FIND_LENGTH) = 0 THEN
+        MESSAGE = "Insufficient memory"
+        EXIT DO
+      END IF
+    END IF
+    ' The match lies just before the gap, so the gap takes it in; CHANGE_TEXT then fills the
+    ' gap's start.
+    MOVE_GAP(PLACE + FIND_LENGTH)
+    GAP_POSITION = PLACE
+    GAP_SIZE = GAP_SIZE + FIND_LENGTH - CHANGE_LENGTH
+    TEXT_LENGTH = TEXT_LENGTH - FIND_LENGTH + CHANGE_LENGTH
+    TEXT_COPY(GAP_POSITION, @CHANGE_TEXT + 2, CHANGE_LENGTH, 1)
+    GAP_POSITION = GAP_POSITION + CHANGE_LENGTH
+    PLACE = GAP_POSITION
+    COUNT = COUNT + 1
+  LOOP
+  IF COUNT = 0 THEN
+    IF MESSAGE = "" THEN MESSAGE = "Match not found"
+    RETURN
+  END IF
+  IF MESSAGE = "" THEN MESSAGE = STR$(COUNT) + " changed"
+  MODIFIED = 1
+  ' The fields hold no line end, so the lines keep their numbers.
+  TOP = LINE_AT(TOP_LINE)
+  LINE_BEGIN = LINE_AT(CURSOR_LINE)
+  CURSOR = POSITION_AT(LINE_BEGIN, CURSOR_COLUMN)
+  NEED_PAGE = 1
+END SUB
+
+
+
+
+' Sets CURSOR_COLUMN, and moves the page and the view sideways so the cursor shows. Asks for
+' the page to be drawn again when it moved.
+SUB FOLLOW_CURSOR()
+  CURSOR_COLUMN = COLUMN_OF(LINE_BEGIN, CURSOR)
+  IF VERTICAL = 0 THEN GOAL = CURSOR_COLUMN
+  IF CURSOR_LINE < TOP_LINE THEN
+    TOP = LINE_BEGIN
+    TOP_LINE = CURSOR_LINE
+    NEED_PAGE = 1
+  END IF
+  IF CURSOR_LINE >= TOP_LINE + TEXT_ROWS THEN
+    NEED_PAGE = 1
+    DO WHILE CURSOR_LINE >= TOP_LINE + TEXT_ROWS
+      TOP = LINE_END(TOP) + 1
+      TOP_LINE = TOP_LINE + 1
+    LOOP
+  END IF
+  IF CURSOR_COLUMN < LEFT_COLUMN THEN
+    LEFT_COLUMN = CURSOR_COLUMN - (CURSOR_COLUMN AND (SHIFT_STEP - 1))
+    NEED_PAGE = 1
+  END IF
+  IF CURSOR_COLUMN >= LEFT_COLUMN + COLUMNS THEN
+    LEFT_COLUMN = CURSOR_COLUMN - COLUMNS + SHIFT_STEP
+    LEFT_COLUMN = LEFT_COLUMN - (LEFT_COLUMN AND (SHIFT_STEP - 1))
+    NEED_PAGE = 1
+  END IF
+END SUB
+
+
+
+
+' Draws what FOLLOW_CURSOR, the edits, the menus and the dialogs asked for and the status row,
+' and puts the cursor in place and shows it. A menu or a dialog with no room on VERA.UXI's
+' stack sets GUI.SHOWN_FORM to 0, which asks for the screen too.
+SUB DRAW()
+  IF GUI.SHOWN_FORM <> EDIT_FORM THEN NEED_SCREEN = 1
+  IF NEED_SCREEN = 1 THEN
+    GUI.DRAW_WHOLE(EDIT_FORM)
+    NEED_PAGE = 1
+  END IF
+  GUI.USE_COLOR(GUI.ROLE.TEXT)
+  IF NEED_PAGE = 1 THEN
+    SHOW_PAGE()
+  ELSEIF NEED_ROW = 1 THEN
+    IF ROW_LINE >= TOP_LINE AND ROW_LINE < TOP_LINE + TEXT_ROWS THEN
+      SHOW_ROW(ROW_LINE - TOP_LINE, ROW_START)
+    END IF
+  END IF
+  NEED_SCREEN = 0
+  NEED_PAGE = 0
+  NEED_ROW = 0
+  SHOW_STATUS()
+  CONS.LOCATE(CURSOR_LINE - TOP_LINE + TEXT_TOP, CURSOR_COLUMN - LEFT_COLUMN + LEFT_EDGE)
+  CURSOR ON
+END SUB
+
+
+
+
+' Loads the file FILE_NAME into the buffer as the text, its CR LF and CR turned into LF, with
+' the gap after it. Returns 0, or an error number, or TOO_LARGE. A file that does not open
+' keeps the text, and leaves EDITED_FILE NOFILE. A file that fails after it opened leaves part
+' of the text.
+FUNCT LOAD() AS UBYTE
+  DIM LOADED AS UBYTE, READ_PLACE AS UBYTE, COUNT AS UBYTE, CHARACTER AS UBYTE
+  DIM SEEN AS UBYTE, AFTER_CR AS UBYTE, CODE AS UBYTE
+  EDITED_FILE = DOS.OPEN_FILE(FILE_NAME, DOS.ACCESS_READ)
+  IF EDITED_FILE = NOFILE THEN RETURN DOS.ERROR
+  CR_ENDS = NEW_ENDS
+  TEXT_LENGTH = 0
+  GAP_POSITION = 0
+  GAP_SIZE = ROOM
+  SEEN = 0
+  ' AFTER_CR is 1 after a CR, so an LF that follows it, in this run or the next, is dropped.
+  AFTER_CR = 0
+  DO
+    LOADED = DOS.READ_FILE(EDITED_FILE, @RUN_BUFFER, RUN_SIZE)
+    CODE = DOS.ERROR
+    IF CODE <> 0 OR LOADED = 0 THEN EXIT DO
+    ' The run's line ends are turned into LF in RUN_BUFFER, COUNT bytes kept.
+    READ_PLACE = 0
+    COUNT = 0
+    DO WHILE READ_PLACE < LOADED
+      CHARACTER = RUN_BUFFER(READ_PLACE)
+      READ_PLACE = READ_PLACE + 1
+      IF CHARACTER = LF AND AFTER_CR = 1 THEN
+        AFTER_CR = 0
+        CONTINUE
+      END IF
+      AFTER_CR = 0
+      IF CHARACTER = KEYS.ENTER THEN
+        SEEN = 1
+        CHARACTER = LF
+        AFTER_CR = 1
+      ELSEIF CHARACTER = LF THEN
+        IF SEEN = 0 THEN CR_ENDS = 0
+        SEEN = 1
+      END IF
+      RUN_BUFFER(COUNT) = CHARACTER
+      COUNT = COUNT + 1
+    LOOP
+    IF COUNT > MAX_ROOM - TEXT_LENGTH THEN
+      CODE = TOO_LARGE
+      EXIT DO
+    END IF
+    IF MAKE_ROOM(COUNT) = 0 THEN
+      CODE = DOS.ERR_NO_MEMORY
+      EXIT DO
+    END IF
+    TEXT_COPY(GAP_POSITION, @RUN_BUFFER, COUNT, 1)
+    GAP_POSITION = GAP_POSITION + COUNT
+    GAP_SIZE = GAP_SIZE - COUNT
+    TEXT_LENGTH = TEXT_LENGTH + COUNT
+  LOOP
+  DOS.CLOSE_FILE(EDITED_FILE)
+  RETURN CODE
+END FUNCT
+
+
+
+' Writes COUNT bytes of the buffer, from byte PLACE on, to EDITED_FILE, each LF as CR LF when
+' CR_ENDS is 1. Returns 0, an error number, or DOS.DISK_FULL when the file took fewer bytes.
+FUNCT WRITE_PART(PLACE AS UWORD, COUNT AS UWORD) AS UBYTE
+  DIM ADDRESS AS UWORD, RUN AS UWORD, LIMIT AS UWORD
+  DO WHILE COUNT > 0
+    ' A write stays in one bank.
+    ADDRESS = SELECT_PLACE(PLACE)
+    LIMIT = WINDOW_END - ADDRESS
+    IF LIMIT > COUNT THEN LIMIT = COUNT
+    RUN = LIMIT
+    IF CR_ENDS = 1 THEN
+      RUN = 0
+      DO WHILE RUN < LIMIT
+        IF ContentsAt(ADDRESS + RUN) = LF THEN EXIT DO
+        RUN = RUN + 1
+      LOOP
+    END IF
+    IF RUN > 0 THEN
+      IF DOS.WRITE_FILE(EDITED_FILE, ADDRESS, RUN) < RUN THEN EXIT DO
+      PLACE = PLACE + RUN
+      COUNT = COUNT - RUN
+    ELSE
+      IF DOS.WRITE_FILE(EDITED_FILE, @CR_LF, 2) < 2 THEN EXIT DO
+      PLACE = PLACE + 1
+      COUNT = COUNT - 1
+    END IF
+  LOOP
+  IF COUNT = 0 THEN RETURN 0
+  IF DOS.ERROR <> 0 THEN RETURN DOS.ERROR
+  RETURN DOS.DISK_FULL
+END FUNCT
+
+
+
+' Saves the text to FILE_NAME. It is written to EDIT.$$$ in the file's directory, then
+' CLEAR_OLD moves the file out of the way and EDIT.$$$ takes its name. A failed write keeps the file as it was.
+' Sets MESSAGE to Saved and clears MODIFIED, or sets MESSAGE to the error. Returns 0 or the
+' error number.
+FUNCT SAVE() AS UBYTE
+  DIM TEMPORARY AS STRING * 90, LENGTH AS UBYTE, PLACE AS UBYTE, CODE AS UBYTE
+  ' LENGTH ends as the length of the directory part: up to the last \, / or :.
+  LENGTH = 0
+  FOR PLACE = 1 TO LEN(FILE_NAME)
+    SELECT CASE ContentsAt(@FILE_NAME + 1 + PLACE)
+      CASE ASC("\"), ASC("/"), ASC(":")
+        LENGTH = PLACE
+    END SELECT
+  NEXT
+  TEMPORARY = LEFT$(FILE_NAME, LENGTH) + "EDIT.$$$"
+  CR_LF(0) = KEYS.ENTER
+  CR_LF(1) = LF
+  EDITED_FILE = DOS.CREATE_FILE(TEMPORARY, 0)
+  CODE = DOS.ERROR
+  IF CODE = 0 THEN
+    CODE = WRITE_PART(0, GAP_POSITION)
+    IF CODE = 0 THEN
+      CODE = WRITE_PART(GAP_POSITION + GAP_SIZE, TEXT_LENGTH - GAP_POSITION)
+    END IF
+    DOS.CLOSE_FILE(EDITED_FILE)
+    IF CODE = 0 THEN CODE = DOS.ERROR
+    IF CODE = 0 THEN CODE = CLEAR_OLD()
+    IF CODE = 0 THEN
+      ' The file is gone, so a failed rename keeps EDIT.$$$.
+      DOS.RENAME(TEMPORARY, FILE_NAME)
+      CODE = DOS.ERROR
+    ELSE
+      DOS.DELETE(TEMPORARY)
+    END IF
+  END IF
+  IF CODE = 0 THEN
+    MODIFIED = 0
+    MESSAGE = "Saved"
+    ADD_RECENT()
+  ELSEIF CODE = DOS.DISK_FULL THEN
+    MESSAGE = "Insufficient disk space"
+  ELSE
+    MESSAGE = DOS.ERRMSG(CODE)
+  END IF
+  RETURN CODE
+END FUNCT
+
+
+
+' The dialogs and the menus run from GUI.UXI's region 2, beside the GUI's own, so their
+' strings take no low RAM.
+#REGION_SLOT 2
+' Shows the Find dialog, or with CHANGING = 1 the Change dialog, with FIND_TEXT, CHANGE_TEXT
+' for Change, and the check boxes of MATCH_CASE and WHOLE_WORD. Returns 1 for OK or Change
+' All, and for Enter in the last field; else Cancel or Esc.
+FUNCT ASK_FIND(CHANGING AS UBYTE) AS UBYTE
+  DIM ROW AS UBYTE, FIRST AS UBYTE
+  GUI.DIALOG_WIDTH = FIND_CAPTION + 1 + FIND_WIDTH
+  ROW = 4
+  IF CHANGING = 1 THEN
+    GUI.OPEN_DIALOG("Change", 5, "Change &All", "&Cancel")
+    ROW = 5
+  ELSE
+    GUI.OPEN_DIALOG("Find", 4, "&OK", "&Cancel")
+  END IF
+  ' The fields come last, so Enter in the last field returns EV_DONE.
+  GUI.CHECK(ROW, 3, "Match Upper/Lowercase", @MATCH_CASE)
+  GUI.CHECK(ROW + 1, 3, "Whole Word", @WHOLE_WORD)
+  FIRST = GUI.SAYGET(2, 3, "Find What:", FIND_TEXT, FIND_WIDTH)
+  IF CHANGING = 1 THEN GUI.SAYGET(3, 3, "Change To:", CHANGE_TEXT, FIND_WIDTH)
+  RETURN GUI.RUN_DIALOG(FIRST)
+END FUNCT
+
+
+
+' Shows the Display dialog, with the radio buttons of THEME_CHOICE and TAB_CHOICE. OK uses
+' them, writes them to C:\6502DOS.INI and asks for the screen; Cancel and Esc put them back.
+SUB ASK_DISPLAY()
+  DIM OLD_THEME AS UBYTE, OLD_TABS AS UBYTE, FIRST AS UBYTE
+  OLD_THEME = THEME_CHOICE
+  OLD_TABS = TAB_CHOICE
+  ' A caption of 10 columns, a space, and the 27 columns of the colors.
+  GUI.DIALOG_WIDTH = 38
+  GUI.OPEN_DIALOG("Display", 2, "&OK", "&Cancel")
+  FIRST = GUI.RADIO(2, 3, "Colors:   ", "Gray|Dark|Light", @THEME_CHOICE)
+  GUI.RADIO(3, 3, "Tab Stops:", "8|4|3|2", @TAB_CHOICE)
+  IF GUI.RUN_DIALOG(FIRST) = 1 THEN
+    USE_DISPLAY()
+    WRITE_DISPLAY()
+    NEED_SCREEN = 1
+  ELSE
+    THEME_CHOICE = OLD_THEME
+    TAB_CHOICE = OLD_TABS
+  END IF
+END SUB
+
+
+
+' Puts the gap after the text, and the cursor and the page at its start, clears MODIFIED, and
+' asks for the screen to be drawn again. For a text just loaded or emptied.
+SUB START_TEXT()
+  GAP_POSITION = TEXT_LENGTH
+  GAP_SIZE = ROOM - TEXT_LENGTH
+  CURSOR = 0
+  CURSOR_LINE = 0
+  LINE_BEGIN = 0
+  TOP = 0
+  TOP_LINE = 0
+  LEFT_COLUMN = 0
+  MODIFIED = 0
+  NEED_SCREEN = 1
+END SUB
+
+
+
+' Makes the text an empty UNTITLED, with NEW_ENDS line ends. START_TEXT is still to be called.
+SUB MAKE_UNTITLED()
+  FILE_NAME = "UNTITLED"
+  NAMED = 0
+  TEXT_LENGTH = 0
+  CR_ENDS = NEW_ENDS
+END SUB
+
+
+
+' Asks the file name in the file dialog, and saves the text under it. A file that exists is
+' replaced only after Yes. Returns 0 when it saved; else FILE_NAME is kept, and MESSAGE holds
+' the error of a save that failed.
+FUNCT SAVE_AS() AS UBYTE
+  DIM CODE AS UBYTE
+  IF GUI.PICKFILE("Save As", "*.TXT", PICKED) = 0 THEN RETURN 1
+  EDITED_FILE = DOS.OPEN_FILE(PICKED, DOS.ACCESS_READ)
+  IF EDITED_FILE <> NOFILE THEN
+    DOS.CLOSE_FILE(EDITED_FILE)
+    IF GUI.YESNO("Save As", "The file already exists.", "Replace it?") = 0 THEN RETURN 1
+  END IF
+  KEPT = FILE_NAME
+  FILE_NAME = PICKED
+  CODE = SAVE()
+  IF CODE = 0 THEN
+    NAMED = 1
+    NEED_SCREEN = 1
+  ELSE
+    FILE_NAME = KEPT
+  END IF
+  RETURN CODE
+END FUNCT
+
+
+
+' Saves the text under FILE_NAME, or by SAVE_AS when it is UNTITLED. Returns 0 when it saved.
+FUNCT SAVE_FILE() AS UBYTE
+  IF NAMED = 1 THEN RETURN SAVE()
+  RETURN SAVE_AS()
+END FUNCT
+
+
+
+' Asks in a dialog whether to save the text when it has changed. Yes saves, No does not, and
+' Esc goes back to the text. Returns 1 to go on: always for text with no changes, after No,
+' or after Yes when the save worked.
+FUNCT ASK_SAVE() AS UBYTE
+  IF MODIFIED = 0 THEN RETURN 1
+  SELECT CASE GUI.MSGBOX("EDIT", "The text has changed.", "Save it now?", "", "&Yes", "&No")
+    CASE 1
+      RETURN SAVE_FILE() = 0
+    CASE 2
+      RETURN 1
+  END SELECT
+  RETURN 0
+END FUNCT
+
+
+
+' Loads recent file RECENT, 1 to 4, or with RECENT 0 a file asked in the file dialog, in place
+' of the text, after ASK_SAVE. A file that does not load shows its error in a dialog.
+SUB OPEN_TEXT(RECENT AS UBYTE)
+  DIM CHOSEN AS STRING * 80, CODE AS UBYTE
+  ' The recent file is named before ASK_SAVE, whose save may change the recent files.
+  IF RECENT <> 0 THEN RECENT_NAME(RECENT, CHOSEN)
+  IF ASK_SAVE() = 0 THEN RETURN
+  IF RECENT = 0 THEN
+    IF GUI.PICKFILE("Open", "*.TXT", CHOSEN) = 0 THEN RETURN
+  END IF
+  KEPT = FILE_NAME
+  FILE_NAME = CHOSEN
+  CODE = LOAD()
+  IF CODE = TOO_LARGE THEN
+    GUI.MSGBOX("Open", "File too large")
+  ELSEIF CODE <> 0 THEN
+    GUI.MSGBOX("Open", DOS.ERRMSG(CODE))
+  END IF
+  IF CODE <> 0 THEN
+    IF EDITED_FILE = NOFILE THEN
+      FILE_NAME = KEPT
+      RETURN
+    END IF
+    MAKE_UNTITLED()
+  ELSE
+    NAMED = 1
+    ADD_RECENT()
+  END IF
+  START_TEXT()
+END SUB
+
+
+
+' The key that does the menu item ID: the id itself for an item a control key does. New, Open,
+' Save As, Display and About, which no key does, are done here and give 0, no key.
+FUNCT MENU_KEY(ID AS UBYTE) AS UWORD
+  SELECT CASE ID
+    CASE ID_CLEAR
+      RETURN KEYS.KEY_DELETE
+    CASE ID_DOS_HELP
+      RETURN KEYS.KEY_SHIFT_F1
+    CASE ID_FIND_AGAIN
+      RETURN KEY_F3
+    CASE ID_NEW
+      IF ASK_SAVE() = 1 THEN
+        MAKE_UNTITLED()
+        START_TEXT()
+      END IF
+    CASE ID_OPEN
+      OPEN_TEXT(0)
+    CASE ID_RECENT TO ID_RECENT + 3
+      OPEN_TEXT(ID - ID_RECENT + 1)
+    CASE ID_SAVE_AS
+      SAVE_AS()
+    CASE ID_DISPLAY
+      ASK_DISPLAY()
+    CASE ID_ABOUT
+      GUI.MSGBOX("About", "EDIT, the 6502DOS Editor", "F10 or Alt+letter opens a menu.")
+    CASE ELSE
+      RETURN ID
+  END SELECT
+  RETURN 0
+END FUNCT
+
+
+
+
+' Makes EDIT_FORM, the form that fills the screen between the menu bar and the status row,
+' titled FILE_NAME, and its menus.
+SUB MAKE_MENUS()
+  EDIT_FORM = GUI.CREATEFORM(FILE_NAME, 1, 0, 80, 28, GUI.FRAMED OR GUI.NO_SHADOW)
+  MAKE_BAR()
+END SUB
+
+
+
+' Makes EDIT_FORM's menu bar and its menus. The File menu holds the recent files that are not
+' "", between separators.
+SUB MAKE_BAR()
+  GUI.MENUBAR(EDIT_FORM)
+  GUI.BEGINMENU("&File")
+  GUI.MENUITEM("&New", ID_NEW)
+  GUI.MENUITEM("&Open...", ID_OPEN)
+  GUI.MENUITEM("&Save      Ctrl+S", CTRL_S)
+  GUI.MENUITEM("Save &As...", ID_SAVE_AS)
+  IF LEN(RECENT_1) <> 0 THEN
+    GUI.MENUITEM("-", 0)
+    GUI.MENUITEM(RECENT_1, ID_RECENT)
+    IF LEN(RECENT_2) <> 0 THEN GUI.MENUITEM(RECENT_2, ID_RECENT + 1)
+    IF LEN(RECENT_3) <> 0 THEN GUI.MENUITEM(RECENT_3, ID_RECENT + 2)
+    IF LEN(RECENT_4) <> 0 THEN GUI.MENUITEM(RECENT_4, ID_RECENT + 3)
+  END IF
+  GUI.MENUITEM("-", 0)
+  GUI.MENUITEM("E&xit      Ctrl+Q", CTRL_Q)
+  GUI.ENDMENU()
+  GUI.BEGINMENU("&Edit")
+  GUI.MENUITEM("Cu&t       Ctrl+X", CTRL_X)
+  GUI.MENUITEM("&Copy      Ctrl+C", CTRL_C)
+  GUI.MENUITEM("&Paste     Ctrl+V", CTRL_V)
+  GUI.MENUITEM("Cl&ear     Del", ID_CLEAR)
+  GUI.ENDMENU()
+  GUI.BEGINMENU("&Search")
+  GUI.MENUITEM("&Find...            Ctrl+F", CTRL_F)
+  GUI.MENUITEM("&Repeat Last Find       F3", ID_FIND_AGAIN)
+  GUI.MENUITEM("&Change...          Ctrl+R", CTRL_R)
+  GUI.ENDMENU()
+  GUI.BEGINMENU("&Options")
+  GUI.MENUITEM("&Display...", ID_DISPLAY)
+  GUI.ENDMENU()
+  GUI.BEGINMENU("&Help")
+  GUI.MENUITEM("&DOS Help  Shift+F1", ID_DOS_HELP)
+  GUI.MENUITEM("&About", ID_ABOUT)
+  GUI.ENDMENU()
+END SUB
+
+
+
+' The settings run from region 5.
+#REGION_SLOT 5
+#INCLUDE "INI.UXI"
+' Sets EDIT's options from the section [EDIT] of C:\6502DOS.INI. A key that is missing, or has
+' another value, takes the default in brackets. THEME is DARK, LIGHT or [GRAY]. TABS is 2, 3, 4
+' or [8]. MATCHCASE and WHOLEWORD are 1 or [0]. FIND is the text to find, [none]. LINEENDS is a new
+' file's line ends, [CRLF] or LF. BAK is 1 to keep the old file as a .BAK on a save, or [0].
+' RECENT is the recent files, separated by |, [none].
+SUB READ_SETTINGS()
+  DIM VALUE AS STRING * 8, LIST AS STRING * 255
+  VALUE = UCASE$(INI.READ_KEY$("EDIT", "THEME", ""))
+  THEME_CHOICE = 0
+  IF VALUE = "DARK" THEN THEME_CHOICE = 1
+  IF VALUE = "LIGHT" THEN THEME_CHOICE = 2
+  VALUE = INI.READ_KEY$("EDIT", "TABS", "")
+  TAB_CHOICE = 0
+  IF VALUE = "4" THEN TAB_CHOICE = 1
+  IF VALUE = "3" THEN TAB_CHOICE = 2
+  IF VALUE = "2" THEN TAB_CHOICE = 3
+  USE_DISPLAY()
+  MATCH_CASE = 0
+  IF INI.READ_KEY$("EDIT", "MATCHCASE", "") = "1" THEN MATCH_CASE = 1
+  WHOLE_WORD = 0
+  IF INI.READ_KEY$("EDIT", "WHOLEWORD", "") = "1" THEN WHOLE_WORD = 1
+  FIND_TEXT = INI.READ_KEY$("EDIT", "FIND", "")
+  NEW_ENDS = 1
+  IF UCASE$(INI.READ_KEY$("EDIT", "LINEENDS", "")) = "LF" THEN NEW_ENDS = 0
+  BACKUP = 0
+  IF INI.READ_KEY$("EDIT", "BAK", "") = "1" THEN BACKUP = 1
+  LIST = INI.READ_KEY$("EDIT", "RECENT", "")
+  NEXT_RECENT(LIST, RECENT_1, ASC("1"))
+  NEXT_RECENT(LIST, RECENT_2, ASC("2"))
+  NEXT_RECENT(LIST, RECENT_3, ASC("3"))
+  NEXT_RECENT(LIST, RECENT_4, ASC("4"))
+END SUB
+
+
+
+' Takes the first name off LIST, up to its | or its end, and sets CAPTION to the caption of
+' recent file DIGIT with that name, or to "" for an empty name.
+SUB NEXT_RECENT(LIST AS STRING, CAPTION AS STRING, DIGIT AS UBYTE)
+  DIM BAR AS UBYTE
+  BAR = INSTR(LIST, "|")
+  IF BAR = 0 THEN BAR = LEN(LIST) + 1
+  CAPTION = ""
+  IF BAR > 1 THEN CAPTION = "&" + CHR$(DIGIT) + " " + LEFT$(LIST, BAR - 1)
+  LIST = MID$(LIST, BAR + 1)
+END SUB
+
+
+
+' Sets NAME to the path of recent file NUMBER, 1 to 4.
+SUB RECENT_NAME(NUMBER AS UBYTE, NAME AS STRING)
+  IF NUMBER = 1 THEN NAME = MID$(RECENT_1, 4)
+  IF NUMBER = 2 THEN NAME = MID$(RECENT_2, 4)
+  IF NUMBER = 3 THEN NAME = MID$(RECENT_3, 4)
+  IF NUMBER = 4 THEN NAME = MID$(RECENT_4, 4)
+END SUB
+
+
+
+' Puts FILE_NAME first in the recent files, as a full path in capitals, and writes them to
+' RECENT in [EDIT]. The same name further down, or else the fourth, leaves the list. A name
+' already first, or longer than 60 characters, changes nothing. The menu bar is made again
+' once EDIT_FORM is not 0.
+SUB ADD_RECENT()
+  DIM TEXT AS STRING * 250, DROP AS UBYTE
+  ' A name with no drive takes the current drive, and one that does not start with \ or / that
+  ' drive's current folder too. SET_PATH gives them from the drive letter to a closing \.
+  TEXT = FILE_NAME
+  IF MID$(TEXT, 2, 1) <> ":" THEN
+    GUI.SET_PATH(DOS.GETDRIVE() + 1)
+    IF ASC(TEXT) = ASC("\") OR ASC(TEXT) = ASC("/") THEN
+      TEXT = LEFT$(DOS.CALL_TEXT, 2) + TEXT
+    ELSE
+      TEXT = DOS.CALL_TEXT + TEXT
+    END IF
+  END IF
+  TEXT = UCASE$(TEXT)
+  IF LEN(TEXT) > 60 OR TEXT = MID$(RECENT_1, 4) THEN RETURN
+  DROP = 4
+  IF TEXT = MID$(RECENT_2, 4) THEN DROP = 2
+  IF TEXT = MID$(RECENT_3, 4) THEN DROP = 3
+  IF DROP = 4 THEN RECENT_4 = RECENT_3
+  IF DROP >= 3 THEN RECENT_3 = RECENT_2
+  RECENT_2 = RECENT_1
+  RECENT_1 = "&1 " + TEXT
+  ' A caption's digit is its second character.
+  IF LEN(RECENT_2) <> 0 THEN ContentsAt(@RECENT_2 + 3) = ASC("2")
+  IF LEN(RECENT_3) <> 0 THEN ContentsAt(@RECENT_3 + 3) = ASC("3")
+  IF LEN(RECENT_4) <> 0 THEN ContentsAt(@RECENT_4 + 3) = ASC("4")
+  TEXT = MID$(RECENT_1, 4) + "|" + MID$(RECENT_2, 4) + "|" + MID$(RECENT_3, 4) + "|" + MID$(RECENT_4, 4)
+  INI.WRITE_KEY("EDIT", "RECENT", TEXT)
+  IF EDIT_FORM <> 0 THEN MAKE_BAR()
+END SUB
+
+
+
+' Sets the theme from THEME_CHOICE, and TAB_SIZE from TAB_CHOICE.
+SUB USE_DISPLAY()
+  IF THEME_CHOICE = 1 THEN
+    GUI.THEME(DARK)
+  ELSEIF THEME_CHOICE = 2 THEN
+    GUI.THEME(LIGHT)
+  ELSE
+    GUI.THEME(GRAY)
+  END IF
+  TAB_SIZE = 8 >> TAB_CHOICE
+  IF TAB_CHOICE >= 2 THEN TAB_SIZE = 5 - TAB_CHOICE
+END SUB
+
+
+
+' Writes THEME and TABS to [EDIT] from THEME_CHOICE and TAB_CHOICE.
+SUB WRITE_DISPLAY()
+  DIM VALUE AS STRING * 8
+  VALUE = "GRAY"
+  IF THEME_CHOICE = 1 THEN VALUE = "DARK"
+  IF THEME_CHOICE = 2 THEN VALUE = "LIGHT"
+  INI.WRITE_KEY("EDIT", "THEME", VALUE)
+  INI.WRITE_KEY("EDIT", "TABS", CHR$(48 + TAB_SIZE))
+END SUB
+
+
+
+' Moves FILE_NAME out of the way of a save. With BACKUP = 1 it is renamed to its name with the
+' extension .BAK, after the old .BAK is deleted; else, or when the file is a .BAK, it is
+' deleted. A file that does not exist is no error. Returns 0 or the error number.
+FUNCT CLEAR_OLD() AS UBYTE
+  DIM BACKUP_NAME AS STRING * 84, DOT AS UBYTE, PLACE AS UBYTE, CODE AS UBYTE
+  IF BACKUP = 1 THEN
+    ' DOT ends as the place of the last . after the last \, / or :, or 0.
+    DOT = 0
+    FOR PLACE = 1 TO LEN(FILE_NAME)
+      SELECT CASE ContentsAt(@FILE_NAME + 1 + PLACE)
+        CASE ASC(".")
+          DOT = PLACE
+        CASE ASC("\"), ASC("/"), ASC(":")
+          DOT = 0
+      END SELECT
+    NEXT
+    IF DOT = 0 THEN DOT = LEN(FILE_NAME) + 1
+    BACKUP_NAME = LEFT$(FILE_NAME, DOT - 1) + ".BAK"
+    IF UCASE$(BACKUP_NAME) <> UCASE$(FILE_NAME) THEN
+      DOS.DELETE(BACKUP_NAME)
+      DOS.RENAME(FILE_NAME, BACKUP_NAME)
+      CODE = DOS.ERROR
+      IF CODE = DOS.ERR_NOT_FOUND THEN CODE = 0
+      RETURN CODE
+    END IF
+  END IF
+  DOS.DELETE(FILE_NAME)
+  CODE = DOS.ERROR
+  IF CODE = DOS.ERR_NOT_FOUND THEN CODE = 0
+  RETURN CODE
+END FUNCT
+#REGION_SLOT 0
+
+
+
+
+'--- program starts here -------------------------------------------
+FILE_NAME = HEAP.SYS_STRINGS_GET(SLOT_P1)
+IF HEAP.SYS_STRINGS_GET(SLOT_P2) <> "" THEN
+  PRINT "Too many parameters"
+  END 1
+END IF
+EDIT_FORM = 0
+BANK_COUNT = 0
+ROOM = 0
+READ_SETTINGS()
+IF FILE_NAME = "" THEN
+  MAKE_UNTITLED()
+ELSE
+  NAMED = 1
+  CR_ENDS = NEW_ENDS
+  QUIT = LOAD()
+  IF QUIT = 0 THEN ADD_RECENT()
+  IF QUIT = DOS.ERR_NOT_FOUND THEN
+    MESSAGE = "New file"
+    QUIT = 0
+  ELSEIF QUIT = TOO_LARGE THEN
+    PRINT "File too large"
+  ELSEIF QUIT <> 0 THEN
+    PRINT DOS.ERRMSG(QUIT)
+  END IF
+  IF QUIT <> 0 THEN END 2
+END IF
+START_TEXT()
+DOS.STOP_KEY(DOS.STOP.OFF)
+START_COLOR = DOS.GET_COLOR()
+MAKE_MENUS()
+FOLLOW_CURSOR()
+DRAW()
+PENDING = 0
+DO
+  IF PENDING <> 0 THEN
+    KEY = PENDING
+    PENDING = 0
+  ELSE
+    KEY = WAITKEY()
+  END IF
+  MODIFIERS = KEYMODS()
+  MESSAGE = ""
+  ' F10 and Alt with a letter open a menu; the item chosen gives its key, and Esc no key.
+  IF KEY = KEYS.KEY_F10 OR GUI.ALT_LETTER(KEY) <> 0 THEN
+    KEY = MENU_KEY(GUI.PULL_MENU(EDIT_FORM, KEY))
+  END IF
+  VERTICAL = 0
+  NAVIGATING = 0
+  OLD_LINE = CURSOR_LINE
+  ' SELECTION_BEGIN and SELECTION_END keep an ended selection for Ctrl+X.
+  SELECT CASE KEY
+    CASE KEYS.KEY_HOME, KEYS.KEY_UP, KEYS.KEY_PGUP, KEYS.KEY_LEFT, KEYS.KEY_RIGHT, _
+         KEYS.KEY_END, KEYS.KEY_DOWN, KEYS.KEY_PGDN
+      NAVIGATING = 1
+      IF MODIFIERS AND KEYS.MOD_SHIFT THEN
+        IF SELECTING = 0 THEN ANCHOR = CURSOR
+        SELECTING = 1
+      ELSE
+        SELECTING = 0
+      END IF
+    CASE ELSE
+      IF KEY <> CTRL_C THEN SELECTING = 0
+  END SELECT
+  SELECT CASE KEY
+    CASE KEYS.KEY_LEFT
+      IF CURSOR > 0 THEN
+        CURSOR = CURSOR - 1
+        IF CURSOR < LINE_BEGIN THEN LINE_UP()
+      END IF
+    CASE KEYS.KEY_RIGHT
+      IF CURSOR < TEXT_LENGTH THEN
+        IF BYTE_AT(CURSOR) = LF THEN LINE_DOWN()
+        CURSOR = CURSOR + 1
+      END IF
+    CASE KEYS.KEY_HOME
+      CURSOR = LINE_BEGIN
+    CASE KEYS.KEY_END
+      CURSOR = LINE_END(CURSOR)
+    CASE KEYS.KEY_UP
+      VERTICAL = 1
+      IF LINE_UP() = 1 THEN CURSOR = POSITION_AT(LINE_BEGIN, GOAL)
+    CASE KEYS.KEY_DOWN
+      VERTICAL = 1
+      IF LINE_DOWN() = 1 THEN CURSOR = POSITION_AT(LINE_BEGIN, GOAL)
+    CASE KEYS.KEY_PGUP
+      ' The page moves as far as the cursor, and no further than the first line.
+      VERTICAL = 1
+      FOR STEPS = 1 TO TEXT_ROWS
+        IF LINE_UP() = 0 THEN EXIT FOR
+        IF TOP_LINE > 0 THEN
+          TOP = LINE_START(TOP - 1)
+          TOP_LINE = TOP_LINE - 1
+          NEED_PAGE = 1
+        END IF
+      NEXT
+      CURSOR = POSITION_AT(LINE_BEGIN, GOAL)
+    CASE KEYS.KEY_PGDN
+      VERTICAL = 1
+      FOR STEPS = 1 TO TEXT_ROWS
+        IF LINE_DOWN() = 0 THEN EXIT FOR
+        TOP = LINE_END(TOP) + 1
+        TOP_LINE = TOP_LINE + 1
+        NEED_PAGE = 1
+      NEXT
+      CURSOR = POSITION_AT(LINE_BEGIN, GOAL)
+    CASE KEYS.KEY_SHIFT_F1
+      SHOW_DOS_HELP()
+    CASE KEYS.KEY_DELETE
+      IF SELECTION_END > SELECTION_BEGIN THEN
+        REMOVE_PART(SELECTION_BEGIN, SELECTION_END)
+      ELSEIF CURSOR < TEXT_LENGTH THEN
+        IF BYTE_AT(CURSOR) = LF THEN
+          NEED_PAGE = 1
+        ELSE
+          CHANGED_ROW()
+        END IF
+        REMOVE(CURSOR)
+      END IF
+    CASE KEYS.ENTER
+      INSERT(LF)
+    CASE KEYS.TAB
+      INSERT(KEYS.TAB)
+    CASE CTRL_Q
+      QUIT = ASK_SAVE()
+    CASE CTRL_S
+      SAVE_FILE()
+    CASE CTRL_C
+      TAKE(0)
+    CASE CTRL_X
+      TAKE(1)
+    CASE CTRL_V
+      PASTE()
+    CASE CTRL_F
+      IF ASK_FIND(0) = 1 THEN FIND_AGAIN()
+    CASE KEY_F3
+      FIND_AGAIN()
+    CASE CTRL_R
+      IF ASK_FIND(1) = 1 THEN CHANGE_ALL()
+    CASE KEYS.BACKSPACE
+      IF SELECTION_END > SELECTION_BEGIN THEN
+        REMOVE_PART(SELECTION_BEGIN, SELECTION_END)
+      ELSEIF CURSOR > 0 THEN
+        CURSOR = CURSOR - 1
+        IF CURSOR < LINE_BEGIN THEN
+          LINE_UP()
+          NEED_PAGE = 1
+        ELSE
+          CHANGED_ROW()
+        END IF
+        REMOVE(CURSOR)
+      END IF
+    CASE KEYS.SPACE TO 255
+      INSERT(KEY)
+  END SELECT
+  ' A changed selection draws the cursor's row again when the cursor stayed on its line, else
+  ' the page.
+  NEW_BEGIN = 0
+  NEW_END = 0
+  IF SELECTING = 1 THEN
+    IF ANCHOR < CURSOR THEN
+      NEW_BEGIN = ANCHOR
+      NEW_END = CURSOR
+    ELSE
+      NEW_BEGIN = CURSOR
+      NEW_END = ANCHOR
+    END IF
+  END IF
+  IF NEW_BEGIN <> SELECTION_BEGIN OR NEW_END <> SELECTION_END THEN
+    IF SELECTING = 1 AND CURSOR_LINE = OLD_LINE THEN
+      CHANGED_ROW()
+    ELSE
+      NEED_PAGE = 1
+    END IF
+    SELECTION_BEGIN = NEW_BEGIN
+    SELECTION_END = NEW_END
+  END IF
+  FOLLOW_CURSOR()
+  ' After an arrow or page key, the repeats of that key that wait are dropped, so a held key
+  ' stops where it is let go. The first other key waits in PENDING. The page is drawn only when
+  ' no key waits, so typing does not outrun it.
+  IF NAVIGATING = 1 THEN
+    DO
+      PENDING = GETEXTKEY()
+    LOOP WHILE PENDING = KEY
+  END IF
+  SYS DOS.API_CON_STATUS
+  IF DOS.REG_A = 0 AND PENDING = 0 AND QUIT = 0 THEN DRAW()
+LOOP UNTIL QUIT = 1
+DOS.SET_COLOR(START_COLOR)
+PRINT CONS.CLEAR_SCREEN$; "EDIT - The 6502DOS Editor... Bye!"
+END 0
