@@ -17,11 +17,17 @@ system does not work with it.
 
 ## Running it
 
-The release holds `6502DOS.ROM`, `SD.IMG` (a 4 MB FAT32 card), `LICENSE` and `NOTICE`.
+The release is a zip for Windows, `6502DOS-0.1.0-beta1-win.zip`. It unzips to the folder
+`6502DOS`, which holds `6502DOS.ROM`, `SD.IMG` (a 4 MB FAT32 card),
+`LICENSE`, `NOTICE`, `RUN.BAT`, and x16emu R49 with its DLLs and licences in the folder
+`x16emu`. `RUN.BAT` starts 6502DOS:
 
 ```
-x16emu -rom 6502DOS.ROM -sdcard SD.IMG
+x16emu\x16emu.exe -rom 6502DOS.ROM -sdcard SD.IMG -rtc -nohostfs
 ```
+
+Arguments to `RUN.BAT` pass on to x16emu, as in `RUN -scale 2`. Files saved on the X16 stay
+in `SD.IMG`.
 
 The ROM prints its banner and runs `C:\ROMSHELL.COM`, the shell, from ROM banks 3 and 4. The
 shell runs `C:\startup.cmd`, then shows the prompt `C:\>`. `HELP` lists the help topics, and
@@ -57,7 +63,7 @@ Building needs Windows, Python 3.13 and x16emu R49. ca65, ld65 and 64tass are in
 | Command | Does |
 |---|---|
 | `python tools/build.py` | Builds `build/6502DOS.ROM`, the programs, and `build/SD.IMG` |
-| `python tools/build.py --release` | Builds as above, then fills `build/release` with the release files |
+| `python tools/build.py --release` | Builds as above, then fills `build/release` with the release files and zips them to `release/` |
 | `python tools/tests.py` | Runs every test, headless, in x16emu |
 | `python tools/tests.py NAME` | Runs the test `NAME` |
 | `BUILD.BAT` | Runs `build.py` |

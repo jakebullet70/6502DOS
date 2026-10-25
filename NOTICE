@@ -63,6 +63,18 @@ ROM bank 2 and MSBASIC.COM hold Microsoft BASIC for the 6502, built from MSBASIC
   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
   SOFTWARE.
 
+The release folder's x16emu holds x16emu R49, the Commander X16 emulator, from
+github.com/X16Community/x16-emulator, and the DLLs it loads, unaltered. Each one's licence is
+beside it:
+
+- x16emu.exe, the 2-clause BSD licence, in LICENSE-x16emu.txt.
+- SDL2.dll, SDL 2, the zlib licence, in LICENSE-SDL2.txt.
+- zlib1.dll, zlib, the zlib licence, in LICENSE-zlib.txt.
+- libwinpthread-1.dll, mingw-w64 winpthreads, the MIT licence and a 3-clause BSD licence, in
+  LICENSE-winpthreads.txt.
+
+The licences are in tools/release/x16emu in this repository.
+
 Build tools in this repository:
 
 - tools/cc65/bin/ca65.exe and tools/cc65/bin/ld65.exe are unaltered binaries of

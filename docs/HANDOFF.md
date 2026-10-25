@@ -1713,7 +1713,23 @@
       diffed (one line), FILES ok 0.5 s.
   - Done, the beta 1 commit and the annotated tag `v0.1.0-beta1` (2026-10-25). The user
     pushes the commit and the tag (`git push --follow-tags`).
-  - Steps since the last full suite: 0.
+  - Done, the Windows release folder (after the tag, so not in `v0.1.0-beta1`; uncommitted).
+    `build.py --release` now empties `build/release` and fills it with `SD.IMG`, the ROM,
+    `LICENSE`, `NOTICE`, the files of `tools/release` and, in `x16emu`, the emulator and its DLLs
+    from `EMU` (`C:\8bitProgramming\x16emu`). x16emu.exe loads only `SDL2.dll`, `zlib1.dll` and
+    `libwinpthread-1.dll` (`EMU_FILES`), found by reading its PE imports. `tools/release` holds
+    `RUN.BAT` (`x16emu\x16emu.exe -rom 6502DOS.ROM -sdcard SD.IMG -rtc -nohostfs %*`) and
+    `x16emu/LICENSE-*.txt` for x16emu (BSD-2), SDL2 (zlib), zlib (zlib) and winpthreads (MIT and
+    BSD-3), taken from each project's repository. The card stages in `build/release-card`. NOTICE,
+    README "Running it" and PLAN's `--release` bullet updated. The folder is 7 MB.
+    - Build 2.50 s with `--release`, the new baseline (the emulator copy is the rise).
+    - RUN.BAT booted the release with x16emu off PATH: banner, startup.cmd, shell. Killed by PID.
+  - Done, the release zip (uncommitted). `build.py --release` then zips `build/release` to
+    `release/6502DOS-0.1.0-beta1-win.zip` (`RELEASE_ZIPS`), under the folder `6502DOS`; the
+    name comes from `api.VERSION` and `api.VERSION_LABEL`. `/release/` is gitignored, anchored
+    so `tools/release` stays tracked. The zip is 2.1 MB. README and PLAN updated.
+    - Build 3.40 s with `--release`, the new baseline (the zip is the rise).
+  - Steps since the last full suite: 2.
 
 0. PLAN section 11 step 6, CBM DOS leaves: 6a to 6e done. Full suite passed after the `END`
    range step.

@@ -1301,10 +1301,15 @@ Folders:
 - Before it writes the card, `build.py` copies into `card` each file and folder that the X16
   added to `build/SD.IMG` or changed since `SD.SUM`, and deletes from `card` each one the X16
   deleted. `card` is gitignored. A build file deleted on the X16 comes back at the next build.
-- `build.py --release` builds as above, then fills `build/release` with `SD.IMG`, `6502DOS.ROM`,
-  `LICENSE` and `NOTICE`. That `SD.IMG` is 4 MB and holds the folder `sd` less the names in
-  `RELEASE_SKIP`, `CMDSHELL.COM`, `ROMSHELL.COM`, `MSBASIC.COM`, `DOS` and `UTILS`. It has no
-  `\TEST` and nothing from `card`.
+- `build.py --release` builds as above, then empties `build/release` and fills it with `SD.IMG`,
+  `6502DOS.ROM`, `LICENSE`, `NOTICE`, the files of `tools/release`, and x16emu with the DLLs it
+  loads in the folder `x16emu`. `tools/release` holds `RUN.BAT`, which starts x16emu with the
+  ROM and the card, and the licences of x16emu, SDL2, zlib and winpthreads. That `SD.IMG` is
+  4 MB and holds the folder `sd` less the names in `RELEASE_SKIP`, `CMDSHELL.COM`,
+  `ROMSHELL.COM`, `MSBASIC.COM`, `DOS` and `UTILS`. It has no `\TEST` and nothing from `card`.
+  Then it zips `build/release` to `release/6502DOS-VERSION-win.zip`, under the folder
+  `6502DOS`. VERSION comes from `VERSION` and `VERSION_LABEL` in `tools/api.py`, as in
+  `0.1.0-beta1`. The folder `release` is gitignored.
 - `tools/fatcheck.py IMAGE` checks a card image: the FATs are equal, no cluster is lost or in
   two chains, and each file's chain fits its size. Each run of long-name entries must count
   down from the entry with bit 6 to 1, hold one checksum, type 0 and cluster 0, and end at the

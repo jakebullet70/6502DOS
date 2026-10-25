@@ -33,10 +33,14 @@ name it shares with the others. Before that, each file and folder that the X16 a
 build/SD.IMG or changed goes into card, and each one it deleted leaves card; build/SD.SUM lists
 what the last build wrote.
 
-With --release, it then fills build/release with a 4 MB SD.IMG, 6502DOS.ROM, LICENSE and NOTICE.
-That SD.IMG holds the folder sd less RELEASE_SKIP, CMDSHELL.COM, ROMSHELL.COM, MSBASIC.COM, DOS
-and UTILS; it has no TEST and nothing from card. Exit status 1 when a tool or a compile failed, api.py is inconsistent
-or build/SD.IMG is open in x16emu.
+With --release, it then empties build/release and fills it with a 4 MB SD.IMG, 6502DOS.ROM,
+LICENSE, NOTICE, the files of tools/release (RUN.BAT and the folder x16emu with the licences),
+and x16emu with its DLLs from EMU, in the folder x16emu. It zips build/release to
+release/6502DOS-VERSION-win.zip, under the folder 6502DOS, with VERSION from api.py, such as
+0.1.0-beta1. That SD.IMG, staged in
+build/release-card, holds the folder sd less RELEASE_SKIP, CMDSHELL.COM, ROMSHELL.COM,
+MSBASIC.COM, DOS and UTILS; it has no TEST and nothing from card. Exit status 1 when a tool or a
+compile failed, api.py is inconsistent, or build/SD.IMG or build/release is open in x16emu.
 """
 
 import glob
@@ -47,8 +51,10 @@ import shutil
 import subprocess
 import sys
 import time
+import zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import api  # noqa: E402
 import genapi  # noqa: E402
 import mksd  # noqa: E402
 import uxb  # noqa: E402
@@ -72,8 +78,15 @@ CARD = os.path.join(ROOT, "card")
 STAGE = os.path.join(BUILD, "card")
 CARD_SUM = os.path.join(BUILD, "SD.SUM")
 RELEASE = os.path.join(BUILD, "release")
+RELEASE_STAGE = os.path.join(BUILD, "release-card")
+RELEASE_FILES = os.path.join(ROOT, "tools", "release")
+RELEASE_ZIPS = os.path.join(ROOT, "release")
 # The files of the folder sd left off the release card.
 RELEASE_SKIP = ("WIDE.TXT",)
+# x16emu and the DLLs it loads, copied to build/release/x16emu. Their licences are in
+# tools/release/x16emu.
+EMU = r"C:\8bitProgramming\x16emu"
+EMU_FILES = ("x16emu.exe", "SDL2.dll", "zlib1.dll", "libwinpthread-1.dll")
 BAS = os.path.join(ROOT, "src", "bas")
 BAS_OUT = os.path.join(BUILD, "bas")
 SCOM = os.path.join(ROOT, "src", "scom")
@@ -331,13 +344,31 @@ def make_card(sources, tests):
 
 
 def make_release(sources):
-    """Write build/release/SD.IMG from the folder sd less RELEASE_SKIP and the files and folders
-    in sources, with no TEST and nothing from card. Copy the ROM, LICENSE and NOTICE beside it."""
-    stage = os.path.join(RELEASE, "card")
-    stage_card(stage, sources, [], RELEASE_SKIP)
-    mksd.make(stage, os.path.join(RELEASE, "SD.IMG"))
+    """Empty build/release and write its SD.IMG from the folder sd less RELEASE_SKIP and the
+    files and folders in sources, with no TEST and nothing from card. Copy the ROM, LICENSE,
+    NOTICE, the files of tools/release and EMU_FILES beside it. Zip build/release into
+RELEASE_ZIPS."""
+    try:
+        if os.path.isdir(RELEASE):
+            shutil.rmtree(RELEASE)
+    except PermissionError:
+        sys.exit("build: cannot empty %s; close x16emu" % os.path.relpath(RELEASE, ROOT))
+    stage_card(RELEASE_STAGE, sources, [], RELEASE_SKIP)
+    os.makedirs(RELEASE)
+    mksd.make(RELEASE_STAGE, os.path.join(RELEASE, "SD.IMG"))
     for path in (ROM, os.path.join(ROOT, "LICENSE"), os.path.join(ROOT, "NOTICE")):
         shutil.copyfile(path, os.path.join(RELEASE, os.path.basename(path)))
+    shutil.copytree(RELEASE_FILES, RELEASE, dirs_exist_ok=True)
+    for name in EMU_FILES:
+        shutil.copyfile(os.path.join(EMU, name), os.path.join(RELEASE, "x16emu", name))
+    version = "%d.%d.%d-%s" % (api.VERSION + (api.VERSION_LABEL.replace(" ", "").lower(),))
+    os.makedirs(RELEASE_ZIPS, exist_ok=True)
+    zip_path = os.path.join(RELEASE_ZIPS, "6502DOS-%s-win.zip" % version)
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as out:
+        for folder, folders, names in os.walk(RELEASE):
+            for name in names:
+                path = os.path.join(folder, name)
+                out.write(path, os.path.join("6502DOS", os.path.relpath(path, RELEASE)))
 
 
 def main():
