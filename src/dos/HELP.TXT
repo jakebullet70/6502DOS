@@ -295,7 +295,7 @@ RENAME old new  or  REN old new (Command line or Script)
 REN is short for RENAME. See HELP RENAME.
 :VERSION
 VERSION   or   VER              (Command line or Script)
-  Prints the version of 6502DOS, such as 6502DOS V0.1.0.
+  Prints the version of 6502DOS, such as 6502DOS V0.1.0 Beta 1.
   Example:
     VERSION
 :VER
@@ -404,6 +404,25 @@ VIEW name                       (Command line only)
   Q or Esc ends it.
   Example:
     VIEW DOCS\README.TXT
+:EDIT
+EDIT [name]                     (Command line only)
+  Edits the text file name, or a new text UNTITLED, with menus and dialogs.
+  F10 or Alt with a menu's letter opens a menu.
+  Shift and a cursor key select. Ctrl+X cuts, Ctrl+C copies, Ctrl+V pastes.
+  Ctrl+F finds, F3 finds again, Ctrl+R changes. Ctrl+S saves.
+  Shift+F1 shows a topic of this help. Ctrl+Q ends it.
+  The text holds 65535 bytes. Options, Display sets the colors and the tab
+  stops, kept in C:\6502DOS.INI.
+  Example:
+    EDIT DOCS\README.TXT
+:TED
+TED name                        (Command line only)
+  Edits the text file name on the full screen, a smaller editor than EDIT.
+  F1 shows the keys. Shift and a cursor key select. Ctrl+X cuts,
+  Ctrl+C copies, Ctrl+V pastes. Ctrl+S saves. Ctrl+Q ends it.
+  Shift+F1 shows a topic of this help.
+  Example:
+    TED DOCS\README.TXT
 :TREE
 TREE [d:][path] [-F]            (Command line only)
   Draws every directory below path, or below the root, as a tree.

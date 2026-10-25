@@ -86,10 +86,10 @@ E1 keeps EDIT's gap buffer and moves it to RAM banks:
   bank `P / 8192`, at `$A000 + P MOD 8192`.
 - A document takes banks from `BANK.ALLOC(1)` as its text grows, up to 8. Its bank numbers are
   in a table of 8 bytes. The banks need not be next to each other.
-- No bank left shows Insufficient memory, as a full pool does now.
+- No bank left shows Insufficient memory.
 - The routines that read or write the text are in the low part. Trap: a `#REGION_SLOT` SUB
   runs from `$A000`, the window the text banks use.
-- `MOVE_GAP` copies across banks through a 256-byte buffer in low RAM.
+- `MOVE_GAP` copies across banks through `RUN_BUFFER`, 255 bytes in low RAM.
 - Every routine that works on positions keeps working: the cursor, the selection, Find,
   Change, the clipboard and the draw.
 
@@ -106,11 +106,10 @@ and Ctrl+End on a 64 KB text count up to 65535 bytes.
 
 ### Memory
 
-| Part | Now | After E1 and E2 |
+| Part | Now | After E2 |
 |---|---|---|
-| The text | low RAM, the program's end to `$96FF`, about 21 KB | up to 8 banks a document, 64 KB |
+| The text | up to 8 banks, 64 KB | the same |
 | The clipboard | `$9700` to `$9EFF`, 2048 bytes | one bank, 8192 bytes |
-| Low RAM freed | — | about 23 KB, for code |
 
 Each read of the text costs a bank select. A page of 26 rows reads about 2 KB.
 
@@ -138,7 +137,7 @@ The full suite runs first, as step 7 since the last one.
 
 | Step | Part | Code | Tests |
 |---|---|---|---|
-| E1 | The text in RAM banks, one document. A 40 KB file loads. | about 500 bytes in the low part, 23 KB of low RAM freed | EDIT, EDIT2, EDITSET, and EDITBIG for the 40 KB file |
+| E1, done | The text in RAM banks, one document. A 40 KB file loads. | 836 bytes, then 63 for E1b's copy loop and key drop; the low part is about 15.6 KB | EDIT, EDIT2, EDITSET, and EDITBIG for the 40 KB file |
 | E2 | The clipboard in its own bank, 8192 bytes | about 50 bytes | EDIT |
 | E3 | Three documents: the records, the swap, F7 | about 400 bytes code, 390 bytes RAM | EDITWIN |
 | E4 | The Window menu, the letters on the bar, Exit's questions | about 300 bytes in region 2 | EDITWIN |

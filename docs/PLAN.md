@@ -69,6 +69,11 @@ The UXCBASIC library is the folder `lib/`. Each file holds one namespace of the 
 | `lib/KEYS.UXI` | `KEYS` | the characters and scan codes the console gives for keys, the modifier bits of `con_status`, and `BIND`s of `GETKEY`, `GETEXTKEY`, `WAITKEY` and `KEYMODS`: `KEYS.SCAN_UP`, `KEYS.MOD_CTRL` |
 | `lib/CONS.UXI` | `CONS` | the escape sequences the console obeys, as string constants with plain names (`CONS.CSI$`, `CONS.REVERSE$`, `CONS.RED$`, `CONS.ON_WHITE$`, `CONS.CLEAR_EOL$`); `BIND`s of `PRINT`, `INPUT`, `LINPUT`, `POS`, `NEWLINE` for `PRINT`, and `CLS$` for `CLEAR_SCREEN$`; `CLS`, `LOCATE`, `PRINTAT`, `PRINT_BOOL`, `SCREEN_ROWS`, `SCREEN_COLS` |
 | `lib/STR.UXI` | `STR` | a `BIND` of each string built-in; `INSTR_REV` |
+| `lib/BANK.UXI` | `BANK` | the RAM bank calls: `ALLOC`, `FREE`, `FREE_COUNT`, `USE`, `CURRENT`, `GET_BYTE`, `PUT_BYTE`, `FAR_CALL`; include it after `DOS.UXI` |
+| `lib/INI.UXI` | `INI` | `READ_KEY$` and `WRITE_KEY` of the settings file `C:\6502DOS.INI`, text in `[NAME]` sections of `KEY=VALUE` lines; include it after `DOS.UXI` |
+| `lib/VERA.UXI` | `VERA` | direct reads and writes of the text screen in VERA, and a stack of saved screen boxes in VRAM; it runs from region 3 |
+| `lib/GUI.UXI` | `GUI` | GUI Forms, the text-mode user interface: forms, fields, buttons, menus, dialogs, lists; it runs from regions 1 to 4; include `KEYS.UXI` and `VERA.UXI` first |
+| `lib/PICKFILE.UXI` | `GUI` | `GUI.PICKFILE`, a dialog that picks a file, after MS-DOS EDIT's Open dialog, and `GUI.PICKMANAGE`, the same with the keys of a file manager; include `KEYS.UXI`, `DOS.UXI`, `BANK.UXI`, `VERA.UXI` and `GUI.UXI` first |
 
 - Every UXCBASIC program in 6502DOS calls the API through `DOS.UXI`. Each call goes to the
   6502DOS jump table through `SYS`.
@@ -310,7 +315,9 @@ Calls, with the MS-DOS 2.0 function each matches:
 | `con_line` | 0Ah | reads a line from the console with editing; Tab does nothing |
 | `con_edit` | none; 0Ah with a template | edits the line kept in the buffer, and ends on Enter, Tab or an extended key |
 | `con_status` | 0Bh | whether a key is waiting |
+| `con_screen` | none | reads a line with the full-screen editor |
 | `con_out`, `con_in` | 02h, 08h | write a character; wait for a key, with no echo |
+| `con_getkey` | none | reads a key in one call, extended or not, waiting or not, with the modifiers |
 | `con_cursor` | none; BIOS 10h, 02h and 03h | get or set the cursor's row and column; a get also gives the screen's rows and columns |
 | `con_colour` | none | get or set the console color (section 6) |
 | `con_break` | 33h | get or set the mode of the STOP key, and read the break flag (section 7) |
@@ -318,6 +325,7 @@ Calls, with the MS-DOS 2.0 function each matches:
 | `exit`, `exitcode` | 4Ch, 4Dh | ends a program with a code; gives the last child's code |
 | `keep` | 31h | ends a program and keeps its banks: a TSR |
 | `bank_alloc`, `bank_free` | 48h, 49h | hand out and free runs of 8 KB RAM banks; count the free banks (section 3) |
+| `bank_call` | none | calls a routine with a RAM bank selected (section 3) |
 | `xms_alloc`, `xms_free`, `xms_move` | none; XMS 09h, 0Ah, 0Bh | extended memory blocks (section 3) |
 | `str_alloc`, `str_free`, `str_gc`, `str_heap` | none | string heaps with garbage collection (section 3) |
 | `getvect`, `setvect` | 35h, 25h | the IRQ hook, the break handler, the disk error handler |
@@ -588,7 +596,8 @@ KERNAL entries:
   `SHELL=` in `CONFIG.SYS` names another.
 - After the banner the ROM runs `C:\ROMSHELL.COM`, a 9-byte stub that starts the shell in ROM
   bank 3, with an empty tail, and runs it again each time it ends. When `exec` fails, as with
-  no `C:\ROMSHELL.COM`, the ROM goes to the monitor and prints nothing.
+  no `C:\ROMSHELL.COM`, the ROM prints `Cannot run C:\ROMSHELL.COM: ` and the error's message
+  from `errmsg`, then goes to the monitor.
 - It calls the API through `DOS.UXI` (section 2).
 - Its language is a small BASIC, not MS-DOS's command language.
 - The prompt and a script take the same language. A line typed at the prompt runs as a script of
@@ -606,7 +615,7 @@ KERNAL entries:
 | Screen | `PRINT`, `INPUT`, `CLS`, `LOCATE row,column`, `COLOR foreground,background`, `BEEP`, `WAIT seconds` |
 | Flow | `IF`, `ENDIF`, `GOTO`, `GOSUB`, `RETURN`, `REPEAT n`, `ENDREP`, `END`, `ONERROR(n)` |
 | Files | `FILES [pattern]`, `LIST file`, `COPY from to`, `DELETE file`, `RENAME old new`, `MKDIR`, `RMDIR`, `CHDIR` |
-| System | `VERSION`, `PAUSE`, `SETSYS`, `BIND`, `RUN` |
+| System | `VERSION`, `PAUSE`, `SETSYS`, `BIND`, `RUN`, `CALL` |
 
 Short names:
 
@@ -614,6 +623,8 @@ Short names:
 |---|---|
 | `CHDIR` | `CD` |
 | `DELETE` | `DEL` |
+| `FILES` | `DIR` |
+| `LIST` | `TYPE` |
 | `MKDIR` | `MD` |
 | `RMDIR` | `RD` |
 | `RENAME` | `REN` |
@@ -631,6 +642,10 @@ Short names:
 - `REPEAT n` runs the lines up to `ENDREP` n times, in a script only.
 - `END` ends the script. At the prompt it ends the shell.
 - `RUN name` ends the script, then runs the program or script `name`.
+- `CALL name` runs the program or script `name`. A called script runs to its end or its `END`;
+  then the calling script goes on at the line after the `CALL`, with its `ONERROR`, `GOSUB`s and
+  loops. `P1$` to `P9$` hold the called script's words. A called script cannot `CALL`: that
+  gives `Insufficient memory`. An error or Ctrl+C that ends the called script ends the caller.
 - `LIST file` prints a text file.
 - `LOCATE row,column` moves the cursor. Rows run 0 to 29 and columns 0 to 79. A value out of
   range gives `Syntax error`.
@@ -654,6 +669,9 @@ Short names:
   `PURPLE` 4, `GREEN` 5, `BLUE` 6, `YELLOW` 7, `ORANGE` 8, `BROWN` 9, `LIGHTRED` 10, `DARKGRAY`
   11, `GRAY` 12, `LIGHTGREEN` 13, `LIGHTBLUE` 14, `LIGHTGRAY` 15. `DOS.UXI` gives the same
   names as CONSTs: `DOS.BLUE`.
+- `ERRORLEVEL` is a number that cannot be set: the exit code of the last program run, from
+  `exitcode` (section 4). `IF ERRORLEVEL = 2 PRINT "NOT FOUND"` tests it. `ERRORLEVEL = 5`
+  gives `Syntax error`.
 - Trap: the shell's color table in `COLOR_NUMBER` lists the names in the order of their values
   in `DOS.UXI`. Change both together.
 - A number expression takes `+`, `-`, `*`, `/`, brackets and a unary minus. `*` and `/` come
@@ -966,6 +984,22 @@ Short names:
     of the first 16384 lines. A line past them reads on from the last entry.
   - No name prints `Required parameter missing` and gives exit code 1. A file that does not open
     prints its error message and gives exit code 2. The exit code is 0 otherwise.
+- `TED name` is a DOS utility, `TED.COM`, for the command line. It edits a text file on the full
+  screen: 29 rows of text and a status row. The keys are in the header of `src/dos/TED.UXB`
+  and in `C:\DOS\TED.HLP`, which F1 shows.
+  - The text takes the RAM from the program's end to `$96FF`, and the clipboard `$9700` to
+    `$9EFF`, 2048 bytes.
+  - A save writes `TED.$$$` in the file's directory, then gives it the file's name.
+  - No name gives exit code 1, a file too large or one that does not open exit code 2.
+- `EDIT [name]` is a DOS utility, `EDIT.COM`, for the command line, after MS-DOS EDIT. It is
+  TED with GUI Forms: a menu bar, a box of 26 rows of 78 columns, a status row, and dialogs for
+  Find, Change, the file and the save question. The keys and menus are in the header of
+  `src/dos/EDIT.UXB`. `docs/EDIT.PLAN.md` holds its steps.
+  - The text is a gap buffer of up to 65535 bytes in up to 8 RAM banks. The clipboard is
+    `$9700` to `$9EFF`, 2048 bytes.
+  - No name gives an empty text, `UNTITLED`.
+  - The section `[EDIT]` of `C:\6502DOS.INI` holds its settings and its 4 recent files.
+  - A file too large, or no RAM bank free, gives exit code 2.
 - `TREE [d:][path] [-F]` is a DOS utility, `TREE.COM`, for the command line. It draws every
   directory below `path`, or below the root of drive `d`, as a tree.
   - The first line is `ROOT`, or the start path. Each directory prints one line, ` +- ` and its
@@ -1229,8 +1263,8 @@ Folders:
 | Folder | Holds |
 |---|---|
 | `src/asm/` | layer 0 and the asm parts of layer 1 |
-| `src/bas/` | the UXCBASIC programs |
-| `lib/` | the UXCBASIC library: `DOS.UXI`, `HEAP.UXI`, `KEYS.UXI`, `CONS.UXI` and `STR.UXI` |
+| `src/bas/` | the shell and the programs the tests run |
+| `lib/` | the UXCBASIC library (section 2, `DOS.UXI`) |
 | `src/scom/` | the commandlets and `SCOM.UXI` |
 | `src/dos/` | the DOS utilities and their text files |
 | `src/utils/` | the utilities, a folder each, for the card's `\UTILS` |
@@ -1267,6 +1301,10 @@ Folders:
 - Before it writes the card, `build.py` copies into `card` each file and folder that the X16
   added to `build/SD.IMG` or changed since `SD.SUM`, and deletes from `card` each one the X16
   deleted. `card` is gitignored. A build file deleted on the X16 comes back at the next build.
+- `build.py --release` builds as above, then fills `build/release` with `SD.IMG`, `6502DOS.ROM`,
+  `LICENSE` and `NOTICE`. That `SD.IMG` is 4 MB and holds the folder `sd` less the names in
+  `RELEASE_SKIP`, `CMDSHELL.COM`, `ROMSHELL.COM`, `MSBASIC.COM`, `DOS` and `UTILS`. It has no
+  `\TEST` and nothing from `card`.
 - `tools/fatcheck.py IMAGE` checks a card image: the FATs are equal, no cluster is lost or in
   two chains, and each file's chain fits its size. Each run of long-name entries must count
   down from the entry with bit 6 to 1, hold one checksum, type 0 and cluster 0, and end at the
@@ -1305,7 +1343,8 @@ Folders:
   `build/bas`, each `tests/com/NAME.S` assembled to `NAME.COM` with its code from `$0801`, and each
   `tests/com/NAME.UXB` compiled to `NAME.COM`. A test runs these as child programs. x16emu prints
   `SD card attached.`, and `tests.py` drops that line.
-- Trap: x16emu `-bas` stopped typing at the text `\X` in a test. Test input avoids `\X`.
+- Trap: x16emu `-bas` reads `\X` as a hex escape, so `Q:\X` types `Q:` and one byte. Test input
+  avoids `\X`.
 - Trap: `-bas` writes into the keyboard queue at `$A800` and its count at `$A80A` in RAM bank 0.
   It starts once the PC reaches `$FFCF`, and writes only while the I flag is clear. So
   every console read goes through `$FFCF`, and the console takes from the queue with I set.
@@ -1351,7 +1390,7 @@ Each step boots and shows something, and each has a test.
          `PRINT #`. A line ends with CR LF. `INPUT` reads with `con_line`. `EOF` calls `ioctl`
          input status. `POS` calls `con_cursor`. `GETKEY` calls `con_status`, then `con_in`.
        - The startup and exit drop the `$0372` charset save and the screen rewrite. `END` calls
-         `exit` with code 0, and `END code` with that code. A run-time error exits with code 0.
+         `exit` with code 0, and `END code` with that code. A run-time error exits with code 255.
        - Calls 40 to 42, `con_out`, `con_in` and `con_cursor`, are in the jump table.
        - UXCBASIC's `tests.py` runs its tests on this ROM.
    6e. The KERNAL entries leave the ROM: the file entries, the PSP's `$30–$45`, `CHANNEL_CMD`,
@@ -1469,21 +1508,20 @@ run on 6502DOS.
 
 ## 13. Still to decide
 
+Each item waits until after beta 1. What the other sections say of it is unstable and may
+change.
+
 - The rest of the PSP: the handlers, the environment's bank.
 - Which ROM bank holds which part past bank 4.
 - Whether `A:` and `B:` stay free, or go to IEC drives.
 - FAT12 and FAT16: the kernel reads FAT32 only.
-- Whether an API string pointer points at UXCBASIC's max byte or at its length byte.
-  `tpl/R-FILE.ASM` passes the max byte, with the length at offset 1.
-- What the ROM prints when it cannot run `C:\ROMSHELL.COM`.
+- The calls not written: `attrib`, `filetime`, `getvect` and `setvect` (`docs/API.md`). Their
+  numbers hold. Their registers may change.
 - The shell (section 8):
   - Whether a child program sees `PATH$` and the other system variables, through the
     environment (section 7).
-  - The exit code `END` gives.
-  - How a script reads the exit code of the program it ran.
   - Whether one Markdown reference, `docs/SHELL.md`, holds the shell language, and
     `tools/build.py` makes the shell topics of `HELP.TXT` from it.
-- An editor that runs on 6502DOS.
 - Graphics, sound and loadable drivers: not before step 5 works.
 - The 65C816: not in the first version.
 - What `xms_move` does when the source and the destination overlap.

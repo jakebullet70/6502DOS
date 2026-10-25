@@ -1,0 +1,55 @@
+' GUIPICK2: GUI.PICKFILE with typed paths, in the folder PICKT, which it makes. The last lines
+' give each result, then TARGET$ for a 1, then the current folder, which the dialogs leave as it
+' was, then the names in PICKT and in PICKT\Sub.
+' PICKT holds zed.TXT and the folder Sub, which holds Al2.TXT, in.TXT and
+' LongFolderNameNumberOneAbcdefghi\LongFolderNameNumberTwoAbcdefghi.
+' 1: Sub and Enter open Sub, then Tab, Tab and Enter choose Al2.TXT. 2: Sub\i*.TXT and Enter
+' open Sub with the mask i*.TXT, then Tab, Tab and Enter choose in.TXT. 3: Sub\ and the two
+' long folders open a path past 68 columns, then ..\..\..\zED.TXT returns C:\PICKT\zED.TXT.
+' 4: zed.TXT, 3 Tabs and Enter on OK return C:\PICKT\zed.TXT.
+#INCLUDE "KEYS.UXI"
+#INCLUDE "DOS.UXI"
+#INCLUDE "BANK.UXI"
+#INCLUDE "VERA.UXI"
+#INCLUDE "GUI.UXI"
+#INCLUDE "PICKFILE.UXI"
+DIM PICKED AS STRING * 80, SHOWN AS STRING * 255
+
+SUB MAKE(PATH AS STRING)
+  DOS.CLOSE_FILE(DOS.CREATE_FILE(PATH, 0))
+END SUB
+
+SUB TRY()
+  DIM RESULT AS UBYTE
+  RESULT = GUI.PICKFILE("Open", "*.TXT", PICKED)
+  SHOWN = SHOWN + STR$(RESULT)
+  IF RESULT = 1 THEN SHOWN = SHOWN + " " + PICKED
+  SHOWN = SHOWN + ";"
+END SUB
+
+SUB NAMES(PATTERN AS STRING)
+  DOS.FINDFIRST(PATTERN, DOS.ATTR_DIRECTORY)
+  DO WHILE DOS.ERROR = 0
+    PRINT DOS.FOUND_NAME; " ";
+    DOS.FINDNEXT()
+  LOOP
+  PRINT
+END SUB
+
+DOS.MKDIR("PICKT")
+DOS.CHDIR("PICKT")
+DOS.MKDIR("Sub")
+MAKE("zed.TXT")
+MAKE("Sub\Al2.TXT")
+MAKE("Sub\in.TXT")
+DOS.MKDIR("Sub\LongFolderNameNumberOneAbcdefghi")
+DOS.MKDIR("Sub\LongFolderNameNumberOneAbcdefghi\LongFolderNameNumberTwoAbcdefghi")
+REPEAT 4
+  TRY()
+END REPEAT
+POS(1) = 24
+POS(0) = 0
+PRINT SHOWN
+PRINT DOS.GETCWD(0)
+NAMES("*.*")
+NAMES("Sub\*.*")

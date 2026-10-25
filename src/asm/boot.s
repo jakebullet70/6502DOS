@@ -40,13 +40,7 @@ reset:
         sta VERA_IEN
         cli
         ldx #0
-@print:
-        lda banner,x
-        beq @booted
-        jsr CHROUT
-        inx
-        bra @print
-@booted:
+        jsr print
         lda boot_shell
         beq @monitor
         lda #>PSP               ; exec saves only boot's PSP and zero page
@@ -68,10 +62,38 @@ reset:
         sta r1+1
         jsr API_EXEC
         bcc @shell              ; the shell ended: run it again
+        ldx #<MONITOR_OUT       ; exec failed: A = the error
+        stx r0
+        ldx #>MONITOR_OUT
+        stx r0+1
+        jsr API_ERRMSG
+        ldx #cannot - banner
+        jsr print
+        ldy #0
+@message:                       ; the length, then the message
+        cpy MONITOR_OUT
+        beq @end
+        iny
+        lda MONITOR_OUT,y
+        jsr CHROUT
+        bra @message
+@end:
+        ldx #banner_end - 2 - banner ; CR, LF
+        jsr print
 @monitor:                       ; no shell, or exec failed
         lda #>PROGRAM_END
         sta PSP_TOP
         jmp monitor
+
+; print: writes the text at banner + X, up to a 0. Changes A and X.
+print:
+        lda banner,x
+        beq @done
+        jsr CHROUT
+        inx
+        bra print
+@done:
+        rts
 
 ; irq: counts VSYNCs, the only VERA interrupt on. A BRK goes to the monitor. irq_entry jumps
 ; here with A and the interrupted ROM bank on the stack.
@@ -111,6 +133,8 @@ banner:
         .byte "For the Commander X16", $0D, $0A
 banner_end:
         .byte 0
+cannot:                         ; print reaches it from banner: the texts fit in 256 bytes
+        .byte "Cannot run ", SHELL_PATH, ": ", 0
 
 ; boot_shell: 1 runs SHELL_PATH at boot, 0 goes to the monitor. tools/build.py clears it in
 ; build/TEST.ROM, the ROM the tests boot.

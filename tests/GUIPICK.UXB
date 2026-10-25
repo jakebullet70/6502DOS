@@ -15,11 +15,7 @@
 ' 5; F5 copies Alpha.TXT to Sub\Al2.TXT; Del and Yes delete Alpha.TXT; Esc returns 0. 12: in
 ' the list of folders Del and Yes delete aFold; Del on .. does nothing; F2 renames NewF to
 ' Fold2; Tab and Enter choose gamma.TXT.
-' 13 to 16 type paths, after it makes the two long folders in Sub. 13: Sub and Enter open Sub, then Tab, Tab and Enter choose Al2.TXT.
-' 14: Sub\i*.TXT and Enter open Sub with the mask i*.TXT, then Tab, Tab and Enter choose
-' in.TXT. 15: Sub\ and the two long folders open a path past 68 columns, then
-' ..\..\..\zED.TXT returns C:\PICKT\zED.TXT. 16: zed.TXT, 3 Tabs and Enter on OK return
-' C:\PICKT\zed.TXT.
+' GUIPICK2 types paths.
 #INCLUDE "KEYS.UXI"
 #INCLUDE "DOS.UXI"
 #INCLUDE "BANK.UXI"
@@ -68,15 +64,6 @@ END REPEAT
 TRY(1)
 TRY(1)
 POS(1) = 20
-POS(0) = 0
-PRINT SHOWN
-SHOWN = ""
-DOS.MKDIR("Sub\LongFolderNameNumberOneAbcdefghi")
-DOS.MKDIR("Sub\LongFolderNameNumberOneAbcdefghi\LongFolderNameNumberTwoAbcdefghi")
-REPEAT 4
-  TRY(0)
-END REPEAT
-POS(1) = 24
 POS(0) = 0
 PRINT SHOWN
 PRINT DOS.GETCWD(0)

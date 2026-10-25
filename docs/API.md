@@ -13,6 +13,7 @@ Conventions:
 - A path is a pointer to a length-prefixed string.
 - A handle goes in X, in and out.
 - A drive number is 0 for A:, 1 for B:, and so on, except where a call says 0 is the current drive.
+- A call whose Written column says no gives error 1. Its number holds; its registers may change.
 
 ## Calls
 

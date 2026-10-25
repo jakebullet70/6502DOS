@@ -14,9 +14,14 @@ Conventions for every call:
 - A handle goes in X, in and out.
 - A drive number is 0 for A:, 1 for B:, and so on, except where a call says 0 is the current
   drive.
+- A call whose Written column says no gives error 1. Its number holds; its registers may
+  change.
 """
 
 VERSION = (0, 1, 0)
+# The release label, printed after the version by the boot banner. The shell's VERSION in
+# src/bas/CMDSHELL.UXI prints the same label.
+VERSION_LABEL = "Beta 1"
 
 # The entry of call 0, in RAM. The gate code runs below it; the page holds 64 entries.
 GATE_ENTRIES = 0x0340

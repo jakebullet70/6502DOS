@@ -48,8 +48,13 @@ low
         #self jsr, hex
         lda #13
         #rec jsr, S_CHROUT
+        .if UXDOS != 0
+        lda #255                ; the exit code of a run-time error
+        jmp API_EXIT
+        .else
         #rec jmp, S_EXIT
-put    #selfx lda, head        ; print from head+X up to a 0 byte
+        .endif
+put   #selfx lda, head        ; print from head+X up to a 0 byte
         beq done
         #rec jsr, S_CHROUT
         inx
@@ -76,7 +81,7 @@ tail    .text " ERROR AT $"
         .endsegment
 
 ; Stop with ?<message> ERROR AT $<site>, where the site is the address of the user code's JSR,
-; and end the program as T_END does. R_ERRORB, in UXC.TPL.ASM, is R_ERROR with bank set.
+; and end the program with exit code 255. R_ERRORB, in UXC.TPL.ASM, is R_ERROR with bank set.
 R_ERROR .block
         #tpl
         #error_body 0

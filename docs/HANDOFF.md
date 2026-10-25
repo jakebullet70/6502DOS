@@ -1588,6 +1588,133 @@
 
 ## Next
 
+- Beta 1 (the user, 2026-10-25). Order: scope, the API freeze, the known bugs, a full suite,
+  a clean 4 MB release image, the README, the owed doc batches, NOTICE credits, then the
+  version text and a tag.
+  - Scope: PLAN section 11 steps 8 (`SYSINIT`), 9 and 10 wait until after beta 1. EDIT ships
+    as it stands (E1, E1b), as beta. EDIT's E2 on wait (docs/EDIT.PLAN.md).
+  - PLAN section 13, settled: an API path points at the length byte (`R-FILE.ASM` passes
+    it); `END n` gives exit code n, `END` 0; EDIT is the editor on 6502DOS. Deferred and
+    marked unstable in the docs: the rest of the PSP, ROM banks past 4, `A:` and `B:`,
+    FAT12/16, drivers, the 65C816, `xms_move` overlap, bank lists, string heap descriptors,
+    `docs/SHELL.md`, a child seeing `PATH$`, and the calls not written (`attrib`,
+    `filetime`, `getvect`, `setvect`).
+  - Decided (the user, 2026-10-25), one step each:
+    - B1 done: `ERRORLEVEL`, a shell number that cannot be set, the exit code of the last
+      program run, from `exitcode`. In `COLOR_NUMBER`, `src/bas/CMDSHELL.UXI`. `SHELL.IN`
+      runs `C:\DOS\VIEW` with no name (1) and with `NOSUCH.TXT` (2), and `ERRORLEVEL = 5`
+      (Syntax error). SHELL ok 0.6 s. Build 2969 ms, the new baseline.
+    - B2 done: a UXCBASIC run-time error gives exit code 255, not 0. `error_body` in
+      `UXCBASIC/tpl/R-ERROR.ASM` ends with `lda #255` / `jmp API_EXIT` when `UXDOS` is 1;
+      the stock table still jumps to `S_EXIT`. +2 bytes in a program that has `R_ERROR`.
+      `tests/com/ENDCHILD.UXB` tail F divides by zero; `ENDCODE` runs A to F and dumps
+      $1200-$123F. ENDCODE ok 4.5 s (exitcode A=$FF, X=0). Build 9724 ms (templates
+      rebuilt, all programs recompiled), the new baseline.
+    - B3 done: when exec of `C:\ROMSHELL.COM` fails, `src/asm/boot.s` prints
+      `Cannot run C:\ROMSHELL.COM: ` and the message from `errmsg` (into `MONITOR_OUT`),
+      CR LF, then goes to the monitor. `print` writes the text at `banner` + X; the banner and
+      the CR LF use it too. +72 bytes in ROM bank 0. No test boots without the shell: a
+      one-off boot of `6502DOS.ROM` with no SD card printed
+      `Cannot run C:\ROMSHELL.COM: Read fault`, then `>`, in 0.8 s. BOOT ok 0.4 s, SHBOOT ok
+      0.4 s. Build 1740 ms, the new baseline.
+    - Docs done, not committed: PLAN section 8 (`ERRORLEVEL`, the ROM's message), section 11
+      step 6d (exit code 255), section 13 (settled items out; a lead line marks the rest
+      unstable; the four calls not written listed), `tools/api.py` conventions (a call not
+      written gives error 1, its registers may change; API.md regenerated), UXC-HELP `END`
+      and the 6502DOS topic (exit code 255), the `tools/tests.py` docstring (ROMSHELL).
+  - Item 5, the known bugs: the help-topic clear; GUIPICK's path past 68 columns and a typed
+    folder name taken as a file; why the old image lacked the mixed-case root names; a
+    recheck of every ROMSHELL error message. The user's SAVE error: fixed (the user,
+    2026-10-25), dropped.
+    - Done, the help-topic clear: `SHOW_TEXT` in `src/dos/TED.UXB` and `src/dos/EDIT.UXB`
+      clears the screen when the topic's heading matches, or before the list with no topic.
+      A topic not in HELP.TXT leaves the screen as it is. TED.COM 11686 bytes (+36), EDIT.COM
+      40163 (+37). TED golden: only the `ESC[0m ESC[2J` after `zz` went. TED ok 2.3 s, EDIT ok
+      3.1 s (its golden has no clear). Build 3494 ms, the new baseline.
+    - Done, the full suite (2026-10-25): 105 tests, 6 failed, 142.3 s. Five goldens stale,
+      updated: EDIT2 (only the `ESC[2J` after the missing topic went), FILES, HDIR, HDIRARG,
+      TREE (the template's +2 bytes in every program, ENDCHILD.COM 380, EDITBIG.COM new,
+      CMDSHELL.COM 21596). Re-run alone: EDIT2 ok 3.5 s, FILES 0.4, HDIR 1.6, HDIRARG 1.4,
+      TREE 2.0. GUIPICK hit 5.0 s in the suite and was cut off; alone it is ok in 4.0 to
+      4.1 s (four runs).
+  - Done, GUIPICK split: `tests/GUIPICK.UXB` keeps cases 1 to 12 and ends with the folder and
+    the listings; the new `tests/GUIPICK2.UXB` has the typed paths, old cases 13 to 16 as its
+    1 to 4, on its own PICKT (zed.TXT; Sub with Al2.TXT, in.TXT and the two long folders).
+    The keys split at the same place (GUIPICK.IN 423 bytes, GUIPICK2.IN 237). The results
+    match the old ones. GUIPICK ok 3.2 s, GUIPICK2 ok 1.4 s.
+  - Done, GUIPICK's two bugs: both were fixed in step L3e (commit 933a539); the item 5 list
+    came from the older L3b note. `PICKFILE` cuts a path past 68 characters to `C:\...` and its
+    last 62, at form columns 3 to 70, inside the frame at column 73 (PLACE counts columns from
+    the form's corner). `TAKE_TYPED` opens a typed folder. GUIPICK2 covers both: case 1 (Sub
+    opens Sub) and case 3 (the two long folders). No code change, no test run.
+  - Done, the lost root names: cause not found; the image is gone. The 08:46Z build of
+    2026-10-24 wrote both names (the folder `sd` holds `startup.cmd` and `Utils`, so every
+    build does). No tool wrote `build/SD.IMG` before the 12:38Z build, which found neither, so
+    the X16 lost them on the user's card. On a copy of today's card, COPY and DEL of
+    `LongNameFile.txt` and TED's save of `startup.cmd` (COPY to `TED.$$$`, DEL, REN) keep both
+    names; `mksd.read` lists them. The 05:31 snapshot holds them too:
+    `C:\Users\Admin\AppData\Local\Temp\claude\c--dev-6502DOS\79091fcb-7891-4816-8bdf-1055f537b253\scratchpad\build_before\SD.IMG`. 
+  - Done, the card guard: `pull_card` in `tools/build.py` never deletes from `card/` a path the
+    build stages, or a path under a staged folder the image lacks. It prints `card: kept PATH;
+    the image lacks NAME`. Deletes the X16 made of other paths still reach `card/`. A scratch
+    card checked both cases. `build.py` runs `main()` only as a script. Build: 1.70 s, the ROM
+    1.53 s, the new baseline.
+  - Done, the ROMSHELL error messages: the new test `ROMERR` (`.IN` and golden local) runs
+    `ROMSHELL.COM` and gives each message of the shell once: `Syntax error`, `Type mismatch`,
+    `Division by zero`, `Bad command or file name`, `Target must be a directory`,
+    `Label not found`, `RETURN without GOSUB`, and the line `in C:\SCRIPTS\NOLABEL.CMD line 7`;
+    and from `DOS.ERRMSG`: `Path not found`, `File not found`, `Access denied`,
+    `Invalid drive`, `Insufficient memory`. Each reads as in the RAM shell's goldens; `DEEP`
+    reaches depth 17 in both. `Insufficient disk space` is not covered: no test card fills.
+    No code change. ROMERR ok 0.6 s. Item 5 is done.
+  - Done, item 4, the full suite: 107 tests, 132.9 s. 103 passed. FILES, HDIR, HDIRARG and TREE
+    failed: their goldens of the root lacked `GUIPICK2.COM` and had the old size of
+    `GUIPICK.COM`. Goldens updated; FILES ok 0.4 s, HDIR ok 1.5 s, HDIRARG ok 1.4 s, TREE ok
+    2.0 s. The slowest test is EDIT2, 3.4 s.
+  - Done, item 9, the release card: `python tools/build.py --release` builds as usual, then
+    fills `build/release` with `SD.IMG` (4 MB), `6502DOS.ROM`, `LICENSE` and `NOTICE`. That
+    `SD.IMG` holds the folder `sd` less `RELEASE_SKIP` (`WIDE.TXT`), `CMDSHELL.COM`,
+    `ROMSHELL.COM`, `MSBASIC.COM`, `DOS` and `UTILS`: no `TEST`, nothing from `card`, no
+    `pull_card`. The three themes `CUSTOM-DARK`, `-GRAY`, `-LIGHT.GTH` moved from `card/Utils` into
+    `sd/Utils` (the user, 2026-10-25); GUIDEMO reads `UTILS\CUSTOM-LIGHT.GTH`. `stage_card` takes
+    the folder to fill and a skip list. fatcheck: no problems. A one-off boot of the release ROM
+    on a copy of the card runs `startup.cmd`, `VER`, `FILES`, `FILES UTILS` in 4.5 s. Build 2.05 s
+    with `--release`, the new baseline. Trap: `tools/tests.py` ends with a bare `main()`, so
+    importing it runs the full suite; the boot script
+    `C:\Users\Admin\AppData\Local\Temp\claude\c--dev-6502DOS\1d3e0f4f-21be-4c39-b31a-0b29dc715b21\scratchpad\relboot.py`
+    execs it without that line.
+  - Done, items 7, 8 and 10 (2026-10-25), not committed.
+    - Item 7: `README.md` rewritten: what 6502DOS is, the status, running the release in
+      x16emu, the shell with an example, the card, building (`build.py --release`), the
+      folders, the documents, the licence.
+    - Item 10: `NOTICE` adds Microsoft BASIC for the 6502 (MIT, with its text) and msbasic
+      (BSD-2), in ROM bank 2 and `MSBASIC.COM`, and the Unlicense of the MSBASIC changes; and
+      64tass among the build tools.
+    - Item 8, the owed docs: PLAN gains the `--release` bullet, the calls `con_screen`,
+      `con_getkey` and `bank_call` in section 4's table, `BANK`, `INI`, `VERA`, `GUI` and
+      `PICKFILE` in the library table, `CALL` and the short names `DIR` and `TYPE` in
+      section 8, entries for `TED` and `EDIT`, the `\X` trap as a hex escape, and the folder
+      table's `lib/` and `src/bas/` rows. EDIT.PLAN: E1 done with its sizes, the memory table.
+      UXC-HELP: the loader is 147 bytes, `INI.UXI` in the two library lists, the menu
+      separator; MKHELP run. `HELP.TXT`: topics `EDIT` and `TED`. `docs/1st run - new
+      shell.txt` deleted.
+    - Build 1.82 s (2.01 s wall), the new baseline. Goldens refreshed for the two new topics,
+      diffed (one line each): CMDLETS ok 3.0 s, TED ok 2.4 s. EDIT ok 3.0 s, EDIT2 ok 3.7 s.
+    - Left open, the user's call: UXC-HELP topics for `PICKFILE.UXI`, `VERA.UXI` and
+      `CONS.UXI`; the GUI.UXI contract fixes (line 5174).
+  - Done, item 3's version text (2026-10-25), not committed. No asm.
+    - `tools/api.py` `VERSION_LABEL = "Beta 1"`; `genapi.py` puts it in `VERSION_TEXT`, so the
+      banner reads `6502DOS V0.1.0 Beta 1` (+7 bytes, bank 0). The shell's `VERSION` prints
+      the same label from a literal in `CMDSHELL.UXI` (CMDSHELL.COM +16 bytes). The API version
+      stays 0.1.0. `HELP.TXT`'s `VERSION` example matches.
+    - Build 1.96 s with `--release` (2.07 s wall), the new baseline; `build/release` rebuilt.
+    - The banner line in 107 goldens (121 lines) set by a script. Full suite: 107 tests,
+      106 ok, 148.4 s; FILES failed on the size of CMDSHELL.COM only, golden refreshed and
+      diffed (one line), FILES ok 0.5 s.
+  - Done, the beta 1 commit and the annotated tag `v0.1.0-beta1` (2026-10-25). The user
+    pushes the commit and the tag (`git push --follow-tags`).
+  - Steps since the last full suite: 0.
+
 0. PLAN section 11 step 6, CBM DOS leaves: 6a to 6e done. Full suite passed after the `END`
    range step.
 1. The user reviews `docs/PLAN.md` and `docs/API.md`, and tries `RUN SHOW.COM` in a window.

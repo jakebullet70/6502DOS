@@ -3,7 +3,7 @@
     python tools/tests.py [NAME ...] [--update]
 
 build/TEST.ROM boots to the monitor. The tests in SHELL_ROM_TESTS boot build/6502DOS.ROM, which
-runs C:\\CMDSHELL.COM at boot.
+runs C:\\ROMSHELL.COM at boot.
 
 Each test is an expected output tests/NAME.OUT. A test boots the ROM in x16emu with -echo raw
 and reads what the ROM writes through $FFD2. It passes when that output equals NAME.OUT. It

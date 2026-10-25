@@ -846,7 +846,7 @@ IF MISSING = 0 THEN END
 END MISSING
 ```
 
-- A run-time error ends the program with exit code 0.
+- A run-time error ends the program with exit code 255.
 - Errors: a string code, as in END "B", stops the compile with TYPE MISMATCH.
 
 ## GETKEY
@@ -1736,6 +1736,9 @@ SUB ENDMENU()
   made after it go in it, up to ENDMENU.
 - MENUITEM adds an item. Choosing it makes SHOW return ID, 1 to 252. The
   focus stays where it was.
+- A CAPTION$ of "-" adds a separator, a line across the menu that the cursor
+  passes over. Its ID is not used.
+- Trap: a menu's first item is not a separator.
 - A bar holds at most MOST_MENUS (8) menus and MOST_ITEMS (40) items. Past 8
   menus BEGINMENU does nothing and the items go in the last menu. Past 40
   items MENUITEM does nothing.
@@ -1954,8 +1957,8 @@ python pyuxc/pyuxc.py HELLO.UXB -I ../lib
 ```
 
 - -I FOLDER adds an include folder. It may be given more than once. lib/ at the
-  repo root holds BANK.UXI, CONS.UXI, DOS.UXI, GUI.UXI, HEAP.UXI, KEYS.UXI,
-  PICKFILE.UXI, STR.UXI and VERA.UXI. See [[Including files]].
+  repo root holds BANK.UXI, CONS.UXI, DOS.UXI, GUI.UXI, HEAP.UXI, INI.UXI,
+  KEYS.UXI, PICKFILE.UXI, STR.UXI and VERA.UXI. See [[Including files]].
 - -o FOLDER is the folder of the PRG. The folder must exist. The default is
   the source's folder.
 - --result FILE writes the result line to FILE as well.
@@ -2027,7 +2030,7 @@ PRINT TWICE(21)
 
 The libraries in lib/ need these before them:
 
-- BANK.UXI and HEAP.UXI: DOS.UXI.
+- BANK.UXI, HEAP.UXI and INI.UXI: DOS.UXI.
 - GUI.UXI: KEYS.UXI and VERA.UXI. See [[The GUI library]].
 - PICKFILE.UXI: KEYS.UXI, DOS.UXI, BANK.UXI, VERA.UXI and GUI.UXI.
 - CONS.UXI, DOS.UXI, KEYS.UXI, STR.UXI and VERA.UXI: none.
@@ -2063,7 +2066,7 @@ On 6502DOS:
 - The screen stays in CP437. The start and the end do not change the
   character set.
 - END returns to the program that ran this one, with the exit code after END,
-  or 0. A run-time error returns 0.
+  or 0. A run-time error returns 255.
 - At its start the program gives 6502DOS the page where its variables end.
   When it runs another program, 6502DOS saves its RAM only up to that page.
   RAM above it, written with POKE or ContentsAt, is lost then.
@@ -2176,7 +2179,7 @@ SHOW(14)
   holds again after it.
 - A run-time error in a region prints the bank with the address:
   ?DIVISION BY ZERO ERROR AT $07:A06E.
-- Low RAM: 79 bytes for the loader, 19 for each region, 7 for each SUB called
+- Low RAM: 147 bytes for the loader, 19 for each region, 7 for each SUB called
   across from each side, and the run-time error routine.
 - Trap: a WORD that holds the @ of a variable moved into a region points into
   that region's bank. Passed out of the region, it reads the wrong bank.

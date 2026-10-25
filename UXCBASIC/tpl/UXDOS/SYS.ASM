@@ -129,8 +129,7 @@ S_INIT  .block
         #endtpl
         .endblock
 
-; The exit: back to the program that ran this one, with exit code 0. T_END and R_ERROR jump
-; here.
+; The exit: back to the program that ran this one, with exit code 0. T_END jumps here.
 S_EXIT  .block
         #tpl
         lda #0

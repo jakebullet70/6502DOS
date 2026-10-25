@@ -82,7 +82,7 @@ def write(path, lines):
 def api_inc():
     major, minor, patch = api.VERSION
     lines = ["; " + HEADER, "",
-             '.define VERSION_TEXT "%d.%d.%d"' % api.VERSION,
+             '.define VERSION_TEXT "%d.%d.%d %s"' % (api.VERSION + (api.VERSION_LABEL,)),
              "VERSION_MAJOR = %d" % major,
              "VERSION_MINOR = %d" % minor,
              "VERSION_PATCH = %d" % patch, "",

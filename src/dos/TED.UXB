@@ -452,7 +452,8 @@ END SUB
 ' Shows HELP_NAME$, or with DOS_HELP = 1 the topic TOPIC of DOS_HELP_NAME$, on a clear screen
 ' until a key is pressed, then asks for the page. In the file a line :HEADING starts the topic
 ' HEADING, in capitals, up to the next such line. With no topic the lines before the first
-' heading show, then the headings. A TOPIC not in the file sets MESSAGE to No help for TOPIC.
+' heading show, then the headings. A TOPIC not in the file sets MESSAGE to No help for TOPIC
+' and leaves the screen uncleared.
 ' Each LF goes out after a CR, since the console's LF keeps the column. A file that does not
 ' open sets MESSAGE to its error.
 SUB SHOW_TEXT(DOS_HELP AS UBYTE)
@@ -470,10 +471,12 @@ SUB SHOW_TEXT(DOS_HELP AS UBYTE)
     MESSAGE = DOS.ERRMSG(DOS.ERROR)
     RETURN
   END IF
-  PRINT CONS.NORMAL$; CONS.CLEAR_SCREEN$;
-  CONS.LOCATE(2, 0)
   SHOWING = 0
-  IF TOPIC_LENGTH = 0 THEN SHOWING = 1
+  IF TOPIC_LENGTH = 0 THEN
+    SHOWING = 1
+    PRINT CONS.NORMAL$; CONS.CLEAR_SCREEN$;
+    CONS.LOCATE(2, 0)
+  END IF
   IN_HEADING = 0
   AT_LINE_START = 1
   DO
@@ -494,7 +497,11 @@ SUB SHOW_TEXT(DOS_HELP AS UBYTE)
       ELSEIF IN_HEADING = 1 THEN
         IF CHARACTER = LF THEN
           IN_HEADING = 0
-          IF LETTER = TOPIC_LENGTH THEN SHOWING = MATCHING
+          IF LETTER = TOPIC_LENGTH AND MATCHING = 1 THEN
+            SHOWING = 1
+            PRINT CONS.NORMAL$; CONS.CLEAR_SCREEN$;
+            CONS.LOCATE(2, 0)
+          END IF
           IF TOPIC_LENGTH = 0 THEN PRINT " ";
         ELSE
           IF TOPIC_LENGTH = 0 THEN

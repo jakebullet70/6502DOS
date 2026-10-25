@@ -37,8 +37,39 @@ Third-party code in the ROM, from x16-rom, github.com/X16Community/x16-rom, unde
   (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+ROM bank 2 and MSBASIC.COM hold Microsoft BASIC for the 6502, built from MSBASIC/src:
+
+- Microsoft BASIC for the 6502, under the MIT licence below.
+  Copyright (c) Microsoft Corporation.
+- msbasic, github.com/mist64/msbasic, its ca65 source, under the 2-clause BSD licence
+  above. Copyright (c) 2008-2019 Michael Steil and the msbasic contributors.
+- The changes in MSBASIC are public domain under the Unlicense, in MSBASIC/LICENSE.
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+
 Build tools in this repository:
 
 - tools/cc65/bin/ca65.exe and tools/cc65/bin/ld65.exe are unaltered binaries of
   cc65 V2.19, Git e11fb5c, from github.com/cc65/cc65. They are under the zlib
   licence in tools/cc65/LICENSE. They are not part of the ROM.
+- tools/64tass/64tass.exe is a binary of 64tass V1.60.3243, from
+  sourceforge.net/projects/tass64. It is under the GNU GPL version 2, with parts under
+  the LGPL 2.0 and 2.1 and the my_getopt licence, in the files tools/64tass/LICENSE-*.
+  tools/64tass/SOURCE.md says where its source is. It assembles the UXCBASIC templates
+  and is not part of the ROM.

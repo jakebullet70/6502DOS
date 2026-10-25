@@ -1,10 +1,11 @@
-; ENDCODE: runs tests/com/ENDCHILD.UXB through exec with the tails A to E, and keeps exec's and
+; ENDCODE: runs tests/com/ENDCHILD.UXB through exec with the tails A to F, and keeps exec's and
 ; then exitcode's A, carry and X at RESULTS, 6 bytes a run, for ENDCODE.IN to dump.
 ;   A  END: 0
 ;   B  END 20
 ;   C  END -3: 253
 ;   D  END in a SUB, with its parameter: 30
 ;   E  END with an expression: 8
+;   F  a run-time error: 255
 
 .setcpu "65C02"
 
@@ -33,7 +34,7 @@ RESULTS = $1200
         jsr save
         lda tail + 2
         inc
-        cmp #'E' + 1
+        cmp #'F' + 1
         bne @run
         rts
 

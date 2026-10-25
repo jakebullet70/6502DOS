@@ -330,11 +330,15 @@ FUNCT PRIORITY(OPERATOR AS UBYTE) AS UBYTE
   RETURN 0
 END FUNCT
 
-' The value of the color named in NAME_TEXT, from DOS.UXI. Another name is a syntax error.
-' Each name takes 11 characters of the table, in the order of the values, so a name's position
-' less 1, divided by 11, is its value.
+' The value of the color named in NAME_TEXT, from DOS.UXI, or of ERRORLEVEL, the exit code of
+' the last program run. Another name is a syntax error. Each color takes 11 characters of the
+' table, in the order of the values, so a name's position less 1, divided by 11, is its value.
 FUNCT COLOR_NUMBER() AS WORD
   DIM POSITION AS UBYTE
+  IF NAME_TEXT = "ERRORLEVEL"
+    SYS DOS.API_EXITCODE
+    RETURN DOS.REG_A
+  ENDIF
   POSITION = INSTR(" BLACK      WHITE      RED        CYAN       PURPLE     GREEN      BLUE       YELLOW     ORANGE     BROWN      LIGHTRED   DARKGRAY   GRAY       LIGHTGREEN LIGHTBLUE  LIGHTGRAY ", " " + NAME_TEXT + " ")
   IF POSITION = 0 OR NAME_TEXT = ""
     SYNTAX_ERROR()
@@ -1672,7 +1676,7 @@ SUB RUN_LINE()
         DO_BIND()
       CASE "VERSION", "VER"
         EXPECT_END()
-        IF FAILED = 0 THEN PRINT "6502DOS V"; DOS.VERSION()
+        IF FAILED = 0 THEN PRINT "6502DOS V"; DOS.VERSION(); " Beta 1"   ' VERSION_LABEL in tools/api.py
       CASE "END"
         EXPECT_END()
         IF FAILED THEN RETURN

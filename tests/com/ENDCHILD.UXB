@@ -2,6 +2,7 @@
 ' character of its command tail, which exec puts in the PSP at $0780.
 DIM LETTER AS UBYTE AT $0782
 DIM CODE AS UBYTE
+DIM ZERO AS UBYTE
 
 SUB QUIT(VALUE AS UBYTE)
   END VALUE
@@ -13,4 +14,6 @@ IF LETTER = 65 THEN END
 IF LETTER = 66 THEN END 20
 IF LETTER = 67 THEN END 253
 IF LETTER = 68 THEN QUIT(30)
+' F is a run-time error: exit code 255.
+IF LETTER = 70 THEN CODE = CODE / ZERO
 END CODE + 1

@@ -1,6 +1,6 @@
 r"""Build the 6502DOS ROM image.
 
-    python tools/build.py
+    python tools/build.py [--release]
 
 Runs tools/genapi.py, assembles every src/asm/*.s and build/gen/*.s with ca65, links them
 with src/asm/rom.cfg into build/6502DOS.ROM, ROM banks 0 and 1, and copies LICENSE and NOTICE
@@ -31,7 +31,11 @@ the folder card, gathered in build/card. TEST holds the other COM files in build
 files and folders of the test card's folder tests/sd. A file in card wins a
 name it shares with the others. Before that, each file and folder that the X16 added to the old
 build/SD.IMG or changed goes into card, and each one it deleted leaves card; build/SD.SUM lists
-what the last build wrote. Exit status 1 when a tool or a compile failed, api.py is inconsistent
+what the last build wrote.
+
+With --release, it then fills build/release with a 4 MB SD.IMG, 6502DOS.ROM, LICENSE and NOTICE.
+That SD.IMG holds the folder sd less RELEASE_SKIP, CMDSHELL.COM, ROMSHELL.COM, MSBASIC.COM, DOS
+and UTILS; it has no TEST and nothing from card. Exit status 1 when a tool or a compile failed, api.py is inconsistent
 or build/SD.IMG is open in x16emu.
 """
 
@@ -67,6 +71,9 @@ SD_IMAGE = os.path.join(BUILD, "SD.IMG")
 CARD = os.path.join(ROOT, "card")
 STAGE = os.path.join(BUILD, "card")
 CARD_SUM = os.path.join(BUILD, "SD.SUM")
+RELEASE = os.path.join(BUILD, "release")
+# The files of the folder sd left off the release card.
+RELEASE_SKIP = ("WIDE.TXT",)
 BAS = os.path.join(ROOT, "src", "bas")
 BAS_OUT = os.path.join(BUILD, "bas")
 SCOM = os.path.join(ROOT, "src", "scom")
@@ -229,14 +236,16 @@ def make_test_rom():
         out.write(image)
 
 
-def stage_card(sources, tests):
-    """Fill build/card with the folder sd, the files and folders in sources, and those in tests
-    under the folder TEST. Return the upper-case paths it holds, joined by "/"."""
-    shutil.rmtree(STAGE, ignore_errors=True)
+def stage_card(stage, sources, tests, skip=()):
+    """Fill the folder stage with the folder sd less the names in skip, the files and folders in
+    sources, and those in tests under the folder TEST, which only tests makes. Return the
+    upper-case paths it holds, joined by "/"."""
+    shutil.rmtree(stage, ignore_errors=True)
     ignore = shutil.ignore_patterns(".*")
-    shutil.copytree(SD_FOLDER, STAGE, ignore=ignore)
-    os.makedirs(os.path.join(STAGE, "TEST"), exist_ok=True)
-    for source, folder in [(s, STAGE) for s in sources] + [(s, os.path.join(STAGE, "TEST"))
+    shutil.copytree(SD_FOLDER, stage, ignore=shutil.ignore_patterns(".*", *skip))
+    if tests:
+        os.makedirs(os.path.join(stage, "TEST"), exist_ok=True)
+    for source, folder in [(s, stage) for s in sources] + [(s, os.path.join(stage, "TEST"))
                                                           for s in tests]:
         target = os.path.join(folder, os.path.basename(source))
         if os.path.isdir(source):
@@ -244,9 +253,9 @@ def stage_card(sources, tests):
         else:
             shutil.copy2(source, target)
     held = set()
-    for folder, dirs, files in os.walk(STAGE):
+    for folder, dirs, files in os.walk(stage):
         for name in dirs + files:
-            held.add(os.path.relpath(os.path.join(folder, name), STAGE).replace("\\", "/").upper())
+            held.add(os.path.relpath(os.path.join(folder, name), stage).replace("\\", "/").upper())
     return held
 
 
@@ -259,7 +268,8 @@ def pull_card(staged):
     changed since the last build, and delete from card each one the X16 deleted.
 
     build/SD.SUM lists what the last build wrote. Without it, only paths not in staged, the
-    upper-case paths of build/card, are copied, and nothing is deleted."""
+    upper-case paths of build/card, are copied, and nothing is deleted. A path in staged, or under
+    a folder in staged that the image lacks, is never deleted from card."""
     if not os.path.exists(SD_IMAGE):
         return
     try:
@@ -288,19 +298,26 @@ def pull_card(staged):
         print("card: kept %s" % path)
     for key, (path, _) in (built or {}).items():
         target = os.path.join(CARD, *path.split("/"))
-        if key not in found and os.path.lexists(target):
-            if os.path.isdir(target):
-                shutil.rmtree(target)
-            else:
-                os.remove(target)
-            print("card: deleted %s" % path)
+        if key in found or not os.path.lexists(target):
+            continue
+        parts = key.split("/")
+        lost = [p for p in ("/".join(parts[:n]) for n in range(1, len(parts) + 1))
+                if p in staged and p not in found]
+        if lost:
+            print("card: kept %s; the image lacks %s" % (path, built.get(lost[0], [lost[0]])[0]))
+            continue
+        if os.path.isdir(target):
+            shutil.rmtree(target)
+        else:
+            os.remove(target)
+        print("card: deleted %s" % path)
 
 
 def make_card(sources, tests):
     """Write build/SD.IMG from the folder sd, the files and folders in sources, those in tests
     under TEST, and the folder card, which wins a name they share, after pull_card. Write
     build/SD.SUM."""
-    staged = stage_card(sources, tests)
+    staged = stage_card(STAGE, sources, tests)
     pull_card(staged)
     if os.path.isdir(CARD):
         shutil.copytree(CARD, STAGE, ignore=shutil.ignore_patterns(".*"), dirs_exist_ok=True)
@@ -313,7 +330,20 @@ def make_card(sources, tests):
         json.dump(listing, out, indent=0)
 
 
+def make_release(sources):
+    """Write build/release/SD.IMG from the folder sd less RELEASE_SKIP and the files and folders
+    in sources, with no TEST and nothing from card. Copy the ROM, LICENSE and NOTICE beside it."""
+    stage = os.path.join(RELEASE, "card")
+    stage_card(stage, sources, [], RELEASE_SKIP)
+    mksd.make(stage, os.path.join(RELEASE, "SD.IMG"))
+    for path in (ROM, os.path.join(ROOT, "LICENSE"), os.path.join(ROOT, "NOTICE")):
+        shutil.copyfile(path, os.path.join(RELEASE, os.path.basename(path)))
+
+
 def main():
+    release = sys.argv[1:] == ["--release"]
+    if sys.argv[1:] and not release:
+        sys.exit("usage: build.py [--release]")
     started = time.time()
     genapi.main()
     os.makedirs(OBJ, exist_ok=True)
@@ -339,10 +369,13 @@ def main():
                   if not entry.startswith(".")]
     programs = compile_bas() + [bank3]
     shell = [p for p in programs if os.path.basename(p) in ("CMDSHELL.COM", "ROMSHELL.COM")]
-    make_card(shell + [basic, compile_scom(), compile_utils()],
-              [p for p in programs if p not in shell] + test_files)
+    card_sources = shell + [basic, compile_scom(), compile_utils()]
+    make_card(card_sources, [p for p in programs if p not in shell] + test_files)
+    if release:
+        make_release(card_sources)
     print("built %s, %d bytes, %.2f s" % (os.path.relpath(ROM, ROOT), os.path.getsize(ROM),
                                           time.time() - started))
 
 
-main()
+if __name__ == "__main__":
+    main()
