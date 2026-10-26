@@ -1309,7 +1309,7 @@ Folders:
   `ROMSHELL.COM`, `MSBASIC.COM`, `DOS` and `UTILS`. It has no `\TEST` and nothing from `card`.
   Then it zips `build/release` to `release/6502DOS-VERSION-win.zip`, under the folder
   `6502DOS`. VERSION comes from `VERSION` and `VERSION_LABEL` in `tools/api.py`, as in
-  `0.1.0-beta1`. The folder `release` is gitignored.
+  `0.1.0-beta1`. The folder `release` is tracked.
 - `tools/fatcheck.py IMAGE` checks a card image: the FATs are equal, no cluster is lost or in
   two chains, and each file's chain fits its size. Each run of long-name entries must count
   down from the entry with bit 6 to 1, hold one checksum, type 0 and cluster 0, and end at the

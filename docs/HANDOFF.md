@@ -1,5 +1,27 @@
 # Handoff
 
+## Open questions
+
+The sprite, VRAM and graphics plan is not complete. It is under Next, at "sprite commands in
+namespace VERA". No asm is written for it. Each question waits on the user.
+
+1. ROM call 53 `vera`, entry `$03DF`, in bank 1, with a subfunction in A: yes or no?
+2. Graphics in call 53, or in a new call 54 `gfx`? Recommended: call 54.
+3. Which graphics modes: SCREEN 1 (640x240, 4 colors), SCREEN 2 (40x30 text, 320x240, 16
+   colors), SCREEN 3 (40x25 text, 320x200, 256 colors), or the text map moved to
+   $1B000-$1EFFF for 320x240 at 256 colors? Recommended: 1, 2 and 3; the map stays.
+4. VERA FX (the line helper, cache writes) with a plain fallback: yes or no?
+5. The UXCBASIC SUBs in namespace VERA (SPRITE_ON to SPRITE_XYFLIP, SPRITE_MASK, SPRITE_HIT,
+   SPRITE_CLEAR_HIT, VPOKE to MEMCPYVM): yes or no?
+6. The MSBASIC statements: `SPRITE n` and its clauses, `SPRITE CLEAR HIT`, `SPRITEHIT(g)`,
+   VMEMSET, MEMCPYMV, MEMCPYVM, VLOAD: yes or no? The clause MASK: keep or drop?
+7. MSBASIC's VPOKE and VPEEK take a 17-bit address, and `tests/vera.bas` changes with them: yes
+   or no?
+8. Does the ROM turn every sprite off when a program exits? To check in the emulator: whether
+   sprite attribute RAM is 0 at boot.
+9. Older, still open: UXC-HELP topics for `PICKFILE.UXI`, `VERA.UXI` and `CONS.UXI`; the
+   GUI.UXI contract fixes; PLAN section 11 steps 8 to 10, after beta 1.
+
 ## State
 
 - The golden outputs `tests/*.OUT`, `UXCBASIC/tests/*.OUT` and `MSBASIC/tests/*.out` are
@@ -1724,10 +1746,11 @@
     README "Running it" and PLAN's `--release` bullet updated. The folder is 7 MB.
     - Build 2.50 s with `--release`, the new baseline (the emulator copy is the rise).
     - RUN.BAT booted the release with x16emu off PATH: banner, startup.cmd, shell. Killed by PID.
-  - Done, the release zip (uncommitted). `build.py --release` then zips `build/release` to
+  - Done, the release zip, committed by the user as `bfebbae` "1st release" and pushed.
+    `build.py --release` then zips `build/release` to
     `release/6502DOS-0.1.0-beta1-win.zip` (`RELEASE_ZIPS`), under the folder `6502DOS`; the
-    name comes from `api.VERSION` and `api.VERSION_LABEL`. `/release/` is gitignored, anchored
-    so `tools/release` stays tracked. The zip is 2.1 MB. README and PLAN updated.
+    name comes from `api.VERSION` and `api.VERSION_LABEL`. The zip is tracked in git. The zip
+    is 2.1 MB. README and PLAN updated. Not in the tag `v0.1.0-beta1`.
     - Build 3.40 s with `--release`, the new baseline (the zip is the rise).
   - Steps since the last full suite: 2.
 
@@ -4547,7 +4570,74 @@
             `POINTER = @TEXT$` runs in BASIC before the block. 101 bytes in region 3 alone;
             all seven 653 (7539 free). VERABOX has a line 4 (string variable, literal, cut at
             127, empty text): ok 0.5 s, golden local. No build.
-          - To do (the user, 2026-10-23): sprite commands in namespace VERA.
+          - To do (the user, 2026-10-23): sprite commands in namespace VERA. Not complete
+            (2026-10-26): the plan below waits on the open questions at the top of this file.
+            - Proposed (2026-10-26), awaiting the user's yes, modelled on XC=BASIC 3's X16
+              target:
+              - Namespace VERA, region 3: a SUB for each SPRITE subcommand: SPRITE_ON and
+                SPRITE_OFF (ZDEPTH 3 and 0), SPRITE_AT, SPRITE_SHAPE (the VRAM address over
+                32), SPRITE_COLOR (the palette offset), SPRITE_LOWCOL and SPRITE_HICOL,
+                SPRITE_XYSIZE, SPRITE_ZDEPTH, SPRITE_XYFLIP.
+              - Collision: SPRITE_MASK, SPRITE_HIT() for the 4 groups in ISR bits 7 to 4, and
+                SPRITE_CLEAR_HIT.
+              - VRAM, from X16.BAS: VPOKE, VPEEK, VMEMSET, MEMCPYMV, MEMCPYVM, with a LONG
+                VRAM address.
+              - Shapes go in VRAM $14000 to $1EFFF, which is free; the SAVE_RECT stack keeps
+                $00000 to $0FFFF.
+              - Open: whether attribute RAM is 0 at boot; whether the ROM turns sprites off
+                when a program exits.
+            - Revised (2026-10-26), awaiting the user's yes: the asm goes in ROM as one API
+              call, so UXCBASIC, MSBASIC and later languages share it.
+              - Call 53 `vera`, entry `$03DF`, in ROM bank 1 (6143 bytes free), with a
+                subfunction in A, as `ioctl` does. The table has room for 64 calls; 53 are used.
+              - Subfunctions: VPEEK, VPOKE, fill, copy RAM to VRAM, copy VRAM to RAM, load an
+                open file into VRAM, set one sprite field (read-modify-write), move a sprite,
+                collision get and clear, palette entry set.
+              - VERA.UXI SUBs become thin wrappers. `K_VPEEK` and `K_VPOKE` use the call.
+              - MSBASIC follows XC=BASIC, not X16 BASIC (the user, 2026-10-26). Proposed,
+                awaiting the user's yes:
+                - `SPRITE n` with clauses ON, OFF, AT x,y, SHAPE s (VRAM address / 32),
+                  COLOR c, LOWCOL, HICOL, XYSIZE x,y, ZDEPTH z, XYFLIP x,y, MASK m, in any
+                  order; `SPRITE CLEAR HIT`; the function `SPRITEHIT(g)`.
+                - `VPOKE addr,n` and `VPEEK(addr)` take a 17-bit address, as XC=BASIC's do;
+                  `tests/vera.bas` changes with them. New `VMEMSET addr,n,len`,
+                  `MEMCPYMV ram,vram,len`, `MEMCPYVM vram,ram,len`, and `VLOAD "file",addr`
+                  (the user, 2026-10-26), which loads the whole file raw, with no header.
+                - Trap: a token crunches inside names (AT in CAT, OFF in OFFSET). The clause
+                  words crunch only after the SPRITE token, up to the next `:`.
+                - ON, COLOR and CLEAR are tokens already. New tokens: SPRITE, VMEMSET,
+                  MEMCPYMV, MEMCPYVM, SPRITEHIT, VLOAD, and 9 clause words.
+              - Graphics, proposed (2026-10-26), awaiting the user's yes:
+                - Trap: DC_HSCALE and DC_VSCALE are global, so a bitmap on layer 0 has the
+                  text layer's scale. The console is 640 by 240 (8 by 8 font, 2 to 1 down).
+                - SCREEN 0: 80x30 text, no bitmap, as now. SCREEN 1: 80x30 text over a 640 by
+                  240 bitmap at 2 bpp, 4 colors, pixels 1 by 2. SCREEN 2: 40x30 text over a
+                  320 by 240 bitmap at 4 bpp, 16 colors, square pixels. MSBASIC's `SCREEN` and
+                  its stub `K_SCREEN` exist.
+                - Both bitmaps are 160 bytes a row and 38400 bytes, so one address routine
+                  serves both. The bitmap goes at $00000-$095FF; the SAVE_RECT stack keeps
+                  $09600-$0FFFF while a bitmap shows. Sprite shapes keep $14000-$1EFFF.
+                - 320 by 240 at 8 bpp needs 76800 bytes in one run; $00000 to $12BFF
+                  overruns the text map at $10000. Not offered; 640 by 480 is not offered
+                  either (the console has 30 rows).
+                - 256 colors, offered as SCREEN 3, awaiting the user's yes: 40x25 text over
+                  a 320 by 200 bitmap at 8 bpp, 64000 bytes at $00000-$0F9FF, as MS-DOS mode
+                  13h. DC_VSTART and DC_VSTOP letterbox both layers to 200 lines. The GUI's
+                  save stack has $0FA00-$0FFFF only. The console's ROWS (8 uses) becomes a
+                  variable too.
+                - The other 256-color route: move the text map to $1B000-$1EFFF for good,
+                  which leaves $00000-$1AFFF; 320 by 240 at 8 bpp then fits, and shapes and
+                  the save stack share $12C00-$1AFFF.
+                - SCREEN 2 needs the console's COLUMNS (console.s 17 uses, monitor.s 6) to
+                  become a variable.
+                - Subfunctions, in call 53 or a call 54 `gfx`: mode, clear, PSET, POINT,
+                  LINE, FRAME, RECT (filled), CIRCLE, CHAR (the CP437 font at $1F000). Names
+                  from X16 BASIC.
+                - Estimate: bank 1 about 900 bytes; bank 0 about 80 (COLUMNS); MSBASIC bank 2
+                  about 180; kernel RAM about 16.
+              - Against the stock X16: added VLOAD and the palette entry. Not planned:
+                `GRAPH_*` and `FB_*` as KERNAL calls, the text-only modes,
+                `sprite_set_image`, LZSA2.
           - Done (2026-10-23), part 2, `lib/GUI.UXI`: a CBO's list (DROP_LIST), a menu
             (PULL_MENU) and a dialog (RUN_DIALOG) VERA.SAVE_RECT the screen under them before
             they draw, and VERA.RESTORE_RECT it when they close. A menu then draws its title
