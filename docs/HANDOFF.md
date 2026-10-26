@@ -5,6 +5,11 @@
 The sprite, VRAM and graphics plan is not complete. It is under Next, at "sprite commands in
 namespace VERA". No asm is written for it. Each question waits on the user.
 
+Resume here (2026-10-26): the plan and these questions are committed in ad1a475. They are on
+hold (the user, 2026-10-26); other work comes first. When they resume: the user's answers, then
+asm only on their word. Current work: TED in RAM banks, done, not committed (Next, the end of
+the beta 1 list).
+
 1. ROM call 53 `vera`, entry `$03DF`, in bank 1, with a subfunction in A: yes or no?
 2. Graphics in call 53, or in a new call 54 `gfx`? Recommended: call 54.
 3. Which graphics modes: SCREEN 1 (640x240, 4 colors), SCREEN 2 (40x30 text, 320x240, 16
@@ -1752,7 +1757,20 @@ namespace VERA". No asm is written for it. Each question waits on the user.
     name comes from `api.VERSION` and `api.VERSION_LABEL`. The zip is tracked in git. The zip
     is 2.1 MB. README and PLAN updated. Not in the tag `v0.1.0-beta1`.
     - Build 3.40 s with `--release`, the new baseline (the zip is the rise).
-  - Steps since the last full suite: 2.
+- Done, TED in RAM banks (2026-10-26, the user's ask), not committed. `src/dos/TED.UXB` takes
+  EDIT's gap buffer: `SELECT_PLACE`, `BYTE_AT`, `TEXT_COPY` (with EDIT's ASM page copy, the
+  user's yes), `MOVE_GAP`, `GROW`, `MAKE_ROOM`, `PAGE_BANK`, `RUN_BUFFER`, and EDIT's
+  run-at-a-time `LOAD` and banked `WRITE_PART`. `COPY_CLIP` is gone; `TAKE` and `PASTE` use
+  `TEXT_COPY`. The text holds 65535 bytes in up to 8 banks, was 23040 in low RAM. A file over
+  65535 bytes prints `File too large`, no free bank `Insufficient memory`; both exit code 2.
+  - TED.COM 11686 to 12467 bytes (+781); `PSP_TOP` $3C to $41 (`PAGE_BANK` 256, `RUN_BUFFER`
+    255). Build 3565 ms wall (the ROM rebuilt, 2.82 s), the new baseline.
+  - New test `TEDBIG` (`.IN` and golden local): runs `EDITBIG.COM` for the 40800-byte
+    `C:\BIG.TXT`, then TED types TOP at the start, 30 PgDn, END on the last line, Ctrl+S,
+    Ctrl+Q; HEAD, TAIL, FILES 40806. TED ok 2.4 s, TEDBIG ok 2.7 s.
+  - Docs owed to the next batch: PLAN line 990 (TED's text is in RAM banks, 65535 bytes) and
+    line 993 (no free bank, exit code 2).
+- Steps since the last full suite: 3.
 
 0. PLAN section 11 step 6, CBM DOS leaves: 6a to 6e done. Full suite passed after the `END`
    range step.

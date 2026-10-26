@@ -26,15 +26,16 @@
 ' -- clipboard, and Ctrl+X cuts it; with no selection they take the cursor's line and its line
 ' -- end. Ctrl+V puts the clipboard in at the cursor. The clipboard holds 2048 bytes; a larger
 ' -- selection shows Selection too large. The status row starts with * once
-' -- the text has changed. Insufficient memory shows there when the text fills the RAM.
+' -- the text has changed. Insufficient memory shows there when the text holds 65535 bytes or
+' -- no RAM bank is free.
 ' -- A line ends at CR, LF or CR LF; the text keeps LF. A tab goes to the next column that is
 ' -- a multiple of 8. Another character below 32 shows as ".".
-' -- The text takes the RAM from the program's end to $96FF, the clipboard $9700 to $9EFF. A
-' -- larger file prints File too
-' -- large and gives exit code 2. A file that does not exist gives an empty text, and the
+' -- The text takes up to 8 RAM banks and holds 65535 bytes; the clipboard takes $9700 to $9EFF.
+' -- A larger file prints File too large, and one with no RAM bank left Insufficient memory;
+' -- both give exit code 2. A file that does not exist gives an empty text, and the
 ' -- status row says New file. No file name prints Required parameter missing, and a second
-' -- name prints Too many parameters; each gives exit code 1. A file that does not open for another reason prints its error message and gives
-' -- exit code 2. Exit code 0 otherwise.
+' -- name prints Too many parameters; each gives exit code 1. A file that does not open for
+' -- another reason prints its error message and gives exit code 2. Exit code 0 otherwise.
 ' --
 ' -- From a prompt:
 ' --     TED DOCS\README.TXT
@@ -44,6 +45,7 @@
 #INCLUDE "HEAP.UXI"
 #INCLUDE "KEYS.UXI"
 #INCLUDE "CONS.UXI"
+#INCLUDE "BANK.UXI"
 CONST SLOT_P1 AS UBYTE = 0, SLOT_P2 AS UBYTE = 1
 
 ' The status row's colors, black on light grey.
@@ -53,16 +55,24 @@ CONST COLUMNS AS UBYTE = 80
 CONST SHIFT_STEP AS UBYTE = 8, NO_MARK AS UBYTE = 255
 CONST CTRL_C AS UBYTE = 3, LF AS UBYTE = 10, CTRL_Q AS UBYTE = 17, CTRL_S AS UBYTE = 19
 CONST CTRL_G AS UBYTE = 7, CTRL_V AS UBYTE = 22, CTRL_X AS UBYTE = 24
-CONST PSP_TOP AS UWORD = $0702, POOL_END AS UWORD = $9700
 CONST CLIPBOARD AS UWORD = $9700, CLIP_SIZE AS UWORD = 2048
+' The text's banks show at WINDOW_START up to WINDOW_END. A buffer of MAX_BANKS banks holds
+' MAX_ROOM bytes, the most a UWORD counts. MOVE_GAP and LOAD pass RUN_SIZE bytes at a time.
+CONST WINDOW_START AS UWORD = $A000, WINDOW_END AS UWORD = $C000, BANK_SIZE AS UWORD = 8192
+CONST MAX_BANKS AS UBYTE = 8, MAX_ROOM AS UWORD = 65535, RUN_SIZE AS UBYTE = 255
+' LOAD's code for a file larger than MAX_ROOM.
+CONST TOO_LARGE AS UBYTE = 254
 CONST HELP_NAME$ = "C:\DOS\TED.HLP", DOS_HELP_NAME$ = "C:\DOS\HELP.TXT"
 
 
 DIM FILE_NAME AS STRING * 80, STATUS AS STRING * 120, MESSAGE AS STRING * 40
 DIM EDITED_FILE AS UWORD
-' The text is a gap buffer in the pool, POOL_START to POOL_END. Positions 0 to TEXT_LENGTH
+' The text is a gap buffer of ROOM bytes in BANK_COUNT RAM banks. Byte PLACE of the buffer is
+' at WINDOW_START + PLACE MOD 8192 in bank PAGE_BANK(PLACE >> 8). Positions 0 to TEXT_LENGTH
 ' count the text's bytes. The bytes from GAP_POSITION on lie GAP_SIZE bytes further on.
-DIM POOL_START AS UWORD, TEXT_LENGTH AS UWORD, GAP_POSITION AS UWORD, GAP_SIZE AS UWORD
+DIM PAGE_BANK(256) AS UBYTE, BANK_COUNT AS UBYTE, ROOM AS UWORD
+DIM TEXT_LENGTH AS UWORD, GAP_POSITION AS UWORD, GAP_SIZE AS UWORD
+DIM RUN_BUFFER(RUN_SIZE) AS UBYTE
 ' CR_ENDS is 1 when the file's first line ends in CR, or the file has no line end. A save
 ' then writes each LF as CR LF, from CR_LF.
 DIM CR_ENDS AS UBYTE, CR_LF(2) AS UBYTE
@@ -88,37 +98,135 @@ DIM TOPIC AS STRING * 20
 
 
 
-' The byte at position PLACE of the text.
-FUNCT BYTE_AT(PLACE AS UWORD) AS UBYTE
-  IF PLACE >= GAP_POSITION THEN PLACE = PLACE + GAP_SIZE
-  RETURN ContentsAt(POOL_START + PLACE)
+' Selects the bank of byte PLACE of the buffer, and returns the byte's address.
+FUNCT SELECT_PLACE(PLACE AS UWORD) AS UWORD
+  DIM PAGE AS UBYTE
+  PAGE = ContentsAt(@PLACE + 1)
+  ContentsAt(BANK.RAM_BANK) = ContentsAt(@PAGE_BANK + PAGE)
+  RETURN (PLACE AND (BANK_SIZE - 1)) OR WINDOW_START
 END FUNCT
 
 
 
-' Moves the gap to position PLACE.
-SUB MOVE_GAP(PLACE AS UWORD)
-  DIM SOURCE AS UWORD, TARGET AS UWORD
-  IF PLACE < GAP_POSITION THEN
-    SOURCE = POOL_START + GAP_POSITION
-    TARGET = SOURCE + GAP_SIZE
-    DO WHILE GAP_POSITION > PLACE
-      SOURCE = SOURCE - 1
-      TARGET = TARGET - 1
-      ContentsAt(TARGET) = ContentsAt(SOURCE)
-      GAP_POSITION = GAP_POSITION - 1
-    LOOP
-  ELSE
-    TARGET = POOL_START + GAP_POSITION
-    SOURCE = TARGET + GAP_SIZE
-    DO WHILE GAP_POSITION < PLACE
-      ContentsAt(TARGET) = ContentsAt(SOURCE)
-      SOURCE = SOURCE + 1
-      TARGET = TARGET + 1
-      GAP_POSITION = GAP_POSITION + 1
-    LOOP
-  END IF
+' The byte at position PLACE of the text. SELECT_PLACE's work is done here, for speed.
+FUNCT BYTE_AT(PLACE AS UWORD) AS UBYTE
+  DIM PAGE AS UBYTE
+  IF PLACE >= GAP_POSITION THEN PLACE = PLACE + GAP_SIZE
+  PAGE = ContentsAt(@PLACE + 1)
+  ContentsAt(BANK.RAM_BANK) = ContentsAt(@PAGE_BANK + PAGE)
+  RETURN ContentsAt((PLACE AND (BANK_SIZE - 1)) OR WINDOW_START)
+END FUNCT
+
+
+
+' Copies COUNT bytes between the buffer, from byte PLACE on, and low RAM, from ADDRESS on: into
+' the buffer when INTO is 1, out of it when INTO is 0.
+SUB TEXT_COPY(PLACE AS UWORD, ADDRESS AS UWORD, COUNT AS UWORD, INTO AS UBYTE)
+  DIM WINDOW AS UWORD, RUN AS UWORD, SOURCE AS UWORD, TARGET AS UWORD
+  DO WHILE COUNT > 0
+    WINDOW = SELECT_PLACE(PLACE)
+    RUN = WINDOW_END - WINDOW
+    IF RUN > COUNT THEN RUN = COUNT
+    PLACE = PLACE + RUN
+    COUNT = COUNT - RUN
+    SOURCE = WINDOW
+    TARGET = ADDRESS
+    IF INTO = 1 THEN
+      SOURCE = ADDRESS
+      TARGET = WINDOW
+    END IF
+    ADDRESS = ADDRESS + RUN
+    ' Copies RUN bytes from SOURCE to TARGET: the whole pages, then the rest. $22 and $24 are
+    ' the runtime's ZP_PTR and ZP_TMP, free between statements.
+    ASM
+        lda @SOURCE
+        sta $22
+        lda @SOURCE + 1
+        sta $23
+        lda @TARGET
+        sta $24
+        lda @TARGET + 1
+        sta $25
+        phx
+        ldy #0
+        ldx @RUN + 1
+        beq part
+page:   lda ($22),y
+        sta ($24),y
+        iny
+        bne page
+        inc $23
+        inc $25
+        dex
+        bne page
+part:   ldx @RUN
+        beq done
+rest:   lda ($22),y
+        sta ($24),y
+        iny
+        dex
+        bne rest
+done:   plx
+    END ASM
+  LOOP
 END SUB
+
+
+
+' Moves the gap to position PLACE. The bytes pass through RUN_BUFFER, as the bank they come
+' from and the bank they go to may differ.
+SUB MOVE_GAP(PLACE AS UWORD)
+  DIM COUNT AS UWORD
+  IF GAP_SIZE = 0 THEN GAP_POSITION = PLACE
+  DO WHILE GAP_POSITION > PLACE
+    COUNT = GAP_POSITION - PLACE
+    IF COUNT > RUN_SIZE THEN COUNT = RUN_SIZE
+    GAP_POSITION = GAP_POSITION - COUNT
+    TEXT_COPY(GAP_POSITION, @RUN_BUFFER, COUNT, 0)
+    TEXT_COPY(GAP_POSITION + GAP_SIZE, @RUN_BUFFER, COUNT, 1)
+  LOOP
+  DO WHILE GAP_POSITION < PLACE
+    COUNT = PLACE - GAP_POSITION
+    IF COUNT > RUN_SIZE THEN COUNT = RUN_SIZE
+    TEXT_COPY(GAP_POSITION + GAP_SIZE, @RUN_BUFFER, COUNT, 0)
+    TEXT_COPY(GAP_POSITION, @RUN_BUFFER, COUNT, 1)
+    GAP_POSITION = GAP_POSITION + COUNT
+  LOOP
+END SUB
+
+
+
+' Takes one more RAM bank for the buffer, and puts the gap at the text's end, so the gap grows
+' by the bank. Returns 1, or 0 when MAX_BANKS are taken or no bank is free.
+FUNCT GROW() AS UBYTE
+  DIM NUMBER AS UBYTE, PAGE AS UBYTE, ADDED AS UWORD
+  IF BANK_COUNT = MAX_BANKS THEN RETURN 0
+  NUMBER = BANK.ALLOC(1)
+  IF NUMBER = 0 THEN RETURN 0
+  MOVE_GAP(TEXT_LENGTH)
+  ' The bank's 32 pages of PAGE_BANK; PAGE wraps to 0 after the eighth bank's.
+  PAGE = BANK_COUNT * 32
+  DO
+    PAGE_BANK(PAGE) = NUMBER
+    PAGE = PAGE + 1
+  LOOP UNTIL (PAGE AND 31) = 0
+  BANK_COUNT = BANK_COUNT + 1
+  ADDED = BANK_SIZE
+  IF BANK_COUNT = MAX_BANKS THEN ADDED = BANK_SIZE - 1
+  ROOM = ROOM + ADDED
+  GAP_SIZE = GAP_SIZE + ADDED
+  RETURN 1
+END FUNCT
+
+
+
+' Grows the buffer until the gap holds NEEDED bytes. Returns 1, or 0 when it cannot.
+FUNCT MAKE_ROOM(NEEDED AS UWORD) AS UBYTE
+  DO WHILE GAP_SIZE < NEEDED
+    IF GROW() = 0 THEN RETURN 0
+  LOOP
+  RETURN 1
+END FUNCT
 
 
 
@@ -134,13 +242,13 @@ END SUB
 
 
 ' Puts CHARACTER into the text at the cursor and moves the cursor past it. LF starts a new
-' line. A full pool sets MESSAGE instead.
+' line. A full buffer that cannot grow sets MESSAGE instead.
 SUB INSERT(CHARACTER AS UBYTE)
-  IF GAP_SIZE = 0 THEN
+  IF MAKE_ROOM(1) = 0 THEN
     MESSAGE = "Insufficient memory"
   ELSE
     MOVE_GAP(CURSOR)
-    ContentsAt(POOL_START + GAP_POSITION) = CHARACTER
+    ContentsAt(SELECT_PLACE(GAP_POSITION)) = CHARACTER
     GAP_POSITION = GAP_POSITION + 1
     GAP_SIZE = GAP_SIZE - 1
     TEXT_LENGTH = TEXT_LENGTH + 1
@@ -251,22 +359,6 @@ END FUNCT
 
 
 
-' Copies CLIP_LENGTH bytes from SOURCE to TARGET, first to last. Returns the number of LFs.
-FUNCT COPY_CLIP(SOURCE AS UWORD, TARGET AS UWORD) AS UWORD
-  DIM PLACE AS UWORD, LINES AS UWORD, CHARACTER AS UBYTE
-  LINES = 0
-  PLACE = 0
-  DO WHILE PLACE < CLIP_LENGTH
-    CHARACTER = ContentsAt(SOURCE + PLACE)
-    ContentsAt(TARGET + PLACE) = CHARACTER
-    IF CHARACTER = LF THEN LINES = LINES + 1
-    PLACE = PLACE + 1
-  LOOP
-  RETURN LINES
-END FUNCT
-
-
-
 ' Takes positions BEGIN up to FINISH out of the text and puts the cursor at BEGIN. The cursor
 ' must be at BEGIN or FINISH, or between them on one line.
 SUB REMOVE_PART(BEGIN AS UWORD, FINISH AS UWORD)
@@ -275,7 +367,7 @@ SUB REMOVE_PART(BEGIN AS UWORD, FINISH AS UWORD)
   IF CURSOR = FINISH THEN
     PLACE = BEGIN
     DO WHILE PLACE < FINISH
-      IF ContentsAt(POOL_START + PLACE) = LF THEN CURSOR_LINE = CURSOR_LINE - 1
+      IF BYTE_AT(PLACE) = LF THEN CURSOR_LINE = CURSOR_LINE - 1
       PLACE = PLACE + 1
     LOOP
   END IF
@@ -309,23 +401,29 @@ SUB TAKE(CUT AS UBYTE)
   END IF
   MOVE_GAP(FINISH)
   CLIP_LENGTH = FINISH - BEGIN
-  COPY_CLIP(POOL_START + BEGIN, CLIPBOARD)
+  TEXT_COPY(BEGIN, CLIPBOARD, CLIP_LENGTH, 0)
   IF CUT = 1 AND CLIP_LENGTH > 0 THEN REMOVE_PART(BEGIN, FINISH)
 END SUB
 
 
 
-' Puts the clipboard into the text at the cursor and moves the cursor past it. A full pool
-' sets MESSAGE instead.
+' Puts the clipboard into the text at the cursor and moves the cursor past it. A full buffer
+' that cannot grow sets MESSAGE instead.
 SUB PASTE()
-  DIM LINES AS UWORD
-  IF CLIP_LENGTH > GAP_SIZE THEN
+  DIM LINES AS UWORD, PLACE AS UWORD
+  IF MAKE_ROOM(CLIP_LENGTH) = 0 THEN
     MESSAGE = "Insufficient memory"
     RETURN
   END IF
   IF CLIP_LENGTH = 0 THEN RETURN
   MOVE_GAP(CURSOR)
-  LINES = COPY_CLIP(CLIPBOARD, POOL_START + GAP_POSITION)
+  TEXT_COPY(GAP_POSITION, CLIPBOARD, CLIP_LENGTH, 1)
+  LINES = 0
+  PLACE = CLIPBOARD
+  DO WHILE PLACE < CLIPBOARD + CLIP_LENGTH
+    IF ContentsAt(PLACE) = LF THEN LINES = LINES + 1
+    PLACE = PLACE + 1
+  LOOP
   GAP_POSITION = GAP_POSITION + CLIP_LENGTH
   GAP_SIZE = GAP_SIZE - CLIP_LENGTH
   TEXT_LENGTH = TEXT_LENGTH + CLIP_LENGTH
@@ -638,10 +736,11 @@ END SUB
 
 
 
-' Loads the file into the pool and turns its CR LF and CR into LF. Returns 0, or the exit
-' code after it printed why the file did not load.
+' Loads the file into the buffer, with the gap after it, and turns its CR LF and CR into LF.
+' Returns 0, or the exit code after it printed why the file did not load.
 FUNCT LOAD() AS UBYTE
-  DIM LOADED AS UWORD, READ_PLACE AS UWORD, CHARACTER AS UBYTE, SEEN AS UBYTE
+  DIM LOADED AS UBYTE, READ_PLACE AS UBYTE, COUNT AS UBYTE, CHARACTER AS UBYTE
+  DIM SEEN AS UBYTE, AFTER_CR AS UBYTE, CODE AS UBYTE
   CR_ENDS = 1
   EDITED_FILE = DOS.OPEN_FILE(FILE_NAME, DOS.ACCESS_READ)
   IF EDITED_FILE = NOFILE THEN
@@ -652,63 +751,84 @@ FUNCT LOAD() AS UBYTE
     PRINT DOS.ERRMSG(DOS.ERROR)
     RETURN 2
   END IF
-  LOADED = DOS.READ_FILE(EDITED_FILE, POOL_START, POOL_END - POOL_START)
-  IF DOS.ERROR = 0 THEN
-    IF DOS.READ_FILE(EDITED_FILE, @CHARACTER, 1) > 0 THEN
-      DOS.CLOSE_FILE(EDITED_FILE)
-      PRINT "File too large"
-      RETURN 2
-    END IF
-  END IF
-  IF DOS.ERROR <> 0 THEN
-    PRINT DOS.ERRMSG(DOS.ERROR)
-    DOS.CLOSE_FILE(EDITED_FILE)
-    RETURN 2
-  END IF
-  DOS.CLOSE_FILE(EDITED_FILE)
-  READ_PLACE = 0
   SEEN = 0
-  DO WHILE READ_PLACE < LOADED
-    CHARACTER = ContentsAt(POOL_START + READ_PLACE)
-    READ_PLACE = READ_PLACE + 1
-    IF CHARACTER = KEYS.ENTER THEN
-      SEEN = 1
-      CHARACTER = LF
-      IF READ_PLACE < LOADED THEN
-        IF ContentsAt(POOL_START + READ_PLACE) = LF THEN READ_PLACE = READ_PLACE + 1
+  ' AFTER_CR is 1 after a CR, so an LF that follows it, in this run or the next, is dropped.
+  AFTER_CR = 0
+  DO
+    LOADED = DOS.READ_FILE(EDITED_FILE, @RUN_BUFFER, RUN_SIZE)
+    CODE = DOS.ERROR
+    IF CODE <> 0 OR LOADED = 0 THEN EXIT DO
+    ' The run's line ends are turned into LF in RUN_BUFFER, COUNT bytes kept.
+    READ_PLACE = 0
+    COUNT = 0
+    DO WHILE READ_PLACE < LOADED
+      CHARACTER = RUN_BUFFER(READ_PLACE)
+      READ_PLACE = READ_PLACE + 1
+      IF CHARACTER = LF AND AFTER_CR = 1 THEN
+        AFTER_CR = 0
+        CONTINUE
       END IF
-    ELSEIF CHARACTER = LF THEN
-      IF SEEN = 0 THEN CR_ENDS = 0
-      SEEN = 1
+      AFTER_CR = 0
+      IF CHARACTER = KEYS.ENTER THEN
+        SEEN = 1
+        CHARACTER = LF
+        AFTER_CR = 1
+      ELSEIF CHARACTER = LF THEN
+        IF SEEN = 0 THEN CR_ENDS = 0
+        SEEN = 1
+      END IF
+      RUN_BUFFER(COUNT) = CHARACTER
+      COUNT = COUNT + 1
+    LOOP
+    IF COUNT > MAX_ROOM - TEXT_LENGTH THEN
+      CODE = TOO_LARGE
+      EXIT DO
     END IF
-    ContentsAt(POOL_START + TEXT_LENGTH) = CHARACTER
-    TEXT_LENGTH = TEXT_LENGTH + 1
+    IF MAKE_ROOM(COUNT) = 0 THEN
+      CODE = DOS.ERR_NO_MEMORY
+      EXIT DO
+    END IF
+    TEXT_COPY(GAP_POSITION, @RUN_BUFFER, COUNT, 1)
+    GAP_POSITION = GAP_POSITION + COUNT
+    GAP_SIZE = GAP_SIZE - COUNT
+    TEXT_LENGTH = TEXT_LENGTH + COUNT
   LOOP
-  RETURN 0
+  DOS.CLOSE_FILE(EDITED_FILE)
+  IF CODE = 0 THEN RETURN 0
+  IF CODE = TOO_LARGE THEN
+    PRINT "File too large"
+  ELSE
+    PRINT DOS.ERRMSG(CODE)
+  END IF
+  RETURN 2
 END FUNCT
 
 
 
-' Writes COUNT bytes from ADDRESS to EDITED_FILE, each LF as CR LF when CR_ENDS is 1.
-' Returns 0, an error number, or DOS.DISK_FULL when the file took fewer bytes.
-FUNCT WRITE_PART(ADDRESS AS UWORD, COUNT AS UWORD) AS UBYTE
-  DIM RUN AS UWORD
+' Writes COUNT bytes of the buffer, from byte PLACE on, to EDITED_FILE, each LF as CR LF when
+' CR_ENDS is 1. Returns 0, an error number, or DOS.DISK_FULL when the file took fewer bytes.
+FUNCT WRITE_PART(PLACE AS UWORD, COUNT AS UWORD) AS UBYTE
+  DIM ADDRESS AS UWORD, RUN AS UWORD, LIMIT AS UWORD
   DO WHILE COUNT > 0
-    RUN = COUNT
+    ' A write stays in one bank.
+    ADDRESS = SELECT_PLACE(PLACE)
+    LIMIT = WINDOW_END - ADDRESS
+    IF LIMIT > COUNT THEN LIMIT = COUNT
+    RUN = LIMIT
     IF CR_ENDS = 1 THEN
       RUN = 0
-      DO WHILE RUN < COUNT
+      DO WHILE RUN < LIMIT
         IF ContentsAt(ADDRESS + RUN) = LF THEN EXIT DO
         RUN = RUN + 1
       LOOP
     END IF
     IF RUN > 0 THEN
       IF DOS.WRITE_FILE(EDITED_FILE, ADDRESS, RUN) < RUN THEN EXIT DO
-      ADDRESS = ADDRESS + RUN
+      PLACE = PLACE + RUN
       COUNT = COUNT - RUN
     ELSE
       IF DOS.WRITE_FILE(EDITED_FILE, @CR_LF, 2) < 2 THEN EXIT DO
-      ADDRESS = ADDRESS + 1
+      PLACE = PLACE + 1
       COUNT = COUNT - 1
     END IF
   LOOP
@@ -739,9 +859,9 @@ FUNCT SAVE() AS UBYTE
   EDITED_FILE = DOS.CREATE_FILE(TEMPORARY, 0)
   CODE = DOS.ERROR
   IF CODE = 0 THEN
-    CODE = WRITE_PART(POOL_START, GAP_POSITION)
+    CODE = WRITE_PART(0, GAP_POSITION)
     IF CODE = 0 THEN
-      CODE = WRITE_PART(POOL_START + GAP_POSITION + GAP_SIZE, TEXT_LENGTH - GAP_POSITION)
+      CODE = WRITE_PART(GAP_POSITION + GAP_SIZE, TEXT_LENGTH - GAP_POSITION)
     END IF
     DOS.CLOSE_FILE(EDITED_FILE)
     IF CODE = 0 THEN CODE = DOS.ERROR
@@ -803,13 +923,10 @@ IF HEAP.SYS_STRINGS_GET(SLOT_P2) <> "" THEN
   PRINT "Too many parameters"
   END 1
 END IF
-' PSP_TOP holds the page of the program's end.
-POOL_START = ContentsAt(PSP_TOP)
-POOL_START = (POOL_START + 1) << 8
 QUIT = LOAD()
 IF QUIT <> 0 THEN END QUIT
 GAP_POSITION = TEXT_LENGTH
-GAP_SIZE = POOL_END - POOL_START - TEXT_LENGTH
+GAP_SIZE = ROOM - TEXT_LENGTH
 DOS.STOP_KEY(DOS.STOP.OFF)
 NEED_PAGE = 1
 FOLLOW_CURSOR()
