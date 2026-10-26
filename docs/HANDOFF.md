@@ -1757,7 +1757,7 @@ the beta 1 list).
     name comes from `api.VERSION` and `api.VERSION_LABEL`. The zip is tracked in git. The zip
     is 2.1 MB. README and PLAN updated. Not in the tag `v0.1.0-beta1`.
     - Build 3.40 s with `--release`, the new baseline (the zip is the rise).
-- Done, TED in RAM banks (2026-10-26, the user's ask), not committed. `src/dos/TED.UXB` takes
+- Done, TED in RAM banks (2026-10-26, the user's ask), committed in b79363e. `src/dos/TED.UXB` takes
   EDIT's gap buffer: `SELECT_PLACE`, `BYTE_AT`, `TEXT_COPY` (with EDIT's ASM page copy, the
   user's yes), `MOVE_GAP`, `GROW`, `MAKE_ROOM`, `PAGE_BANK`, `RUN_BUFFER`, and EDIT's
   run-at-a-time `LOAD` and banked `WRITE_PART`. `COPY_CLIP` is gone; `TAKE` and `PASTE` use
@@ -1770,6 +1770,8 @@ the beta 1 list).
     Ctrl+Q; HEAD, TAIL, FILES 40806. TED ok 2.4 s, TEDBIG ok 2.7 s.
   - Docs owed to the next batch: PLAN line 990 (TED's text is in RAM banks, 65535 bytes) and
     line 993 (no free bank, exit code 2).
+- New machine (2026-10-26): Python is 3.12 (`...\Python312\python.exe`); make 4.4.1 is on
+  PATH from the WinGet links. Build 4400 ms wall (the ROM 3.30 s), the new baseline.
 - Steps since the last full suite: 3.
 
 0. PLAN section 11 step 6, CBM DOS leaves: 6a to 6e done. Full suite passed after the `END`
