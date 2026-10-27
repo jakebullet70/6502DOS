@@ -3,7 +3,8 @@
 ' included file cannot.
 
 ' A script, NAME.CMD, runs one line at a time in the same language. STARTUP.CMD in the root of
-' the boot drive, C:, runs when the shell starts.
+' the boot drive, C:, runs when the shell starts. The tail -N skips it, and -S asks [Y,N]? before
+' each of its lines and the lines of the scripts it runs.
 
 ' The line, as CON_LINE fills it: its size leaves room for the CR.
 DIM LINE_TEXT AS STRING * 128
@@ -73,6 +74,8 @@ DIM PIPE_OUTPUT AS UWORD, PIPE_INPUT AS UWORD, PIPE_DIGIT AS UWORD, PIPE_NUMBER 
 DIM SCRIPT_PATH AS STRING * 128
 DIM SCRIPT_LOW AS UWORD, SCRIPT_HIGH AS UWORD, SCRIPT_LINE AS UWORD
 DIM SCRIPT_ACTIVE AS UBYTE, IN_SCRIPT AS UBYTE, RESUMING AS UBYTE
+' STEPPING is set from the tail -S until the prompt. SWITCH_CHAR is the tail's letter.
+DIM STEPPING AS UBYTE, SWITCH_CHAR AS UBYTE
 DIM BUFFER_COUNT AS UBYTE, BUFFER_INDEX AS UBYTE, SCRIPT_HANDLE AS UWORD
 ' The shell runs in DOS.STOP.CATCH. STOPPED is set when Ctrl+C was pressed during a line, or ended
 ' the program the line ran. After a script line, it asks whether to end the script.
@@ -1676,7 +1679,7 @@ SUB RUN_LINE()
         DO_BIND()
       CASE "VERSION", "VER"
         EXPECT_END()
-        IF FAILED = 0 THEN PRINT "6502DOS V"; DOS.VERSION(); " Beta 1"   ' VERSION_LABEL in tools/api.py
+        IF FAILED = 0 THEN PRINT "6502DOS V"; DOS.VERSION(); " Beta 2"   ' VERSION_LABEL in tools/api.py
       CASE "END"
         EXPECT_END()
         IF FAILED THEN RETURN
@@ -1743,13 +1746,13 @@ SUB PRINT_PROMPT()
   NEXT
 END SUB
 
-' Asks "Terminate CMD job (Y/N)?" until Y or N, in either case, and prints it. Ctrl+C counts as
-' Y. Y ends the script, and the script that called it.
-SUB ASK_TERMINATE()
+' Asks QUESTION$ until Y or N, in either case, and prints it. Returns 1 for Y. Ctrl+C counts as
+' Y.
+FUNCT ASK_YES(QUESTION$) AS UBYTE
   DIM ANSWER AS UBYTE
   START_LINE()
   DO
-    PRINT "Terminate CMD job (Y/N)? ";
+    PRINT QUESTION$;
     DO
       ANSWER = GETKEY()
       IF DOS.STOP_PRESSED() THEN ANSWER = 89
@@ -1760,11 +1763,9 @@ SUB ASK_TERMINATE()
     PRINT
   LOOP
   PRINT CHR$(ANSWER)
-  IF ANSWER = 89
-    SCRIPT_ACTIVE = 0
-    CALLED = 0
-  ENDIF
-END SUB
+  IF ANSWER = 89 THEN RETURN 1
+  RETURN 0
+END FUNCT
 
 ' Counts the match in MATCH_NAME. Returns 1 when it is match MATCH_WANTED.
 FUNCT TAKE_MATCH() AS UBYTE
@@ -1953,7 +1954,12 @@ END SUB
 DOS.STOP_KEY(DOS.STOP.CATCH)
 RUNNING = 1
 PROGRAM_PATH = "C:\STARTUP.CMD"
-IF IS_FILE() THEN START_SCRIPT()
+' The command tail, at $0780 after its length: " -N" skips STARTUP.CMD, " -S" steps it.
+IF ContentsAt($0780) = 3 AND ContentsAt($0782) = 45 THEN SWITCH_CHAR = ContentsAt($0783) AND 223
+IF SWITCH_CHAR <> 78 AND IS_FILE()
+  START_SCRIPT()
+  IF SWITCH_CHAR = 83 THEN STEPPING = 1
+ENDIF
 DO WHILE RUNNING
   IF SCRIPT_ACTIVE = 0 AND CALLED
     ' The called script ended: the caller goes on at the line after its CALL.
@@ -1972,7 +1978,12 @@ DO WHILE RUNNING
   IN_SCRIPT = SCRIPT_ACTIVE
   IF IN_SCRIPT
     READ_SCRIPT_LINE()
+    ' Trap: N on an ELSE, ENDIF or ENDREP line leaves its block open.
+    IF STEPPING AND SKIP_DEPTH = 0 AND LINE_TEXT <> ""
+      IF ASK_YES(LINE_TEXT + " [Y,N]?") = 0 THEN LINE_TEXT = ""
+    ENDIF
   ELSE
+    STEPPING = 0
     SKIP_DEPTH = 0
     FLOW_BASE = 0
     PRINT_PROMPT()
@@ -2005,7 +2016,13 @@ DO WHILE RUNNING
   ENDIF
   IF SCRIPT_ACTIVE
     POLL_BREAK()
-    IF STOPPED THEN ASK_TERMINATE()
+    IF STOPPED
+      ' Y ends the script, and the script that called it.
+      IF ASK_YES("Terminate CMD job (Y/N)? ")
+        SCRIPT_ACTIVE = 0
+        CALLED = 0
+      ENDIF
+    ENDIF
   ENDIF
   STOPPED = 0
 LOOP

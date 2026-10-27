@@ -36,7 +36,7 @@
 .include "mem.inc"
 .include "api.inc"
 
-.export sd_driver, sd_input, sd_output
+.export sd_driver, sd_input, sd_output, sd_ready
 
 SPI_SELECT    = $01             ; VERA_SPI_CTRL bits
 SPI_SLOW      = $02

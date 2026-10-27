@@ -19,7 +19,8 @@
 .include "mem.inc"
 .include "api.inc"
 
-.export monitor, monitor_brk
+.export monitor, monitor_brk, put_decimal
+.exportzp mon_number
 .import to_upper
 
 MONITOR_TEXT  = MONITOR_LINE + 2

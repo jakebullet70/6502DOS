@@ -18,10 +18,10 @@ Conventions for every call:
   change.
 """
 
-VERSION = (0, 1, 0)
+VERSION = (0, 1, 1)
 # The release label, printed after the version by the boot banner. The shell's VERSION in
 # src/bas/CMDSHELL.UXI prints the same label.
-VERSION_LABEL = "Beta 1"
+VERSION_LABEL = "Beta 2"
 
 # The entry of call 0, in RAM. The gate code runs below it; the page holds 64 entries.
 GATE_ENTRIES = 0x0340
