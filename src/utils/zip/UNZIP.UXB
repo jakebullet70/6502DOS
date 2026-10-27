@@ -1,0 +1,1112 @@
+'=============================================================================================
+' -- UNZIP [-o] [-d folder] archive [names]
+' -- extracts the entries of a ZIP archive into the current folder, or into folder with -d,
+' -- making the folders their names hold. A line each names the entry: extracting: for a
+' -- file, creating: for a folder, skipping: with the reason for an entry left out. A file
+' -- whose CRC-32 differs from the archive's gets bad CRC, the two values, on its line.
+' -- A file that exists is replaced with -o. Without -o, UNZIP asks: y replaces it, A replaces
+' -- it and every one after, N keeps it and every one after, any other answer keeps it.
+' -- Names are cut of a leading /. A name with a drive or a .. folder is skipped.
+' -- Entries are stored or deflated; one with another method is skipped. Deflated data that
+' -- does not decode gets invalid compressed data on its line.
+' --
+' -- UNZIP -l archive [names]
+' -- lists the entries of a ZIP archive, a line each: the length, the date and time, the name.
+' -- A line of dashes and the total length and count of the entries follow. The names are the
+' -- archive's, with / between folders.
+' --
+' -- An archive that does not open as given and has no . in its name opens with .ZIP added.
+' -- names pick the entries: each is a name or a pattern with * and ?, in any case, with \ or /
+' -- between folders. With no names, every entry is picked.
+' -- No archive, or -d with no folder, prints Required parameter missing, and a switch but -l,
+' -- -o and -d prints Invalid switch. Each gives exit code 1. An archive that does not open
+' -- prints its error message, a file with no end record prints Not a ZIP archive, and a ZIP64
+' -- or split archive prints ZIP64 and split archives are not supported. Each gives exit code
+' -- 2, as does an archive that ends inside an entry. A file that cannot be written prints its
+' -- error message and gives exit code 3 at once. An entry skipped, with a bad CRC or with
+' -- invalid compressed data gives exit code 3 at the end. Exit code 0 otherwise.
+' --
+' -- From a prompt:
+' --     UNZIP GAMES
+' --     UNZIP -o -d C:\GAMES GAMES.ZIP *.PRG
+' --     UNZIP -l GAMES.ZIP DOCS\*.TXT
+'=============================================================================================
+#INCLUDE "DOS.UXI"
+#INCLUDE "HEAP.UXI"
+#INCLUDE "BANK.UXI"
+CONST SLOT_P1 AS UBYTE = 0, SLOT_P9 AS UBYTE = 8
+CONST FROM_START AS UBYTE = 0, FROM_POSITION AS UBYTE = 1, FROM_END AS UBYTE = 2
+CONST BUFFER_SIZE AS UWORD = 512
+CONST BLANKS AS STRING = "         "
+CONST DASHES AS STRING = "---------"
+CONST HEX_DIGITS AS STRING = "0123456789abcdef"
+CONST REPLACE_ASK AS UBYTE = 0, REPLACE_ALL AS UBYTE = 1, REPLACE_NONE AS UBYTE = 2
+' The end record: its signature PK 5 6, then these offsets.
+CONST END_SIZE AS UBYTE = 22, END_DISK AS UBYTE = 4, END_ENTRIES AS UBYTE = 10
+CONST END_DIRECTORY AS UBYTE = 16
+' The end record follows the last entry, with a comment of up to 65535 bytes after it, so it
+' starts in the last 65557 bytes.
+CONST END_SEARCH AS ULONG = 65557
+' A central directory entry: its signature PK 1 2, then these offsets, then the name, the
+' extra field and the comment.
+CONST ENTRY_SIZE AS UBYTE = 46, ENTRY_FLAGS AS UBYTE = 8, ENTRY_METHOD AS UBYTE = 10
+CONST ENTRY_TIME AS UBYTE = 12, ENTRY_DATE AS UBYTE = 14, ENTRY_CRC AS UBYTE = 16
+CONST ENTRY_PACKED AS UBYTE = 20, ENTRY_LENGTH AS UBYTE = 24, NAME_SIZE_AT AS UBYTE = 28
+CONST EXTRA_SIZE_AT AS UBYTE = 30, COMMENT_SIZE_AT AS UBYTE = 32, ENTRY_LOCAL AS UBYTE = 42
+' A local header: its signature PK 3 4, then these offsets, then the name, the extra field
+' and the data.
+CONST LOCAL_SIZE AS UBYTE = 30, LOCAL_NAME_SIZE AS UBYTE = 26, LOCAL_EXTRA_SIZE AS UBYTE = 28
+CONST SIGNATURE_P AS UBYTE = $50, SIGNATURE_K AS UBYTE = $4B
+CONST FLAG_ENCRYPTED AS UBYTE = 1, METHOD_STORED AS UBYTE = 0, METHOD_DEFLATED AS UBYTE = 8
+' Deflate: the order of the code length code's lengths, each a letter, A for 0.
+CONST CODE_ORDER AS STRING = "QRSAIHJGKFLEMDNCOBP"
+CONST WINDOW_BANKS AS UBYTE = 4, WINDOW_START AS UWORD = $A000
+
+DIM ARGUMENT AS STRING * 255, ARCHIVE_NAME AS STRING * 255, ENTRY_NAME AS STRING * 255
+DIM FOLDER AS STRING * 255, TARGET_NAME AS STRING * 255, MADE_FOLDER AS STRING * 255
+DIM ANSWER AS STRING * 8
+DIM SLOT AS UBYTE, LIST_ONLY AS UBYTE, REPLACE AS UBYTE, SWITCH AS UBYTE
+DIM NAME_SLOTS AS UWORD                            ' bit n set: P(n+1)$ is a name to pick
+DIM ARCHIVE AS UWORD, TARGET AS UWORD, EXIT_CODE AS UBYTE, WRITE_ERROR AS UBYTE
+DIM BUFFER(BUFFER_SIZE) AS UBYTE, RECORD(ENTRY_SIZE) AS UBYTE, HEADER(LOCAL_SIZE) AS UBYTE
+DIM ARCHIVE_SIZE AS ULONG, END_AT AS ULONG, SEARCH_FLOOR AS ULONG, BLOCK_AT AS ULONG
+DIM BLOCK_TOP AS ULONG, BLOCK_COUNT AS UWORD, INDEX AS UWORD, COUNT AS UWORD
+DIM ENTRIES AS UWORD, DIRECTORY_AT AS ULONG, SKIP AS UWORD, DATA_AT AS ULONG
+DIM LENGTH AS ULONG, TOTAL_LENGTH AS ULONG, LISTED AS UWORD, REMAINING AS ULONG
+DIM STAMP AS UWORD, NEXT_LOW AS UWORD, NEXT_HIGH AS UWORD, IN_COUNT AS UWORD
+DIM METHOD AS UWORD, BAD_DATA AS UBYTE, CALLER_BANK AS UBYTE, FIXED_BUILT AS UBYTE
+
+' CRC-32, reflected, polynomial $EDB88320. CRC_TABLES fills the tables once; then CRC =
+' $FFFFFFFF, CRC_ADD for each block, and CRC XOR $FFFFFFFF is the value.
+DIM CRC AS ULONG AT $50
+DIM CRC_DATA AS UWORD AT $54, CRC_COUNT AS UWORD AT $56, CRC_BITS AS UBYTE AT $58
+DIM CRC_TABLE0(256) AS UBYTE, CRC_TABLE1(256) AS UBYTE
+DIM CRC_TABLE2(256) AS UBYTE, CRC_TABLE3(256) AS UBYTE
+
+' Inflate. The input is read into BUFFER, IN_PTR to IN_END; INF_BITS holds the bits of a byte
+' not yet used, over a 1 that marks the top. The output goes to the window, 32 KB in the 4 RAM
+' banks from WINDOW_BANK to WINDOW_END - 1: OUT_PTR in bank OUT_BANK. A full bank is written
+' to TARGET. A code is decoded with TABLE_COUNTS, the number of codes of each length, 0 to 15,
+' a UWORD each, and TABLE_SYMBOLS, the symbols in the order of their codes. LIT_SYMBOLS holds
+' the high bytes of its symbols 288 bytes after the low bytes.
+DIM INF_BITS AS UBYTE AT $59, IN_PTR AS UWORD AT $5A, IN_END AS UWORD AT $5C
+DIM OUT_PTR AS UWORD AT $5E, OUT_BANK AS UBYTE AT $60, WINDOW_BANK AS UBYTE AT $61
+DIM WINDOW_END AS UBYTE AT $62, SOURCE_PTR AS UWORD AT $63, SOURCE_BANK AS UBYTE AT $65
+DIM TABLE_COUNTS AS UWORD AT $66, TABLE_SYMBOLS AS UWORD AT $68, SYMBOL_PTR AS UWORD AT $6A
+DIM DELTA AS UWORD AT $6C, INF_SYMBOL AS UBYTE AT $6E, INF_NEED AS UBYTE AT $6F
+DIM INF_VALUE AS UWORD AT $70, INF_MASK AS UWORD AT $72, MATCH_LENGTH AS UWORD AT $74
+DIM MATCH_DISTANCE AS UWORD AT $76, INF_ERROR AS UBYTE AT $78, INF_TEMP AS UBYTE AT $79
+DIM LENGTHS(320) AS UBYTE, CODE_LENGTHS(19) AS UBYTE, COUNTS(16) AS UWORD, OFFSETS(16) AS UWORD
+DIM LIT_COUNTS(16) AS UWORD, DISTANCE_COUNTS(16) AS UWORD, CODE_COUNTS(16) AS UWORD
+DIM LIT_SYMBOLS(576) AS UBYTE, DISTANCE_SYMBOLS(32) AS UBYTE, CODE_SYMBOLS(19) AS UBYTE
+' The length symbols 257 to 285: the base length less 3, and the extra bits. The distance
+' symbols 0 to 29: the base distance, and the extra bits.
+DIM LENGTH_BASE(29) AS UBYTE, LENGTH_EXTRA(29) AS UBYTE
+DIM DISTANCE_BASE(30) AS UWORD, DISTANCE_EXTRA(30) AS UBYTE
+
+SUB FAIL(MESSAGE AS STRING, CODE AS UBYTE)
+  PRINT MESSAGE
+  END CODE
+END SUB
+
+' Fills CRC_TABLE0 to CRC_TABLE3 with the bytes, low first, of the CRC of each byte value.
+' Uses CRC.
+SUB CRC_TABLES()
+  ASM
+      ldy #0
+  entry:
+      sty @CRC
+      stz @CRC + 1
+      stz @CRC + 2
+      stz @CRC + 3
+      lda #8
+      sta @CRC_BITS
+  shift:
+      lsr @CRC + 3
+      ror @CRC + 2
+      ror @CRC + 1
+      ror @CRC
+      bcc kept
+      lda @CRC + 3
+      eor #$ED
+      sta @CRC + 3
+      lda @CRC + 2
+      eor #$B8
+      sta @CRC + 2
+      lda @CRC + 1
+      eor #$83
+      sta @CRC + 1
+      lda @CRC
+      eor #$20
+      sta @CRC
+  kept:
+      dec @CRC_BITS
+      bne shift
+      lda @CRC
+      sta @CRC_TABLE0,y
+      lda @CRC + 1
+      sta @CRC_TABLE1,y
+      lda @CRC + 2
+      sta @CRC_TABLE2,y
+      lda @CRC + 3
+      sta @CRC_TABLE3,y
+      iny
+      bne entry
+  END ASM
+END SUB
+
+' Adds the CRC_COUNT bytes at CRC_DATA to CRC. Leaves CRC_COUNT 0 and CRC_DATA changed.
+' The loop counts the low byte down and the high byte once per wrap, so a count whose low byte
+' is not 0 starts with the high byte one up.
+SUB CRC_ADD()
+  ASM
+      phx
+      ldy #0
+      lda @CRC_COUNT
+      ora @CRC_COUNT + 1
+      beq done
+      lda @CRC_COUNT
+      beq next
+      inc @CRC_COUNT + 1
+  next:
+      lda (@CRC_DATA),y
+      eor @CRC
+      tax
+      lda @CRC + 1
+      eor @CRC_TABLE0,x
+      sta @CRC
+      lda @CRC + 2
+      eor @CRC_TABLE1,x
+      sta @CRC + 1
+      lda @CRC + 3
+      eor @CRC_TABLE2,x
+      sta @CRC + 2
+      lda @CRC_TABLE3,x
+      sta @CRC + 3
+      iny
+      bne counted
+      inc @CRC_DATA + 1
+  counted:
+      dec @CRC_COUNT
+      bne next
+      dec @CRC_COUNT + 1
+      bne next
+  done:
+      plx
+  END ASM
+END SUB
+
+' N in decimal, without the leading space of STR$.
+FUNCT DECIMAL(N AS ULONG) AS STRING
+  RETURN MID$(STR$(N), 2)
+END FUNCT
+
+' N in two digits, a leading 0 below 10.
+FUNCT TWO_DIGITS(N AS UBYTE) AS STRING
+  IF N < 10 THEN RETURN "0" + DECIMAL(N)
+  RETURN DECIMAL(N)
+END FUNCT
+
+' N in decimal, right-aligned in 9 columns.
+FUNCT COLUMN(N AS ULONG) AS STRING
+  DIM TEXT AS STRING * 10
+  TEXT = DECIMAL(N)
+  IF LEN(TEXT) < 9 THEN RETURN LEFT$(BLANKS, 9 - LEN(TEXT)) + TEXT
+  RETURN TEXT
+END FUNCT
+
+' N in 8 lower-case hex digits.
+FUNCT HEX8(N AS ULONG) AS STRING
+  DIM TEXT AS STRING * 8, SHIFT AS UBYTE
+  TEXT = ""
+  SHIFT = 32
+  DO WHILE SHIFT > 0
+    SHIFT = SHIFT - 4
+    TEXT = TEXT + MID$(HEX_DIGITS, ((N >> SHIFT) AND 15) + 1, 1)
+  LOOP
+  RETURN TEXT
+END FUNCT
+
+' Moves the archive's position to AT, from its start.
+SUB SEEK_TO(AT AS ULONG)
+  DOS.SEEK(ARCHIVE, FROM_START, AT AND $FFFF, AT >> 16)
+END SUB
+
+' 1 when NAME matches PATTERN: ? matches a character, * any run of them, \ matches /, and
+' case is ignored.
+FUNCT MATCHES(PATTERN AS STRING, NAME AS STRING) AS UBYTE
+  DIM P AS UBYTE, N AS UBYTE, STAR AS UBYTE, MARK AS UBYTE, CHARACTER AS UBYTE
+  DIM UPPER_PATTERN AS STRING * 255, UPPER_NAME AS STRING * 255
+  UPPER_PATTERN = UCASE$(PATTERN)
+  UPPER_NAME = UCASE$(NAME)
+  P = 1
+  N = 1
+  STAR = 0
+  DO WHILE N <= LEN(UPPER_NAME)
+    CHARACTER = 0
+    IF P <= LEN(UPPER_PATTERN) THEN CHARACTER = ASC(MID$(UPPER_PATTERN, P))
+    IF CHARACTER = ASC("\") THEN CHARACTER = ASC("/")
+    IF CHARACTER = ASC("?") OR (CHARACTER <> 0 AND CHARACTER = ASC(MID$(UPPER_NAME, N))) THEN
+      P = P + 1
+      N = N + 1
+    ELSEIF CHARACTER = ASC("*") THEN
+      ' The run starts empty, and grows a character at each miss after it.
+      P = P + 1
+      STAR = P
+      MARK = N
+    ELSEIF STAR <> 0 THEN
+      P = STAR
+      MARK = MARK + 1
+      N = MARK
+    ELSE
+      RETURN 0
+    END IF
+  LOOP
+  DO WHILE P <= LEN(UPPER_PATTERN)
+    IF ASC(MID$(UPPER_PATTERN, P)) <> ASC("*") THEN RETURN 0
+    P = P + 1
+  LOOP
+  RETURN 1
+END FUNCT
+
+' 1 when ENTRY_NAME is picked: no names were given, or one of them matches.
+FUNCT PICKED() AS UBYTE
+  DIM NAME_SLOT AS UBYTE
+  IF NAME_SLOTS = 0 THEN RETURN 1
+  FOR NAME_SLOT = SLOT_P1 TO SLOT_P9
+    IF NAME_SLOTS AND (1 << NAME_SLOT) THEN
+      IF MATCHES(HEAP.SYS_STRINGS_GET(NAME_SLOT), ENTRY_NAME) THEN RETURN 1
+    END IF
+  NEXT
+  RETURN 0
+END FUNCT
+
+' Prints the entry in RECORD and ENTRY_NAME as a line of the list, and adds it to the totals.
+SUB LIST_ENTRY()
+  ContentsAtW(@LENGTH) = ContentsAtW(@RECORD + ENTRY_LENGTH)
+  ContentsAtW(@LENGTH + 2) = ContentsAtW(@RECORD + ENTRY_LENGTH + 2)
+  TOTAL_LENGTH = TOTAL_LENGTH + LENGTH
+  LISTED = LISTED + 1
+  ' The date and time are MS-DOS's: the year from 1980, the month and day; the hours and
+  ' minutes.
+  STAMP = ContentsAtW(@RECORD + ENTRY_DATE)
+  PRINT COLUMN(LENGTH); "  "; DECIMAL(1980 + (STAMP >> 9)); "-"; TWO_DIGITS((STAMP >> 5) AND 15);
+  PRINT "-"; TWO_DIGITS(STAMP AND 31); " ";
+  STAMP = ContentsAtW(@RECORD + ENTRY_TIME)
+  PRINT TWO_DIGITS(STAMP >> 11); ":"; TWO_DIGITS((STAMP >> 5) AND 63); "   "; ENTRY_NAME
+END SUB
+
+' Prints why the entry is skipped, and sets exit code 3.
+SUB SKIPPING(REASON AS STRING)
+  PRINT "   skipping: "; ENTRY_NAME; "  "; REASON
+  EXIT_CODE = 3
+END SUB
+
+' Sets TARGET_NAME to ENTRY_NAME under FOLDER, with \ for /, cut of a leading /. Returns 0
+' when the name holds a drive or a .. folder.
+FUNCT MAKE_TARGET() AS UBYTE
+  DIM AT AS UWORD
+  TARGET_NAME = ENTRY_NAME
+  FOR AT = 1 TO LEN(TARGET_NAME)
+    IF ContentsAt(@TARGET_NAME + 1 + AT) = ASC("/") THEN ContentsAt(@TARGET_NAME + 1 + AT) = ASC("\")
+  NEXT
+  DO WHILE LEN(TARGET_NAME) > 0 AND ASC(TARGET_NAME) = ASC("\")
+    TARGET_NAME = MID$(TARGET_NAME, 2)
+  LOOP
+  IF INSTR(TARGET_NAME, ":", 1) <> 0 THEN RETURN 0
+  IF INSTR("\" + TARGET_NAME + "\", "\..\", 1) <> 0 THEN RETURN 0
+  IF FOLDER <> "" THEN
+    AT = ASC(MID$(FOLDER, LEN(FOLDER)))
+    IF AT = ASC("\") OR AT = ASC(":") THEN
+      TARGET_NAME = FOLDER + TARGET_NAME
+    ELSE
+      TARGET_NAME = FOLDER + "\" + TARGET_NAME
+    END IF
+  END IF
+  RETURN 1
+END FUNCT
+
+' Makes each folder that TARGET_NAME names before its last \. A folder that exists is kept.
+SUB MAKE_FOLDERS()
+  DIM AT AS UWORD, LAST AS UWORD
+  LAST = 0
+  FOR AT = 1 TO LEN(TARGET_NAME)
+    IF ContentsAt(@TARGET_NAME + 1 + AT) = ASC("\") THEN LAST = AT
+  NEXT
+  IF LAST = 0 THEN RETURN
+  IF LEFT$(TARGET_NAME, LAST) = MADE_FOLDER THEN RETURN
+  FOR AT = 2 TO LAST
+    IF ContentsAt(@TARGET_NAME + 1 + AT) = ASC("\") THEN
+      IF ContentsAt(@TARGET_NAME + AT) <> ASC(":") THEN DOS.MKDIR(LEFT$(TARGET_NAME, AT - 1))
+    END IF
+  NEXT
+  MADE_FOLDER = LEFT$(TARGET_NAME, LAST)
+END SUB
+
+' 1 when TARGET_NAME may be written: it does not exist, or -o, A or y says to replace it.
+FUNCT MAY_REPLACE() AS UBYTE
+  IF DOS.EXISTS(TARGET_NAME) = 0 OR REPLACE = REPLACE_ALL THEN RETURN 1
+  IF REPLACE = REPLACE_NONE THEN RETURN 0
+  PRINT "replace "; TARGET_NAME; "? [y]es, [n]o, [A]ll, [N]one: ";
+  DOS.CON_LINE(ANSWER)
+  IF ANSWER = "A" THEN REPLACE = REPLACE_ALL
+  IF ANSWER = "N" THEN REPLACE = REPLACE_NONE
+  RETURN ANSWER = "A" OR ANSWER = "y" OR ANSWER = "Y"
+END FUNCT
+
+' Adds the BYTES bytes at AT to CRC and writes them to TARGET. A write that fails ends UNZIP
+' with exit code 3.
+SUB WRITE_BLOCK(AT AS UWORD, BYTES AS UWORD)
+  CRC_DATA = AT
+  CRC_COUNT = BYTES
+  CRC_ADD()
+  IF DOS.WRITE_FILE(TARGET, AT, BYTES) <> BYTES THEN
+    IF DOS.ERROR = 0 THEN DOS.ERROR = DOS.DISK_FULL
+    WRITE_ERROR = DOS.ERROR
+    DOS.CLOSE_FILE(TARGET)
+    PRINT
+    FAIL(DOS.ERRMSG(WRITE_ERROR), 3)
+  END IF
+END SUB
+
+' Fills LENGTH_BASE, LENGTH_EXTRA, DISTANCE_BASE and DISTANCE_EXTRA.
+SUB INFLATE_TABLES()
+  DIM SYMBOL AS UBYTE, EXTRA AS UBYTE, BASE AS UWORD, STEP_SIZE AS UWORD
+  BASE = 3
+  FOR SYMBOL = 0 TO 27
+    EXTRA = 0
+    IF SYMBOL >= 8 THEN EXTRA = (SYMBOL - 4) >> 2
+    LENGTH_BASE(SYMBOL) = BASE - 3
+    LENGTH_EXTRA(SYMBOL) = EXTRA
+    STEP_SIZE = 1
+    BASE = BASE + (STEP_SIZE << EXTRA)
+  NEXT
+  LENGTH_BASE(28) = 258 - 3
+  BASE = 1
+  FOR SYMBOL = 0 TO 29
+    EXTRA = 0
+    IF SYMBOL >= 4 THEN EXTRA = (SYMBOL - 2) >> 1
+    DISTANCE_BASE(SYMBOL) = BASE
+    DISTANCE_EXTRA(SYMBOL) = EXTRA
+    STEP_SIZE = 1
+    BASE = BASE + (STEP_SIZE << EXTRA)
+  NEXT
+END SUB
+
+' Builds the code of the SYMBOL_COUNT lengths at LENGTHS_AT for INF_DECODE: the counts at
+' COUNTS_AT, the symbols at SYMBOLS_AT. A code of over 256 symbols also gets the high bytes.
+SUB BUILD_CODE(LENGTHS_AT AS UWORD, SYMBOL_COUNT AS UWORD, COUNTS_AT AS UWORD, SYMBOLS_AT AS UWORD)
+  DIM SYMBOL AS UWORD, SIZE AS UBYTE, PLACE AS UWORD
+  FOR SIZE = 0 TO 15
+    COUNTS(SIZE) = 0
+  NEXT
+  FOR SYMBOL = 0 TO SYMBOL_COUNT - 1
+    SIZE = ContentsAt(LENGTHS_AT + SYMBOL)
+    COUNTS(SIZE) = COUNTS(SIZE) + 1
+  NEXT
+  ' A code of length 0 is no code, so the symbols of length 1 come first.
+  PLACE = 0
+  FOR SIZE = 0 TO 15
+    ContentsAtW(COUNTS_AT + SIZE + SIZE) = COUNTS(SIZE)
+    OFFSETS(SIZE) = PLACE
+    IF SIZE > 0 THEN PLACE = PLACE + COUNTS(SIZE)
+  NEXT
+  FOR SYMBOL = 0 TO SYMBOL_COUNT - 1
+    SIZE = ContentsAt(LENGTHS_AT + SYMBOL)
+    IF SIZE > 0 THEN
+      PLACE = OFFSETS(SIZE)
+      ContentsAt(SYMBOLS_AT + PLACE) = SYMBOL AND 255
+      IF SYMBOL_COUNT > 256 THEN ContentsAt(SYMBOLS_AT + 288 + PLACE) = SYMBOL >> 8
+      OFFSETS(SIZE) = PLACE + 1
+    END IF
+  NEXT
+END SUB
+
+' Reads the next block of the entry's data into BUFFER, for INF_NEXT_BYTE. Past the data, sets
+' INF_ERROR to 2 and gives a 0 byte.
+SUB INF_REFILL()
+  IN_COUNT = BUFFER_SIZE
+  IF REMAINING < BUFFER_SIZE THEN IN_COUNT = REMAINING
+  IF IN_COUNT > 0 THEN
+    IF DOS.READ_FILE(ARCHIVE, @BUFFER, IN_COUNT) <> IN_COUNT THEN IN_COUNT = 0
+  END IF
+  REMAINING = REMAINING - IN_COUNT
+  IF IN_COUNT = 0 THEN
+    INF_ERROR = 2
+    BUFFER(0) = 0
+    IN_COUNT = 1
+  END IF
+  IN_PTR = @BUFFER
+  IN_END = @BUFFER + IN_COUNT
+END SUB
+
+' Writes the window's bank OUT_BANK, up to OUT_PTR, to TARGET.
+SUB INF_FLUSH()
+  BANK.USE(OUT_BANK)
+  IF OUT_PTR > WINDOW_START THEN WRITE_BLOCK(WINDOW_START, OUT_PTR - WINDOW_START)
+END SUB
+
+' A = the next input byte. Keeps X and Y. Selects OUT_BANK when it reads a block.
+SUB INF_NEXT_BYTE()
+  ASM
+      lda @IN_PTR
+      cmp @IN_END
+      bne have
+      lda @IN_PTR + 1
+      cmp @IN_END + 1
+      bne have
+      phy
+      jsr INF_REFILL
+      ply
+      lda @OUT_BANK
+      sta $00
+  have:
+      lda (@IN_PTR)
+      inc @IN_PTR
+      bne done
+      inc @IN_PTR + 1
+  done:
+  END ASM
+END SUB
+
+' Moves OUT_PTR, whose low byte has wrapped, to its next page. At the end of a bank, writes
+' the bank and moves to the next, after the last to the first. Keeps X and Y; selects OUT_BANK.
+SUB INF_OUT_PAGE()
+  ASM
+      inc @OUT_PTR + 1
+      lda @OUT_PTR + 1
+      cmp #$C0
+      bne done
+      phy
+      jsr INF_FLUSH
+      ply
+      lda #$A0
+      sta @OUT_PTR + 1
+      inc @OUT_BANK
+      lda @OUT_BANK
+      cmp @WINDOW_END
+      bne select
+      lda @WINDOW_BANK
+      sta @OUT_BANK
+  select:
+      lda @OUT_BANK
+      sta $00
+  done:
+  END ASM
+END SUB
+
+' Moves SOURCE_PTR, whose low byte has wrapped, to its next page, and at the end of a bank to
+' the next, after the last to the first.
+SUB INF_SOURCE_PAGE()
+  ASM
+      inc @SOURCE_PTR + 1
+      lda @SOURCE_PTR + 1
+      cmp #$C0
+      bne done
+      lda #$A0
+      sta @SOURCE_PTR + 1
+      inc @SOURCE_BANK
+      lda @SOURCE_BANK
+      cmp @WINDOW_END
+      bne done
+      lda @WINDOW_BANK
+      sta @SOURCE_BANK
+  done:
+  END ASM
+END SUB
+
+' INF_VALUE = the next INF_NEED bits, 0 to 16, the first the lowest. Keeps X.
+SUB INF_GET_BITS()
+  ASM
+      stz @INF_VALUE
+      stz @INF_VALUE + 1
+      lda #1
+      sta @INF_MASK
+      stz @INF_MASK + 1
+      ldy @INF_NEED
+      beq done
+  next:
+      lsr @INF_BITS
+      bne have
+      jsr INF_NEXT_BYTE
+      sec
+      ror a
+      sta @INF_BITS
+  have:
+      bcc shift
+      lda @INF_VALUE
+      ora @INF_MASK
+      sta @INF_VALUE
+      lda @INF_VALUE + 1
+      ora @INF_MASK + 1
+      sta @INF_VALUE + 1
+  shift:
+      asl @INF_MASK
+      rol @INF_MASK + 1
+      dey
+      bne next
+  done:
+  END ASM
+END SUB
+
+' INF_SYMBOL = the low byte of the next symbol of the code at TABLE_COUNTS and TABLE_SYMBOLS,
+' and SYMBOL_PTR its address. A code longer than 15 bits sets INF_ERROR to 1. Keeps X.
+' DELTA is the code read so far less the first code of its length; when it is below the count
+' of that length, it indexes the symbols of that length.
+SUB INF_DECODE()
+  ASM
+      stz @DELTA
+      stz @DELTA + 1
+      lda @TABLE_SYMBOLS
+      sta @SYMBOL_PTR
+      lda @TABLE_SYMBOLS + 1
+      sta @SYMBOL_PTR + 1
+      ldy #2
+  next:
+      lsr @INF_BITS
+      bne have
+      jsr INF_NEXT_BYTE
+      sec
+      ror a
+      sta @INF_BITS
+  have:
+      rol @DELTA
+      rol @DELTA + 1
+      lda @DELTA
+      sec
+      sbc (@TABLE_COUNTS),y
+      sta @INF_TEMP
+      iny
+      lda @DELTA + 1
+      sbc (@TABLE_COUNTS),y
+      bcc found
+      sta @DELTA + 1
+      lda @INF_TEMP
+      sta @DELTA
+      dey
+      lda @SYMBOL_PTR
+      clc
+      adc (@TABLE_COUNTS),y
+      sta @SYMBOL_PTR
+      iny
+      lda @SYMBOL_PTR + 1
+      adc (@TABLE_COUNTS),y
+      sta @SYMBOL_PTR + 1
+      iny
+      cpy #32
+      bne next
+      lda #1
+      sta @INF_ERROR
+      bra done
+  found:
+      lda @SYMBOL_PTR
+      clc
+      adc @DELTA
+      sta @SYMBOL_PTR
+      lda @SYMBOL_PTR + 1
+      adc @DELTA + 1
+      sta @SYMBOL_PTR + 1
+      lda (@SYMBOL_PTR)
+      sta @INF_SYMBOL
+  done:
+  END ASM
+END SUB
+
+' Reads a distance after a length: MATCH_DISTANCE, and SOURCE_PTR and SOURCE_BANK the window's
+' byte that far back. A symbol over 29 sets INF_ERROR to 1. Keeps X.
+' A window offset is 15 bits: the bank's number in the window in bits 13 and 14.
+SUB INF_DISTANCE()
+  ASM
+      lda #<@DISTANCE_COUNTS
+      sta @TABLE_COUNTS
+      lda #>@DISTANCE_COUNTS
+      sta @TABLE_COUNTS + 1
+      lda #<@DISTANCE_SYMBOLS
+      sta @TABLE_SYMBOLS
+      lda #>@DISTANCE_SYMBOLS
+      sta @TABLE_SYMBOLS + 1
+      jsr INF_DECODE
+      ldy @INF_SYMBOL
+      cpy #30
+      bcs bad
+      lda @DISTANCE_EXTRA,y
+      sta @INF_NEED
+      jsr INF_GET_BITS
+      lda @INF_SYMBOL
+      asl a
+      tay
+      lda @DISTANCE_BASE,y
+      clc
+      adc @INF_VALUE
+      sta @MATCH_DISTANCE
+      lda @DISTANCE_BASE + 1,y
+      adc @INF_VALUE + 1
+      sta @MATCH_DISTANCE + 1
+      lda @OUT_BANK
+      sec
+      sbc @WINDOW_BANK
+      asl a
+      asl a
+      asl a
+      asl a
+      asl a
+      sta @INF_TEMP
+      lda @OUT_PTR + 1
+      and #$1F
+      ora @INF_TEMP
+      sta @INF_TEMP
+      lda @OUT_PTR
+      sec
+      sbc @MATCH_DISTANCE
+      sta @SOURCE_PTR
+      lda @INF_TEMP
+      sbc @MATCH_DISTANCE + 1
+      and #$7F
+      sta @INF_TEMP
+      and #$1F
+      ora #$A0
+      sta @SOURCE_PTR + 1
+      lda @INF_TEMP
+      lsr a
+      lsr a
+      lsr a
+      lsr a
+      lsr a
+      clc
+      adc @WINDOW_BANK
+      sta @SOURCE_BANK
+      bra done
+  bad:
+      lda #1
+      sta @INF_ERROR
+  done:
+  END ASM
+END SUB
+
+' Inflates a block of Huffman codes, with the codes at LIT_COUNTS and DISTANCE_COUNTS, up to
+' its end code or an error. Keeps X.
+SUB INF_CODES()
+  ASM
+      lda @OUT_BANK
+      sta $00
+      bra symbol
+  bad:
+      lda #1
+      sta @INF_ERROR
+  done:
+      jmp finish
+  symbol:
+      lda #<@LIT_COUNTS
+      sta @TABLE_COUNTS
+      lda #>@LIT_COUNTS
+      sta @TABLE_COUNTS + 1
+      lda #<@LIT_SYMBOLS
+      sta @TABLE_SYMBOLS
+      lda #>@LIT_SYMBOLS
+      sta @TABLE_SYMBOLS + 1
+      jsr INF_DECODE
+      lda @INF_ERROR
+      bne done
+      inc @SYMBOL_PTR + 1
+      ldy #32
+      lda (@SYMBOL_PTR),y
+      bne length
+      lda @INF_SYMBOL
+      sta (@OUT_PTR)
+      inc @OUT_PTR
+      bne symbol
+      jsr INF_OUT_PAGE
+      bra symbol
+  length:
+      ldy @INF_SYMBOL
+      beq done
+      cpy #30
+      bcs bad
+      lda @LENGTH_EXTRA - 1,y
+      sta @INF_NEED
+      jsr INF_GET_BITS
+      ldy @INF_SYMBOL
+      lda @LENGTH_BASE - 1,y
+      clc
+      adc @INF_VALUE
+      clc
+      adc #3
+      sta @MATCH_LENGTH
+      lda #0
+      rol a
+      sta @MATCH_LENGTH + 1
+      jsr INF_DISTANCE
+      lda @INF_ERROR
+      bne done
+      ' The count runs down the low byte and the high byte once per wrap.
+      lda @MATCH_LENGTH
+      beq copy
+      inc @MATCH_LENGTH + 1
+  copy:
+      lda @SOURCE_BANK
+      sta $00
+      lda (@SOURCE_PTR)
+      ldy @OUT_BANK
+      sty $00
+      sta (@OUT_PTR)
+      inc @SOURCE_PTR
+      bne source_ok
+      jsr INF_SOURCE_PAGE
+  source_ok:
+      inc @OUT_PTR
+      bne out_ok
+      jsr INF_OUT_PAGE
+  out_ok:
+      dec @MATCH_LENGTH
+      bne copy
+      dec @MATCH_LENGTH + 1
+      bne copy
+      jmp symbol
+  finish:
+  END ASM
+END SUB
+
+' Copies the MATCH_LENGTH bytes of a stored block from the input to the window. Keeps X.
+SUB INF_STORED()
+  ASM
+      lda @OUT_BANK
+      sta $00
+      lda @MATCH_LENGTH
+      ora @MATCH_LENGTH + 1
+      beq done
+      lda @MATCH_LENGTH
+      beq next
+      inc @MATCH_LENGTH + 1
+  next:
+      jsr INF_NEXT_BYTE
+      sta (@OUT_PTR)
+      inc @OUT_PTR
+      bne counted
+      jsr INF_OUT_PAGE
+  counted:
+      lda @INF_ERROR
+      bne done
+      dec @MATCH_LENGTH
+      bne next
+      dec @MATCH_LENGTH + 1
+      bne next
+  done:
+  END ASM
+END SUB
+
+' The next COUNT bits of the input, 0 to 16, the first the lowest.
+FUNCT READ_BITS(COUNT AS UBYTE) AS UWORD
+  INF_NEED = COUNT
+  INF_GET_BITS()
+  RETURN INF_VALUE
+END FUNCT
+
+' Builds the fixed codes: the literal and length symbols 0 to 143 of 8 bits, 144 to 255 of 9,
+' 256 to 279 of 7 and 280 to 287 of 8; the distance symbols of 5.
+SUB FIXED_CODES()
+  DIM AT AS UWORD
+  FOR AT = 0 TO 317
+    LENGTHS(AT) = 8
+    IF AT >= 144 THEN LENGTHS(AT) = 9
+    IF AT >= 256 THEN LENGTHS(AT) = 7
+    IF AT >= 280 THEN LENGTHS(AT) = 8
+    IF AT >= 288 THEN LENGTHS(AT) = 5
+  NEXT
+  BUILD_CODE(@LENGTHS, 288, @LIT_COUNTS, @LIT_SYMBOLS)
+  BUILD_CODE(@LENGTHS + 288, 30, @DISTANCE_COUNTS, @DISTANCE_SYMBOLS)
+  FIXED_BUILT = 1
+END SUB
+
+' Reads the codes of a dynamic block and builds them. Bad codes set INF_ERROR to 1.
+SUB DYNAMIC_CODES()
+  DIM LITERALS AS UWORD, TOTAL AS UWORD, AT AS UWORD, REPEATS AS UBYTE, FILL AS UBYTE
+  DIM ORDER AS UBYTE, CODES AS UBYTE
+  LITERALS = READ_BITS(5) + 257
+  TOTAL = LITERALS + READ_BITS(5) + 1
+  CODES = READ_BITS(4) + 4
+  FOR ORDER = 0 TO 18
+    CODE_LENGTHS(ORDER) = 0
+  NEXT
+  FOR ORDER = 1 TO CODES
+    CODE_LENGTHS(ASC(MID$(CODE_ORDER, ORDER)) - ASC("A")) = READ_BITS(3)
+  NEXT
+  BUILD_CODE(@CODE_LENGTHS, 19, @CODE_COUNTS, @CODE_SYMBOLS)
+  TABLE_COUNTS = @CODE_COUNTS
+  TABLE_SYMBOLS = @CODE_SYMBOLS
+  ' 0 to 15 is a length; 16 repeats the last length 3 to 6 times; 17 gives 3 to 10 zeros, and
+  ' 18 11 to 138.
+  AT = 0
+  DO WHILE AT < TOTAL
+    INF_DECODE()
+    IF INF_ERROR THEN RETURN
+    IF INF_SYMBOL < 16 THEN
+      LENGTHS(AT) = INF_SYMBOL
+      AT = AT + 1
+    ELSE
+      FILL = 0
+      IF INF_SYMBOL = 16 THEN
+        IF AT = 0 THEN
+          INF_ERROR = 1
+          RETURN
+        END IF
+        FILL = LENGTHS(AT - 1)
+        REPEATS = 3 + READ_BITS(2)
+      ELSEIF INF_SYMBOL = 17 THEN
+        REPEATS = 3 + READ_BITS(3)
+      ELSE
+        REPEATS = 11 + READ_BITS(7)
+      END IF
+      IF AT + REPEATS > TOTAL THEN
+        INF_ERROR = 1
+        RETURN
+      END IF
+      REPEAT REPEATS
+        LENGTHS(AT) = FILL
+        AT = AT + 1
+      END REPEAT
+    END IF
+  LOOP
+  BUILD_CODE(@LENGTHS, LITERALS, @LIT_COUNTS, @LIT_SYMBOLS)
+  BUILD_CODE(@LENGTHS + LITERALS, TOTAL - LITERALS, @DISTANCE_COUNTS, @DISTANCE_SYMBOLS)
+  FIXED_BUILT = 0
+END SUB
+
+' Inflates the entry's data, REMAINING bytes at the archive's position, to TARGET, and adds
+' it to CRC. Returns 0, or not 0 when the data does not decode. Leaves a RAM bank selected.
+FUNCT INFLATE() AS UBYTE
+  DIM FINAL AS UBYTE, KIND AS UBYTE
+  IN_PTR = @BUFFER
+  IN_END = @BUFFER
+  INF_BITS = 0
+  INF_ERROR = 0
+  OUT_PTR = WINDOW_START
+  OUT_BANK = WINDOW_BANK
+  DO
+    FINAL = READ_BITS(1)
+    KIND = READ_BITS(2)
+    IF KIND = 0 THEN
+      ' A stored block starts at a byte: its length and the length's complement.
+      INF_BITS = 0
+      MATCH_LENGTH = READ_BITS(16)
+      IF READ_BITS(16) = (MATCH_LENGTH XOR $FFFF) THEN
+        INF_STORED()
+      ELSE
+        INF_ERROR = 1
+      END IF
+    ELSEIF KIND = 1 THEN
+      IF FIXED_BUILT = 0 THEN FIXED_CODES()
+      INF_CODES()
+    ELSEIF KIND = 2 THEN
+      DYNAMIC_CODES()
+      IF INF_ERROR = 0 THEN INF_CODES()
+    ELSE
+      INF_ERROR = 1
+    END IF
+  LOOP UNTIL FINAL <> 0 OR INF_ERROR <> 0
+  IF INF_ERROR = 0 THEN INF_FLUSH()
+  RETURN INF_ERROR
+END FUNCT
+
+' Extracts the entry in RECORD and ENTRY_NAME. Leaves the archive's position changed.
+SUB EXTRACT_ENTRY()
+  DIM EXPECTED AS ULONG
+  IF MAKE_TARGET() = 0 THEN
+    SKIPPING("unsafe name")
+    RETURN
+  END IF
+  MAKE_FOLDERS()
+  IF ASC(MID$(TARGET_NAME, LEN(TARGET_NAME))) = ASC("\") THEN
+    PRINT "   creating: "; ENTRY_NAME
+    RETURN
+  END IF
+  IF RECORD(ENTRY_FLAGS) AND FLAG_ENCRYPTED THEN
+    SKIPPING("encrypted")
+    RETURN
+  END IF
+  METHOD = ContentsAtW(@RECORD + ENTRY_METHOD)
+  IF METHOD <> METHOD_STORED AND METHOD <> METHOD_DEFLATED THEN
+    SKIPPING("unsupported compression method " + DECIMAL(METHOD))
+    RETURN
+  END IF
+  IF METHOD = METHOD_DEFLATED AND WINDOW_BANK = 0 THEN
+    WINDOW_BANK = BANK.ALLOC(WINDOW_BANKS)
+    IF WINDOW_BANK = 0 THEN
+      SKIPPING(DOS.ERRMSG(DOS.ERROR))
+      RETURN
+    END IF
+    WINDOW_END = WINDOW_BANK + WINDOW_BANKS
+    INFLATE_TABLES()
+  END IF
+  IF MAY_REPLACE() = 0 THEN RETURN
+  ' The data follows the local header, whose name and extra field may differ from the
+  ' central directory's.
+  ContentsAtW(@DATA_AT) = ContentsAtW(@RECORD + ENTRY_LOCAL)
+  ContentsAtW(@DATA_AT + 2) = ContentsAtW(@RECORD + ENTRY_LOCAL + 2)
+  SEEK_TO(DATA_AT)
+  IF DOS.READ_FILE(ARCHIVE, @HEADER, LOCAL_SIZE) <> LOCAL_SIZE THEN FAIL("Not a ZIP archive", 2)
+  IF HEADER(0) <> SIGNATURE_P OR HEADER(1) <> SIGNATURE_K OR HEADER(2) <> 3 OR HEADER(3) <> 4 THEN
+    FAIL("Not a ZIP archive", 2)
+  END IF
+  DATA_AT = DATA_AT + LOCAL_SIZE + ContentsAtW(@HEADER + LOCAL_NAME_SIZE)
+  DATA_AT = DATA_AT + ContentsAtW(@HEADER + LOCAL_EXTRA_SIZE)
+  SEEK_TO(DATA_AT)
+  PRINT " extracting: "; ENTRY_NAME;
+  TARGET = DOS.CREATE_FILE(TARGET_NAME, 0)
+  IF TARGET = NOFILE THEN
+    PRINT
+    FAIL(DOS.ERRMSG(DOS.ERROR), 3)
+  END IF
+  ContentsAtW(@REMAINING) = ContentsAtW(@RECORD + ENTRY_PACKED)
+  ContentsAtW(@REMAINING + 2) = ContentsAtW(@RECORD + ENTRY_PACKED + 2)
+  CRC = $FFFFFFFF
+  BAD_DATA = 0
+  IF METHOD = METHOD_DEFLATED THEN
+    CALLER_BANK = BANK.CURRENT()
+    BAD_DATA = INFLATE()
+    BANK.USE(CALLER_BANK)
+  END IF
+  DO WHILE METHOD = METHOD_STORED AND REMAINING > 0
+    COUNT = BUFFER_SIZE
+    IF REMAINING < BUFFER_SIZE THEN COUNT = REMAINING
+    IF DOS.READ_FILE(ARCHIVE, @BUFFER, COUNT) <> COUNT THEN
+      DOS.CLOSE_FILE(TARGET)
+      PRINT
+      FAIL("Not a ZIP archive", 2)
+    END IF
+    WRITE_BLOCK(@BUFFER, COUNT)
+    REMAINING = REMAINING - COUNT
+  LOOP
+  DOS.CLOSE_FILE(TARGET)
+  CRC = CRC XOR $FFFFFFFF
+  ContentsAtW(@EXPECTED) = ContentsAtW(@RECORD + ENTRY_CRC)
+  ContentsAtW(@EXPECTED + 2) = ContentsAtW(@RECORD + ENTRY_CRC + 2)
+  IF BAD_DATA THEN
+    PRINT "  invalid compressed data";
+    EXIT_CODE = 3
+  ELSEIF CRC <> EXPECTED THEN
+    PRINT "  bad CRC "; HEX8(CRC); "  (should be "; HEX8(EXPECTED); ")";
+    EXIT_CODE = 3
+  END IF
+  PRINT
+END SUB
+
+' ---- the arguments ----
+SLOT = SLOT_P1
+DO WHILE SLOT <= SLOT_P9
+  ARGUMENT = HEAP.SYS_STRINGS_GET(SLOT)
+  SLOT = SLOT + 1
+  IF ARGUMENT = "" THEN CONTINUE
+  IF ASC(ARGUMENT) = ASC("-") THEN
+    SWITCH = 0
+    IF LEN(ARGUMENT) = 2 THEN SWITCH = ASC(MID$(ARGUMENT, 2)) OR $20
+    IF SWITCH = ASC("l") THEN
+      LIST_ONLY = 1
+    ELSEIF SWITCH = ASC("o") THEN
+      REPLACE = REPLACE_ALL
+    ELSEIF SWITCH = ASC("d") THEN
+      IF SLOT > SLOT_P9 THEN FAIL("Required parameter missing", 1)
+      FOLDER = HEAP.SYS_STRINGS_GET(SLOT)
+      SLOT = SLOT + 1
+      IF FOLDER = "" THEN FAIL("Required parameter missing", 1)
+    ELSE
+      FAIL("Invalid switch", 1)
+    END IF
+  ELSEIF ARCHIVE_NAME = "" THEN
+    ARCHIVE_NAME = ARGUMENT
+  ELSE
+    NAME_SLOTS = NAME_SLOTS OR (1 << (SLOT - 1))
+  END IF
+LOOP
+IF ARCHIVE_NAME = "" THEN FAIL("Required parameter missing", 1)
+
+' ---- the archive ----
+ARCHIVE = DOS.OPEN_FILE(ARCHIVE_NAME, DOS.ACCESS_READ)
+IF ARCHIVE = NOFILE AND INSTR(ARCHIVE_NAME, ".", 1) = 0 THEN
+  ARCHIVE_NAME = ARCHIVE_NAME + ".ZIP"
+  ARCHIVE = DOS.OPEN_FILE(ARCHIVE_NAME, DOS.ACCESS_READ)
+END IF
+IF ARCHIVE = NOFILE THEN FAIL(DOS.ERRMSG(DOS.ERROR), 2)
+DOS.SEEK(ARCHIVE, FROM_END, 0, 0)
+ContentsAtW(@ARCHIVE_SIZE) = DOS.POSITION_LOW
+ContentsAtW(@ARCHIVE_SIZE + 2) = DOS.POSITION_HIGH
+
+' ---- the end record, searched back from the end ----
+' BLOCK_TOP is one past the last byte of the next block. A block keeps the first 3 bytes of
+' the block after it, so a signature across the two is found.
+IF ARCHIVE_SIZE < END_SIZE THEN FAIL("Not a ZIP archive", 2)
+SEARCH_FLOOR = 0
+IF ARCHIVE_SIZE > END_SEARCH THEN SEARCH_FLOOR = ARCHIVE_SIZE - END_SEARCH
+BLOCK_TOP = ARCHIVE_SIZE - END_SIZE + 4
+END_AT = $FFFFFFFF
+DO
+  BLOCK_AT = SEARCH_FLOOR
+  IF BLOCK_TOP - SEARCH_FLOOR > BUFFER_SIZE THEN BLOCK_AT = BLOCK_TOP - BUFFER_SIZE
+  BLOCK_COUNT = BLOCK_TOP - BLOCK_AT
+  SEEK_TO(BLOCK_AT)
+  IF DOS.READ_FILE(ARCHIVE, @BUFFER, BLOCK_COUNT) <> BLOCK_COUNT THEN EXIT DO
+  INDEX = BLOCK_COUNT - 3
+  DO WHILE INDEX > 0
+    INDEX = INDEX - 1
+    IF BUFFER(INDEX) = SIGNATURE_P AND BUFFER(INDEX + 1) = SIGNATURE_K THEN
+      IF BUFFER(INDEX + 2) = 5 AND BUFFER(INDEX + 3) = 6 THEN
+        END_AT = BLOCK_AT + INDEX
+        EXIT DO
+      END IF
+    END IF
+  LOOP
+  IF END_AT <> $FFFFFFFF OR BLOCK_AT = SEARCH_FLOOR THEN EXIT DO
+  BLOCK_TOP = BLOCK_AT + 3
+LOOP
+IF END_AT = $FFFFFFFF THEN FAIL("Not a ZIP archive", 2)
+SEEK_TO(END_AT)
+IF DOS.READ_FILE(ARCHIVE, @RECORD, END_SIZE) <> END_SIZE THEN FAIL("Not a ZIP archive", 2)
+ENTRIES = ContentsAtW(@RECORD + END_ENTRIES)
+ContentsAtW(@DIRECTORY_AT) = ContentsAtW(@RECORD + END_DIRECTORY)
+ContentsAtW(@DIRECTORY_AT + 2) = ContentsAtW(@RECORD + END_DIRECTORY + 2)
+IF ContentsAtW(@RECORD + END_DISK) <> 0 OR ENTRIES = $FFFF OR DIRECTORY_AT = $FFFFFFFF THEN
+  FAIL("ZIP64 and split archives are not supported", 2)
+END IF
+
+' ---- the entries ----
+PRINT "Archive:  "; ARCHIVE_NAME
+IF LIST_ONLY THEN
+  PRINT "  Length      Date    Time    Name"
+  PRINT DASHES; "  ---------- -----   ----"
+ELSE
+  CRC_TABLES()
+  WINDOW_BANK = 0
+END IF
+SEEK_TO(DIRECTORY_AT)
+DO WHILE ENTRIES > 0
+  ENTRIES = ENTRIES - 1
+  IF DOS.READ_FILE(ARCHIVE, @RECORD, ENTRY_SIZE) <> ENTRY_SIZE THEN FAIL("Not a ZIP archive", 2)
+  IF RECORD(0) <> SIGNATURE_P OR RECORD(1) <> SIGNATURE_K OR RECORD(2) <> 1 OR RECORD(3) <> 2 THEN
+    FAIL("Not a ZIP archive", 2)
+  END IF
+  ' A name past 255 bytes is cut to 255, and the rest skipped with the extra field.
+  SKIP = ContentsAtW(@RECORD + NAME_SIZE_AT)
+  INDEX = SKIP
+  IF INDEX > 255 THEN INDEX = 255
+  SKIP = SKIP - INDEX + ContentsAtW(@RECORD + EXTRA_SIZE_AT)
+  SKIP = SKIP + ContentsAtW(@RECORD + COMMENT_SIZE_AT)
+  ContentsAt(@ENTRY_NAME + 1) = DOS.READ_FILE(ARCHIVE, @ENTRY_NAME + 2, INDEX)
+  DOS.SEEK(ARCHIVE, FROM_POSITION, SKIP, 0)
+  IF PICKED() THEN
+    IF LIST_ONLY THEN
+      LIST_ENTRY()
+    ELSE
+      NEXT_LOW = DOS.POSITION_LOW
+      NEXT_HIGH = DOS.POSITION_HIGH
+      EXTRACT_ENTRY()
+      DOS.SEEK(ARCHIVE, FROM_START, NEXT_LOW, NEXT_HIGH)
+    END IF
+  END IF
+LOOP
+DOS.CLOSE_FILE(ARCHIVE)
+IF LIST_ONLY THEN
+  PRINT DASHES; "                     -------"
+  PRINT COLUMN(TOTAL_LENGTH); "                     "; DECIMAL(LISTED); " file";
+  IF LISTED <> 1 THEN PRINT "s";
+  PRINT
+END IF
+END EXIT_CODE

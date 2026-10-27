@@ -2133,7 +2133,97 @@ the beta 1 list).
      - `SI.COM` and `UTILS\SRC\SI` are new card files, so the goldens of `HDIR`, `HDIRARG`,
        `FILES`, `TREE` and `CHKDSK` change at the next full suite.
      - Build 2045 ms, the new baseline.
-  5. `ZIP` and `UNZIP`. Inflate is about 500 bytes of 6502 code; deflate costs far more.
+  5. `ZIP` and `UNZIP`, in `src/utils/zip`: BASIC wrappers, with `ASM` doing the work. Agreed
+     with the user (2026-10-27):
+     - ZIP compresses with deflate's fixed codes (block type 1): LZ77 over a hash of the last
+       match, about 1.5 KB of asm. A file that grows is stored. UNZIP inflates block types
+       0, 1 and 2.
+     - The 32 KB window is 4 RAM banks from `BANK.ALLOC`. DOS reads and writes take a
+       buffer at $A000-$BFFF in the selected bank.
+     - The command lines are Info-ZIP's: `ZIP [-r] archive file...`, `UNZIP [-l] [-o]
+       [-d folder] archive [names]`.
+     - Version 1 keeps folders: `-r` stores paths with /, and UNZIP makes the folders.
+       A ZIP64, encrypted or non-deflate entry gives an error. No file dates, no `-t`.
+     - The asm may use $50-$7F.
+     - Steps: 0 `JSR SUBNAME` in pyuxc; 1 UNZIP -l, BASIC only; 2 CRC-32 asm, extract the
+       stored entries, -o, -d, folders; 3 inflate asm; 4 ZIP store, CRC, central directory,
+       -r; 5 ZIP deflate asm.
+     - Step 0 done, not committed: `JMP name` or `JSR name` in an `ASM` block reaches a SUB
+       without parameters when the block has no label of that name (`as_sub_find` in
+       `UXCBASIC/pyuxc/uxc_asm.py`). It records a call as `CALL` does, so the pools and the
+       dead-code pass see it. A label that names a SUB gives `DUPLICATE LABEL`; a SUB with
+       parameters or a FUNCTION gives `ASM CALLS A SUB WITHOUT PARAMETERS`. A SUB without
+       parameters compiles to its body and an RTS, with no frame. Help and
+       `UXCBASIC.PLAN.md` updated. UXCBASIC tests (`.OUT` local): ASMSUB ok 1.8 s,
+       ERRASMSUB ok 0.0 s, ASMOPS ok 1.9 s, ASMBYTES ok 1.8 s, ERRASMLABEL ok 0.0 s,
+       ERRASMITEM ok 0.0 s.
+     - Build 12368 ms, exit 0, with every program: a new pyuxc recompiles them all, as a new
+       `DOS.UXI` does. The baseline stays 2045 ms for a build that leaves pyuxc alone.
+     - Trap: a block holds 32 labels, so inflate spreads over SUBs, each with one block. The
+       hot decode loop stays in one block.
+     - Step 1 done, not committed: `src/utils/zip/UNZIP.UXB`, 6625 bytes, BASIC only.
+       `UNZIP -l archive [names]` lists length, date, time and name, then the totals, as
+       Info-ZIP does, with ISO dates. An archive name without `.` that does not open is tried
+       with `.ZIP`. The end record is searched back from the end in 512-byte blocks, over the
+       last 65557 bytes. names match with `*` and `?`, any case, `\` as `/` (`MATCHES`). No
+       `-l` prints `Invalid function` until step 2. Errors: exit 1 for the command line, 2 for
+       the archive (`Not a ZIP archive`, `ZIP64 and split archives are not supported`).
+     - Test UNZIPL ok 1.8 s. `tests/UNZIPL.PY` writes its own small card: TEST.ZIP, BIG.ZIP
+       (its end record 3 blocks back), EMPTY.ZIP and NOTZIP.TXT, made with Python's zipfile,
+       and the programs. `tests/sd` is unchanged, so no other golden moves.
+     - Trap: `CONST X AS ULONG = 65535 + 22` is 21. Constants that are not LONG fold at 16
+       bits (help, LONG constants). Write the sum as one literal.
+     - Build 1802 ms, exit 0, the new baseline.
+     - Step 2 done, not committed: `UNZIP [-o] [-d folder] archive [names]` extracts stored
+       entries, Info-ZIP's lines (`extracting:`, `creating:`, `skipping:` with the reason,
+       `bad CRC x  (should be y)`). Folders on the path are made (`MAKE_FOLDERS`, which skips
+       the folder it made last). An existing file asks `replace NAME? [y]es, [n]o, [A]ll,
+       [N]one:` on a `CON_LINE`; `-o` replaces without asking. A leading `/` is cut; a name
+       with `:` or a `..` folder is skipped as `unsafe name`. Encrypted and deflated entries
+       are skipped. Exit 3: a file that cannot be written (at once), or an entry skipped or
+       with a bad CRC (at the end).
+     - CRC-32 asm: `CRC_TABLES` fills four 256-byte tables (`CRC_TABLE0`-`3`) at the start
+       of an extract; `CRC_ADD` adds `CRC_COUNT` bytes at `CRC_DATA`, about 64 cycles a byte.
+       The count runs down the low byte and the high byte once per wrap (-12 cycles a byte,
+       0 bytes). `CRC` is a ULONG at $50, `CRC_DATA` $54, `CRC_COUNT` $56, `CRC_BITS` $58.
+     - Trap: scalar and string locals of a SUB start undefined. `MATCHES` never cleared
+       `STAR`, so a name that did not match was picked once an earlier call left it set.
+     - `UNZIP.COM` 10992 bytes. Build 2166 ms (with the compile), exit 0, the new baseline. Test UNZIPX (new, `tests/UNZIPX.PY` card: TEST.ZIP and
+       BAD.ZIP with a corrupt, an encrypted and two unsafe entries) ok 2.6 s. UNZIPL's `.IN`
+       lost the no-`-l` line; UNZIPL ok 1.9 s. A `--update` run takes 4.5 s, a plain run
+       not.
+     - Step 3 done, not committed: UNZIP inflates block types 0, 1 and 2. The asm SUBs, each
+       one block, keep X and talk through $59-$79: `INF_NEXT_BYTE` (calls the BASIC
+       `INF_REFILL` at the end of `BUFFER`), `INF_GET_BITS`, `INF_DECODE`, `INF_DISTANCE`,
+       `INF_CODES` (the symbol loop and the match copy), `INF_STORED`, `INF_OUT_PAGE` (calls
+       the BASIC `INF_FLUSH` at the end of a bank), `INF_SOURCE_PAGE`. BASIC does the block
+       headers (`INFLATE`), the dynamic code lengths (`DYNAMIC_CODES`) and the code tables
+       (`BUILD_CODE`, `FIXED_CODES`, kept between fixed blocks).
+     - The decode is canonical, a bit at a time: `DELTA` is the code so far less the first
+       code of its length; below that length's count it indexes the symbols. About 70 cycles
+       a bit. The bit buffer `INF_BITS` holds a 1 over the unused bits, so an empty buffer
+       reads 0 after `lsr`. A match copy is about 45 cycles a byte.
+     - The window: 4 banks from `BANK.ALLOC`, taken at the first deflated entry. A window
+       offset is 15 bits, the bank's number in bits 13 and 14, so a match source is the output
+       offset less the distance, AND $7FFF. A full bank is written by `WRITE_BLOCK`, which the
+       stored path shares. The caller's bank is selected again after `INFLATE`.
+     - Errors: a code over 15 bits, a length symbol 286 or 287, a distance symbol over 29,
+       block type 3, a stored length whose complement is wrong, a bad repeat in the code
+       lengths, or data past the packed size set `INF_ERROR`; the line gets `invalid
+       compressed data` and exit code 3. A distance past the data written is not checked;
+       the CRC catches it.
+     - `UNZIP.COM` 15104 bytes (+4112). RAM: about 1.3 KB of arrays, and 32 KB of banks.
+     - Build 2274 ms, exit 0, the new baseline. Test UNZIPD (new, `tests/UNZIPD.PY` card:
+       DEFL.ZIP with fixed, dynamic, stored-in-deflate, a 36000-byte file with 12000-byte
+       matches round the window, an empty entry; BADD.ZIP with block type 3 and a packed size
+       cut short) ok 3.4 s. UNZIPX's golden: `DOCS/LONG.TXT` now extracts; UNZIPX ok 2.8 s.
+       UNZIPL ok 2.0 s.
+     - Speed-ups not taken: a 9-bit first-level lookup per code (about 3 times faster
+       decode, about 1.2 KB RAM, a slower build per block); an 8-bit `DELTA` for the first 8
+       bits (about -10 cycles a bit); a copy loop without bank switches when the source and
+       the output share a bank (about -15 cycles a byte).
+     - Next: step 4, ZIP store, CRC, central directory, -r. It is the 7th step: run the full
+       suite after it.
   6. `BE`, the batch enhancer (`ASK`/`CHOICE` to `ERRORLEVEL`, `BOX`, `BEEP`, `DELAY`,
      `ROWCOL`). Talk it through with the user first.
   - Ideas kept, not picked: `UNDELETE` (needs a check that the x16-rom library keeps the high
@@ -2145,7 +2235,8 @@ the beta 1 list).
   PATH from the WinGet links. Build 4400 ms wall (the ROM 3.30 s). The build with the new
   calls took 10495 ms (the ROM 10.28 s): a new `DOS.UXI` recompiles every program. The
   baseline stays 4400 ms for a build that leaves `DOS.UXI` alone.
-- Steps since the last full suite: 2 (REG in the API, SI). Full suite after FONTEDIT step 4 (2026-10-27): 116 tests,
+- Steps since the last full suite: 6 (REG in the API, SI, `JSR SUBNAME`, UNZIP -l, UNZIP
+  extract, UNZIP inflate). Full suite after FONTEDIT step 4 (2026-10-27): 116 tests,
   5 failed, 230.7 s. `CHKDSK`, `FILES`, `HDIR`, `HDIRARG` and `TREE` failed on the card's new
   files only: `FONTEDIT.COM`, `UTILS\SRC\FONTEDIT`, `FONTHEX.COM`, `FONT.COM`, `CHKDSK.COM`, the
   untracked `tests/REGLIB.UXB`'s `REGLIB.COM`, and `CMDSHELL.COM` at 21850 bytes. Goldens
