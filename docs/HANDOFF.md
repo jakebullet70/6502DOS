@@ -164,7 +164,8 @@ the beta 1 list).
         - Cost: bank 0 CODE +32 bytes; CODE ends at `$DF2B`. Build 1739 ms, the new
           baseline. `SHBOOT` ok 1.7 s.
         - Not picked: the SMC version, the RTC line.
-        - Next (the user, 2026-10-27): the font builder, utility 3 below; design talk first.
+        - Steps 4 and 4b committed in 9ea6093.
+        - Next (the user, 2026-10-27): the font editor, utility 3 below; its plan is there.
     - 8x16 console: tried and set aside (the user, 2026-10-27), kept on branch
       `font-8x16`, whose HANDOFF has the details. `main` stays 8x8 at 640x240. Build after the
       revert 6988 ms (4 programs recompiled for `VERA.UXI`, and the ROM), the new baseline.
@@ -1996,8 +1997,77 @@ the beta 1 list).
      - Trap found: a name is at most 16 characters (`NAME TOO LONG`).
      - Build 2442 ms, the new baseline. `CHKDSK` ok 3.9 s.
   3. A font builder and editor, next after `CHKDSK` (the user, 2026-10-27): builds and edits
-     8x8 fonts in the layout of `src/asm/font.s`, such as `sd/Utils/GUI.F08`. Its design is
-     to talk through with the user first.
+     8x8 fonts in the layout of `src/asm/font.s`, such as `sd/Utils/GUI.F08`. Plan agreed
+     with the user, 2026-10-27:
+     - `src/utils/fontedit/FONTEDIT.UXB` to `\UTILS\FONTEDIT.COM`. `FONTEDIT [file]` loads
+       the file, or starts from the live font in VRAM `$1F000` as `UNTITLED.F08`. A name with
+       no extension takes `.F08`. Files are raw 2048 bytes, as `FONT.COM` loads.
+     - Screen: an 8x8 grid at the left, each pixel 2x2 cells, a space whose background shows
+       the pixel, so the grid needs no glyph. The 8 row bytes in hex beside it. A 16x16 map of
+       the 256 glyphs at the right, drawn in the live font. The glyph's code in hex, decimal
+       and as itself. A key list and `GUI.STATUS_LINE`. Drawn with `VERA.FILL` and
+       `VERA.PUT_CELL`.
+     - Keys: arrows move; Space toggles a pixel; Tab switches grid and map; PgUp, PgDn the glyph
+       before or after; in the map a typed character picks its glyph. Later: I invert, H and V
+       flip, Ctrl+arrows shift, C clear, Ctrl+C and Ctrl+V copy and paste, U undo (one level),
+       R revert the glyph. F2 save, F3 open, Esc quit (asks when not saved).
+     - Live writing to VRAM is an option, F5, off at the start. The start font goes back to
+       VRAM at the end.
+     - Builder: import a glyph range from another `.F08`; export a ca65 `.byte` source in the
+       layout of `font.s`, an option.
+     - Mouse: version 2. A layer 0 strip of old against new glyphs: version 2.
+     - Estimate: 14 to 17 KB of code, about 4.1 KB of RAM (the font, the start font).
+     - Steps: 1 grid, map, toggle, glyph pick, live option, load, save, test `FONTED`; 2 the
+       glyph operations; 3 `PICKFILE` for open and save, the quit prompt; 4 import, export;
+       5 version 2.
+     - Step 1 done, not committed. `FONTEDIT.COM` 15542 bytes. The grid frame is at row 2,
+       column 2, 18 by 18; the map frame at row 1, column 40, 38 by 20; the keys at rows 24
+       to 26. Pixel colors: off $B0, on $10, the cursor $20 off and $A0 on. F2 save, F5 live.
+       Save asks for the name in `GUI.INPUTBOX`, as THEMED does.
+     - Trap: the monitor's `RUN` does not fill the system strings, so a program's parameters
+       need the shell: `FONTED.IN` runs `CMDSHELL.COM` first.
+     - Test `FONTED` (`.IN` and golden local): `FONTEDIT T`, Tab, `A`, Enter, Space, Right,
+       Space, F2, Enter, Esc, then the new helper `tests/com/FONTHEX.UXB` prints
+       ` 2048  D8 3C 66 66 7E 66 66 00`: row 0 of `A` was $18. FONTED ok 1.7 s.
+     - A new test needs an empty `NAME.OUT` before `tests.py NAME --update` finds it.
+     - Build 2637 ms with the FONTEDIT compile.
+     - Step 2 done, not committed. `FONTEDIT.COM` 17707 bytes. In the grid: I invert, H mirror,
+       V flip, C clear, U undo, R revert. Anywhere: Ctrl+arrows roll the glyph (pixels wrap),
+       Ctrl+C copy, Ctrl+V paste. `EDIT_GLYPH(CHANGE)` makes each change from `UNDO`, which
+       `START_EDIT` fills first. Undo is one level and swaps, so U again redoes. R reads the
+       glyph's 8 bytes from `FILE_NAME` with `DOS.SEEK`, or from the start font when the file
+       does not open. Ctrl+Up and Ctrl+Down come as Up and Down with `KEYMODS()` bit
+       `MOD_CTRL`. `DOS.STOP_KEY(DOS.STOP.OFF)` at the start, so Ctrl+C is a key. Keys list at
+       rows 24 to 28.
+     - Test `FONTOPS` (`.IN` and golden local): `FONTEDIT T2`, picks `A`, then I, U, U, U, V,
+       Ctrl+Left, Ctrl+C, PgDn, Ctrl+V, H, PgDn, C, R, F2. `FONTHEX` gives 65
+       `00 CC CC FC CC CC 78 30`, 66 `00 33 33 3F 33 33 1E 0C`, 67 the console's `C`. FONTOPS
+       ok 1.7 s, FONTED ok 1.6 s. Ctrl+Up and Ctrl+Down have no test: a `.IN` sets no modifier.
+     - Build 2792 ms.
+     - Step 3 done, not committed. `FONTEDIT.COM` 24626 bytes (+6919: `PICKFILE.UXI` and
+       `BANK.UXI`). F2 saves under `FILE_NAME`; when `NAMED` is 0 (UNTITLED) it runs F4's
+       Save As. F3 opens through `GUI.PICKFILE("Open", "*.F08", PICKED)`; F4 saves through
+       `GUI.PICKFILE("Save As", ...)` and asks before it replaces a file. `ADD_EXTENSION` adds
+       `.F08` when the name after the last `\` has none, for the parameter, Open and Save As.
+       `LOAD_FONT` checks the size by `DOS.SEEK` to the end before it reads, so a bad file
+       leaves `FONT` as it was. `ASK_SAVE`, as EDIT's: Yes saves, No goes on, Esc stays; for
+       Esc and F3. R reads the start font while UNTITLED. `GUI.INPUTBOX` and `ASK_NAME` are
+       gone.
+     - Trap: PICKFILE's field starts as the mask, and typed keys add to it. A `.IN` sends 5
+       Backspaces before a name. Alt+Y is `\XE0\X15`, Alt+N `\XE0\X31`.
+     - Test `FONTFILE` (`.IN` and golden local): `FONTEDIT` with no file, Space, F2 saves as
+       `T3`, I, F4 `T3`, Alt+Y, C, F3, Alt+N, opens `T3`, V, F2, Esc. `FONTHEX T3.F08 0` gives
+       `FF FF FF FF FF FF FF 7F`. FONTFILE ok 2.3 s. The goldens of FONTED and FONTOPS are
+       rewritten for the screen change, their bytes the same: FONTED ok 1.7 s, FONTOPS ok
+       1.8 s.
+     - Build 3007 ms, the new baseline.
+     - Step 3a: F5 (live) is on at the start when the command line names a file that exists.
+       The font panel draws with the console's font, so with live off it showed the console's
+       glyphs, not the file's. 24664 bytes (+38). FONTED ok 1.7 s, FONTOPS ok 1.8 s, FONTFILE
+       ok 2.3 s; their files do not exist at the start, so live stays off. Build 3054 ms, the
+       new baseline.
+     - Next: step 4, import a glyph range from another `.F08`, and export a ca65 `.byte`
+       source, an option.
   4. `SI`: the CPU (65C02 or 65C816), the ROM and VERA versions, the RAM bank count, the card
      size, the clock, a speed test.
   5. `ZIP` and `UNZIP`. Inflate is about 500 bytes of 6502 code; deflate costs far more.
@@ -2012,7 +2082,7 @@ the beta 1 list).
   PATH from the WinGet links. Build 4400 ms wall (the ROM 3.30 s). The build with the new
   calls took 10495 ms (the ROM 10.28 s): a new `DOS.UXI` recompiles every program. The
   baseline stays 4400 ms for a build that leaves `DOS.UXI` alone.
-- Steps since the last full suite: 9. The full suite waits until FONT is done (the user, 2026-10-27).
+- Steps since the last full suite: 13. The full suite waits until FONT is done (the user, 2026-10-27).
 
 0. PLAN section 11 step 6, CBM DOS leaves: 6a to 6e done. Full suite passed after the `END`
    range step.
