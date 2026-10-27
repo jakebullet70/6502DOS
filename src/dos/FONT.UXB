@@ -1,0 +1,51 @@
+'=============================================================================================
+' -- FONT file
+' -- loads file into the console's font. The file is 2048 bytes, 256 glyphs of 8 bytes. Each
+' -- byte is one row of a glyph, top row first, bit 7 the left pixel. The font stays until the
+' -- next reset.
+' -- No file prints Required parameter missing, a second name prints Too many parameters, and
+' -- a file of another size prints Invalid font file. Each gives exit code 1. A file that does
+' -- not open prints its error message and gives exit code 2. Exit code 0 otherwise.
+' --
+' -- From a prompt:
+' --     FONT \UTILS\GUI.F08
+'=============================================================================================
+#INCLUDE "DOS.UXI"
+#INCLUDE "HEAP.UXI"
+CONST SLOT_P1 AS UBYTE = 0, SLOT_P2 AS UBYTE = 1
+CONST FONT_SIZE AS UWORD = 2048
+
+' VERA's data port 0, at the address the three address bytes give. Trap: the font's VRAM
+' address is CHARSET in src/asm/mem.inc, $1F000; ADDRESS_HIGH holds its bit 16 and increment 1.
+DIM ADDRESS_LOW AS UBYTE AT $9F20, ADDRESS_MIDDLE AS UBYTE AT $9F21
+DIM ADDRESS_HIGH AS UBYTE AT $9F22, DATA0 AS UBYTE AT $9F23
+
+DIM FILE_NAME AS STRING * 255
+DIM FONT_FILE AS UWORD
+DIM BUFFER(FONT_SIZE + 1) AS UBYTE, BUFFER_COUNT AS UWORD, BUFFER_INDEX AS UWORD
+
+SUB FAIL(MESSAGE AS STRING)
+  PRINT MESSAGE
+  END 1
+END SUB
+
+FILE_NAME = HEAP.SYS_STRINGS_GET(SLOT_P1)
+IF FILE_NAME = "" THEN FAIL("Required parameter missing")
+IF HEAP.SYS_STRINGS_GET(SLOT_P2) <> "" THEN FAIL("Too many parameters")
+
+FONT_FILE = DOS.OPEN_FILE(FILE_NAME, DOS.ACCESS_READ)
+IF FONT_FILE = NOFILE THEN
+  PRINT DOS.ERRMSG(DOS.ERROR)
+  END 2
+END IF
+BUFFER_COUNT = DOS.READ_FILE(FONT_FILE, @BUFFER, FONT_SIZE + 1)
+DOS.CLOSE_FILE(FONT_FILE)
+IF BUFFER_COUNT <> FONT_SIZE THEN FAIL("Invalid font file")
+
+ADDRESS_LOW = $00
+ADDRESS_MIDDLE = $F0
+ADDRESS_HIGH = $11
+FOR BUFFER_INDEX = 0 TO FONT_SIZE - 1
+  DATA0 = BUFFER(BUFFER_INDEX)
+NEXT
+END 0

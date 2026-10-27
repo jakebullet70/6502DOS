@@ -42,7 +42,7 @@ them that apply here are below.
 | 64tass 1.60 | `tools/64tass`, in the repo, for the UXCBASIC templates only |
 | make 4.4.1 | `C:\8bitProgramming\make-4.4.1`, on PATH |
 | x16emu R49 | `C:\8bitProgramming\x16emu\x16emu.exe` |
-| Python | `/c/Users/Admin/AppData/Local/Programs/Python/Python313/python.exe`; `python` is not on PATH. Open files with `encoding='utf-8'`. |
+| Python | `/c/Users/Admin/AppData/Local/Programs/Python/Python312/python.exe`; `python` is not on PATH. Open files with `encoding='utf-8'`. |
 
 ## Compact
 

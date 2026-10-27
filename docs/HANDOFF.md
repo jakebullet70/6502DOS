@@ -26,6 +26,130 @@ the beta 1 list).
    sprite attribute RAM is 0 at boot.
 9. Older, still open: UXC-HELP topics for `PICKFILE.UXI`, `VERA.UXI` and `CONS.UXI`; the
    GUI.UXI contract fixes; PLAN section 11 steps 8 to 10, after beta 1.
+10. GUI glyphs (2026-10-27): `github.com/viler-int10h/vga-text-mode-fonts`, files
+    `FONTS/BIGPILE/NORTON0.F16` and `NORTON1.F16`, hold Norton Utilities' GUI glyphs: checkbox,
+    radio button, mouse pointer, scroll bar parts, shadowed corners, button caps. They replace
+    slots in CP437 $B0-$DF and $00-$1F. They are 8x16; the console font is 8x8, so the glyphs
+    need redrawing at 8x8. They are Symantec's: redraw in the style, do not copy.
+    - GUI font, drawn (2026-10-27), second pass after the user's review: `tools/mkfont.py
+      [preview.png]` writes `sd/Utils/GUI.F08`, 2048 bytes raw, 8x8, the layout of
+      `src/asm/font.s`. It is font.s with 22 new glyphs, new drawings in the style of Norton
+      Disk Doctor's "Format Diskette" dialog. Boxes are CP437's square single-line set. The
+      preview is that dialog and a progress box, in the style of MS-DOS ScanDisk: a blue box,
+      a white single-line frame on its edge cells, a yellow title, a rule under the title ($C3 $C4
+      $B4), a black shadow 2 columns right and 1 row down, and a bar of $DB white then gray.
+      - $B5-$D8 hold the GUI parts, in place of CP437's mixed single and double junctions: $B5
+        $B6 $B7 $B8 button shadow (right, bottom left, bottom, bottom right); $BD scroll track;
+        $BE scroll thumb; $C6 $C7 $CF $D0 scroll buttons (up, down, left, right), $C7 also the
+        drop-down button; $D1 $D2 check box (clear, checked, the check out past the box top);
+        $D3 $D4 radio button (clear, set); $D7 check mark; $D8 ellipsis. $D5 and $D6 stay
+        CP437.
+      - A button is its label on a gray face, then $B5 after it, and on the row below $B6, $B7
+        to the face's width, and $B8. The shadow glyphs are drawn black on the dialog's color.
+      - $01-$06 hold the icons, in place of the smileys and card suits: $01 floppy drive, $02
+        hard drive, $03 text cursor, $04 close box (a black square with a white bar), $05 resize
+        grip, $06 folder. $07 and $08 stay CP437.
+      - The user does not want a mouse pointer, an hourglass or a document icon.
+      - TDCO++ (a Spanish Clipper library, 1993-95, shareware) redefines its control glyphs
+        "al estilo de las Norton, PcTools". Its copy is on
+        `\\HPNAS01\bkup\old snapshots - zipped\e_from_dev_box\Clipper\clip53`: `lib/tdco.lib`,
+        help `tdco.ng` (Spanish) and `tdco_usa.ng`. Module `CUAFONT` in `tdco.lib` holds the
+        glyphs in `_DATA`, each a char code then its rows, in an 8-row and a 16-row set.
+        Functions: `RedefAllChars()`, `ResetFont()`, `RedefChar(chr(n)+rows)`. Its widgets
+        are 2 or 3 cells wide: check box $D8 $C7/$CE $E3, radio button $CC $CA/$CB $E4, close
+        box $C6 $E5, scroll arrows as left and right halves, window edges as 1-pixel lines at
+        the cell edge ($C1 $C2 $D0 $D3 $D4). The user is a registered TDCO++ owner and its
+        author declared it abandonware, so its glyphs are free to use. Its source and visual
+        designer are lost.
+      - `tools/mkfont.py` now writes `GUI.F08` with `TDCO_GLYPHS`: TDCO++'s 8-row set at its
+        own codes ($C1-$C7 $CA-$D8 $DB $DD $DE $E3-$E9 $FB), plus the `GLYPHS` slots it does not
+        use ($01-$06 $B5-$B8 $BD $BE). `-n` writes the Norton-style `GLYPHS` set as before.
+        The TDCO set loses CP437's $DB full block, $DD $DE half blocks, $E3-$E9 Greek letters
+        and the $C1-$D8 junctions. Its radio button, 3 cells, touches the one on the next row.
+      - The build puts it on the card with the rest of the folder sd.
+      - `src/dos/FONT.UXB`, from branch `font-8x16`, loads a 2048-byte font file into VRAM
+        $1F000: `FONT \UTILS\GUI.F08`. `FONT.COM` 1413 bytes. No test.
+      - `tools/mkfont.py` also writes `sd/Utils/CP437.F08`, the font of `font.s` unchanged.
+        `FONT \UTILS\CP437.F08` puts the ROM's font back without a reset.
+      - `sd/Utils/TDCODEMO.TXT`, from the scratchpad's `demo.py`, is a trial screen in ANSI
+        escapes and TDCO codes for `TYPE`: the glyph row, a Format Diskette dialog and a
+        Files list box. It is not tracked yet.
+      - `BUILD.BAT` calls Python313, which is not on this machine; `tools/build.py` runs with
+        Python312. Build 1863 ms, the new baseline.
+      - REG (the user, 2026-10-27), set aside, see the next item: `lib/REG.UXI`, NAMESPACE REG, the store `C:\6502DOS.REG`.
+        The file is `6502REG1`, then entries `NAME=VALUE` each ended by $00, then a $00: the
+        layout of an MS-DOS environment block, so the planned environment (PLAN section 7) can
+        share it. Names up to 32 characters, kept in capitals; values up to 255.
+        `REG.READ_KEY$(KEY$, FALLBACK$)`; `REG.WRITE_KEY(KEY$, VALUE$)`, where "" removes the
+        key as `SET NAME=` does and a changed key moves to the end. A write copies the file to
+        `C:\6502DOS.$$$` and renames it, as INI does; it writes nothing when the value is
+        already there. Reads stream through a 256-byte buffer. The file only for now (option
+        B); a RAM bank that holds the block (option A) waits on the bank and environment work.
+        Cost: 1397 bytes of code in a program that already uses INI's file calls (2166
+        alone), about 600 bytes of RAM. Test `REGLIB` (new, `tests/REGLIB.UXB`, no .IN): ok
+        1.8 s, golden read. The emulator PID 18580 (the TDCO demo) was stopped by PID for the
+        build. Build 1820 ms, the new baseline.
+      - REG set aside (the user, 2026-10-27). `FONT.COM` with `REG.WRITE_KEY` is 3246 bytes,
+        +1833; with `READ_KEY$` only, 2288. REG on `DOS.*` calls in place of `OPEN`, `READ` and
+        `WRITE` saves 28 bytes. MS-DOS has no settings call: the environment is a block that
+        programs scan, and a code page comes back each boot from lines in CONFIG.SYS and
+        AUTOEXEC.BAT. A settings call is Windows 3 (`GetProfileString` in KERNEL). REG returns
+        with the environment work of PLAN section 7, as ROM calls over a RAM bank; asm, so ask
+        first. `lib/REG.UXI` and `tests/REGLIB.UXB` stay untracked until then.
+      - The font comes back at each boot from the line `FONT C:\UTILS\GUI.F08` in
+        `sd/startup.cmd`, after `diskinfo c:`. `FONT.COM` is unchanged, with no REG. A headless
+        boot of `build\SD.IMG` reaches `Ready...` in 1.17 s with no FONT error. Build 1735 ms,
+        the new baseline. Full suite skipped until FONT is done (the user, 2026-10-27).
+      - Boot refactor, a POST screen in the style of a PC BIOS (the user's OK for the asm,
+        2026-10-27).
+        - Step 1, done, committed in 717c165: `post` in `src/asm/boot.s`, on the shell path only.
+          It shows a 6502 chip in CP437 box lines, the banner, "Copyright (c) 2026 Steven De
+          George SR" (from LICENSE), "Memory Test: 512K OK" counted 64K a frame, "VERA
+          V47.0.2" (DCSEL 63; no line when `$9F29` is not `V`) and "SD card: OK" or "none"
+          from `sd_ready`. Then the keys line and "Starting 6502DOS... 2", 60 ticks a second.
+          Enter or Space starts at once. F5 passes the tail `" -N"` and F8 `" -S"` to `API_EXEC`,
+          each with its leading space as the shell's `RUN` tails have;
+          F2 or Delete goes to the monitor. The rerun of the shell has the empty tail.
+          `TEST.ROM` prints the old 2-line banner. New exports: `put_decimal`, `mon_number`
+          (monitor.s), `sd_ready` (sdcard.s). `bank_init` returns Y = the bank count.
+        - Cost: bank 0 CODE 470 bytes; bank 0 ends at `$E832`, 5997 bytes free below `$FFA0`.
+          A headless boot reaches `Ready...` in 1.73 s, up from 1.17 s.
+        - Version 0.1.1 Beta 2 (the user, 2026-10-27): `tools/api.py`, the label in
+          `CMDSHELL.UXI` line 1679, `card/startup.cmd`. The goldens' banner lines and
+          `DOSAPI.OUT` were changed to match, locally.
+        - Goldens updated for the POST lines, diff checked to be only those lines: `SHBOOT`,
+          `BASBOOT`, `BASRUN`, `HELPBAS`, `BASHELP`, `BASLOAD`, `BASEDIT`. Tests after it, one
+          at a time: `SHBOOT` ok 1.7 s, `DOSAPI` 1.9, `ABSIO` 1.3, `BASBOOT` 1.8, `BASRUN`
+          1.8, `HELPBAS` 3.2, `BASHELP` 2.0, `BASLOAD` 2.3, `BASEDIT` 1.8.
+        - Build 1869 ms for asm alone, 3168 ms with the shell and bank 3 compiles: the new
+          baselines.
+        - Step 2, done, committed in 717c165: `CMDSHELL.UXI` reads the tail at `$0780`. `" -N"` or
+          `" -n"` skips `STARTUP.CMD`; `" -S"` sets `STEPPING`, which asks `LINE [Y,N]?` before
+          each script line until the prompt (blank lines and skipped lines are not asked).
+          `ASK_YES(QUESTION$)` holds the Y/N loop; `ASK_TERMINATE` is gone, inlined at its
+          one call. `RUN CMDSHELL -S` at the prompt steps too. A pasted key cannot reach
+          POST (the paste waits for CHRIN), so F5 and F8 at boot are untested.
+        - Cost: `CMDSHELL.COM` 21612 to 21850 bytes (+238), the same code in ROM banks 3 and
+          4; RAM +2 (`STEPPING`, `SWITCH_CHAR`); bank 0 +2 (the tails' spaces).
+        - New test `SHSTEP` (TEST.ROM; `.IN` and golden local): `CMDSHELL -S` with Y, a
+          wrong key, N, Y over `SCRIPTS\HELLO.CMD` as `STARTUP.CMD`, then `-n`, then no
+          tail. `SHSTEP` ok 1.7 s, `SHBREAK` 1.4, `SHSCRIPT` 2.3, `SHBOOT` 1.8.
+        - Build 3100 ms with the shell and bank 3 compiles, the new baseline.
+        - Step 3, done, committed in 717c165: the logo sits at the top right, rows 1 to 3 from
+          column 73, by `Esc[r;cH`, with a cyan box (`Esc[36m`) and red "6502" (`Esc[31m`),
+          then `Esc[m` and `Esc[H` before the banner. It left `texts` (the 256-byte `print`
+          reach) and prints by its own loop: X counts from `logo - logo_end` up to 0.
+        - Cost: bank 0 CODE +50 bytes (data +39, code +11); CODE ends at `$DEAC`.
+        - The 7 POST goldens had the old logo bytes swapped for the new by a script, locally:
+          `SHBOOT` ok 1.4 s, `BASBOOT` 1.4, `BASEDIT` 1.4, `BASHELP` 1.7, `BASLOAD` 1.9,
+          `BASRUN` 1.4, `HELPBAS` 2.7. Build 1767 ms for asm alone, the new baseline.
+        - The user edited `sd/startup.cmd`.
+        - Next: the SD size and FAT32 on the SD line, if wanted.
+        - Not picked: the CPU line (65C02 or 65C816), the SMC version, the RTC line.
+    - 8x16 console: tried and set aside (the user, 2026-10-27), kept on branch
+      `font-8x16`, whose HANDOFF has the details. `main` stays 8x8 at 640x240. Build after the
+      revert 6988 ms (4 programs recompiled for `VERA.UXI`, and the ROM), the new baseline.
+      `VERABOX` ok 1.0 s, `GUISHADOW` ok 0.9 s.
 
 ## State
 
@@ -962,7 +1086,7 @@ the beta 1 list).
 - Build after 7c: 0.75 s with the shell compile, the new baseline.
 - Tests after 7c, one at a time: `SHFILES` ok 0.7 s, `SHELL` 0.5, `FILES` 0.4, `DIRS` 0.8,
   `DISK` 0.4.
-- Steps since the last full suite: 6. It ran after the doc batch for `TREE` to `TAIL`,
+- Steps since the last full suite: 8, the suite skipped until FONT is done. It ran after the doc batch for `TREE` to `TAIL`,
   2026-10-18: 43 tests, 1 failed (`TREE`, below), 27.4 s, the longest `CMDLETS` 1.7 s.
 - UXCBASIC: 174 tests, 0 failed, 43 s. `compare.py`: 566 MATCH, 5 RESULT, 31 NO GOLDEN of 602,
   1.7 s. The RESULTs are `STRLR`, `STRNS`, `EXERRCONSTSTR`, and the two below, all expected:
@@ -1770,9 +1894,106 @@ the beta 1 list).
     Ctrl+Q; HEAD, TAIL, FILES 40806. TED ok 2.4 s, TEDBIG ok 2.7 s.
   - Docs owed to the next batch: PLAN line 990 (TED's text is in RAM banks, 65535 bytes) and
     line 993 (no free bank, exit code 2).
+- Utilities, the current work (the user, 2026-10-26). In this order:
+  1. Done, committed in e29322f (2026-10-26): calls 53 `absread` and 54 `abswrite`, as MS-DOS INT
+     25h and 26h, in `fat32dos.s`. A = the drive (0 A:, 2 C:), X = the count, r0 = the
+     buffer, r1 r2 = the first sector of the whole card, the MBR at 0, so a volume that does
+     not mount still reads. The library's dirty sector is written first; after a write its
+     sector is read again. The free count and the boot sector's fields stay as read at boot.
+     Bank 1 110 bytes (6041 free), bank 0 6 bytes (6555 free), 6 gate bytes. Test `ABSIO`:
+     ok, 1.0 s; `DISK` ok, 0.9 s.
+  2. `CHKDSK`: lost chains, cross-links, sizes against chains, orphan long-name entries, the
+     FS-info free count. It ships read-only (the user, 2026-10-27); `-F` is parked for V2.0.
+     `tools/fatcheck` holds the checks on the host.
+     - Done, committed in 3c4ea38 (2026-10-27): `src/dos/CHKDSK.UXB`, read-only, `CHKDSK [d:]`.
+       Reads the card with `DOS.ABSREAD`/`DOS.ABSWRITE` (new wrappers in `lib/DOS.UXI`). Walks
+       directories with a frame stack (MAX_DEPTH 32), a cluster bitmap in RAM banks (8 KB =
+       65536 clusters a bank), then one FAT pass: free, bad, lost; FAT 2 compare; FS-info free
+       count. Exit 0 clean, 1 usage, 2 card, 3 problems. Orphan long names and lost-chain
+       counts not yet; `-F` not yet.
+     - Clean test card (256 MB, 259081 clusters) gives no false errors, and the KB lines add up
+       (18 + 664 + 3497 bad + 254900 = 259079).
+     - The earlier timings were void: `tests.py` rebuilds `build/tests/SD.IMG`, and the scratch
+       timer reused a stale image.
+     - Timed in ticks, emulated: bitmap clear 0.2 s, walk 0.5 s, FAT pass 33.6 s. The FAT
+       pass is now one ASM block a FAT sector (the user's choice): it compares FAT 2 and counts
+       free, bad and lost entries. The pass now takes 14.1 s. It is read-bound: 4050 reads at
+       about 17.8K cycles each, and 8 sectors a call cost the same as 1.
+     - `tests/CHKDSK.IN` does one full run plus the error cases. Golden written and read: correct.
+       A normal run takes 5.2 s, which fails the 5 s limit.
+     - The user picked the auto-tx fast read, ported from x16-rom (committed in e29322f, 2026-10-26).
+       `sdcard.s`: `sd_fast` bit 7 selects a fast loop in `read_sector`: the first transfer
+       starts with a write, then `SPI_AUTOTX` ($04) is set, and each read of `VERA_SPI_DATA`
+       starts the next; 4 bytes a pass, 12 cycles a byte. The fast write loop is not ported.
+     - Trap found: a read of `VERA_SPI_DATA` during a transfer returns the last byte and starts
+       nothing. x16emu R49 holds a transfer busy 6.4 cycles at 8 MHz. A first read 6 cycles
+       after the trigger shifted every byte by one: "Drive not ready" at boot. x16-rom's
+       doubled `ldy #0` is this delay.
+     - Why stock CMDR-DOS defaults to off: x16-rom PR #306 (2024-03) says the fast modes "have
+       not been well-tested yet". Before it, the ROM and x16emu set auto-tx on the wrong bit.
+       VERA's FPGA has had auto-tx since 2020-04. VERA docs added the bit 2025-03. No bug
+       report found.
+     - The user picked the MS-DOS way to switch it (2026-10-27, committed in e29322f): `ioctl`
+       subfunction 5, write control data. X = drive (0 current, 1 A:), r0 data, r1 count;
+       returns r1 = bytes taken; error 15 for a missing drive. The kernel calls driver command
+       12, `DRV_IOCTL_OUTPUT` (mem.inc). `sd_control` (sdcard.s): bit 0 of the first byte sets
+       `sd_fast` bit 7. The SD header has `DEV_IOCTL` and 13 vectors. `sd_init` clears
+       `sd_fast`: slow is the default, as on stock. `api_setdrive` and subfunction 5 share the
+       new `drive_driver`. `fat32glue.s` and `fat32.s` are back to HEAD (the library's
+       `sdcard_set_fast_mode` does nothing). `tools/api.py` has the text; `lib/DOS.UXI` has no
+       wrapper yet.
+     - Free now: bank 0 6467 bytes, bank 1 6041. RAM: `sd_fast` 1 byte.
+     - New `tests/CHKDSK.S` makes 3 `ioctl` 5 calls (A: error 15; count 0; C: fast on) and
+       `CHKDSK.IN` dumps them, then runs the shell. Golden rewritten and read: correct; it also
+       gains the blank line after the sizes that `CHKDSK.UXB` prints.
+     - Build 2601 ms (`CHKDSK.COM` recompiled), the new baseline. `CHKDSK` ok 3.7 s, `ABSIO`
+       ok 1.2 s (slow loop), `DISK` ok 1.2 s, `DOSAPI` ok 1.8 s.
+     - The default stays off (the user's choice, 2026-10-27). No user command switches it yet;
+       a program calls `ioctl` 5.
+     - Estimate for a 4 GB card, from the 14.1 s slow FAT pass on the test card (2024 FAT
+       sectors) and about 8.5K cycles a fast read: 4 KB clusters (about 950K, FAT 7400
+       sectors, 15 bitmap banks) slow about 52 s, fast about 35 s; 32 KB clusters (the SD
+       Formatter's choice, about 119K, FAT 930 sectors, 2 banks) slow about 6.5 s, fast about
+       4.3 s. A real card adds its wait for the data token on each read; x16emu adds none.
+     - Trap found: a UBYTE times a constant stays 8-bit: `FRAME_ENTRY(DEPTH) * 32` wrapped at
+       entry 8. `ERRORS` is a reserved name.
+     - `-F` parked for V2.0 (the user, 2026-10-27): it worked and passed its test, at
+       +8345 bytes. `attic/chkdsk-v2` holds it: `CHKDSK.UXB` with `-F` (its header lists each
+       fix and its design), and the test `CHKFIX.PY`, `CHKFIX.IN` and `CHKFIX.OUT` (the
+       `.IN` and `.OUT` ignored by `.gitignore`). To bring it back: copy `CHKDSK.UXB` to
+       `src/dos` and the `CHKFIX` files to `tests`.
+       - Not fixed by it: cross links and invalid sub-directory entries. Its lost-chain range
+         scans run in BASIC, about 2K cycles a cluster.
+       - Open for V2.0: the kernel keeps the free count it read at boot, and its next
+         allocate or free writes that count back to the FS info sector, undoing `-F`'s fix.
+         Fixing it needs asm, for example `abswrite` reloading the count when it writes the
+         FS info sector.
+     - `tests.py` runs `card(image)` from `tests/NAME.PY` on the test's card when that file
+       exists. `CHKFIX` uses it; it stays.
+     - The shipped `CHKDSK.UXB` is read-only: `-F` gives Invalid switch, and the lines Errors
+       found, -F parameter not specified and Corrections will not be written to disk are gone.
+       `CHKDSK.COM` 12976 bytes. `CHKDSK.IN` tests the bad switch with `-X`; its golden is
+       rewritten for the size change and read: correct.
+     - Trap found: a name is at most 16 characters (`NAME TOO LONG`).
+     - Build 2442 ms, the new baseline. `CHKDSK` ok 3.9 s.
+  3. A font builder and editor, next after `CHKDSK` (the user, 2026-10-27): builds and edits
+     8x8 fonts in the layout of `src/asm/font.s`, such as `sd/Utils/GUI.F08`. Its design is
+     to talk through with the user first.
+  4. `SI`: the CPU (65C02 or 65C816), the ROM and VERA versions, the RAM bank count, the card
+     size, the clock, a speed test.
+  5. `ZIP` and `UNZIP`. Inflate is about 500 bytes of 6502 code; deflate costs far more.
+  6. `BE`, the batch enhancer (`ASK`/`CHOICE` to `ERRORLEVEL`, `BOX`, `BEEP`, `DELAY`,
+     `ROWCOL`). Talk it through with the user first.
+  - Ideas kept, not picked: `UNDELETE` (needs a check that the x16-rom library keeps the high
+    word of a deleted entry's cluster), `MIRROR`, `DISKEDIT`, `WIPEINFO`, `NC` (two-panel
+    file manager on the GUI library), `NCD` (needs a child to set the shell's folder), `FF`
+    (or a wider `WHERE`), `DS`, `ATTRIB` (needs the `attrib` call), `FC`/`COMP`, `SORT`, `WC`,
+    `TOUCH`, `HEXDUMP`, `CAL`, `CALC`, `ASCII`, `SWEEP`.
 - New machine (2026-10-26): Python is 3.12 (`...\Python312\python.exe`); make 4.4.1 is on
-  PATH from the WinGet links. Build 4400 ms wall (the ROM 3.30 s), the new baseline.
-- Steps since the last full suite: 3.
+  PATH from the WinGet links. Build 4400 ms wall (the ROM 3.30 s). The build with the new
+  calls took 10495 ms (the ROM 10.28 s): a new `DOS.UXI` recompiles every program. The
+  baseline stays 4400 ms for a build that leaves `DOS.UXI` alone.
+- Steps since the last full suite: 8.
 
 0. PLAN section 11 step 6, CBM DOS leaves: 6a to 6e done. Full suite passed after the `END`
    range step.
