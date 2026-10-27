@@ -2020,7 +2020,7 @@ the beta 1 list).
      - Steps: 1 grid, map, toggle, glyph pick, live option, load, save, test `FONTED`; 2 the
        glyph operations; 3 `PICKFILE` for open and save, the quit prompt; 4 import, export;
        5 version 2.
-     - Step 1 done, not committed. `FONTEDIT.COM` 15542 bytes. The grid frame is at row 2,
+     - Step 1 done. `FONTEDIT.COM` 15542 bytes. The grid frame is at row 2,
        column 2, 18 by 18; the map frame at row 1, column 40, 38 by 20; the keys at rows 24
        to 26. Pixel colors: off $B0, on $10, the cursor $20 off and $A0 on. F2 save, F5 live.
        Save asks for the name in `GUI.INPUTBOX`, as THEMED does.
@@ -2031,7 +2031,7 @@ the beta 1 list).
        ` 2048  D8 3C 66 66 7E 66 66 00`: row 0 of `A` was $18. FONTED ok 1.7 s.
      - A new test needs an empty `NAME.OUT` before `tests.py NAME --update` finds it.
      - Build 2637 ms with the FONTEDIT compile.
-     - Step 2 done, not committed. `FONTEDIT.COM` 17707 bytes. In the grid: I invert, H mirror,
+     - Step 2 done. `FONTEDIT.COM` 17707 bytes. In the grid: I invert, H mirror,
        V flip, C clear, U undo, R revert. Anywhere: Ctrl+arrows roll the glyph (pixels wrap),
        Ctrl+C copy, Ctrl+V paste. `EDIT_GLYPH(CHANGE)` makes each change from `UNDO`, which
        `START_EDIT` fills first. Undo is one level and swaps, so U again redoes. R reads the
@@ -2044,7 +2044,7 @@ the beta 1 list).
        `00 CC CC FC CC CC 78 30`, 66 `00 33 33 3F 33 33 1E 0C`, 67 the console's `C`. FONTOPS
        ok 1.7 s, FONTED ok 1.6 s. Ctrl+Up and Ctrl+Down have no test: a `.IN` sets no modifier.
      - Build 2792 ms.
-     - Step 3 done, not committed. `FONTEDIT.COM` 24626 bytes (+6919: `PICKFILE.UXI` and
+     - Step 3 done. `FONTEDIT.COM` 24626 bytes (+6919: `PICKFILE.UXI` and
        `BANK.UXI`). F2 saves under `FILE_NAME`; when `NAMED` is 0 (UNTITLED) it runs F4's
        Save As. F3 opens through `GUI.PICKFILE("Open", "*.F08", PICKED)`; F4 saves through
        `GUI.PICKFILE("Save As", ...)` and asks before it replaces a file. `ADD_EXTENSION` adds
@@ -2066,8 +2066,26 @@ the beta 1 list).
        glyphs, not the file's. 24664 bytes (+38). FONTED ok 1.7 s, FONTOPS ok 1.8 s, FONTFILE
        ok 2.3 s; their files do not exist at the start, so live stays off. Build 3054 ms, the
        new baseline.
-     - Next: step 4, import a glyph range from another `.F08`, and export a ca65 `.byte`
-       source, an option.
+     - Steps 1 to 3a committed in 982513a.
+     - Step 4 done, committed. `FONTEDIT.COM` 27290 bytes (+2626). F6 imports: PICKFILE,
+       then `GUI.INPUTBOX` with mask `XX-XX XX`, first-last and where to, in hex; a blank
+       target is the first's own place. `RANGE` keeps the last field, `00-FF` at the start.
+       Glyphs past $FF are cut. Import clears the undo. F7 exports ca65 source in `font.s`'s
+       layout: a comment line naming `FILE_NAME`, `.export font`, `.segment "RODATA"`,
+       `font:`, then per glyph `; $XX` and 8 `.byte %bbbbbbbb` lines, CR LF. Each glyph is one
+       `WRITE` of a 143-byte block from `BLOCK_TEXT`. `CHECK_FONT` (open, size check) is shared
+       by `LOAD_FONT` and import; `SHOW_LOAD_ERROR` by Open and Import. `ADD_EXTENSION` takes
+       the extension. The keys rows show F6 and F7; PgUp PgDn moved to row 0.
+     - Test `FONTIO` (`.IN` and golden local): `FONTEDIT S`, I, F2 makes `S.F08`; `FONTEDIT
+       T4`, F6 `S`, `000141` (glyphs 0-1 to $41), F2, F7 `T4`, Esc. `FONTHEX` gives 65 all FF,
+       66 the smiley; `HEAD -n 16 T4.S` shows the header and glyph 0. FONTIO ok 2.9 s. FONTED
+       ok 2.0 s, FONTOPS ok 2.1 s, FONTFILE ok 2.4 s, goldens the same: the keys rows go to
+       VRAM, not to the output.
+     - Trap: the test card's `UTILS` is `build/UTILS`, with no `.F08`. `GREP` over the 34 KB
+       export takes about 1.6 s, too slow for a test.
+     - Writing the header with `WRITE` in place of `PRINT #` costs 92 bytes more: the
+       libraries already link `PRINT #`. Build 3038 ms, the new baseline.
+     - Next: step 5, version 2 (the mouse, the old-and-new strip); the user decides when.
   4. `SI`: the CPU (65C02 or 65C816), the ROM and VERA versions, the RAM bank count, the card
      size, the clock, a speed test.
   5. `ZIP` and `UNZIP`. Inflate is about 500 bytes of 6502 code; deflate costs far more.
@@ -2082,7 +2100,7 @@ the beta 1 list).
   PATH from the WinGet links. Build 4400 ms wall (the ROM 3.30 s). The build with the new
   calls took 10495 ms (the ROM 10.28 s): a new `DOS.UXI` recompiles every program. The
   baseline stays 4400 ms for a build that leaves `DOS.UXI` alone.
-- Steps since the last full suite: 13. The full suite waits until FONT is done (the user, 2026-10-27).
+- Steps since the last full suite: 14. The full suite waits until FONT is done (the user, 2026-10-27).
 
 0. PLAN section 11 step 6, CBM DOS leaves: 6a to 6e done. Full suite passed after the `END`
    range step.

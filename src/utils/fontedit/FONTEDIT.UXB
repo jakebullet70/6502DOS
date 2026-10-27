@@ -28,7 +28,13 @@
 ' --                   file
 ' --     F5            live: the console's font follows the edits; on at the start when the
 ' --                   command line names a file that exists
-' --     Esc           end the program; asks first when the font is not saved: Yes saves, No
+' --     F6            import glyphs from a font file in the file dialog: a field takes the
+' --                   first and last glyphs in hex, and where the first goes, the first's own
+' --                   place when blank. 41-5A 61 puts the file's A to Z at a to z. Glyphs past
+' --                   $FF are left out. The undo is lost.
+' --     F7            export the font as ca65 source, the layout of the ROM's font.s, to a file
+' --                   in the file dialog; .S when the name has no extension
+' --     Esc          end the program; asks first when the font is not saved: Yes saves, No
 ' --                   does not, Esc stays
 ' -- The console's font at the start goes back at the end. Exit code 0.
 ' --
@@ -60,6 +66,12 @@ CONST CURSOR_OFF AS UBYTE = $20, CURSOR_ON AS UBYTE = $A0
 CONST DIGITS$ = "0123456789ABCDEF"
 CONST KEY_F2 AS UWORD = (KEYS.SCAN_F1 + 1) * 256, KEY_F3 AS UWORD = (KEYS.SCAN_F1 + 2) * 256
 CONST KEY_F4 AS UWORD = (KEYS.SCAN_F1 + 3) * 256, KEY_F5 AS UWORD = (KEYS.SCAN_F1 + 4) * 256
+CONST KEY_F6 AS UWORD = (KEYS.SCAN_F1 + 5) * 256, KEY_F7 AS UWORD = (KEYS.SCAN_F1 + 6) * 256
+' The export's lines after the first, and the glyph block in it: a code line, then 8 row lines
+' of 17 bytes, whose 8 bits start at byte 7.
+CONST SOURCE_HEAD$ = !"\r\n.export font\r\n\r\n.segment \"RODATA\"\r\n\r\nfont:"
+CONST BLOCK_HEAD$ = !"; $00\r\n", BLOCK_ROW$ = !".byte %00000000\r\n"
+CONST BLOCK_SIZE AS UBYTE = 143, ROW_SIZE AS UBYTE = 17
 ' LOAD_FONT's code for a file not FONT_SIZE bytes long.
 CONST INVALID_FONT AS UBYTE = 255
 CONST CTRL_C AS UBYTE = 3, CTRL_V AS UBYTE = 22
@@ -71,6 +83,8 @@ CONST EDIT_DOWN AS UBYTE = 6, EDIT_LEFT AS UBYTE = 7, EDIT_RIGHT AS UBYTE = 8
 ' PICKED gets the file dialog's path. NAMED is 0 while FILE_NAME is UNTITLED.F08.
 DIM FILE_NAME AS STRING * 80, PICKED AS STRING * 80, MESSAGE AS STRING * 64
 DIM TEXT AS STRING * 64
+' F6's field: first-last, then where to, in hex. A glyph block of the export.
+DIM RANGE AS STRING * 8, BLOCK_TEXT AS STRING * 143
 ' The font being edited, and the console's font at the start.
 DIM FONT(FONT_SIZE) AS UBYTE, START_FONT(FONT_SIZE) AS UBYTE
 ' The copied glyph, and the glyph UNDO_GLYPH as it was before the last change.
@@ -189,8 +203,8 @@ SUB DRAW_ALL()
   FOR MAP_CODE = 0 TO 255
     DRAW_MAP_CELL(MAP_CODE)
   NEXT
-  VERA.PRINTAT(KEYS_ROW, 2, "Arrows    move          Space  pixel     Tab  grid or map", COLOR)
-  VERA.PRINTAT(KEYS_ROW + 1, 2, "PgUp PgDn glyph         F2  save   F3  open   F4  save as   F5  live font", COLOR)
+  VERA.PRINTAT(KEYS_ROW, 2, "Arrows    move          Space  pixel     Tab  grid or map     PgUp PgDn glyph", COLOR)
+  VERA.PRINTAT(KEYS_ROW + 1, 2, "F2  save  F3  open  F4  save as  F5  live font  F6  import  F7  export", COLOR)
   VERA.PRINTAT(KEYS_ROW + 2, 2, "I H V     invert mirror flip       C  clear    Ctrl+arrows roll", COLOR)
   VERA.PRINTAT(KEYS_ROW + 3, 2, "Ctrl+C    copy   Ctrl+V  paste     U  undo     R  revert", COLOR)
   VERA.PRINTAT(KEYS_ROW + 4, 2, "In the map, a character picks its glyph. Esc quits.", COLOR)
@@ -318,20 +332,20 @@ SUB MOVE_CURSOR(NEW_ROW AS UBYTE, NEW_COLUMN AS UBYTE)
   DRAW_PIXEL()
 END SUB
 
-' Adds .F08 to PICKED when the name after its last \ has no extension.
-SUB ADD_EXTENSION()
+' Adds EXTENSION$ to PICKED when the name after its last \ has no extension.
+SUB ADD_EXTENSION(EXTENSION$ AS CONST)
   DIM SPOT AS UBYTE
   FOR SPOT = LEN(PICKED) TO 1 STEP -1
     VALUE = ContentsAt(@PICKED + 1 + SPOT)
     IF VALUE = ASC(".") THEN RETURN
     IF VALUE = ASC("\") THEN EXIT FOR
   NEXT
-  PICKED = PICKED + ".F08"
+  PICKED = PICKED + EXTENSION$
 END SUB
 
-' Loads the font in file PICKED into FONT. Returns 0 when it loaded, DOS's error code when the
-' file does not open, or INVALID_FONT when it is not FONT_SIZE bytes long; FONT is then kept.
-FUNCTION LOAD_FONT() AS UBYTE
+' Opens file PICKED in HANDLE to read a font. Returns 0 when it is open, DOS's error code when
+' it does not open, or INVALID_FONT, the file closed, when it is not FONT_SIZE bytes long.
+FUNCTION CHECK_FONT() AS UBYTE
   HANDLE = DOS.OPEN_FILE(PICKED, DOS.ACCESS_READ)
   IF HANDLE = NOFILE THEN RETURN DOS.ERROR
   DOS.SEEK(HANDLE, 2, 0, 0)
@@ -339,11 +353,110 @@ FUNCTION LOAD_FONT() AS UBYTE
     DOS.CLOSE_FILE(HANDLE)
     RETURN INVALID_FONT
   ENDIF
+  RETURN 0
+END FUNCTION
+
+' Loads the font in file PICKED into FONT. Returns CHECK_FONT's code; FONT is kept when it is
+' not 0.
+FUNCTION LOAD_FONT() AS UBYTE
+  VALUE = CHECK_FONT()
+  IF VALUE <> 0 THEN RETURN VALUE
   DOS.SEEK(HANDLE, 0, 0, 0)
   COUNT = DOS.READ_FILE(HANDLE, @FONT, FONT_SIZE)
   DOS.CLOSE_FILE(HANDLE)
   RETURN 0
 END FUNCTION
+
+' Shows in a dialog titled TITLE$ why file PICKED did not load: CODE, CHECK_FONT's code.
+SUB SHOW_LOAD_ERROR(TITLE$ AS CONST, CODE AS UBYTE)
+  IF CODE = INVALID_FONT THEN
+    GUI.MSGBOX(TITLE$, "Invalid font file", PICKED)
+  ELSE
+    GUI.MSGBOX(TITLE$, DOS.ERRMSG(CODE), PICKED)
+  ENDIF
+END SUB
+
+' Returns the value of the 2 hex digits at SPOT in RANGE, or 256 when they are not hex digits.
+FUNCTION HEX_AT(SPOT AS UBYTE) AS UWORD
+  DIM HIGH AS UBYTE, LOW AS UBYTE
+  HIGH = INSTR(DIGITS$, MID$(RANGE, SPOT, 1))
+  LOW = INSTR(DIGITS$, MID$(RANGE, SPOT + 1, 1))
+  IF HIGH = 0 OR LOW = 0 THEN RETURN 256
+  RETURN (HIGH - 1) * 16 + LOW - 1
+END FUNCTION
+
+' Copies the glyphs RANGE names from a font file asked in the file dialog into the font.
+SUB IMPORT_GLYPHS()
+  DIM FIRST AS UWORD, LAST AS UWORD, TARGET AS UWORD
+  IF GUI.PICKFILE("Import", "*.F08", PICKED) = 0 THEN RETURN
+  ADD_EXTENSION(".F08")
+  IF GUI.INPUTBOX("Import", "Glyphs first-last, then where to, in hex", RANGE, 8, "XX-XX XX") <> 1 THEN RETURN
+  RANGE = UCASE$(RANGE)
+  FIRST = HEX_AT(1)
+  LAST = HEX_AT(4)
+  TARGET = FIRST
+  IF MID$(RANGE, 7, 2) <> "  " THEN TARGET = HEX_AT(7)
+  IF FIRST > LAST OR LAST > 255 OR TARGET > 255 THEN
+    GUI.MSGBOX("Import", "Invalid range", RANGE)
+    RETURN
+  ENDIF
+  VALUE = CHECK_FONT()
+  IF VALUE <> 0 THEN
+    SHOW_LOAD_ERROR("Import", VALUE)
+    RETURN
+  ENDIF
+  COUNT = LAST - FIRST + 1
+  IF TARGET + COUNT > 256 THEN COUNT = 256 - TARGET
+  DOS.SEEK(HANDLE, 0, FIRST * 8, 0)
+  COUNT = DOS.READ_FILE(HANDLE, @FONT + TARGET * 8, COUNT * 8)
+  DOS.CLOSE_FILE(HANDLE)
+  IF LIVE <> 0 AND COUNT <> 0 THEN SEND(@FONT + TARGET * 8, TARGET * 8, COUNT)
+  CHANGED = 1
+  HAS_UNDO = 0
+  MESSAGE = "Imported" + STR$(COUNT / 8) + " glyphs"
+END SUB
+
+' Writes the font as ca65 source to a file asked in the file dialog. A file that exists is
+' replaced only after Yes.
+SUB EXPORT_SOURCE()
+  DIM AT AS UWORD, BIT AS UBYTE
+  IF GUI.PICKFILE("Export", "*.S", PICKED) = 0 THEN RETURN
+  ADD_EXTENSION(".S")
+  IF DOS.EXISTS(PICKED) <> 0 THEN
+    IF GUI.YESNO("Export", PICKED, "exists. Replace it?") = 0 THEN RETURN
+  ENDIF
+  HANDLE = OPEN(PICKED, O.WRITE)
+  IF HANDLE = NOFILE THEN
+    GUI.MSGBOX("Export", "Cannot write", PICKED)
+    RETURN
+  ENDIF
+  PRINT #HANDLE, "; "; FILE_NAME; ": 256 glyphs of 8 by 8 pixels, 8 bytes each, from character 0 up."
+  PRINT #HANDLE, SOURCE_HEAD$
+  BLOCK_TEXT = BLOCK_HEAD$
+  FOR ROW = 0 TO 7
+    BLOCK_TEXT = BLOCK_TEXT + BLOCK_ROW$
+  NEXT
+  INDEX = 0
+  FOR MAP_CODE = 0 TO 255
+    HEX_OF(MAP_CODE)
+    ContentsAt(@BLOCK_TEXT + 5) = ContentsAt(@TEXT + 2)
+    ContentsAt(@BLOCK_TEXT + 6) = ContentsAt(@TEXT + 3)
+    ' Row 0's bits: after the string's 2 bytes of size and length, the code line, and .byte %.
+    AT = @BLOCK_TEXT + 16
+    FOR ROW = 0 TO 7
+      VALUE = FONT(INDEX)
+      INDEX = INDEX + 1
+      FOR BIT = 0 TO 7
+        ContentsAt(AT + BIT) = ASC("0") + (VALUE >> 7)
+        VALUE = VALUE << 1
+      NEXT
+      AT = AT + ROW_SIZE
+    NEXT
+    WRITE HANDLE, @BLOCK_TEXT + 2, BLOCK_SIZE
+  NEXT
+  CLOSE HANDLE
+  MESSAGE = "Exported"
+END SUB
 
 ' Writes the font to PICKED, which becomes FILE_NAME, and puts Saved in MESSAGE, or shows why
 ' not.
@@ -365,7 +478,7 @@ END SUB
 ' replaced only after Yes.
 SUB SAVE_AS()
   IF GUI.PICKFILE("Save As", "*.F08", PICKED) = 0 THEN RETURN
-  ADD_EXTENSION()
+  ADD_EXTENSION(".F08")
   IF DOS.EXISTS(PICKED) <> 0 THEN
     IF GUI.YESNO("Save As", PICKED, "exists. Replace it?") = 0 THEN RETURN
   ENDIF
@@ -402,12 +515,10 @@ END FUNCTION
 SUB OPEN_FONT()
   IF ASK_SAVE() = 0 THEN RETURN
   IF GUI.PICKFILE("Open", "*.F08", PICKED) = 0 THEN RETURN
-  ADD_EXTENSION()
+  ADD_EXTENSION(".F08")
   VALUE = LOAD_FONT()
-  IF VALUE = INVALID_FONT THEN
-    GUI.MSGBOX("Open", "Invalid font file")
-  ELSEIF VALUE <> 0 THEN
-    GUI.MSGBOX("Open", DOS.ERRMSG(VALUE))
+  IF VALUE <> 0 THEN
+    SHOW_LOAD_ERROR("Open", VALUE)
   ELSE
     FILE_NAME = PICKED
     NAMED = 1
@@ -419,6 +530,7 @@ SUB OPEN_FONT()
 END SUB
 
 START_COLOR = DOS.GET_COLOR()
+RANGE = "00-FF"
 DOS.STOP_KEY(DOS.STOP.OFF)
 FONT_PORT(0)
 FOR INDEX = 0 TO FONT_SIZE - 1
@@ -431,7 +543,7 @@ IF PICKED = "" THEN
 ELSE
   NAMED = 1
 ENDIF
-ADD_EXTENSION()
+ADD_EXTENSION(".F08")
 FILE_NAME = PICKED
 IF NAMED <> 0 AND DOS.EXISTS(PICKED) <> 0 THEN
   VALUE = LOAD_FONT()
@@ -523,6 +635,12 @@ DO
       ELSE
         SEND(@START_FONT, 0, FONT_SIZE)
       ENDIF
+      DRAW_ALL()
+    CASE KEY_F6
+      IMPORT_GLYPHS()
+      DRAW_ALL()
+    CASE KEY_F7
+      EXPORT_SOURCE()
       DRAW_ALL()
     CASE KEYS.ESC
       IF ASK_SAVE() <> 0 THEN EXIT DO
