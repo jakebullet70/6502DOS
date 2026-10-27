@@ -7,7 +7,8 @@ runs C:\\ROMSHELL.COM at boot.
 
 Each test is an expected output tests/NAME.OUT. A test boots the ROM in x16emu with -echo raw
 and reads what the ROM writes through $FFD2. It passes when that output equals NAME.OUT. It
-fails when the output departs from NAME.OUT or when NAME.OUT is not complete within 5 s.
+fails when the output departs from NAME.OUT or when NAME.OUT is not complete within 5 s. The
+boot banner, up to the line "For the Commander X16", is left out of both, except in BOOT.
 
 Every test runs with the SD card image build/tests/SD.IMG, which tools/mksd.py makes from
 tests/sd at the start: 256 MB, 2 sectors per cluster, 259079 clusters, the files dated
@@ -24,7 +25,7 @@ A test can type keys into the monitor with x16emu -bas:
 - then tests/NAME.IN, each line ended by CR. \\XE0 then a scan code types an extended key:
   \\XE0\\X48 is Up.
 
-NAMEs pick tests; with none, every test runs. --update runs each test for 4.5 s and writes
+NAMEs pick tests; with none, every test runs but those in STOPPED_TESTS. --update runs each test for 4.5 s and writes
 NAME.OUT from what it printed: read the .OUT before you keep it. Build first
 (tools/build.py). Exit status 1 when a test failed or a program did not assemble.
 
@@ -55,7 +56,15 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EMU = r"C:\8bitProgramming\x16emu\x16emu.exe"
 ROM = os.path.join(ROOT, "build", "TEST.ROM")
 SHELL_ROM = os.path.join(ROOT, "build", "6502DOS.ROM")
-SHELL_ROM_TESTS = ("SHBOOT", "BASBOOT", "BASRUN", "HELPBAS", "BASHELP", "BASLOAD", "BASEDIT")   # these boot 6502DOS.ROM, into the shell
+SHELL_ROM_TESTS = ("SHBOOT",)   # these boot 6502DOS.ROM, into the shell
+# The full run skips these; a NAME still runs one.
+STOPPED_TESTS = (
+    "ABSIO", "ANSI", "ASK", "BANKCALL", "BREAK", "CHKDSK", "CLOCK", "CLOCKCMD", "CMDLETS",
+    "CONSLIB", "CWD", "DIRS", "DISK", "DOSAPI", "DUP", "EDIT", "EDIT2", "EDITBIG", "EDITSET",
+    "ENDCODE", "FONTED", "FONTFILE", "FONTIO", "FONTOPS", "GREP", "HANDLES", "HDIRRED", "HEAD",
+    "INILIB", "KEEP", "MORE", "REGLIB", "RGBYTES", "RGCALL", "RGDATA", "RGERR", "RGMULTI",
+    "RGPASS", "RGPTR", "RGRUN", "SEEK", "TAIL", "TARGET", "TED", "TEDBIG", "THEMED", "VERABOX",
+    "VIEW", "WHERE", "WRITE", "XCOPY", "XCOPYS")
 TESTS = os.path.join(ROOT, "tests")
 OBJ = os.path.join(ROOT, "build", "tests")
 KEYS = os.path.join(OBJ, "keys.txt")
@@ -75,6 +84,7 @@ COM_START = 0x0801
 BYTES_PER_LINE = 24             # "E 1000 " and 24 bytes fit the monitor's 79 characters
 LIMIT = 5.0
 UPDATE_SECONDS = 4.5
+BANNER_END = "For the Commander X16\n"   # the last line of the boot banner
 # x16emu prints these itself: when the ROM has no stock KERNAL symbols, and at -sdcard.
 EMULATOR_LINES = ("Unable to find KERNAL ", "SD card attached.")
 BASIC_TESTS = os.path.join(ROOT, "MSBASIC", "tests")
@@ -119,11 +129,18 @@ def program_keys(source):
     return "".join(lines)
 
 
-def boot(rom, want, keys, done=None):
+def after_dos_banner(text):
+    """The text after the boot banner, whose first line names the version; None until the
+    banner is complete."""
+    end = text.find(BANNER_END)
+    return None if end < 0 else text[end + len(BANNER_END):]
+
+
+def boot(rom, want, keys, done=None, cut=lambda text: text):
     """Boot rom, type keys when it is not None, and return what the ROM
-    printed. Stop when the output is as long as want or departs from it, or after LIMIT
-    seconds. With want None, stop after UPDATE_SECONDS, or, with done, when done(output) is
-    true or after LIMIT seconds."""
+    printed. Stop when cut(output) is as long as want or departs from it, or after LIMIT
+    seconds; cut returns None while it cannot tell yet. With want None, stop after
+    UPDATE_SECONDS, or, with done, when done(output) is true or after LIMIT seconds."""
     env = dict(os.environ, SDL_VIDEODRIVER="dummy")
     command = [EMU, "-rom", rom, "-warp", "-sound", "none", "-nohostfs", "-echo", "raw",
                "-sdcard", RUN_IMAGE]
@@ -147,8 +164,8 @@ def boot(rom, want, keys, done=None):
     while time.time() < deadline:
         if want is not None:
             # A CR at the end may be the start of a CR LF still arriving.
-            got = clean(b"".join(chunks).rstrip(b"\r"))
-            if len(got) >= len(want) or not want.startswith(got):
+            got = cut(clean(b"".join(chunks).rstrip(b"\r")))
+            if got is not None and (len(got) >= len(want) or not want.startswith(got)):
                 break
         elif done is not None and done(clean(b"".join(chunks))):
             break
@@ -226,6 +243,8 @@ def main():
         outs = [o for o in outs if test_name(o) in names]
         if len(outs) != len(names):
             sys.exit("tests: no such test among %s" % " ".join(names))
+    else:
+        outs = [o for o in outs if test_name(o) not in STOPPED_TESTS]
     os.makedirs(OBJ, exist_ok=True)
     programs = sorted(glob.glob(os.path.join(BAS_OUT, "*.COM")))
     for source in sorted(glob.glob(os.path.join(COM_FOLDER, "*.S"))):
@@ -267,14 +286,16 @@ def main():
             keys = (keys or "") + open(base + ".IN", encoding="latin-1").read()
         took = time.time()
         rom = SHELL_ROM if test_name(out_path) in SHELL_ROM_TESTS else ROM
-        got = boot(rom, None if update else want, keys)
+        # Only BOOT checks the banner, so a new version changes one golden.
+        cut = (lambda text: text) if name == "BOOT" else after_dos_banner
+        got = boot(rom, None if update else cut(want), keys, cut=cut)
         took = time.time() - took
         if update:
             with open(out_path, "w", encoding="latin-1", newline="\n") as out:
                 out.write(got)
             print("WROTE %-12s %4.1f s" % (test_name(out_path), took))
             continue
-        if got == want and took <= LIMIT:
+        if cut(got) == cut(want) and took <= LIMIT:
             print("ok    %-12s %4.1f s" % (test_name(out_path), took))
             continue
         failed.append(test_name(out_path))

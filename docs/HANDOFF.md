@@ -2117,6 +2117,22 @@ the beta 1 list).
      - Next: step 5, version 2 (the mouse, the old-and-new strip); the user decides when.
   4. `SI`: the CPU (65C02 or 65C816), the ROM and VERA versions, the RAM bank count, the card
      size, the clock, a speed test.
+     - Done, not committed: `src/utils/si/SI.UXB`, `UTILS\SI.COM`, 3810 bytes. A line each:
+       CPU and MHz, ROM version, VERA version, RAM KB, banks and free banks, the size of C:,
+       the clock.
+     - The CPU comes from an `ASM` block with `REP #$02`, as POST does. The speed comes from an
+       `ASM` loop of 20 cycles a pass, counted over 60 VSYNCs; 50000 passes are 1 MHz.
+     - The bank total comes from `BANK_OWNER` ($AC00 in RAM bank 0): $FF at bank 64 or 128
+       means the machine lacks it. The free count comes from `bank_alloc` with 0.
+     - Trap: the loop reads the kernel's `ticks` at $80 directly (`TICKS_ADDRESS`). If
+       `KERNELZP` moves, that constant has to move with it.
+     - The clock is read before the speed test, so the test does not move it on.
+     - Test `SI` (`.IN` and golden local): `DATE 2026-10-18`, `TIME 13:45`, `C:\UTILS\SI`.
+       The emulator gives 65C02, 8 MHz, V47.0.2, 512 KB, 64 banks, 53 free and 253 MB. SI ok
+       1.7 s.
+     - `SI.COM` and `UTILS\SRC\SI` are new card files, so the goldens of `HDIR`, `HDIRARG`,
+       `FILES`, `TREE` and `CHKDSK` change at the next full suite.
+     - Build 2045 ms, the new baseline.
   5. `ZIP` and `UNZIP`. Inflate is about 500 bytes of 6502 code; deflate costs far more.
   6. `BE`, the batch enhancer (`ASK`/`CHOICE` to `ERRORLEVEL`, `BOX`, `BEEP`, `DELAY`,
      `ROWCOL`). Talk it through with the user first.
@@ -2129,12 +2145,27 @@ the beta 1 list).
   PATH from the WinGet links. Build 4400 ms wall (the ROM 3.30 s). The build with the new
   calls took 10495 ms (the ROM 10.28 s): a new `DOS.UXI` recompiles every program. The
   baseline stays 4400 ms for a build that leaves `DOS.UXI` alone.
-- Steps since the last full suite: 1 (REG in the API). Full suite after FONTEDIT step 4 (2026-10-27): 116 tests,
+- Steps since the last full suite: 2 (REG in the API, SI). Full suite after FONTEDIT step 4 (2026-10-27): 116 tests,
   5 failed, 230.7 s. `CHKDSK`, `FILES`, `HDIR`, `HDIRARG` and `TREE` failed on the card's new
   files only: `FONTEDIT.COM`, `UTILS\SRC\FONTEDIT`, `FONTHEX.COM`, `FONT.COM`, `CHKDSK.COM`, the
   untracked `tests/REGLIB.UXB`'s `REGLIB.COM`, and `CMDSHELL.COM` at 21850 bytes. Goldens
   updated; reruns: `CHKDSK` ok 3.8 s, `FILES` 1.3 s, `HDIR` 2.6 s, `HDIRARG` 2.4 s, `TREE` 3.3 s.
   The five goldens list `REGLIB.COM`: without `tests/REGLIB.UXB` they fail.
+- Tests dropped (the user, 2026-10-27): `FILES`, `HDIR`, `HDIRARG` (they list the card's root,
+  so any program change breaks them), and `BASBOOT`, `BASRUN`, `BASLOAD`, `BASEDIT`, `BASHELP`,
+  `HELPBAS`. Their `.IN` and `.OUT` were local only; a copy is in the scratchpad folder
+  `dropped_tests` of session 7e7e2a6e. `SHELL_ROM_TESTS` in `tools/tests.py` is now `SHBOOT`
+  alone; `SHBOOT` ok 1.4 s. 106 tests are left. The suite is reviewed with the user after each
+  release.
+- The banner (the user, 2026-10-27): `tools/tests.py` leaves out the boot banner, up to the line
+  `For the Commander X16`, from the output and the golden before it compares (`after_dos_banner`,
+  the `cut` argument of `boot`). `BOOT` alone checks the banner, so a new version changes one
+  golden. The goldens keep their banner lines. Checked: `ASK` with a golden of version `V9.9` ok
+  1.0 s, `BOOT` ok 0.8 s.
+- Tests stopped (the user, 2026-10-27): `STOPPED_TESTS` in `tools/tests.py` holds 52 tests that
+  the full run skips; a test named on the command line still runs. Files kept. The full run is
+  54 tests: `BANK*` (but `BANKCALL`), `BOOT`, `EXEC`, `FAR`, `GUI*`, `HEAP`, `HELPED`, `LFN`,
+  `MEMCMD`, `MONITOR`, `ROM3`, `ROMERR`, `SCRSIZE`, `SH*`, `STRLIB`.
 
 0. PLAN section 11 step 6, CBM DOS leaves: 6a to 6e done. Full suite passed after the `END`
    range step.
