@@ -2,9 +2,9 @@
 ;
 ; Ported from x16-rom, fat32/sdcard.s, github.com/X16Community/x16-rom. Kept: wait_ready,
 ; deselect, select, spi_read, spi_write, send_cmd, the start-up sequence of sdcard_init, the
-; slow read loop of sdcard_read_sector and the steps of sdcard_write_sector. Changed: the
-; commands come from a table, the sectors go to and from BLK_BUFFER, and the routines sit behind
-; a driver header. Left out: the alive check and the fast mode.
+; read loops of sdcard_read_sector and the steps of sdcard_write_sector. Changed: the commands
+; come from a table, the sectors go to and from BLK_BUFFER, and the routines sit behind a driver
+; header. Left out: the alive check and the fast write loop.
 ;
 ; Original header:
 ; Copyright (C) 2020 Frank van den Hoef
@@ -40,6 +40,7 @@
 
 SPI_SELECT    = $01             ; VERA_SPI_CTRL bits
 SPI_SLOW      = $02
+SPI_AUTOTX    = $04             ; each read of VERA_SPI_DATA starts the next transfer
 
 .segment "KERNELZP" : zeropage
 
@@ -50,6 +51,7 @@ sd_ptr:       .res 2            ; where the next sector goes
 sd_ready:     .res 1            ; $FF once the card has started, 0 without a card
 sd_cmd:       .res 6            ; the command in the order sent: index, argument high byte first, CRC
 sd_count:     .res 1            ; wait_ready's timeout, then the pages of a sector left
+sd_fast:      .res 1            ; bit 7 set: read_sector uses the fast loop
 
 .segment "CODE"
 
@@ -57,6 +59,7 @@ sd_count:     .res 1            ; wait_ready's timeout, then the pages of a sect
 ; returns carry clear.
 sd_init:
         stz sd_ready
+        stz sd_fast
         lda #SPI_SLOW           ; deselected, below 400 kHz
         sta VERA_SPI_CTRL
         ldx #10                 ; at least 74 clocks with the card deselected
@@ -103,6 +106,22 @@ sd_init:
         dec sd_ready
 @fail:
         jsr deselect
+        clc
+        rts
+
+; sd_control: SD command 12, IOCTL output. Bit 0 of the first byte at r0 set selects the fast
+; read loop, clear the slow one. Returns r1 = 1, or 0 when r1 is 0.
+sd_control:
+        lda r1
+        ora r1+1
+        beq @done
+        lda (r0)
+        lsr                     ; bit 0 to carry
+        ror sd_fast             ; carry to bit 7
+        lda #1
+        sta r1
+        stz r1+1
+@done:
         clc
         rts
 
@@ -195,6 +214,8 @@ read_sector:
 @start:
         lda #2
         sta sd_count
+        bit sd_fast
+        bmi @fast
         ldx #$FF
 @page:
         ldy #0
@@ -211,10 +232,35 @@ read_sector:
         dec sd_count
         bne @page
         jsr spi_read            ; the CRC
+@crc:
         jsr spi_read
         jsr deselect
         sec
         rts
+; Trap: a read of VERA_SPI_DATA during a transfer returns the last byte and starts no new
+; transfer. A transfer is busy for 5.12 cycles at 8 MHz on VERA, 6.4 on x16emu R49. The reads
+; here are 12 cycles apart.
+@fast:
+        lda #$FF
+        sta VERA_SPI_DATA       ; starts the first transfer
+        lda VERA_SPI_CTRL
+        ora #SPI_AUTOTX
+        sta VERA_SPI_CTRL
+        ldy #0
+@fast_byte:
+        .repeat 4
+        lda VERA_SPI_DATA       ; 4
+        sta (sd_ptr),y          ; 6
+        iny                     ; 2
+        .endrepeat
+        bne @fast_byte
+        inc sd_ptr+1
+        dec sd_count
+        bne @fast_byte
+        lda VERA_SPI_CTRL       ; the last read started the first CRC byte
+        and #<~SPI_AUTOTX
+        sta VERA_SPI_CTRL
+        bra @crc
 
 ; write_sector: writes the sector at sd_ptr to the sector of sd_cmd and moves sd_ptr on by 512.
 ; Returns carry set on success.
@@ -373,6 +419,6 @@ cmd_read_ocr: .byte $40 | 58, 0, 0, 0, 0, 1
 ; The driver header: a block device with one unit, the end of the chain.
 sd_driver:
         .word $FFFF
-        .byte 0, DRV_ABI_VERSION, 9
+        .byte DEV_IOCTL, DRV_ABI_VERSION, 13
         .byte 1, 0, 0, 0, 0, 0, 0, 0
-        .word sd_init, 0, 0, 0, sd_input, 0, 0, 0, sd_output
+        .word sd_init, 0, 0, 0, sd_input, 0, 0, 0, sd_output, 0, 0, 0, sd_control

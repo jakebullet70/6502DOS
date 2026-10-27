@@ -95,15 +95,20 @@ CALLS = [
               ("r1", "date, to set")],
          out=[("r0", "time"), ("r1", "date")],
          errors=[1, 6]),
-    call(10, "ioctl", 0x44, ("The subfunctions are those of MS-DOS 2.0 function 44h. Two are "
+    call(10, "ioctl", 0x44, ("The subfunctions are those of MS-DOS 2.0 function 44h. Three are "
           "written. Subfunction 0, device info: r0 = the driver's DEV_ bits for a device, 0 for a "
-          "file. `CON` gives $83, `NUL` $84. Subfunction 6, input status: r0 = $FF when a read "
+          "file. `CON` gives $83, `NUL` $84. Subfunction 5, write control data: sends the r1 "
+          "bytes at r0 to the block driver of drive X, 0 for the current drive, 1 for A:, and "
+          "gives r1 = the bytes the driver took. The SD card driver takes 1 byte: bit 0 set "
+          "selects the fast read loop, clear the slow one. The slow loop is the default. "
+          "Subfunction 6, input status: r0 = $FF when a read "
           "would give a byte, else 0. A file gives 0 at or past its end. A device asks its "
           "driver: `CON` gives $FF when a key waits, `NUL` gives 0. Any other subfunction gives "
           "error 1."),
-         in_=[("X", "handle"), ("A", "subfunction")],
-         out=[("r0", "data")],
-         errors=[1, 6],
+         in_=[("A", "subfunction"), ("X", "handle, or for 5 the drive"),
+              ("r0", "for 5, the control data"), ("r1", "for 5, its length")],
+         out=[("r0", "data"), ("r1", "for 5, the bytes taken")],
+         errors=[1, 6, 15],
          written=True),
     call(11, "dup", 0x45, ("Gives the first closed handle to the file of a handle. Both handles "
           "share the position."),
@@ -382,6 +387,22 @@ CALLS = [
          in_=[("r0", "buffer"), ("r1", "count, 0 to close the file")],
          out=[("r1", "the count read, fewer at the end of the file")],
          errors=[6],
+         written=True),
+    call(53, "absread", None, ("Reads X sectors of a drive's card into memory, as MS-DOS's "
+          "INT 25h. The sector numbers count from the card's first sector, the MBR, not from "
+          "the volume's. The buffer is in the selected RAM bank and must not run into $9F00 or "
+          "past $BFFF. A count of 0 reads nothing."),
+         in_=[("A", "drive: 0 A:, 2 C:"), ("X", "count, 0 to 255"), ("r0", "buffer"),
+              ("r1 r2", "first sector")],
+         errors=[15, 21, 30],
+         written=True),
+    call(54, "abswrite", None, ("Writes X sectors from memory to a drive's card, as MS-DOS's "
+          "INT 26h, with the sector numbers and the buffer of `absread`. The kernel's sector "
+          "buffer is written first and read again after. The volume keeps the free count and "
+          "the boot sector's fields it read at boot."),
+         in_=[("A", "drive: 0 A:, 2 C:"), ("X", "count, 0 to 255"), ("r0", "buffer"),
+              ("r1 r2", "first sector")],
+         errors=[15, 21, 29, 30],
          written=True),
 ]
 

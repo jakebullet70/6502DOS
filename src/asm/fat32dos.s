@@ -3,7 +3,7 @@
 ; lib_open takes a path and gives a context; lib_read, lib_seek and lib_close take that context
 ; in A, lib_io an SFT entry in Y. Each returns carry set and A = the error, an ERR_ of api.inc,
 ; on a fault. The gate calls api_findfirst, api_findnext, api_delete, api_rename, api_mkdir,
-; api_rmdir, api_chdir, api_getcwd and api_diskfree here.
+; api_rmdir, api_chdir, api_getcwd, api_diskfree, api_absread and api_abswrite here.
 ;
 ; The library has one volume: drive C:. It mounts the volume when a call first takes a context.
 ; Its current directory is set from the drive's DPB at each call, so the DPBs keep the current
@@ -13,9 +13,11 @@
 
 .include "fat32_regs.inc"        ; and mem.inc
 .include "api.inc"
+.include "far.inc"
 
 .export lib_init, lib_open, lib_read, lib_io, lib_seek, lib_close, api_findfirst, api_findnext
 .export api_delete, api_rename, api_mkdir, api_rmdir, api_chdir, api_getcwd, api_diskfree
+.export api_absread, api_abswrite
 .export fat32_dir_pos
 .import fat32_init, fat32_alloc_context, fat32_free_context, fat32_set_context
 .import fat32_chdir, fat32_open, fat32_read, fat32_seek, fat32_close, fat32_get_size
@@ -25,6 +27,7 @@
 .import fat32_open_tree, fat32_walk_tree
 .import fat32_cwd, fat32_size, fat32_dirent, fat32_errno, fat32_readonly, skip_mask, sector_lba
 .import fat32_root, fat32_sectors_per_cluster, fat32_cluster_count
+.import sync_sector_buffer, sdcard_read_sector, sd_input, sd_output, jsrfar1
 .import DPB, current_drive, create_attr
 .importzp saved_bank, file_context, file_size
 
@@ -45,6 +48,7 @@ lib_wild:     .res 1            ; lib_enter: bit 7 set when the name part holds 
 lib_dpb:      .res 1            ; lib_enter: the DPB offset of the path's drive
 lib_context:  .res 1
 lib_access:   .res 1            ; lib_open: the access, 0 to read only
+abs_write     = lib_access      ; api_absread, api_abswrite: bit 7 set to write
 lib_entry:    .res 1            ; lib_io: the SFT entry
 lib_gap:      .res 4            ; lib_write: the bytes from the end of the file to the position
 lib_dir       = lib_gap         ; api_rename, api_rmdir: a directory's cluster
@@ -467,6 +471,67 @@ api_diskfree:
         clc
 @bank:
         jmp lib_bank
+
+; api_absread: absread, call 53. api_abswrite: abswrite, call 54. Moves X sectors between the
+; buffer at r0, in the caller's RAM bank, and the unit of drive A, from sector r1 r2. Writes the
+; library's dirty sector first; after a write, reads the library's sector again. Selects RAM
+; bank 0 while it runs and keeps the caller's bank in saved_bank.
+api_abswrite:
+        sec
+        bra abs_io
+api_absread:
+        clc
+abs_io:
+        ldy RAM_BANK
+        sty saved_bank
+        stz RAM_BANK
+        ror abs_write           ; carry to bit 7
+        cpx #1                  ; a count of 0 moves nothing; carry clear
+        bcc @bank
+        stx BLK_COUNT
+        tax                     ; the drive
+        sbc #FIRST_DRIVE        ; carry set
+        sta BLK_UNIT            ; the unit once drive_check passes: C: is unit 0
+        jsr drive_check
+        bcs @bank
+        jsr sync_sector_buffer
+        bcc @write_fault
+        ldx #3
+@sector:
+        lda r1,x                ; r1 and r2
+        sta BLK_SECTOR,x
+        dex
+        bpl @sector
+        lda r0
+        sta BLK_BUFFER
+        lda r0+1
+        sta BLK_BUFFER+1
+        ldy saved_bank          ; the driver moves the bytes in the selected bank
+        bit abs_write
+        sty RAM_BANK            ; keeps N
+        bmi @write
+        FARCALL sd_input, jsrfar1
+        bra @moved
+@write:
+        FARCALL sd_output, jsrfar1
+@moved:
+        stz RAM_BANK            ; keeps carry
+        bcs @bank
+        bit abs_write
+        bpl @bank
+        lda sector_lba+3        ; $FF: no sector in the buffer
+        inc
+        beq @bank
+        jsr sdcard_read_sector  ; the write may have changed it
+        lda #ERR_READ_FAULT
+        bcc @fault
+        clc
+@bank:
+        jmp lib_bank
+@write_fault:
+        lda #ERR_WRITE_FAULT
+@fault:
+        jmp lib_error
 
 ; api_getcwd: getcwd, call 19. Copies the path cwd_build makes to r0. Selects RAM bank 0 while
 ; it runs and keeps the caller's bank in saved_bank.

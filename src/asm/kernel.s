@@ -152,6 +152,16 @@ api_getdrive:
         rts
 
 api_setdrive:
+        jsr drive_driver
+        bcs @done
+        sty current_drive
+        lda #DRIVES
+@done:
+        rts
+
+; drive_driver: points driver at the block driver of drive A, 0 for A:, and returns Y = A.
+; Returns carry set and A = ERR_BAD_DRIVE when the drive does not exist. Changes X.
+drive_driver:
         cmp #DRIVES
         bcs @bad
         tay
@@ -159,16 +169,17 @@ api_setdrive:
         asl
         asl                     ; DPB_SIZE 8; carry clear
         tax
+        lda DPB + DPB_DRIVER,x
+        sta driver
         lda DPB + DPB_DRIVER+1,x
-        beq @bad
-        sty current_drive
-        lda #DRIVES
-        rts
+        sta driver+1
+        bne @done
 @bad:
         lda #ERR_BAD_DRIVE
         sec
+@done:
         rts
-        .assert DPB_SIZE = 8, error, "api_setdrive multiplies by 8"
+        .assert DPB_SIZE = 8, error, "drive_driver multiplies by 8"
 
 ; chain_first: points driver at the first driver. Changes A.
 chain_first:
@@ -668,12 +679,14 @@ api_ticks:
         clc
         rts
 
-; api_ioctl has two subfunctions. 0, device info: r0 = the DEV_ bits of a device's driver, 0
+; api_ioctl has three subfunctions. 0, device info: r0 = the DEV_ bits of a device's driver, 0
 ; for a file. 6, input status: r0 = $FF when a read would give a byte, else 0. A file gives 0
-; at or past its end; a device asks its driver.
+; at or past its end; a device asks its driver. 5, write control data: sends the r1 bytes at r0 to
+; the unit of drive X, 0 for the current drive, 1 for A:, and returns r1 = the bytes its driver
+; took.
 api_ioctl:
         tay                     ; subfunction 0
-        bne @input
+        bne @control
         jsr sft_find
         bcs @done
         ldx SFT + SFT_FLAGS,y   ; SFT_DEVICE for a device
@@ -684,6 +697,21 @@ api_ioctl:
         ldy #DRV_ATTR
         lda (driver),y
         bra @status
+@control:
+        cmp #5
+        bne @input
+        txa
+        dec                     ; 0, the current drive, becomes $FF
+        bpl @drive
+        lda current_drive
+@drive:
+        jsr drive_driver
+        bcs @done
+        tya
+        sbc #FIRST_DRIVE - 1    ; carry clear: C: is unit 0
+        sta BLK_UNIT
+        ldy #DRV_IOCTL_OUTPUT
+        jmp drv_call
 @input:
         cmp #6
         bne bad_function

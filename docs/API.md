@@ -29,7 +29,7 @@ Conventions:
 | `rename` | 7 | `$0355` | 56h | `r0` old path<br>`r1` new path | none | 2, 3, 5, 15, 17, 21, 29, 30 | yes |
 | `attrib` | 8 | `$0358` | 43h | `r0` path<br>`A` 0 get, 1 set<br>`X` attributes, to set | `X` attributes | 1, 2, 3, 5 | no |
 | `filetime` | 9 | `$035B` | 57h | `X` handle<br>`A` 0 get, 1 set<br>`r0` time, to set<br>`r1` date, to set | `r0` time<br>`r1` date | 1, 6 | no |
-| `ioctl` | 10 | `$035E` | 44h | `X` handle<br>`A` subfunction | `r0` data | 1, 6 | yes |
+| `ioctl` | 10 | `$035E` | 44h | `A` subfunction<br>`X` handle, or for 5 the drive<br>`r0` for 5, the control data<br>`r1` for 5, its length | `r0` data<br>`r1` for 5, the bytes taken | 1, 6, 15 | yes |
 | `dup` | 11 | `$0361` | 45h | `X` handle | `X` new handle | 4, 6 | yes |
 | `dup2` | 12 | `$0364` | 46h | `X` handle<br>`Y` second handle | none | 6 | yes |
 | `findfirst` | 13 | `$0367` | 4Eh | `r0` pattern<br>`A` attributes to include: $02 hidden, $04 system, $10 directory<br>`r1` find buffer, 83 bytes | `r1` find buffer, filled | 2, 3, 15, 21, 30 | yes |
@@ -72,6 +72,8 @@ Conventions:
 | `con_screen` | 50 | `$03D6` | none | `r0` buffer | none | none | yes |
 | `bank_call` | 51 | `$03D9` | none | `A` RAM bank<br>`r0` routine<br>`X` the routine's X | `A` the routine's A<br>`X` the routine's X<br>`Y` the routine's Y<br>`carry` the routine's carry | none | yes |
 | `exec_rest` | 52 | `$03DC` | none | `r0` buffer<br>`r1` count, 0 to close the file | `r1` the count read, fewer at the end of the file | 6 | yes |
+| `absread` | 53 | `$03DF` | none | `A` drive: 0 A:, 2 C:<br>`X` count, 0 to 255<br>`r0` buffer<br>`r1 r2` first sector | none | 15, 21, 30 | yes |
+| `abswrite` | 54 | `$03E2` | none | `A` drive: 0 A:, 2 C:<br>`X` count, 0 to 255<br>`r0` buffer<br>`r1 r2` first sector | none | 15, 21, 29, 30 | yes |
 
 ## What each call does
 
@@ -85,7 +87,7 @@ Conventions:
 - `rename`: Renames a file or a directory, or moves a file to another directory on the same drive. A new name that exists, or a directory moved to another directory, gives error 5. The kernel does not check for open handles: close the file first.
 - `attrib`: Gets or sets the attributes of a file.
 - `filetime`: Gets or sets the time and date of an open file.
-- `ioctl`: The subfunctions are those of MS-DOS 2.0 function 44h. Two are written. Subfunction 0, device info: r0 = the driver's DEV_ bits for a device, 0 for a file. `CON` gives $83, `NUL` $84. Subfunction 6, input status: r0 = $FF when a read would give a byte, else 0. A file gives 0 at or past its end. A device asks its driver: `CON` gives $FF when a key waits, `NUL` gives 0. Any other subfunction gives error 1.
+- `ioctl`: The subfunctions are those of MS-DOS 2.0 function 44h. Three are written. Subfunction 0, device info: r0 = the driver's DEV_ bits for a device, 0 for a file. `CON` gives $83, `NUL` $84. Subfunction 5, write control data: sends the r1 bytes at r0 to the block driver of drive X, 0 for the current drive, 1 for A:, and gives r1 = the bytes the driver took. The SD card driver takes 1 byte: bit 0 set selects the fast read loop, clear the slow one. The slow loop is the default. Subfunction 6, input status: r0 = $FF when a read would give a byte, else 0. A file gives 0 at or past its end. A device asks its driver: `CON` gives $FF when a key waits, `NUL` gives 0. Any other subfunction gives error 1.
 - `dup`: Gives the first closed handle to the file of a handle. Both handles share the position.
 - `dup2`: Makes a second handle refer to the file of the first, and closes the second first if it is open. Both handles share the position. A second handle equal to the first does nothing.
 - `findfirst`: Finds the first name that matches a pattern with `*` and `?`. `*` matches any run of characters, dots too, and `?` matches one character. A pattern that ends in `.` or `.*` also matches a name with no dot. A pattern that ends in a separator matches every name in that directory. The pattern is up to 32 characters. Normal files always match; directories, hidden files and system files match only when their attribute bit is set in A. The volume label never matches.
@@ -128,6 +130,8 @@ Conventions:
 - `con_screen`: Reads a line from the console with the full-screen editor, into a buffer as `con_line` fills it. The cursor moves over the whole screen, and Enter returns the text of the cursor's row without the blanks at its end: from the column the call started at on the row it started at, from column 0 on any other row. A line is one row. The keys: the arrows; Ctrl+Left and Ctrl+Right a word; Home the top left corner; End after the row's text; Ctrl+Home clears the screen; Ctrl+End blanks to the end of the row; Esc blanks the row; Ins turns insert mode on or off, and a cursor move turns it off; Del and Backspace delete; Tab moves to the next column of 8, and in insert mode opens blanks. A Ctrl+C in break mode 2 ends the line with no text. When handle 0 is a file, the call is `con_line`.
 - `bank_call`: Calls the routine at r0 with RAM bank A selected, then selects the caller's RAM bank again. The routine gets X, and its A, X, Y and carry come back. The routine may make calls, `bank_call` among them.
 - `exec_rest`: Reads the part of the running program's file past $9EFF, which `exec` leaves open: r1 bytes to r0, from where the last read ended. A buffer at $A000-$BFFF is in the selected RAM bank. A count of 0 closes the file. The file also closes when the program ends or calls `exec`. Error 6 when the file is not open.
+- `absread`: Reads X sectors of a drive's card into memory, as MS-DOS's INT 25h. The sector numbers count from the card's first sector, the MBR, not from the volume's. The buffer is in the selected RAM bank and must not run into $9F00 or past $BFFF. A count of 0 reads nothing.
+- `abswrite`: Writes X sectors from memory to a drive's card, as MS-DOS's INT 26h, with the sector numbers and the buffer of `absread`. The kernel's sector buffer is written first and read again after. The volume keeps the free count and the boot sector's fields it read at boot.
 
 ## Errors
 

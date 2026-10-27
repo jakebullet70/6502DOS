@@ -131,6 +131,7 @@ DRV_INIT      = 0
 DRV_INPUT     = 4               ; r0 buffer, r1 count; returns r1 bytes read
 DRV_INPUT_STATUS = 6            ; a character device: returns A = $FF when input waits, else 0
 DRV_OUTPUT    = 8               ; r0 buffer, r1 count; returns r1 bytes written
+DRV_IOCTL_OUTPUT = 12           ; r0 control data, r1 count, BLK_UNIT; returns r1 bytes taken
 ; A block driver: DRV_ATTR has DEV_CHAR clear, and DRV_NAME holds the number of units. Its
 ; input and output commands take the BLK_ request and return carry set and A = the error on a
 ; fault. They may change BLK_COUNT.
