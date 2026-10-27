@@ -29,9 +29,9 @@
 ' -- EDIT - The 6502DOS Editor... Bye!; text with changes first asks to save it in a dialog:
 ' -- Yes saves, No does not, and Esc goes back to the text.
 ' -- Shift+F1 asks the topic of DOS help in a dialog, with the word at the cursor, its letters
-' -- and digits, filled in. OK shows the topic from C:\DOS\HELP.TXT until a key is pressed, or
-' -- with no topic the topic names. A topic not in HELP.TXT shows No help for TOPIC on the
-' -- status row. A HELP.TXT that does not open shows its error on the status row.
+' -- and digits, filled in. OK shows the topic from C:\DOS\HELP.HLP until a key is pressed, or
+' -- with no topic the topic names. A topic not in HELP.HLP shows No help for TOPIC on the
+' -- status row. A HELP.HLP that does not open shows its error on the status row.
 ' -- Ctrl+C is a key, not the STOP key. A save writes EDIT.$$$ in the file's directory, then
 ' -- gives it the file's name, so a failed save keeps the file as it was. With BAK=1 the old
 ' -- file is kept, renamed to the extension .BAK. Lines end in LF
@@ -93,7 +93,7 @@ CONST CLIPBOARD AS UWORD = $9700, CLIP_SIZE AS UWORD = 2048
 ' MAX_ROOM bytes, the most a UWORD counts. MOVE_GAP and LOAD pass RUN_SIZE bytes at a time.
 CONST WINDOW_START AS UWORD = $A000, WINDOW_END AS UWORD = $C000, BANK_SIZE AS UWORD = 8192
 CONST MAX_BANKS AS UBYTE = 8, MAX_ROOM AS UWORD = 65535, RUN_SIZE AS UBYTE = 255
-CONST DOS_HELP_NAME$ = "C:\DOS\HELP.TXT"
+CONST DOS_HELP_NAME$ = "C:\DOS\HELP.HLP"
 ' The menu items' ids. An item that a key does takes that key's code as its id; MENU_KEY turns
 ' the other ids into their keys.
 CONST ID_CLEAR AS UBYTE = 200, ID_DOS_HELP AS UBYTE = 201, ID_ABOUT AS UBYTE = 202

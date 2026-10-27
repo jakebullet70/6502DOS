@@ -10,8 +10,8 @@
 ' -- key other than Y or N goes back to the text.
 ' -- F1 or Ctrl+G shows the keys from C:\DOS\TED.HLP until a key is pressed.
 ' -- Shift+F1 asks DOS help on: on the status row, with the word at the cursor, its letters
-' -- and digits, as the topic. Enter shows the topic from C:\DOS\HELP.TXT until a key is
-' -- pressed, or with no topic the topic names. A topic not in HELP.TXT shows No help for
+' -- and digits, as the topic. Enter shows the topic from C:\DOS\HELP.HLP until a key is
+' -- pressed, or with no topic the topic names. A topic not in HELP.HLP shows No help for
 ' -- TOPIC on the status row. Tab or an extended key goes back to the text.
 ' -- A help file that does not open shows its error on the status row.
 ' -- Ctrl+C is a key, not the STOP key. A save writes TED.$$$ in the file's directory, then
@@ -62,7 +62,7 @@ CONST WINDOW_START AS UWORD = $A000, WINDOW_END AS UWORD = $C000, BANK_SIZE AS U
 CONST MAX_BANKS AS UBYTE = 8, MAX_ROOM AS UWORD = 65535, RUN_SIZE AS UBYTE = 255
 ' LOAD's code for a file larger than MAX_ROOM.
 CONST TOO_LARGE AS UBYTE = 254
-CONST HELP_NAME$ = "C:\DOS\TED.HLP", DOS_HELP_NAME$ = "C:\DOS\HELP.TXT"
+CONST HELP_NAME$ = "C:\DOS\TED.HLP", DOS_HELP_NAME$ = "C:\DOS\HELP.HLP"
 
 
 DIM FILE_NAME AS STRING * 80, STATUS AS STRING * 120, MESSAGE AS STRING * 40
