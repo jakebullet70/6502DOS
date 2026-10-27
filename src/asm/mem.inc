@@ -34,6 +34,7 @@ SYS_X         = $030D
 SYS_Y         = $030E
 SYS_P         = $030F
 ; The gate code runs at $0310-$033F. GATE_ENTRIES, the first call entry, is in api.inc.
+; $0400-$05FF: the variables and buffers of reg_get and reg_set (reg.s), segment REGRAM.
 KERNEL_RAM    = $0600           ; $0600-$06F7: kernel variables, segment KERNELRAM
 ; The request of a block driver's input command. The kernel fills it before each call.
 BLK_UNIT      = $06F8           ; the unit

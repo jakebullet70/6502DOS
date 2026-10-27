@@ -124,6 +124,15 @@ with Microsoft BASIC. Keep it updated with each new feature.
 - Not planned: `KEY ON`/`KEY OFF` and the key labels on the bottom row, which need a scroll
   region in the console.
 
+## 7. LOADFONT and the settings store (6502dos target)
+
+- **`LOADFONT "name"`.** Loads a 2048-byte 8x8 font file into VRAM `$1F000`, as `FONT.COM`
+  does. The ROM has no font call, so the keyword reads the file through `K_READ` and writes
+  VRAM through `K_VPOKE`. Syntax, errors and cost to be decided.
+- **Read and save a key of `C:\6502DOS.REG`.** The ROM calls `reg_get` (55) and `reg_set`
+  (56) read and set a key; `docs/API.md` of the 6502DOS repo has their registers and errors.
+  The keyword or function names, syntax and cost are to be decided.
+
 ## Parked (long term)
 
 Not scheduled. They need the new kernal's file calls first.

@@ -1,0 +1,79 @@
+' REGLIB: the calls reg_get and reg_set, through DOS.REG_GET and DOS.REG_SET, on
+' C:\6502DOS.REG.
+#INCLUDE "DOS.UXI"
+DIM HANDLE AS UWORD, COUNT AS UWORD, INDEX AS UWORD, BYTES(400) AS UBYTE, LONG_TEXT$ * 255
+
+' Prints the file, a $00 as ~.
+SUB SHOW_FILE()
+  HANDLE = OPEN("C:\6502DOS.REG", O.READ)
+  COUNT = READ(HANDLE, @BYTES, 400)
+  CLOSE HANDLE
+  PRINT "|";
+  FOR INDEX = 0 TO COUNT - 1
+    IF BYTES(INDEX) = 0
+      PRINT "~";
+    ELSE
+      PRINT CHR$(BYTES(INDEX));
+    ENDIF
+  NEXT
+  PRINT "|"; COUNT
+END SUB
+
+' 1: no file, the fallback
+PRINT "1 ["; DOS.REG_GET("FONT.FILE", "NONE"); "]"
+
+' 2: the first write makes the file; a lower-case key; a changed key moves to the end; an =
+DOS.REG_SET("FONT.FILE", "C:\UTILS\GUI.F08")
+DOS.REG_SET("EDIT.TABS", "4")
+DOS.REG_SET("edit.theme", "DARK")
+DOS.REG_SET("EDIT.TABS", "2")
+DOS.REG_SET("SUM", "A=B")
+SHOW_FILE()
+
+' 3: reads in any case, a missing key, a key that is the start of another
+PRINT "3 "; DOS.REG_GET("EDIT.TABS", "8"); " "; DOS.REG_GET("Edit.Theme", "?")
+PRINT "3 "; DOS.REG_GET("SUM", "?"); " "; DOS.REG_GET("EDIT.TAB", "NONE")
+
+' 4: the same value writes nothing; "" removes a key; removing a missing key does nothing
+DOS.REG_SET("SUM", "A=B")
+DOS.REG_SET("EDIT.THEME", "")
+DOS.REG_SET("NOPE", "")
+SHOW_FILE()
+
+' 5: a value of 255 characters
+FOR INDEX = 1 TO 255
+  LONG_TEXT$ = LONG_TEXT$ + CHR$(65 + INDEX MOD 26)
+NEXT
+DOS.REG_SET("LONG", LONG_TEXT$)
+PRINT "5"; LEN(DOS.REG_GET("LONG", "")); " "; DOS.REG_GET("LONG", "") = LONG_TEXT$
+PRINT "5 "; DOS.REG_GET("FONT.FILE", "?")
+
+' 6: a file with another header reads as empty, and a write starts it again
+HANDLE = OPEN("C:\6502DOS.REG", O.WRITE)
+PRINT #HANDLE, "JUNK=1";
+CLOSE HANDLE
+PRINT "6 "; DOS.REG_GET("JUNK", "NONE")
+DOS.REG_SET("A", "1")
+SHOW_FILE()
+
+' 7: no C:\6502DOS.$$$ is left
+DOS.FINDFIRST("C:\6502DOS.$$$", 0)
+PRINT "7 E"; DOS.ERROR
+
+' 8: a missing key gives error 2; a key of 0 or 33 characters, or with an =, gives error 13
+LONG_TEXT$ = DOS.REG_GET("NOPE", "-")
+PRINT "8 "; LONG_TEXT$; " E"; DOS.ERROR
+DOS.REG_SET("", "1")
+PRINT "8 E"; DOS.ERROR
+DOS.REG_SET("A=B", "1")
+PRINT "8 E"; DOS.ERROR
+LONG_TEXT$ = ""
+FOR INDEX = 1 TO 32
+  LONG_TEXT$ = LONG_TEXT$ + "K"
+NEXT
+DOS.REG_SET(LONG_TEXT$, "32")
+PRINT "8 E"; DOS.ERROR
+PRINT "8 "; DOS.REG_GET(LCASE$(LONG_TEXT$), "-")
+LONG_TEXT$ = LONG_TEXT$ + "K"
+LONG_TEXT$ = DOS.REG_GET(LONG_TEXT$, "-")
+PRINT "8 "; LONG_TEXT$; " E"; DOS.ERROR

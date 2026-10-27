@@ -3,7 +3,7 @@
 ' -- prints the help on the MSBASIC keyword topic from C:\DOS\HELPBAS.HLP. With no topic it
 ' -- lists the topic names, a new line before a name that would pass column 79.
 ' -- A small letter in topic is the same as a capital.
-' -- HELPBAS.HLP has the format of HELP.TXT: a line :NAME starts the topic NAME, in capitals.
+' -- HELPBAS.HLP has the format of HELP.HLP: a line :NAME starts the topic NAME, in capitals.
 ' -- The lines after it, up to the next :NAME line, are its text. A line is 80 characters at
 ' -- most; the rest is cut. The file has CR LF line ends, for MSBASIC's HELP.
 ' -- No help for topic prints No help for TOPIC and gives exit code 1. No HELPBAS.HLP prints

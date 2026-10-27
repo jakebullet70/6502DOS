@@ -1690,7 +1690,7 @@ To do, not designed yet:
   - Tests: `LINEJOIN` and `ERRLINEJOIN`.
 - **Escaped strings, as in FreeBASIC** (user, 2026-10-17; pyuxc only). Step 3 of 3. A string
   literal with a `!` before its opening quote takes escapes. A string with no `!` keeps its
-  bytes as they are, so `"C:\DOS\HELP.TXT"` is unchanged.
+  bytes as they are, so `"C:\DOS\HELP.HLP"` is unchanged.
 
   ```
   CONST SGR_REVERSE$ = !"\27[7m"

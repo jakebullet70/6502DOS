@@ -74,6 +74,8 @@ Conventions:
 | `exec_rest` | 52 | `$03DC` | none | `r0` buffer<br>`r1` count, 0 to close the file | `r1` the count read, fewer at the end of the file | 6 | yes |
 | `absread` | 53 | `$03DF` | none | `A` drive: 0 A:, 2 C:<br>`X` count, 0 to 255<br>`r0` buffer<br>`r1 r2` first sector | none | 15, 21, 30 | yes |
 | `abswrite` | 54 | `$03E2` | none | `A` drive: 0 A:, 2 C:<br>`X` count, 0 to 255<br>`r0` buffer<br>`r1 r2` first sector | none | 15, 21, 29, 30 | yes |
+| `reg_get` | 55 | `$03E5` | none | `r0` key<br>`r1` buffer, 256 bytes | `r1` buffer, filled with the length-prefixed value | 2, 4, 13, 21, 30 | yes |
+| `reg_set` | 56 | `$03E8` | none | `r0` key<br>`r1` value | none | 4, 5, 13, 21, 29, 30 | yes |
 
 ## What each call does
 
@@ -132,6 +134,8 @@ Conventions:
 - `exec_rest`: Reads the part of the running program's file past $9EFF, which `exec` leaves open: r1 bytes to r0, from where the last read ended. A buffer at $A000-$BFFF is in the selected RAM bank. A count of 0 closes the file. The file also closes when the program ends or calls `exec`. Error 6 when the file is not open.
 - `absread`: Reads X sectors of a drive's card into memory, as MS-DOS's INT 25h. The sector numbers count from the card's first sector, the MBR, not from the volume's. The buffer is in the selected RAM bank and must not run into $9F00 or past $BFFF. A count of 0 reads nothing.
 - `abswrite`: Writes X sectors from memory to a drive's card, as MS-DOS's INT 26h, with the sector numbers and the buffer of `absread`. The kernel's sector buffer is written first and read again after. The volume keeps the free count and the boot sector's fields it read at boot.
+- `reg_get`: Copies the value of a key in the settings store, C:\6502DOS.REG, to the caller's buffer: the length byte, then up to 255 characters. A key is 1 to 32 characters with no = and matches in any case. A missing key or store gives error 2; a store that does not start with its header reads as empty. A key of 0 or more than 32 characters, or with an =, gives error 13. Opens the store on a handle of the running program.
+- `reg_set`: Sets a key in the settings store, C:\6502DOS.REG, to a value of up to 255 characters with no $00. An empty value removes the key. A changed key moves to the end of the store. The call writes the store to C:\6502DOS.$$$, deletes C:\6502DOS.REG and renames the copy; it writes nothing when the store holds the value already. A key as for `reg_get`; a key or a value that breaks the rules gives error 13. A full drive gives error 29, and the store is left as it was. Needs two free handles.
 
 ## Errors
 

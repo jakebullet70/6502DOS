@@ -96,6 +96,35 @@ the beta 1 list).
         AUTOEXEC.BAT. A settings call is Windows 3 (`GetProfileString` in KERNEL). REG returns
         with the environment work of PLAN section 7, as ROM calls over a RAM bank; asm, so ask
         first. `lib/REG.UXI` and `tests/REGLIB.UXB` stay untracked until then.
+      - REG in the API (the user, 2026-10-27; file only, option B; asm OK). `src/asm/reg.s`, ROM
+        bank 0: call 55 `reg_get` (entry `$03E5`; r0 key, r1 a 256-byte buffer) and call 56
+        `reg_set` (`$03E8`; r0 key, r1 value, "" removes). Same file, rules and errors as
+        `lib/REG.UXI`: key 1-32 characters with no =, else error 13; a missing key or store
+        gives 2; a value with a $00 gives 13; a short write gives 29. Both stream through
+        128-byte buffers and open the files on the running program's handles (`reg_set` needs
+        two). An error at any depth goes to `reg_fail`, which resets the stack from `reg_sp`;
+        `reg_leave` closes the files, deletes `C:\6502DOS.$$$` when it is still open, and puts
+        r0 and r1 back. The paths are copied to RAM: `lib_open` in bank 1 cannot read a path in
+        bank 0's ROM.
+        - Cost: bank 0 CODE +644 and RODATA +38, bank 0 ends `$EB8F`, 5136 bytes free. RAM
+          `$0400-$056A`, segment `REGRAM` (`rom.cfg` memory `REGMEM` `$0400-$05FF`). Zero page:
+          `reg_value`, 2 bytes.
+        - `lib/DOS.UXI`: `DOS.REG_GET(KEY, FALLBACK)` and `DOS.REG_SET(KEY, VALUE)`, which set
+          `DOS.ERROR`. `lib/REG.UXI` is deleted (the user, 2026-10-27).
+        - Test `REGLIB` uses the `DOS.` calls: sections 1 to 7 give the old golden unchanged,
+          and section 8 is new (error 2, error 13 for "", `A=B` and 33 characters, a 32-character
+          key in any case). Golden updated locally. REGLIB ok 1.9 s, DOSAPI ok 1.5 s.
+        - Build 12317 ms with the new `DOS.UXI` (every program recompiles); the ROM alone 1862
+          ms, the new baseline.
+        - To do (the user, 2026-10-27): MSBASIC needs `LOADFONT` and keywords for `reg_get`
+          and `reg_set`; `MSBASIC/TODO.md` section 7.
+      - HELP.TXT is renamed `HELP.HLP` (the user, 6345e60). Cleanup: the stale
+        `build/DOS/HELP.TXT` is deleted; `HELP.UXB`, `HELPBAS.UXB`, the HELP comment of
+        `6502dos_extra.s`, PLAN and UXCBASIC.PLAN name `HELP.HLP`. History entries below keep
+        `HELP.TXT`.
+        - Build 2095 ms. The `TREE` test failed only on that file name, then was dropped (the
+          user, 2026-10-27): it lists the whole card, so any card change breaks it.
+          `tests/TREE.IN` and `TREE.OUT` were local only; no test runs `TREE.COM` now.
       - The font comes back at each boot from the line `FONT C:\UTILS\GUI.F08` in
         `sd/startup.cmd`, after `diskinfo c:`. `FONT.COM` is unchanged, with no REG. A headless
         boot of `build\SD.IMG` reaches `Ready...` in 1.17 s with no FONT error. Build 1735 ms,
@@ -2100,7 +2129,12 @@ the beta 1 list).
   PATH from the WinGet links. Build 4400 ms wall (the ROM 3.30 s). The build with the new
   calls took 10495 ms (the ROM 10.28 s): a new `DOS.UXI` recompiles every program. The
   baseline stays 4400 ms for a build that leaves `DOS.UXI` alone.
-- Steps since the last full suite: 14. The full suite waits until FONT is done (the user, 2026-10-27).
+- Steps since the last full suite: 1 (REG in the API). Full suite after FONTEDIT step 4 (2026-10-27): 116 tests,
+  5 failed, 230.7 s. `CHKDSK`, `FILES`, `HDIR`, `HDIRARG` and `TREE` failed on the card's new
+  files only: `FONTEDIT.COM`, `UTILS\SRC\FONTEDIT`, `FONTHEX.COM`, `FONT.COM`, `CHKDSK.COM`, the
+  untracked `tests/REGLIB.UXB`'s `REGLIB.COM`, and `CMDSHELL.COM` at 21850 bytes. Goldens
+  updated; reruns: `CHKDSK` ok 3.8 s, `FILES` 1.3 s, `HDIR` 2.6 s, `HDIRARG` 2.4 s, `TREE` 3.3 s.
+  The five goldens list `REGLIB.COM`: without `tests/REGLIB.UXB` they fail.
 
 0. PLAN section 11 step 6, CBM DOS leaves: 6a to 6e done. Full suite passed after the `END`
    range step.

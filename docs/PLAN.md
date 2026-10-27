@@ -109,7 +109,7 @@ The UXCBASIC library is the folder `lib/`. Each file holds one namespace of the 
 | `$030C–$030F` | the A, X, Y and P bytes of UXCBASIC's `SYS` |
 | `$0310–$033F` | the gate code |
 | `$0340–$03FF` | the call entries, 3 bytes each: room for 64 calls |
-| `$0400–$05FF` | free |
+| `$0400–$05FF` | the variables and file buffers of `reg_get` and `reg_set`, `$0400–$056A` in use |
 | `$0600–$06F7` | kernel variables: the drive table, and the state of the console, the SD driver, `exec` and the string heaps |
 | `$06F8–$06FF` | the request of a block driver's input command (section 6) |
 | `$0700–$07FF` | the PSP of the running program (section 7) |
@@ -334,6 +334,7 @@ Calls, with the MS-DOS 2.0 function each matches:
 | `ticks` | none | the VSYNC counter |
 | `errmsg` | none | copies the text of an error number to a 128-byte buffer |
 | `exec_rest` | none | reads the part of the running program's file past `$9EFF` (section 7) |
+| `reg_get`, `reg_set` | none; Windows 3 `GetProfileString`, `WriteProfileString` | read and set a key of the settings store `C:\6502DOS.REG` |
 
 Errors use MS-DOS 2.0's numbers:
 
@@ -957,13 +958,13 @@ Short names:
     The count times 21 over 1250 is worked in two parts, so the product stays in 32 bits.
   - Trap: x16emu's RTC runs on the host's clock. A test reads the time back only straight
     after it sets it.
-- `HELP [topic]` prints the help on a topic from `C:\DOS\HELP.TXT`. `HELP` alone lists the
+- `HELP [topic]` prints the help on a topic from `C:\DOS\HELP.HLP`. `HELP` alone lists the
   topics on one line.
   - The topic is taken in capitals: `HELP dir` is `HELP DIR`.
-  - In `HELP.TXT` a line `:NAME`, in capitals, starts a topic. Its text runs to the next line
+  - In `HELP.HLP` a line `:NAME`, in capitals, starts a topic. Its text runs to the next line
     that starts with `:`.
   - A line past 80 characters is cut. There is no paging.
-  - An unknown topic prints `No help for TOPIC` and gives exit code 1. With no `HELP.TXT` it
+  - An unknown topic prints `No help for TOPIC` and gives exit code 1. With no `HELP.HLP` it
     prints `File not found` and gives exit code 2. The exit code is 0 otherwise.
 - `VIEW name` is a DOS utility, `VIEW.COM`, for the command line. It shows a text file a page at
   a time.
@@ -1100,7 +1101,7 @@ Short names:
     prints its error message and gives 5.
 - `HELPBAS [topic]` is a DOS utility, `HELPBAS.COM`. It prints the help on an MSBASIC keyword
   from `C:\DOS\HELPBAS.HLP`, and with no topic lists the topics.
-  - `HELPBAS.HLP` has the format of `HELP.TXT`, with CR LF line ends. MSBASIC's `HELP [topic]`
+  - `HELPBAS.HLP` has the format of `HELP.HLP`, with CR LF line ends. MSBASIC's `HELP [topic]`
     reads the same file.
   - No help for the topic gives exit code 1, and no `HELPBAS.HLP` exit code 2.
 - The utilities lie in the card's folder `\UTILS`, each with its source in `\UTILS\SRC\FOLDER`.
@@ -1526,7 +1527,7 @@ change.
   - Whether a child program sees `PATH$` and the other system variables, through the
     environment (section 7).
   - Whether one Markdown reference, `docs/SHELL.md`, holds the shell language, and
-    `tools/build.py` makes the shell topics of `HELP.TXT` from it.
+    `tools/build.py` makes the shell topics of `HELP.HLP` from it.
 - Graphics, sound and loadable drivers: not before step 5 works.
 - The 65C816: not in the first version.
 - What `xms_move` does when the source and the destination overlap.

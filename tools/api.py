@@ -404,6 +404,26 @@ CALLS = [
               ("r1 r2", "first sector")],
          errors=[15, 21, 29, 30],
          written=True),
+    call(55, "reg_get", None, ("Copies the value of a key in the settings store, C:\\6502DOS.REG, "
+          "to the caller's buffer: the length byte, then up to 255 characters. A key is 1 to 32 "
+          "characters with no = and matches in any case. A missing key or store gives error 2; "
+          "a store that does not start with its header reads as empty. A key of 0 or more than "
+          "32 characters, or with an =, gives error 13. Opens the store on a handle of the "
+          "running program."),
+         in_=[("r0", "key"), ("r1", "buffer, 256 bytes")],
+         out=[("r1", "buffer, filled with the length-prefixed value")],
+         errors=[2, 4, 13, 21, 30],
+         written=True),
+    call(56, "reg_set", None, ("Sets a key in the settings store, C:\\6502DOS.REG, to a value of "
+          "up to 255 characters with no $00. An empty value removes the key. A changed key moves "
+          "to the end of the store. The call writes the store to C:\\6502DOS.$$$, deletes "
+          "C:\\6502DOS.REG and renames the copy; it writes nothing when the store holds the "
+          "value already. A key as for `reg_get`; a key or a value that breaks the rules gives "
+          "error 13. A full drive gives error 29, and the store is left as it was. Needs two "
+          "free handles."),
+         in_=[("r0", "key"), ("r1", "value")],
+         errors=[4, 5, 13, 21, 29, 30],
+         written=True),
 ]
 
 # The break modes of con_break: (number, name). The name becomes BREAK_NAME in asm.
