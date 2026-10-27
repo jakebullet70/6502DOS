@@ -97,13 +97,22 @@ reset:
         sta PSP_TOP
         jmp monitor
 
-; post: shows the power-on screen after the banner: the copyright, a count up to the banked
-; RAM, the VERA version and the SD card, then counts 2 seconds down. Enter or Space ends the
-; count at once, F5 gives the shell the tail -N and F8 the tail -S, F2 or Delete chooses the
-; monitor. r2 = the number of banks, 0 for 256. Returns carry set for the monitor, else carry
-; clear and r1 = the tail. Changes A, X, Y, r1 to r5 and MONITOR_OUT.
+; post: shows the power-on screen after the banner: the copyright, the CPU, a count up to the
+; banked RAM, the VERA version and the size of C:, then counts 2 seconds down. Enter or Space
+; ends the count at once, F5 gives the shell the tail -N and F8 the tail -S, F2 or Delete
+; chooses the monitor. r2 = the number of banks, 0 for 256. Returns carry set for the monitor,
+; else carry clear and r1 = the tail. Changes A, X, Y, r0 to r5 and MONITOR_OUT.
 post:
         ldx #copyright - texts
+        jsr print
+        ldx #cpu - texts
+        jsr print
+        ldx #cpu_c02 - texts
+        lda #0
+        .byte $C2, $02          ; REP #$02: a 65C816 clears Z, a 65C02 skips it as a 2-byte NOP
+        beq @cpu
+        ldx #cpu_c816 - texts
+@cpu:
         jsr print
         ldx #memory - texts
         jsr print
@@ -172,7 +181,54 @@ post:
         ldx #none - texts
         lda sd_ready
         beq @card
+        lda #3                  ; C:
+        jsr API_DISKFREE        ; r0 = the sectors per cluster, r4 r5 = the clusters
         ldx #ok - texts
+        bcs @card               ; no FAT32 volume
+@scale:                         ; r4 r5 times the sectors per cluster, a power of 2
+        lsr r0
+        bcs @megabytes
+        asl r4
+        rol r4+1
+        rol r5
+        rol r5+1
+        bra @scale
+@megabytes:                     ; mon_number = the sectors
+        ldx #3
+@copy:
+        lda r4,x
+        sta mon_number,x
+        dex
+        bpl @copy
+        ldy #11                 ; MB: the sectors / 2^11
+        lda r5+1
+        bne @giga
+        lda r5
+        cmp #$20                ; 2^21 sectors, 1 GB
+        lda #'M'
+        bcc @divide
+@giga:
+        lda #'G'
+        ldy #21                 ; GB: the sectors / 2^21
+@divide:
+        lsr mon_number+3
+        ror mon_number+2
+        ror mon_number+1
+        ror mon_number
+        dey
+        bne @divide
+        bcc @whole              ; the last bit out rounds to the nearest
+        inc mon_number
+        bne @whole
+        inc mon_number+1        ; the quotient stays below 2^16
+@whole:
+        pha
+        jsr print_number
+        lda #' '
+        jsr CHROUT
+        pla
+        jsr CHROUT
+        ldx #fat32 - texts
 @card:
         jsr print
         ldx #keys - texts
@@ -235,8 +291,9 @@ no_tail:
         stx r1+1
         rts
 
-; print_byte: writes A in decimal. print_word: writes A and Y, the high byte, in decimal. Both
-; return X = the digits written. Change A, Y, mon_number and MONITOR_OUT.
+; print_byte: writes A in decimal. print_word: writes A and Y, the high byte, in decimal.
+; print_number: writes the 32 bits of mon_number in decimal. All return X = the digits
+; written. Change A, Y, mon_number and MONITOR_OUT.
 print_byte:
         ldy #0
 print_word:
@@ -244,6 +301,7 @@ print_word:
         sty mon_number+1
         stz mon_number+2
         stz mon_number+3
+print_number:
         ldy #9
         jsr put_decimal
         ldx #0
@@ -319,6 +377,12 @@ tail_none:                      ; the banner's 0, an empty tail
         .byte 0
 copyright:
         .byte "Copyright (c) 2026 Steven De George SR", $0D, $0D, 0
+cpu:
+        .byte "CPU: 65C", 0
+cpu_c02:
+        .byte "02", $0D, 0
+cpu_c816:
+        .byte "816", $0D, 0
 memory:
         .byte "Memory Test: ", 0
 k_ok:
@@ -331,6 +395,8 @@ sd_card:
         .byte "SD card: ", 0
 none:
         .byte "none", $0D, 0
+fat32:
+        .byte "B FAT32", $0D, 0
 keys:
         .byte $0D, "F5 Skip STARTUP.CMD  F8 Step  DEL Monitor", $0D
         .byte "Starting 6502DOS... ", 0

@@ -144,8 +144,27 @@ the beta 1 list).
           `SHBOOT` ok 1.4 s, `BASBOOT` 1.4, `BASEDIT` 1.4, `BASHELP` 1.7, `BASLOAD` 1.9,
           `BASRUN` 1.4, `HELPBAS` 2.7. Build 1767 ms for asm alone, the new baseline.
         - The user edited `sd/startup.cmd`.
-        - Next: the SD size and FAT32 on the SD line, if wanted.
-        - Not picked: the CPU line (65C02 or 65C816), the SMC version, the RTC line.
+        - Step 4, done, committed (the user, 2026-10-27): `CPU: 65C02` or `CPU: 65C816`
+          after the copyright, from `REP #$02` (`.byte $C2, $02`): a 65C816 clears Z, a 65C02
+          skips it as a 2-byte NOP. The SD line reads `SD card: 253 MB FAT32`: `diskfree` of
+          C:, the clusters times the sectors per cluster, over 2048. It is the data area of
+          the volume, not the whole card. No FAT32 volume keeps `SD card: OK`. New entry
+          `print_number` prints the 32 bits of `mon_number`.
+        - Cost: bank 0 CODE +95 bytes; CODE ends at `$DF0B`. Build 1771 ms, the new baseline.
+        - A one-off boot with `x16emu -c816` shows `CPU: 65C816` and reaches `C>`.
+        - The 7 POST goldens gained the two lines by a script, locally (SHBOOT by
+          `--update`, diff read): `SHBOOT` ok 1.7 s, `BASBOOT` 1.8, `BASRUN` 1.8, `HELPBAS`
+          3.0, `BASHELP` 2.0, `BASLOAD` 2.3, `BASEDIT` 1.8.
+        - Step 4b, done, committed (the user, 2026-10-27; real cards are 4 to 16 GB):
+          the size rounds to the nearest unit, MB below 2^21 sectors and GB from there:
+          the 4 MB `build/SD.IMG` shows `3 MB`, the test card `253 MB`, a 1.5 GB image
+          (`mksd.py` 64 sectors per cluster, 50000 clusters, deleted) `2 GB`. A 16 GB card
+          shows `15 GB` (binary GB). Text `fat32` is now `B FAT32`; the code prints the
+          space and the `M` or `G`.
+        - Cost: bank 0 CODE +32 bytes; CODE ends at `$DF2B`. Build 1739 ms, the new
+          baseline. `SHBOOT` ok 1.7 s.
+        - Not picked: the SMC version, the RTC line.
+        - Next (the user, 2026-10-27): the font builder, utility 3 below; design talk first.
     - 8x16 console: tried and set aside (the user, 2026-10-27), kept on branch
       `font-8x16`, whose HANDOFF has the details. `main` stays 8x8 at 640x240. Build after the
       revert 6988 ms (4 programs recompiled for `VERA.UXI`, and the ROM), the new baseline.
@@ -1993,7 +2012,7 @@ the beta 1 list).
   PATH from the WinGet links. Build 4400 ms wall (the ROM 3.30 s). The build with the new
   calls took 10495 ms (the ROM 10.28 s): a new `DOS.UXI` recompiles every program. The
   baseline stays 4400 ms for a build that leaves `DOS.UXI` alone.
-- Steps since the last full suite: 8.
+- Steps since the last full suite: 9. The full suite waits until FONT is done (the user, 2026-10-27).
 
 0. PLAN section 11 step 6, CBM DOS leaves: 6a to 6e done. Full suite passed after the `END`
    range step.
