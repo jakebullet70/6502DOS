@@ -1,0 +1,522 @@
+'=============================================================================================
+' -- ZIP [-r] archive files
+' -- adds files to a ZIP archive, and makes the archive when it does not exist. files are up
+' -- to 8 names or patterns with * and ?. A folder adds an entry for itself; with -r, the
+' -- files and folders in it too, and theirs, down to 16 folders deep. Hidden and system files
+' -- are left out. A line each names the entry: adding: NAME (stored 0%).
+' -- An entry is named by its path as typed, with / between folders, cut of a drive and of a
+' -- leading \, .\ or ..\. A file whose name is in the archive already replaces that entry.
+' -- New entries come first, then the old ones kept. The archive and ZIP's two work files,
+' -- ZIPTEMP.$$$ and ZIPLIST.$$$ in the archive's folder, are left out when a path names them
+' -- as the archive's name does.
+' --
+' -- An archive name with no . in its last part gets .ZIP added. ZIP writes the new archive
+' -- to ZIPTEMP.$$$, then deletes the old one and renames the work file.
+' -- No archive or no files prints Required parameter missing, and a switch but -r prints
+' -- Invalid switch, each exit code 1. An old archive that is not a ZIP archive, or is ZIP64
+' -- or split, prints its error, as UNZIP does, exit code 2. A name that matches nothing prints
+' -- zip warning: name not matched, and a file that does not open zip warning: could not open
+' -- for reading; each gives exit code 3 at the end. No file to add prints zip error: Nothing
+' -- to do!, and an error in writing prints its message; each ends ZIP with exit code 3 and
+' -- leaves the old archive as it was. Exit code 0 otherwise.
+' --
+' -- From a prompt:
+' --     ZIP GAMES *.PRG
+' --     ZIP -r C:\BACKUP DOCS SRC\*.UXB
+'=============================================================================================
+#INCLUDE "DOS.UXI"
+#INCLUDE "HEAP.UXI"
+#INCLUDE "BANK.UXI"
+#INCLUDE "ZIPFILE.UXI"
+CONST TEMP_FILE AS STRING = "ZIPTEMP.$$$", LIST_FILE AS STRING = "ZIPLIST.$$$"
+' Version 2.0 made on MS-DOS, so the low byte of the external attributes is the FAT's.
+CONST VERSION_MADE AS UBYTE = 20, VERSION_STORED AS UBYTE = 10
+CONST EXTERNAL_AT AS UBYTE = 38, FLAG_DESCRIPTOR AS UBYTE = 8
+CONST FULL_DESCRIPTOR AS UBYTE = 16, BARE_DESCRIPTOR AS UBYTE = 12
+' The name table: TABLE_SLOTS slots of 8 bytes in TABLE_BANKS banks, at most TABLE_MAX used.
+CONST TABLE_BANKS AS UBYTE = 4, TABLE_SLOTS AS UWORD = 4096, TABLE_MAX AS UWORD = 3072
+CONST SLOTS_PER_BANK AS UWORD = 1024, SLOT_SIZE AS UBYTE = 8
+' A folder search keeps the find buffer's bytes before FIND_ATTR for each folder it is in.
+CONST DEPTH_MAX AS UBYTE = 16
+
+DIM ARGUMENT AS STRING * 255, ARCHIVE_NAME AS STRING * 255, ENTRY_NAME AS STRING * 255
+DIM TEMP_NAME AS STRING * 255, LIST_NAME AS STRING * 255, WALK_PATH AS STRING * 255
+DIM FILE_PATH AS STRING * 255, CHECK_NAME AS STRING * 255, KEY_TEXT AS STRING * 255
+DIM ARCHIVE_KEY AS STRING * 255, TEMP_KEY AS STRING * 255, LIST_KEY AS STRING * 255
+DIM SLOT AS UBYTE, SWITCH AS UBYTE, RECURSE AS UBYTE, EXIT_CODE AS UBYTE, OLD_EXISTS AS UBYTE
+DIM LINE_OPEN AS UBYTE, WRITE_ERROR AS UBYTE
+DIM FILE_SLOTS AS UWORD                            ' bit n set: P(n+1)$ is a file to add
+DIM TEMP AS UWORD, LIST AS UWORD, SOURCE AS UWORD
+DIM TEMP_SIZE AS ULONG, LIST_SIZE AS ULONG, ENTRY_COUNT AS UWORD, ADDED AS UWORD
+DIM LENGTH AS ULONG, COUNT AS UWORD, LOCAL_AT AS ULONG
+DIM FILE_TIME AS UWORD, FILE_DATE AS UWORD, FILE_ATTRIBUTES AS UBYTE
+DIM CHECK(ENTRY_SIZE) AS UBYTE
+' The name table holds an entry's name key and its place in LIST, plus 1: 0 is an empty slot.
+DIM TABLE_BANK AS UBYTE, CALLER_BANK AS UBYTE, TABLE_COUNT AS UWORD
+DIM KEY AS ULONG, FREE_SLOT AS UWORD, SLOT_AT AS UWORD
+DIM DEPTH AS UBYTE, PATH_LENGTHS(DEPTH_MAX) AS UBYTE
+DIM FIND_STACK(DEPTH_MAX * DOS.FIND_ATTR) AS UBYTE
+
+' Closes the files, deletes the work files, prints MESSAGE and ends ZIP with exit code CODE.
+SUB ABORT(MESSAGE AS STRING, CODE AS UBYTE)
+  IF SOURCE <> NOFILE THEN DOS.CLOSE_FILE(SOURCE)
+  IF ARCHIVE <> NOFILE THEN DOS.CLOSE_FILE(ARCHIVE)
+  IF TEMP <> NOFILE THEN
+    DOS.CLOSE_FILE(TEMP)
+    DOS.DELETE(TEMP_NAME)
+  END IF
+  IF LIST <> NOFILE THEN
+    DOS.CLOSE_FILE(LIST)
+    DOS.DELETE(LIST_NAME)
+  END IF
+  IF LINE_OPEN THEN PRINT
+  FAIL(MESSAGE, CODE)
+END SUB
+
+' Writes the BYTES bytes at AT to HANDLE, TEMP or LIST, and adds them to its size. A write
+' that fails ends ZIP with exit code 3.
+SUB PUT(HANDLE AS UWORD, AT AS UWORD, BYTES AS UWORD)
+  IF DOS.WRITE_FILE(HANDLE, AT, BYTES) <> BYTES THEN
+    WRITE_ERROR = DOS.ERROR
+    IF WRITE_ERROR = 0 THEN ABORT("Insufficient disk space", 3)
+    ABORT(DOS.ERRMSG(WRITE_ERROR), 3)
+  END IF
+  IF HANDLE = TEMP THEN
+    TEMP_SIZE = TEMP_SIZE + BYTES
+  ELSE
+    LIST_SIZE = LIST_SIZE + BYTES
+  END IF
+END SUB
+
+' Reads BYTES bytes of HANDLE to AT. A short read ends ZIP with Not a ZIP archive, exit code 2.
+SUB GET(HANDLE AS UWORD, AT AS UWORD, BYTES AS UWORD)
+  IF DOS.READ_FILE(HANDLE, AT, BYTES) <> BYTES THEN ABORT("Not a ZIP archive", 2)
+END SUB
+
+' Copies BYTES bytes of the old archive, from its position, to HANDLE.
+SUB COPY_OLD_BYTES(HANDLE AS UWORD, BYTES AS ULONG)
+  DIM PART AS UWORD
+  DO WHILE BYTES > 0
+    PART = BUFFER_SIZE
+    IF BYTES < BUFFER_SIZE THEN PART = BYTES
+    GET(ARCHIVE, @BUFFER, PART)
+    PUT(HANDLE, @BUFFER, PART)
+    BYTES = BYTES - PART
+  LOOP
+END SUB
+
+' The name of the entry for PATH: cut of a drive and of each leading \, / , .\ and ..\, with /
+' for \.
+FUNCT ENTRY_FOR(PATH AS STRING) AS STRING
+  DIM NAME AS STRING * 255, AT AS UWORD
+  NAME = PATH
+  IF MID$(NAME, 2, 1) = ":" THEN NAME = MID$(NAME, 3)
+  DO
+    IF LEFT$(NAME, 1) = "\" OR LEFT$(NAME, 1) = "/" THEN
+      NAME = MID$(NAME, 2)
+    ELSEIF LEFT$(NAME, 2) = ".\" THEN
+      NAME = MID$(NAME, 3)
+    ELSEIF LEFT$(NAME, 3) = "..\" THEN
+      NAME = MID$(NAME, 4)
+    ELSE
+      EXIT DO
+    END IF
+  LOOP
+  FOR AT = 1 TO LEN(NAME)
+    IF ContentsAt(@NAME + 1 + AT) = ASC("\") THEN ContentsAt(@NAME + 1 + AT) = ASC("/")
+  NEXT
+  RETURN NAME
+END FUNCT
+
+' The length of the folder part of PATH: up to its last \ or :, 0 when it has none.
+FUNCT FOLDER_LENGTH(PATH AS STRING) AS UBYTE
+  DIM AT AS UBYTE, LAST AS UBYTE, CHARACTER AS UBYTE
+  LAST = 0
+  FOR AT = 1 TO LEN(PATH)
+    CHARACTER = ASC(MID$(PATH, AT))
+    IF CHARACTER = ASC("\") OR CHARACTER = ASC(":") THEN LAST = AT
+  NEXT
+  RETURN LAST
+END FUNCT
+
+' The CRC-32 of NAME in capitals. Uses CRC.
+FUNCT NAME_KEY(NAME AS STRING) AS ULONG
+  KEY_TEXT = UCASE$(NAME)
+  CRC = $FFFFFFFF
+  CRC_DATA = @KEY_TEXT + 2
+  CRC_COUNT = LEN(KEY_TEXT)
+  CRC_ADD()
+  RETURN CRC
+END FUNCT
+
+' Selects the bank of name table slot S, and sets SLOT_AT to its address.
+SUB TABLE_SLOT(S AS UWORD)
+  BANK.USE(TABLE_BANK + (S >> 10))
+  SLOT_AT = $A000 + ((S AND (SLOTS_PER_BANK - 1)) << 3)
+END SUB
+
+' 1 when the central directory entry at AT in LIST is named NAME, in any case. Leaves LIST's
+' position at its end.
+FUNCT LISTED_AS(AT AS ULONG, NAME AS STRING) AS UBYTE
+  DIM SIZE AS UWORD
+  DOS.SEEK(LIST, FROM_START, AT AND $FFFF, AT >> 16)
+  GET(LIST, @CHECK, ENTRY_SIZE)
+  SIZE = ContentsAtW(@CHECK + NAME_SIZE_AT)
+  ContentsAt(@CHECK_NAME + 1) = SIZE
+  GET(LIST, @CHECK_NAME + 2, SIZE)
+  DOS.SEEK(LIST, FROM_END, 0, 0)
+  RETURN UCASE$(CHECK_NAME) = UCASE$(NAME)
+END FUNCT
+
+' 1 when the name table holds NAME, in any case. Else 0, with KEY and FREE_SLOT set for
+' TABLE_ADD.
+FUNCT TABLE_FIND(NAME AS STRING) AS UBYTE
+  DIM S AS UWORD, PLACE AS ULONG, STORED AS ULONG
+  KEY = NAME_KEY(NAME)
+  S = ContentsAtW(@KEY) AND (TABLE_SLOTS - 1)
+  DO
+    TABLE_SLOT(S)
+    ContentsAtW(@STORED) = ContentsAtW(SLOT_AT)
+    ContentsAtW(@STORED + 2) = ContentsAtW(SLOT_AT + 2)
+    ContentsAtW(@PLACE) = ContentsAtW(SLOT_AT + 4)
+    ContentsAtW(@PLACE + 2) = ContentsAtW(SLOT_AT + 6)
+    BANK.USE(CALLER_BANK)
+    IF PLACE = 0 THEN EXIT DO
+    IF STORED = KEY THEN
+      IF LISTED_AS(PLACE - 1, NAME) THEN RETURN 1
+    END IF
+    S = (S + 1) AND (TABLE_SLOTS - 1)
+  LOOP
+  FREE_SLOT = S
+  RETURN 0
+END FUNCT
+
+' Puts KEY and the entry at AT in LIST in FREE_SLOT, which TABLE_FIND set.
+SUB TABLE_ADD(AT AS ULONG)
+  AT = AT + 1
+  TABLE_SLOT(FREE_SLOT)
+  ContentsAtW(SLOT_AT) = ContentsAtW(@KEY)
+  ContentsAtW(SLOT_AT + 2) = ContentsAtW(@KEY + 2)
+  ContentsAtW(SLOT_AT + 4) = ContentsAtW(@AT)
+  ContentsAtW(SLOT_AT + 6) = ContentsAtW(@AT + 2)
+  BANK.USE(CALLER_BANK)
+  TABLE_COUNT = TABLE_COUNT + 1
+END SUB
+
+' Adds the file or folder PATH, with FILE_TIME, FILE_DATE and FILE_ATTRIBUTES, to TEMP and
+' its central directory entry to LIST. A name the table holds, and the archive and the work
+' files, are left out.
+SUB ADD_ENTRY(PATH AS STRING, IS_FOLDER AS UBYTE)
+  DIM AT AS UBYTE
+  ENTRY_NAME = ENTRY_FOR(PATH)
+  IF IS_FOLDER THEN ENTRY_NAME = ENTRY_NAME + "/"
+  IF ENTRY_NAME = "/" THEN RETURN
+  KEY_TEXT = UCASE$(ENTRY_NAME)
+  IF KEY_TEXT = ARCHIVE_KEY OR KEY_TEXT = TEMP_KEY OR KEY_TEXT = LIST_KEY THEN RETURN
+  IF TABLE_FIND(ENTRY_NAME) THEN RETURN
+  IF TABLE_COUNT = TABLE_MAX THEN
+    PRINT "zip warning: too many files: "; PATH
+    EXIT_CODE = 3
+    RETURN
+  END IF
+  IF IS_FOLDER = 0 THEN
+    SOURCE = DOS.OPEN_FILE(PATH, DOS.ACCESS_READ)
+    IF SOURCE = NOFILE THEN
+      PRINT "zip warning: could not open for reading: "; PATH
+      EXIT_CODE = 3
+      RETURN
+    END IF
+  END IF
+  PRINT "  adding: "; ENTRY_NAME;
+  LINE_OPEN = 1
+  FOR AT = 0 TO ENTRY_SIZE - 1
+    RECORD(AT) = 0
+  NEXT
+  RECORD(0) = SIGNATURE_P
+  RECORD(1) = SIGNATURE_K
+  RECORD(2) = 1
+  RECORD(3) = 2
+  RECORD(4) = VERSION_MADE
+  RECORD(6) = VERSION_STORED
+  ContentsAtW(@RECORD + ENTRY_TIME) = FILE_TIME
+  ContentsAtW(@RECORD + ENTRY_DATE) = FILE_DATE
+  ContentsAtW(@RECORD + NAME_SIZE_AT) = LEN(ENTRY_NAME)
+  RECORD(EXTERNAL_AT) = FILE_ATTRIBUTES
+  LOCAL_AT = TEMP_SIZE
+  ContentsAtW(@RECORD + ENTRY_LOCAL) = ContentsAtW(@LOCAL_AT)
+  ContentsAtW(@RECORD + ENTRY_LOCAL + 2) = ContentsAtW(@LOCAL_AT + 2)
+  ' The local header is the central entry's bytes from the version needed to the extra
+  ' field's size. Its CRC and sizes are written after the data.
+  HEADER(0) = SIGNATURE_P
+  HEADER(1) = SIGNATURE_K
+  HEADER(2) = 3
+  HEADER(3) = 4
+  FOR AT = 4 TO LOCAL_SIZE - 1
+    HEADER(AT) = RECORD(AT + 2)
+  NEXT
+  PUT(TEMP, @HEADER, LOCAL_SIZE)
+  PUT(TEMP, @ENTRY_NAME + 2, LEN(ENTRY_NAME))
+  CRC = $FFFFFFFF
+  LENGTH = 0
+  DO WHILE IS_FOLDER = 0
+    COUNT = DOS.READ_FILE(SOURCE, @BUFFER, BUFFER_SIZE)
+    IF COUNT = 0 THEN EXIT DO
+    CRC_DATA = @BUFFER
+    CRC_COUNT = COUNT
+    CRC_ADD()
+    PUT(TEMP, @BUFFER, COUNT)
+    LENGTH = LENGTH + COUNT
+  LOOP
+  IF IS_FOLDER = 0 THEN
+    DOS.CLOSE_FILE(SOURCE)
+    SOURCE = NOFILE
+  END IF
+  CRC = CRC XOR $FFFFFFFF
+  ContentsAtW(@RECORD + ENTRY_CRC) = ContentsAtW(@CRC)
+  ContentsAtW(@RECORD + ENTRY_CRC + 2) = ContentsAtW(@CRC + 2)
+  ContentsAtW(@RECORD + ENTRY_PACKED) = ContentsAtW(@LENGTH)
+  ContentsAtW(@RECORD + ENTRY_PACKED + 2) = ContentsAtW(@LENGTH + 2)
+  ContentsAtW(@RECORD + ENTRY_LENGTH) = ContentsAtW(@LENGTH)
+  ContentsAtW(@RECORD + ENTRY_LENGTH + 2) = ContentsAtW(@LENGTH + 2)
+  IF LENGTH > 0 THEN
+    ' The CRC and the two sizes, at 14 in the local header.
+    LOCAL_AT = LOCAL_AT + 14
+    DOS.SEEK(TEMP, FROM_START, LOCAL_AT AND $FFFF, LOCAL_AT >> 16)
+    IF DOS.WRITE_FILE(TEMP, @RECORD + ENTRY_CRC, 12) <> 12 THEN ABORT(DOS.ERRMSG(DOS.ERROR), 3)
+    DOS.SEEK(TEMP, FROM_END, 0, 0)
+  END IF
+  TABLE_ADD(LIST_SIZE)
+  PUT(LIST, @RECORD, ENTRY_SIZE)
+  PUT(LIST, @ENTRY_NAME + 2, LEN(ENTRY_NAME))
+  ENTRY_COUNT = ENTRY_COUNT + 1
+  ADDED = ADDED + 1
+  PRINT " (stored 0%)"
+  LINE_OPEN = 0
+END SUB
+
+' Adds the files and folders that ARGUMENT matches, and with -r what each folder holds. The
+' find buffer of each folder the search is in waits in FIND_STACK.
+SUB ADD_ARGUMENT()
+  DIM AT AS UBYTE, IS_FOLDER AS UBYTE
+  ' A folder named with a \ at its end is the folder.
+  IF LEN(ARGUMENT) > 1 AND RIGHT$(ARGUMENT, 1) = "\" THEN
+    IF MID$(ARGUMENT, LEN(ARGUMENT) - 1, 1) <> ":" THEN ARGUMENT = LEFT$(ARGUMENT, LEN(ARGUMENT) - 1)
+  END IF
+  WALK_PATH = LEFT$(ARGUMENT, FOLDER_LENGTH(ARGUMENT))
+  DEPTH = 0
+  DOS.FINDFIRST(ARGUMENT, DOS.ATTR_DIRECTORY)
+  IF DOS.ERROR <> 0 THEN
+    PRINT "zip warning: name not matched: "; ARGUMENT
+    EXIT_CODE = 3
+    RETURN
+  END IF
+  DO
+    IF DOS.ERROR <> 0 THEN
+      ' The end of a folder: back to the search of the folder that holds it.
+      IF DEPTH = 0 THEN EXIT DO
+      DEPTH = DEPTH - 1
+      FOR AT = 0 TO DOS.FIND_ATTR - 1
+        DOS.FIND_BUFFER(AT) = FIND_STACK(DEPTH * DOS.FIND_ATTR + AT)
+      NEXT
+      WALK_PATH = LEFT$(WALK_PATH, PATH_LENGTHS(DEPTH))
+      DOS.FINDNEXT()
+      CONTINUE
+    END IF
+    IF DOS.FOUND_NAME = "." OR DOS.FOUND_NAME = ".." THEN
+      DOS.FINDNEXT()
+      CONTINUE
+    END IF
+    FILE_PATH = WALK_PATH + DOS.FOUND_NAME
+    FILE_TIME = DOS.FOUND_TIME
+    FILE_DATE = DOS.FOUND_DATE
+    FILE_ATTRIBUTES = DOS.FOUND_ATTRIBUTES
+    IS_FOLDER = (FILE_ATTRIBUTES AND DOS.ATTR_DIRECTORY) <> 0
+    ADD_ENTRY(FILE_PATH, IS_FOLDER)
+    IF IS_FOLDER AND RECURSE THEN
+      IF DEPTH = DEPTH_MAX THEN
+        PRINT "zip warning: folder too deep: "; FILE_PATH
+        EXIT_CODE = 3
+      ELSE
+        FOR AT = 0 TO DOS.FIND_ATTR - 1
+          FIND_STACK(DEPTH * DOS.FIND_ATTR + AT) = DOS.FIND_BUFFER(AT)
+        NEXT
+        PATH_LENGTHS(DEPTH) = LEN(WALK_PATH)
+        DEPTH = DEPTH + 1
+        WALK_PATH = FILE_PATH + "\"
+        DOS.FINDFIRST(WALK_PATH, DOS.ATTR_DIRECTORY)
+        CONTINUE
+      END IF
+    END IF
+    DOS.FINDNEXT()
+  LOOP
+END SUB
+
+' Copies each entry of the old archive whose name the table does not hold to TEMP, and its
+' central directory entry, with the new place of its local header, to LIST. An entry with a
+' data descriptor keeps it.
+SUB COPY_OLD()
+  DIM NAME_SIZE AS UWORD, MORE AS ULONG, TOTAL AS ULONG, NEXT_AT AS ULONG, OLD_AT AS ULONG
+  SEEK_TO(DIRECTORY_AT)
+  DO WHILE ENTRIES > 0
+    ENTRIES = ENTRIES - 1
+    GET(ARCHIVE, @RECORD, ENTRY_SIZE)
+    IF RECORD(0) <> SIGNATURE_P OR RECORD(1) <> SIGNATURE_K OR RECORD(2) <> 1 OR RECORD(3) <> 2 THEN
+      ABORT("Not a ZIP archive", 2)
+    END IF
+    NAME_SIZE = ContentsAtW(@RECORD + NAME_SIZE_AT)
+    IF NAME_SIZE > 255 THEN ABORT("Not a ZIP archive", 2)
+    ContentsAt(@ENTRY_NAME + 1) = NAME_SIZE
+    GET(ARCHIVE, @ENTRY_NAME + 2, NAME_SIZE)
+    MORE = ContentsAtW(@RECORD + EXTRA_SIZE_AT)
+    MORE = MORE + ContentsAtW(@RECORD + COMMENT_SIZE_AT)
+    DOS.SEEK(ARCHIVE, FROM_POSITION, 0, 0)
+    ContentsAtW(@NEXT_AT) = DOS.POSITION_LOW
+    ContentsAtW(@NEXT_AT + 2) = DOS.POSITION_HIGH
+    IF TABLE_FIND(ENTRY_NAME) THEN
+      SEEK_TO(NEXT_AT + MORE)
+      CONTINUE
+    END IF
+    ContentsAtW(@OLD_AT) = ContentsAtW(@RECORD + ENTRY_LOCAL)
+    ContentsAtW(@OLD_AT + 2) = ContentsAtW(@RECORD + ENTRY_LOCAL + 2)
+    SEEK_TO(OLD_AT)
+    GET(ARCHIVE, @HEADER, LOCAL_SIZE)
+    IF HEADER(0) <> SIGNATURE_P OR HEADER(1) <> SIGNATURE_K OR HEADER(2) <> 3 OR HEADER(3) <> 4 THEN
+      ABORT("Not a ZIP archive", 2)
+    END IF
+    ContentsAtW(@TOTAL) = ContentsAtW(@RECORD + ENTRY_PACKED)
+    ContentsAtW(@TOTAL + 2) = ContentsAtW(@RECORD + ENTRY_PACKED + 2)
+    TOTAL = TOTAL + LOCAL_SIZE + ContentsAtW(@HEADER + LOCAL_NAME_SIZE)
+    TOTAL = TOTAL + ContentsAtW(@HEADER + LOCAL_EXTRA_SIZE)
+    IF RECORD(ENTRY_FLAGS) AND FLAG_DESCRIPTOR THEN
+      ' A data descriptor follows the data, with or without its signature PK 7 8.
+      SEEK_TO(OLD_AT + TOTAL)
+      GET(ARCHIVE, @BUFFER, 4)
+      IF BUFFER(0) = SIGNATURE_P AND BUFFER(1) = SIGNATURE_K AND BUFFER(2) = 7 AND BUFFER(3) = 8 THEN
+        TOTAL = TOTAL + FULL_DESCRIPTOR
+      ELSE
+        TOTAL = TOTAL + BARE_DESCRIPTOR
+      END IF
+    END IF
+    SEEK_TO(OLD_AT)
+    ContentsAtW(@RECORD + ENTRY_LOCAL) = ContentsAtW(@TEMP_SIZE)
+    ContentsAtW(@RECORD + ENTRY_LOCAL + 2) = ContentsAtW(@TEMP_SIZE + 2)
+    COPY_OLD_BYTES(TEMP, TOTAL)
+    PUT(LIST, @RECORD, ENTRY_SIZE)
+    PUT(LIST, @ENTRY_NAME + 2, NAME_SIZE)
+    SEEK_TO(NEXT_AT)
+    COPY_OLD_BYTES(LIST, MORE)
+    ENTRY_COUNT = ENTRY_COUNT + 1
+  LOOP
+END SUB
+
+' Appends LIST and the end record to TEMP, closes both, and puts TEMP in the archive's place.
+SUB FINISH()
+  DIM DIRECTORY_START AS ULONG, PART AS UWORD, REST AS ULONG, AT AS UBYTE
+  DIRECTORY_START = TEMP_SIZE
+  DOS.SEEK(LIST, FROM_START, 0, 0)
+  REST = LIST_SIZE
+  DO WHILE REST > 0
+    PART = BUFFER_SIZE
+    IF REST < BUFFER_SIZE THEN PART = REST
+    GET(LIST, @BUFFER, PART)
+    PUT(TEMP, @BUFFER, PART)
+    REST = REST - PART
+  LOOP
+  FOR AT = 0 TO END_SIZE - 1
+    RECORD(AT) = 0
+  NEXT
+  RECORD(0) = SIGNATURE_P
+  RECORD(1) = SIGNATURE_K
+  RECORD(2) = 5
+  RECORD(3) = 6
+  ContentsAtW(@RECORD + END_ENTRIES - 2) = ENTRY_COUNT
+  ContentsAtW(@RECORD + END_ENTRIES) = ENTRY_COUNT
+  ContentsAtW(@RECORD + END_DIRECTORY - 4) = ContentsAtW(@LIST_SIZE)
+  ContentsAtW(@RECORD + END_DIRECTORY - 2) = ContentsAtW(@LIST_SIZE + 2)
+  ContentsAtW(@RECORD + END_DIRECTORY) = ContentsAtW(@DIRECTORY_START)
+  ContentsAtW(@RECORD + END_DIRECTORY + 2) = ContentsAtW(@DIRECTORY_START + 2)
+  PUT(TEMP, @RECORD, END_SIZE)
+  DOS.CLOSE_FILE(TEMP)
+  DOS.CLOSE_FILE(LIST)
+  DOS.DELETE(LIST_NAME)
+  IF OLD_EXISTS THEN
+    DOS.CLOSE_FILE(ARCHIVE)
+    DOS.DELETE(ARCHIVE_NAME)
+    IF DOS.ERROR <> 0 THEN FAIL(DOS.ERRMSG(DOS.ERROR), 3)
+  END IF
+  DOS.RENAME(TEMP_NAME, ARCHIVE_NAME)
+  IF DOS.ERROR <> 0 THEN FAIL(DOS.ERRMSG(DOS.ERROR), 3)
+END SUB
+
+' ---- the arguments ----
+ARCHIVE = NOFILE
+TEMP = NOFILE
+LIST = NOFILE
+SOURCE = NOFILE
+SLOT = SLOT_P1
+DO WHILE SLOT <= SLOT_P9
+  ARGUMENT = HEAP.SYS_STRINGS_GET(SLOT)
+  SLOT = SLOT + 1
+  IF ARGUMENT = "" THEN CONTINUE
+  IF ASC(ARGUMENT) = ASC("-") THEN
+    SWITCH = 0
+    IF LEN(ARGUMENT) = 2 THEN SWITCH = ASC(MID$(ARGUMENT, 2)) OR $20
+    IF SWITCH = ASC("r") THEN
+      RECURSE = 1
+    ELSE
+      FAIL("Invalid switch", 1)
+    END IF
+  ELSEIF ARCHIVE_NAME = "" THEN
+    ARCHIVE_NAME = ARGUMENT
+  ELSE
+    FILE_SLOTS = FILE_SLOTS OR (1 << (SLOT - 1))
+  END IF
+LOOP
+IF ARCHIVE_NAME = "" OR FILE_SLOTS = 0 THEN FAIL("Required parameter missing", 1)
+IF INSTR(MID$(ARCHIVE_NAME, FOLDER_LENGTH(ARCHIVE_NAME) + 1), ".", 1) = 0 THEN
+  ARCHIVE_NAME = ARCHIVE_NAME + ".ZIP"
+END IF
+TEMP_NAME = LEFT$(ARCHIVE_NAME, FOLDER_LENGTH(ARCHIVE_NAME)) + TEMP_FILE
+LIST_NAME = LEFT$(ARCHIVE_NAME, FOLDER_LENGTH(ARCHIVE_NAME)) + LIST_FILE
+ARCHIVE_KEY = UCASE$(ENTRY_FOR(ARCHIVE_NAME))
+TEMP_KEY = UCASE$(ENTRY_FOR(TEMP_NAME))
+LIST_KEY = UCASE$(ENTRY_FOR(LIST_NAME))
+
+' ---- the old archive ----
+ARCHIVE = DOS.OPEN_FILE(ARCHIVE_NAME, DOS.ACCESS_READ)
+IF ARCHIVE = NOFILE THEN
+  IF DOS.ERROR <> DOS.ERR_NOT_FOUND THEN FAIL(DOS.ERRMSG(DOS.ERROR), 2)
+ELSE
+  OLD_EXISTS = 1
+  READ_END()
+END IF
+
+' ---- the name table and the work files ----
+CRC_TABLES()
+CALLER_BANK = BANK.CURRENT()
+TABLE_BANK = BANK.ALLOC(TABLE_BANKS)
+IF TABLE_BANK = 0 THEN ABORT(DOS.ERRMSG(DOS.ERROR), 3)
+FOR SLOT = 0 TO TABLE_BANKS - 1
+  BANK.USE(TABLE_BANK + SLOT)
+  FOR SLOT_AT = $A000 + 4 TO $C000 - 4 STEP SLOT_SIZE
+    ContentsAtW(SLOT_AT) = 0
+    ContentsAtW(SLOT_AT + 2) = 0
+  NEXT
+NEXT
+BANK.USE(CALLER_BANK)
+TEMP = DOS.CREATE_FILE(TEMP_NAME, 0)
+IF TEMP = NOFILE THEN ABORT(DOS.ERRMSG(DOS.ERROR), 3)
+LIST = DOS.CREATE_FILE(LIST_NAME, 0)
+IF LIST = NOFILE THEN ABORT(DOS.ERRMSG(DOS.ERROR), 3)
+
+' ---- the files ----
+FOR SLOT = SLOT_P1 TO SLOT_P9
+  IF FILE_SLOTS AND (1 << SLOT) THEN
+    ARGUMENT = HEAP.SYS_STRINGS_GET(SLOT)
+    ADD_ARGUMENT()
+  END IF
+NEXT
+IF ADDED = 0 THEN ABORT("zip error: Nothing to do! (" + ARCHIVE_NAME + ")", 3)
+IF OLD_EXISTS THEN COPY_OLD()
+FINISH()
+END EXIT_CODE

@@ -2222,8 +2222,42 @@ the beta 1 list).
        decode, about 1.2 KB RAM, a slower build per block); an 8-bit `DELTA` for the first 8
        bits (about -10 cycles a bit); a copy loop without bank switches when the source and
        the output share a bank (about -15 cycles a byte).
-     - Next: step 4, ZIP store, CRC, central directory, -r. It is the 7th step: run the full
-       suite after it.
+     - Steps 0-3 committed: `2ff41bd` (pyuxc), `4434604` (UNZIP).
+     - Step 4 done, not committed: `src/utils/zip/ZIP.UXB`, `ZIP [-r] archive files`, stored
+       entries only. `ZIPFILE.UXI` (same folder) holds what ZIP and UNZIP share: the record
+       CONSTs, `BUFFER`/`RECORD`/`HEADER`, CRC-32 (`CRC_TABLES`, `CRC_ADD`), `FAIL`,
+       `DECIMAL`, `SEEK_TO` and `READ_END`, the end record search. UNZIP calls `READ_END`.
+     - Update the Info-ZIP way (the user, 2026-10-27): new entries go to `ZIPTEMP.$$$` and
+       their central entries to `ZIPLIST.$$$`, both in the archive's folder. Then the old
+       archive's entries whose names were not added are copied raw (local header, data, a
+       data descriptor when flag bit 3 is set, PK 7 8 or not), each central entry with its
+       new local offset. Then LIST and the end record go after TEMP, the old archive is
+       deleted and TEMP renamed. New entries come first. Every line says `adding:`, never
+       `updating:`.
+     - The name table: 4 banks, 4096 slots of 8 bytes (the CRC-32 of the name in capitals,
+       then the place of its central entry in LIST plus 1), at most 3072 used. A key that
+       matches is checked against the name read back from LIST. It also drops a name given
+       twice.
+     - The walk: `FINDFIRST` with `ATTR_DIRECTORY`, so hidden and system files are left out.
+       `-r` keeps the 41 bytes of the find buffer before `FIND_ATTR` (the search state; the
+       kernel's `findnext` reads only those) for each folder in `FIND_STACK`, up to 16 deep.
+       A folder adds `NAME/`. The entry name is the path as typed, cut of a drive and leading
+       `\`, `.\`, `..\`. The archive and the work files are left out by name.
+     - The local header gets its CRC and sizes after the data: a seek back to offset 14 and
+       a 12-byte write. A write inside a file overwrites (`lib_write`).
+     - Date and time come from the find buffer. Version made by 20 (MS-DOS), needed 10;
+       the external attributes' low byte is the FAT's.
+     - Errors: exit 1 for the command line; 2 for a bad old archive; 3 for `zip warning: name
+       not matched`, `could not open for reading`, `too many files`, `folder too deep` (at
+       the end), and for `zip error: Nothing to do!` or a failed write (at once, the work
+       files deleted, the old archive untouched).
+     - `ZIP.COM` 14105 bytes, `UNZIP.COM` 15111 (+7). Test ZIPS (new, `tests/ZIPS.PY` card:
+       plain files, `DOCS` with an empty folder, a 5000-byte file, OLD.ZIP with stored,
+       deflated and data-descriptor entries) ok 3.3 s. Python's `zipfile.testzip` passes
+       NEW.ZIP, TREE.ZIP and the updated OLD.ZIP read off the run image.
+     - Build 1800 ms, exit 0, the new baseline (the COMs were current, so nothing compiled).
+     - Full suite: 59 tests, 0 failed, 105.6 s (`STOPPED_TESTS` skips 52).
+     - Next: step 5, ZIP deflate asm. Ask before writing the asm.
   6. `BE`, the batch enhancer (`ASK`/`CHOICE` to `ERRORLEVEL`, `BOX`, `BEEP`, `DELAY`,
      `ROWCOL`). Talk it through with the user first.
   - Ideas kept, not picked: `UNDELETE` (needs a check that the x16-rom library keeps the high
@@ -2235,8 +2269,9 @@ the beta 1 list).
   PATH from the WinGet links. Build 4400 ms wall (the ROM 3.30 s). The build with the new
   calls took 10495 ms (the ROM 10.28 s): a new `DOS.UXI` recompiles every program. The
   baseline stays 4400 ms for a build that leaves `DOS.UXI` alone.
-- Steps since the last full suite: 6 (REG in the API, SI, `JSR SUBNAME`, UNZIP -l, UNZIP
-  extract, UNZIP inflate). Full suite after FONTEDIT step 4 (2026-10-27): 116 tests,
+- Steps since the last full suite: 0. Full suite after ZIP step 4 (2026-10-27): 59 tests,
+  0 failed, 105.6 s.
+- Before it, full suite after FONTEDIT step 4 (2026-10-27): 116 tests,
   5 failed, 230.7 s. `CHKDSK`, `FILES`, `HDIR`, `HDIRARG` and `TREE` failed on the card's new
   files only: `FONTEDIT.COM`, `UTILS\SRC\FONTEDIT`, `FONTHEX.COM`, `FONT.COM`, `CHKDSK.COM`, the
   untracked `tests/REGLIB.UXB`'s `REGLIB.COM`, and `CMDSHELL.COM` at 21850 bytes. Goldens
