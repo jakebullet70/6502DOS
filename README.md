@@ -1,5 +1,6 @@
 # 6502DOS
 
+** See the release folder **  
 6502DOS is a replacement ROM operating system for the Commander X16, on the 65C02. MS-DOS 2.0
 is the model for its ideas: file handles, a device driver chain, a per-program header block, a
 command shell, a start-up script and scripts. The base is asm, assembled with ca65. The shell
