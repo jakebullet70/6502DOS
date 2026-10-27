@@ -1,0 +1,835 @@
+'=============================================================================================
+' -- CHKDSK [d:] [-F]
+' -- checks the FAT32 volume of drive d, or of the current drive, from its sectors. Without -F
+' -- it changes nothing. It walks every directory from the root and follows each chain in the
+' -- FAT.
+' -- A problem prints the path of its file or directory, then the problem on the next line:
+' --    Is cross linked on cluster n        the cluster is in a chain checked before
+' --    Has invalid cluster, file truncated the chain holds 0, 1, a bad or a past-the-end cluster
+' --    Allocation error, size adjusted     the size does not need the chain's cluster count
+' --    Invalid sub-directory entry         a directory's first cluster is not a cluster
+' --    Too deep, not checked               a directory MAX_DEPTH levels down, or with a long
+' --                                        path
+' -- Then n lost clusters found, for clusters in use in the FAT and in no chain; FAT 2 differs
+' -- from FAT 1; and FS info free count is n, not m, when the FS info sector's free count is
+' -- set and is not the count of free clusters in the FAT.
+' -- Paths show the 8.3 names. The sizes are in KB, from the cluster counts:
+' --      4096 KB total disk space
+' --        12 KB in 1 hidden files          only when there are hidden files
+' --        24 KB in 5 directories           the root's clusters too, which is not counted
+' --       812 KB in 31 user files
+' --         2 KB in bad sectors             only when the FAT marks clusters bad
+' --      3246 KB available on disk
+' -- Without -F, a problem adds Errors found, -F parameter not specified and Corrections will
+' -- not be written to disk before the sizes.
+' -- -F writes the fixes to both FATs and the directories:
+' --    Has invalid cluster        the chain ends at its last cluster; a first cluster that is
+' --                               not one makes the file empty
+' --    Allocation error           a chain too long for the size ends at the size's cluster
+' --                               count and its other clusters are freed; a size too big for
+' --                               the chain becomes the chain's bytes
+' --    lost clusters              each lost chain becomes a file FILEnnnn.CHK in the root, and
+' --                               the line reads n lost clusters found in m chains; a root
+' --                               with no free entry prints Insufficient room in root
+' --                               directory and leaves the chains left lost
+' --    FAT 2 differs              each FAT sector that differs is copied from FAT 1
+' --    FS info free count         the count of free clusters is written
+' -- A cross link and an invalid sub-directory entry stay as they are. The recovered files show
+' -- in the sizes as n KB in m recovered files.
+' -- A drive that is not a letter, or that the kernel does not know, prints Invalid drive. A
+' -- switch other than -F prints Invalid switch, and a second drive Too many parameters. Each
+' -- gives exit code 1. A card without a FAT32 volume prints Not a FAT32 volume, too few RAM
+' -- banks for a bitmap Insufficient memory, and a read or write error its error message; each
+' -- gives exit code 2. Exit code 3 after a problem, fixed or not, 0 otherwise.
+' --
+' -- From a prompt:
+' --     CHKDSK C: -F
+'=============================================================================================
+#INCLUDE "DOS.UXI"
+#INCLUDE "HEAP.UXI"
+#INCLUDE "BANK.UXI"
+CONST SLOT_P1 AS UBYTE = 0, SLOT_P9 AS UBYTE = 8
+CONST SECTOR_ENTRIES AS UBYTE = 16, MAX_DEPTH AS UBYTE = 32, PATH_MAX AS UBYTE = 240
+CONST END_MARK AS ULONG = $0FFFFFF8, CHAIN_END AS ULONG = $0FFFFFFF, BAD_MARK AS ULONG = $0FFFFFF7
+CONST NO_COUNT AS ULONG = $FFFFFFFF, LAST_FILE_NUMBER AS UWORD = 9999
+CONST INFO_LEAD AS ULONG = $41615252, INFO_MIDDLE AS ULONG = $61417272   ' RRaA, rrAa
+' The bitmap has a bit a cluster, cluster n in bit n AND 7 of byte n >> 3, in RAM banks
+' shown at WINDOW_START.
+CONST WINDOW_START AS UWORD = $A000, WINDOW_LAST AS UWORD = $BFFF, BANK_BYTES AS UWORD = 8192
+
+DIM ARGUMENT AS STRING * 255, SLOT AS UBYTE, DRIVE AS UBYTE, GOT_DRIVE AS UBYTE, FIX AS UBYTE
+DIM LETTER AS STRING * 2
+DIM SECTOR(512) AS UBYTE, FAT_SECTOR(512) AS UBYTE
+' FAT_LOADED is the card sector in FAT_SECTOR. DIR_LOADED is the directory sector the walk read
+' into SECTOR.
+DIM FAT_LOADED AS ULONG, DIR_LOADED AS ULONG
+DIM VOLUME_START AS ULONG, FAT_START AS ULONG, FAT_SIZE AS ULONG, DATA_START AS ULONG
+DIM RESERVED AS UWORD, FAT_COUNT AS UBYTE, CLUSTER_SECTORS AS UBYTE, SECTOR_SHIFT AS UBYTE
+DIM CLUSTER_SHIFT AS UBYTE, CLUSTER_BYTES AS ULONG
+' The clusters are 2 up to CLUSTER_LIMIT - 1.
+DIM ROOT_CLUSTER AS ULONG, CLUSTER_LIMIT AS ULONG, INFO_SECTOR AS UWORD, TOTAL AS ULONG
+DIM BITMAP_BANK AS UBYTE, BITMAP_BANKS AS UBYTE, CALLER_BANK AS UBYTE
+' The walk: a frame a directory level, DEPTH the level being read. FRAME_LEFT counts the
+' clusters left in the chain from FRAME_CLUSTER. PATH is the directory being read, from the
+' root without the drive: "" at the root, \DOCS\SUB below it.
+DIM DEPTH AS UBYTE, NEED_READ AS UBYTE, PATH AS STRING * 255
+DIM FRAME_CLUSTER(MAX_DEPTH) AS ULONG, FRAME_LEFT(MAX_DEPTH) AS ULONG
+DIM FRAME_SECTOR(MAX_DEPTH) AS UBYTE, FRAME_ENTRY(MAX_DEPTH) AS UBYTE, PATH_LENGTHS(MAX_DEPTH) AS UBYTE
+DIM ENTRY AS UWORD, FIRST_BYTE AS UBYTE
+' CLAIM_CHAIN sets CHAIN_BROKEN and LAST_CLUSTER. BIT_MASK is the bit BIT_PLACE found.
+DIM CHAIN_BROKEN AS UBYTE, LAST_CLUSTER AS ULONG, PROBLEMS AS UBYTE, BIT_MASK AS UBYTE
+DIM DIR_COUNT AS ULONG, FILE_COUNT AS ULONG, HIDDEN_COUNT AS ULONG
+DIM DIR_CLUSTERS AS ULONG, FILE_CLUSTERS AS ULONG, HIDDEN_CLUSTERS AS ULONG
+DIM FREE_CLUSTERS AS ULONG, BAD_CLUSTERS AS ULONG, LOST_CLUSTERS AS ULONG
+DIM INFO_FREE AS ULONG, FATS_DIFFER AS UBYTE, WAS_DIFFER AS UBYTE
+' The recovery of the lost chains: the FAT sectors from LOST_FIRST to LOST_LAST hold every lost
+' cluster. The bitmap from POINTED_BANK marks the lost clusters another lost cluster points to.
+' The root's entries are read in order from SCAN_CLUSTER; ROOT_LOADED is the card sector in
+' SECTOR.
+DIM LOST_FIRST AS ULONG, LOST_LAST AS ULONG, LOST_CLUSTER AS ULONG, RANGE_END AS ULONG, POINTEE AS ULONG
+DIM POINTED_BANK AS UBYTE, ROUND AS UBYTE, ROOM_FULL AS UBYTE, FILE_NUMBER AS UWORD
+DIM CHAIN_COUNT AS ULONG, SAVED_COUNT AS ULONG, SAVED_CLUSTERS AS ULONG
+DIM SCAN_CLUSTER AS ULONG, SCAN_SECTOR AS UBYTE, SCAN_ENTRY AS UBYTE, ROOT_LOADED AS ULONG
+DIM STAMP_DATE AS UWORD, STAMP_TIME AS UWORD
+DIM INDEX AS UBYTE, PLACE AS UWORD, KIND AS UBYTE
+DIM FAT_PLACE AS ULONG, FAT_USED AS ULONG, ENTRIES AS UBYTE, BASE AS UWORD
+' The FAT pass's ASM: its inputs, its counts of a sector, and its pointers in r0 and r1.
+DIM COMPARE AS UBYTE, OFFSET AS UWORD, BIT AS UBYTE, FIRST_INDEX AS UBYTE, COUNT_LEFT AS UBYTE
+DIM SECTOR_FREE AS UBYTE, SECTOR_BAD AS UBYTE, SECTOR_LOST AS UBYTE, ENTRY_TOP AS UBYTE
+DIM FAT_POINTER AS UWORD AT $02, MAP_POINTER AS UWORD AT $04
+
+SUB FAIL(MESSAGE AS STRING)
+  PRINT MESSAGE
+  END 1
+END SUB
+
+SUB FAIL_CARD(MESSAGE AS STRING)
+  PRINT MESSAGE
+  END 2
+END SUB
+
+' Reads card sector NUMBER into memory at BUFFER. A read error prints its message and ends the
+' program.
+SUB READ_SECTOR(NUMBER AS ULONG, BUFFER AS UWORD)
+  DOS.ABSREAD(DRIVE, BUFFER, NUMBER, 1)
+  IF DOS.ERROR <> 0 THEN FAIL_CARD(DOS.ERRMSG(DOS.ERROR))
+END SUB
+
+' Writes memory at BUFFER to card sector NUMBER. A write error prints its message and ends the
+' program.
+SUB WRITE_SECTOR(NUMBER AS ULONG, BUFFER AS UWORD)
+  DOS.ABSWRITE(DRIVE, BUFFER, NUMBER, 1)
+  IF DOS.ERROR <> 0 THEN FAIL_CARD(DOS.ERRMSG(DOS.ERROR))
+END SUB
+
+' Puts VALUE at ADDRESS.
+SUB PUT_LONG(ADDRESS AS UWORD, VALUE AS ULONG)
+  ContentsAtW(ADDRESS) = ContentsAtW(@VALUE)
+  ContentsAtW(ADDRESS + 2) = ContentsAtW(@VALUE + 2)
+END SUB
+
+' The ULONG at ADDRESS.
+FUNCT LONG_AT(ADDRESS AS UWORD) AS ULONG
+  DIM VALUE AS ULONG
+  ContentsAtW(@VALUE) = ContentsAtW(ADDRESS)
+  ContentsAtW(@VALUE + 2) = ContentsAtW(ADDRESS + 2)
+  RETURN VALUE
+END FUNCT
+
+
+FUNCT DIGITS(VALUE AS ULONG) AS STRING
+  RETURN MID$(STR$(VALUE), 2)
+END FUNCT
+
+
+' Prints OWNER, then MESSAGE on the next line, and counts an error.
+SUB REPORT(OWNER AS STRING, MESSAGE AS STRING)
+  PRINT OWNER
+  PRINT "   "; MESSAGE
+  PROBLEMS = 1
+END SUB
+
+
+' The FAT entry of CLUSTER, its top 4 bits cleared.
+FUNCT NEXT_CLUSTER(CLUSTER AS ULONG) AS ULONG
+  DIM NUMBER AS ULONG, OFFSET AS UWORD
+  NUMBER = FAT_START + (CLUSTER >> 7)
+  IF NUMBER <> FAT_LOADED THEN
+    READ_SECTOR(NUMBER, @FAT_SECTOR)
+    FAT_LOADED = NUMBER
+  END IF
+  OFFSET = CLUSTER AND 127
+  OFFSET = @FAT_SECTOR + OFFSET * 4
+  ContentsAtW(@NUMBER) = ContentsAtW(OFFSET)
+  ContentsAtW(@NUMBER + 2) = ContentsAtW(OFFSET + 2) AND $0FFF
+  RETURN NUMBER
+END FUNCT
+
+
+' Sets the FAT entry of CLUSTER to VALUE in every FAT, and keeps its top 4 bits.
+SUB SET_CLUSTER(CLUSTER AS ULONG, VALUE AS ULONG)
+  DIM OFFSET AS UWORD, NUMBER AS ULONG, COPY AS UBYTE
+  NEXT_CLUSTER(CLUSTER)                              ' loads its FAT sector
+  OFFSET = CLUSTER AND 127
+  OFFSET = @FAT_SECTOR + OFFSET * 4
+  ContentsAtW(OFFSET) = ContentsAtW(@VALUE)
+  ContentsAtW(OFFSET + 2) = (ContentsAtW(OFFSET + 2) AND $F000) OR ContentsAtW(@VALUE + 2)
+  NUMBER = FAT_LOADED
+  FOR COPY = 1 TO FAT_COUNT
+    WRITE_SECTOR(NUMBER, @FAT_SECTOR)
+    NUMBER = NUMBER + FAT_SIZE
+  NEXT
+END SUB
+
+
+' Selects the bank of the bit of CLUSTER in the bitmap from bank FIRST_BANK, and gives the
+' address of its byte. Sets BIT_MASK to the bit. The caller selects CALLER_BANK after.
+FUNCT BIT_PLACE(FIRST_BANK AS UBYTE, CLUSTER AS ULONG) AS UWORD
+  DIM BYTE_NUMBER AS ULONG, ADDRESS AS UWORD
+  BYTE_NUMBER = CLUSTER >> 3
+  BANK.USE(FIRST_BANK + (BYTE_NUMBER >> 13))
+  ADDRESS = BYTE_NUMBER AND (BANK_BYTES - 1)
+  BIT_MASK = CLUSTER AND 7
+  BIT_MASK = 1 << BIT_MASK
+  RETURN WINDOW_START + ADDRESS
+END FUNCT
+
+
+' Sets the bit of CLUSTER in the bitmap from bank FIRST_BANK. Gives 1 when it was set already.
+FUNCT MARK_IN(FIRST_BANK AS UBYTE, CLUSTER AS ULONG) AS UBYTE
+  DIM ADDRESS AS UWORD, OLD AS UBYTE
+  ADDRESS = BIT_PLACE(FIRST_BANK, CLUSTER)
+  OLD = ContentsAt(ADDRESS)
+  ContentsAt(ADDRESS) = OLD OR BIT_MASK
+  BANK.USE(CALLER_BANK)
+  IF OLD AND BIT_MASK THEN RETURN 1
+  RETURN 0
+END FUNCT
+
+
+' 1 when the bit of CLUSTER is set in the bitmap from bank FIRST_BANK.
+FUNCT MARKED_IN(FIRST_BANK AS UBYTE, CLUSTER AS ULONG) AS UBYTE
+  DIM ADDRESS AS UWORD, OLD AS UBYTE
+  ADDRESS = BIT_PLACE(FIRST_BANK, CLUSTER)
+  OLD = ContentsAt(ADDRESS)
+  BANK.USE(CALLER_BANK)
+  IF OLD AND BIT_MASK THEN RETURN 1
+  RETURN 0
+END FUNCT
+
+
+FUNCT MARK(CLUSTER AS ULONG) AS UBYTE
+  RETURN MARK_IN(BITMAP_BANK, CLUSTER)
+END FUNCT
+
+
+' Clears the BITMAP_BANKS banks of the bitmap from bank FIRST_BANK.
+SUB CLEAR_BITMAP(FIRST_BANK AS UBYTE)
+  DIM COUNT AS UBYTE, ADDRESS AS UWORD
+  FOR COUNT = 0 TO BITMAP_BANKS - 1
+    BANK.USE(FIRST_BANK + COUNT)
+    FOR ADDRESS = WINDOW_START TO WINDOW_LAST
+      ContentsAt(ADDRESS) = 0
+    NEXT
+  NEXT
+  BANK.USE(CALLER_BANK)
+END SUB
+
+
+' Marks the chain from FIRST in the bitmap, and gives its cluster count. Stops at a cluster that
+' is not a cluster or that is marked already, and reports it for OWNER. LAST_CLUSTER is the
+' chain's last cluster marked, 0 for none. CHAIN_BROKEN is 0 at the end of the chain, 1 at a
+' cluster marked already and 2 at one that is not a cluster. With -F the chain then ends at
+' LAST_CLUSTER.
+FUNCT CLAIM_CHAIN(FIRST AS ULONG, OWNER AS STRING) AS ULONG
+  DIM CLUSTER AS ULONG, COUNT AS ULONG
+  CLUSTER = FIRST
+  COUNT = 0
+  LAST_CLUSTER = 0
+  DO WHILE CLUSTER < END_MARK
+    IF CLUSTER < 2 OR CLUSTER >= CLUSTER_LIMIT THEN
+      REPORT(OWNER, "Has invalid cluster, file truncated")
+      CHAIN_BROKEN = 2
+      IF FIX = 1 AND LAST_CLUSTER <> 0 THEN SET_CLUSTER(LAST_CLUSTER, CHAIN_END)
+      RETURN COUNT
+    END IF
+    IF MARK(CLUSTER) THEN
+      REPORT(OWNER, "Is cross linked on cluster " + DIGITS(CLUSTER))
+      CHAIN_BROKEN = 1
+      RETURN COUNT
+    END IF
+    COUNT = COUNT + 1
+    LAST_CLUSTER = CLUSTER
+    CLUSTER = NEXT_CLUSTER(CLUSTER)
+  LOOP
+  CHAIN_BROKEN = 0
+  RETURN COUNT
+END FUNCT
+
+
+' Ends the chain from FIRST after KEEP clusters, and frees the clusters after them. KEEP 0 frees
+' them all. The chain is one CLAIM_CHAIN walked to its end.
+SUB CUT_CHAIN(FIRST AS ULONG, KEEP AS ULONG)
+  DIM CLUSTER AS ULONG, FOLLOWING AS ULONG
+  CLUSTER = FIRST
+  IF KEEP <> 0 THEN
+    DO WHILE KEEP > 1
+      CLUSTER = NEXT_CLUSTER(CLUSTER)
+      KEEP = KEEP - 1
+    LOOP
+    FOLLOWING = NEXT_CLUSTER(CLUSTER)
+    SET_CLUSTER(CLUSTER, CHAIN_END)
+    CLUSTER = FOLLOWING
+  END IF
+  DO WHILE CLUSTER < END_MARK
+    FOLLOWING = NEXT_CLUSTER(CLUSTER)
+    SET_CLUSTER(CLUSTER, 0)
+    CLUSTER = FOLLOWING
+  LOOP
+END SUB
+
+
+' The 8.3 name of the directory entry at ADDRESS, NAME.EXT without its spaces.
+FUNCT SHORT_NAME(ADDRESS AS UWORD) AS STRING
+  DIM TEXT AS STRING * 12, PART AS UBYTE, CHARACTER AS UBYTE
+  TEXT = ""
+  FOR PART = 0 TO 10
+    IF PART = 8 AND ContentsAt(ADDRESS + 8) <> 32 THEN TEXT = TEXT + "."
+    CHARACTER = ContentsAt(ADDRESS + PART)
+    IF CHARACTER <> 32 THEN TEXT = TEXT + CHR$(CHARACTER)
+  NEXT
+  RETURN TEXT
+END FUNCT
+
+
+' Starts reading the directory of level DEPTH: COUNT clusters from FIRST.
+SUB START_FRAME(FIRST AS ULONG, COUNT AS ULONG)
+  FRAME_CLUSTER(DEPTH) = FIRST
+  FRAME_LEFT(DEPTH) = COUNT
+  FRAME_SECTOR(DEPTH) = 0
+  FRAME_ENTRY(DEPTH) = 0
+  NEED_READ = 1
+END SUB
+
+
+' Moves the frame of level DEPTH on to its next entry.
+SUB NEXT_ENTRY()
+  FRAME_ENTRY(DEPTH) = FRAME_ENTRY(DEPTH) + 1
+  IF FRAME_ENTRY(DEPTH) < SECTOR_ENTRIES THEN RETURN
+  FRAME_ENTRY(DEPTH) = 0
+  NEED_READ = 1
+  FRAME_SECTOR(DEPTH) = FRAME_SECTOR(DEPTH) + 1
+  IF FRAME_SECTOR(DEPTH) < CLUSTER_SECTORS THEN RETURN
+  FRAME_SECTOR(DEPTH) = 0
+  FRAME_LEFT(DEPTH) = FRAME_LEFT(DEPTH) - 1
+  IF FRAME_LEFT(DEPTH) <> 0 THEN FRAME_CLUSTER(DEPTH) = NEXT_CLUSTER(FRAME_CLUSTER(DEPTH))
+END SUB
+
+
+' Checks the entry at ENTRY, which is in use. A directory starts a frame one level down.
+SUB CHECK_ENTRY()
+  DIM ATTRIBUTES AS UBYTE, FIRST AS ULONG, SIZE AS ULONG, NAME AS STRING * 255
+  DIM COUNT AS ULONG, NEED AS ULONG
+  ATTRIBUTES = ContentsAt(ENTRY + 11)
+  IF (ATTRIBUTES AND $0F) = $0F THEN RETURN          ' a long-name entry
+  IF ATTRIBUTES AND DOS.ATTR_LABEL THEN RETURN
+  IF ContentsAt(ENTRY) = ASC(".") THEN RETURN        ' . and ..
+  ContentsAtW(@FIRST) = ContentsAtW(ENTRY + 26)
+  ContentsAtW(@FIRST + 2) = ContentsAtW(ENTRY + 20) AND $0FFF
+  SIZE = LONG_AT(ENTRY + 28)
+  NAME = LETTER + PATH + "\" + SHORT_NAME(ENTRY)
+  IF ATTRIBUTES AND DOS.ATTR_DIRECTORY THEN
+    DIR_COUNT = DIR_COUNT + 1
+    IF FIRST < 2 OR FIRST >= CLUSTER_LIMIT THEN
+      REPORT(NAME, "Invalid sub-directory entry")
+      RETURN
+    END IF
+    COUNT = CLAIM_CHAIN(FIRST, NAME)
+    DIR_CLUSTERS = DIR_CLUSTERS + COUNT
+    IF DEPTH = MAX_DEPTH - 1 OR LEN(NAME) > PATH_MAX THEN
+      REPORT(NAME, "Too deep, not checked")
+      RETURN
+    END IF
+    PATH_LENGTHS(DEPTH) = LEN(PATH)
+    DEPTH = DEPTH + 1
+    PATH = MID$(NAME, 3)
+    START_FRAME(FIRST, COUNT)
+    RETURN
+  END IF
+  COUNT = 0
+  CHAIN_BROKEN = 0
+  IF FIRST <> 0 THEN COUNT = CLAIM_CHAIN(FIRST, NAME)
+  NEED = SIZE >> CLUSTER_SHIFT
+  IF (SIZE AND (CLUSTER_BYTES - 1)) <> 0 THEN NEED = NEED + 1
+  IF CHAIN_BROKEN = 0 AND COUNT <> NEED THEN REPORT(NAME, "Allocation error, size adjusted")
+  IF FIX = 1 AND CHAIN_BROKEN <> 1 AND COUNT <> NEED THEN
+    IF COUNT > NEED THEN
+      CUT_CHAIN(FIRST, NEED)
+      COUNT = NEED
+    ELSE
+      SIZE = COUNT << CLUSTER_SHIFT
+      PUT_LONG(ENTRY + 28, SIZE)
+    END IF
+    IF COUNT = 0 THEN
+      ContentsAtW(ENTRY + 26) = 0
+      ContentsAtW(ENTRY + 20) = 0
+    END IF
+    WRITE_SECTOR(DIR_LOADED, @SECTOR)
+  END IF
+  IF ATTRIBUTES AND DOS.ATTR_HIDDEN THEN
+    HIDDEN_COUNT = HIDDEN_COUNT + 1
+    HIDDEN_CLUSTERS = HIDDEN_CLUSTERS + COUNT
+  ELSE
+    FILE_COUNT = FILE_COUNT + 1
+    FILE_CLUSTERS = FILE_CLUSTERS + COUNT
+  END IF
+END SUB
+
+' The first cluster of FAT sector LOST_FIRST, 2 or more.
+FUNCT START_OF_RANGE() AS ULONG
+  IF LOST_FIRST = 0 THEN RETURN 2
+  RETURN LOST_FIRST << 7
+END FUNCT
+
+
+' 1 when CLUSTER is lost: its FAT entry is neither free nor bad, and its bit is clear.
+FUNCT IS_LOST(CLUSTER AS ULONG) AS UBYTE
+  DIM VALUE AS ULONG
+  VALUE = NEXT_CLUSTER(CLUSTER)
+  IF VALUE = 0 OR VALUE = BAD_MARK THEN RETURN 0
+  IF MARKED_IN(BITMAP_BANK, CLUSTER) THEN RETURN 0
+  RETURN 1
+END FUNCT
+
+
+' Starts reading the root's entries in order with ROOT_NEXT.
+SUB ROOT_START()
+  SCAN_CLUSTER = ROOT_CLUSTER
+  SCAN_SECTOR = 0
+  SCAN_ENTRY = 0
+  ROOT_LOADED = NO_COUNT
+END SUB
+
+
+' The address in SECTOR of the root's next entry, 0 after its last.
+FUNCT ROOT_NEXT() AS UWORD
+  DIM NUMBER AS ULONG, ADDRESS AS UWORD
+  IF SCAN_ENTRY = SECTOR_ENTRIES THEN
+    SCAN_ENTRY = 0
+    SCAN_SECTOR = SCAN_SECTOR + 1
+    IF SCAN_SECTOR = CLUSTER_SECTORS THEN
+      SCAN_SECTOR = 0
+      SCAN_CLUSTER = NEXT_CLUSTER(SCAN_CLUSTER)
+    END IF
+  END IF
+  IF SCAN_CLUSTER < 2 OR SCAN_CLUSTER >= CLUSTER_LIMIT THEN RETURN 0
+  NUMBER = DATA_START + ((SCAN_CLUSTER - 2) << SECTOR_SHIFT) + SCAN_SECTOR
+  IF NUMBER <> ROOT_LOADED THEN
+    READ_SECTOR(NUMBER, @SECTOR)
+    ROOT_LOADED = NUMBER
+  END IF
+  ADDRESS = SCAN_ENTRY                               ' a UBYTE times 32 would wrap
+  ADDRESS = @SECTOR + ADDRESS * 32
+  SCAN_ENTRY = SCAN_ENTRY + 1
+  RETURN ADDRESS
+END FUNCT
+
+
+' The number after the highest FILEnnnn.CHK in the root, 0 when there is none.
+FUNCT NEXT_FILE_NUMBER() AS UWORD
+  DIM ADDRESS AS UWORD, NAME AS STRING * 12, NUMBER AS UWORD
+  NUMBER = 0
+  ROOT_START()
+  DO
+    ADDRESS = ROOT_NEXT()
+    IF ADDRESS = 0 THEN EXIT DO
+    IF ContentsAt(ADDRESS) = 0 THEN EXIT DO
+    NAME = SHORT_NAME(ADDRESS)
+    IF LEN(NAME) = 12 AND LEFT$(NAME, 4) = "FILE" AND RIGHT$(NAME, 4) = ".CHK" THEN
+      IF VAL(MID$(NAME, 5, 4)) >= NUMBER THEN NUMBER = VAL(MID$(NAME, 5, 4)) + 1
+    END IF
+  LOOP
+  RETURN NUMBER
+END FUNCT
+
+
+' Sets STAMP_DATE and STAMP_TIME to the clock's date and time in FAT form.
+SUB DATE_STAMP()
+  DIM PART AS UWORD
+  DOS.GETDATE()
+  DOS.GETTIME()
+  STAMP_DATE = (DOS.YEAR - 1980) << 9
+  PART = DOS.MONTH
+  STAMP_DATE = STAMP_DATE OR (PART << 5) OR DOS.DAY
+  STAMP_TIME = DOS.HOURS
+  STAMP_TIME = STAMP_TIME << 11
+  PART = DOS.MINUTES
+  STAMP_TIME = STAMP_TIME OR (PART << 5) OR (DOS.SECONDS >> 1)
+END SUB
+
+
+' Makes the lost chain from HEAD a file FILEnnnn.CHK in the next free root entry, and marks it
+' in the bitmap. The chain ends before a cluster that is not one, that is free or that is
+' marked already. A root with no free entry, or no free number, sets ROOM_FULL.
+SUB SAVE_CHAIN(HEAD AS ULONG)
+  DIM SLOT_ADDRESS AS UWORD, CLUSTER AS ULONG, FOLLOWING AS ULONG, COUNT AS ULONG
+  DIM NAME AS STRING * 12, PART AS UBYTE
+  DO
+    SLOT_ADDRESS = ROOT_NEXT()
+    IF SLOT_ADDRESS = 0 THEN EXIT DO
+    IF ContentsAt(SLOT_ADDRESS) = 0 OR ContentsAt(SLOT_ADDRESS) = $E5 THEN EXIT DO
+  LOOP
+  IF SLOT_ADDRESS = 0 OR FILE_NUMBER > LAST_FILE_NUMBER THEN
+    PRINT "Insufficient room in root directory"
+    ROOM_FULL = 1
+    PROBLEMS = 1
+    RETURN
+  END IF
+  CLUSTER = HEAD
+  COUNT = 0
+  DO
+    MARK(CLUSTER)
+    COUNT = COUNT + 1
+    FOLLOWING = NEXT_CLUSTER(CLUSTER)
+    IF FOLLOWING >= END_MARK THEN EXIT DO
+    IF FOLLOWING < 2 OR FOLLOWING >= CLUSTER_LIMIT THEN
+      SET_CLUSTER(CLUSTER, CHAIN_END)
+      EXIT DO
+    END IF
+    IF NEXT_CLUSTER(FOLLOWING) = 0 OR MARKED_IN(BITMAP_BANK, FOLLOWING) = 1 THEN
+      SET_CLUSTER(CLUSTER, CHAIN_END)
+      EXIT DO
+    END IF
+    CLUSTER = FOLLOWING
+  LOOP
+  NAME = "FILE" + RIGHT$("000" + DIGITS(FILE_NUMBER), 4) + "CHK"
+  FOR PART = 0 TO 31
+    ContentsAt(SLOT_ADDRESS + PART) = 0
+  NEXT
+  FOR PART = 0 TO 10
+    ContentsAt(SLOT_ADDRESS + PART) = ASC(MID$(NAME, PART + 1, 1))
+  NEXT
+  ContentsAt(SLOT_ADDRESS + 11) = DOS.ATTR_ARCHIVE
+  ContentsAtW(SLOT_ADDRESS + 14) = STAMP_TIME
+  ContentsAtW(SLOT_ADDRESS + 16) = STAMP_DATE
+  ContentsAtW(SLOT_ADDRESS + 18) = STAMP_DATE
+  ContentsAtW(SLOT_ADDRESS + 20) = ContentsAtW(@HEAD + 2)
+  ContentsAtW(SLOT_ADDRESS + 22) = STAMP_TIME
+  ContentsAtW(SLOT_ADDRESS + 24) = STAMP_DATE
+  ContentsAtW(SLOT_ADDRESS + 26) = ContentsAtW(@HEAD)
+  PUT_LONG(SLOT_ADDRESS + 28, COUNT << CLUSTER_SHIFT)
+  WRITE_SECTOR(ROOT_LOADED, @SECTOR)
+  FILE_NUMBER = FILE_NUMBER + 1
+  CHAIN_COUNT = CHAIN_COUNT + 1
+  SAVED_COUNT = SAVED_COUNT + 1
+  SAVED_CLUSTERS = SAVED_CLUSTERS + COUNT
+END SUB
+
+
+' Prints the KB of CLUSTERS in 9 columns, then LABEL.
+SUB SHOW(CLUSTERS AS ULONG, LABEL AS STRING)
+  PRINT RIGHT$("        " + DIGITS((CLUSTERS << SECTOR_SHIFT) >> 1), 9); " "; LABEL
+END SUB
+
+
+' ---- the arguments ----
+DRIVE = DOS.GETDRIVE()
+FOR SLOT = SLOT_P1 TO SLOT_P9
+  ARGUMENT = HEAP.SYS_STRINGS_GET(SLOT)
+  IF ARGUMENT = "" THEN CONTINUE
+  IF ARGUMENT = "-F" OR ARGUMENT = "-f" THEN
+    FIX = 1
+    CONTINUE
+  END IF
+  IF ASC(ARGUMENT) = ASC("-") THEN FAIL("Invalid switch")
+  IF GOT_DRIVE THEN FAIL("Too many parameters")
+  ' a to z give 0 to 25. Any other first character wraps past 25.
+  DRIVE = (ASC(ARGUMENT) OR $20) - ASC("a")
+  IF DRIVE > 25 OR (MID$(ARGUMENT, 2) <> "" AND MID$(ARGUMENT, 2) <> ":") THEN FAIL("Invalid drive")
+  GOT_DRIVE = 1
+NEXT
+LETTER = CHR$(DRIVE + ASC("A")) + ":"
+CALLER_BANK = BANK.CURRENT()
+FAT_LOADED = NO_COUNT
+
+
+' ---- the volume ----
+' The first FAT32 partition of the MBR, or a volume from sector 0 when there is none.
+DOS.ABSREAD(DRIVE, @SECTOR, 0, 1)
+IF DOS.ERROR = DOS.ERR_BAD_DRIVE THEN FAIL("Invalid drive")
+IF DOS.ERROR <> 0 THEN FAIL_CARD(DOS.ERRMSG(DOS.ERROR))
+FOR INDEX = 0 TO 3
+  PLACE = @SECTOR + $1BE + INDEX * 16
+  KIND = ContentsAt(PLACE + 4)
+  IF KIND = $0B OR KIND = $0C THEN
+    VOLUME_START = LONG_AT(PLACE + 8)
+    EXIT FOR
+  END IF
+NEXT
+READ_SECTOR(VOLUME_START, @SECTOR)
+CLUSTER_SECTORS = SECTOR(13)
+SECTOR_SHIFT = 0
+DO WHILE SECTOR_SHIFT < 8 AND (1 << SECTOR_SHIFT) < CLUSTER_SECTORS
+  SECTOR_SHIFT = SECTOR_SHIFT + 1
+LOOP
+IF ContentsAtW(@SECTOR + 11) <> 512 OR ContentsAtW(@SECTOR + 510) <> $AA55 THEN FAIL_CARD("Not a FAT32 volume")
+IF CLUSTER_SECTORS = 0 OR (1 << SECTOR_SHIFT) <> CLUSTER_SECTORS OR ContentsAtW(@SECTOR + $16) <> 0 THEN FAIL_CARD("Not a FAT32 volume")
+RESERVED = ContentsAtW(@SECTOR + 14)
+FAT_COUNT = SECTOR(16)
+TOTAL = LONG_AT(@SECTOR + $20)
+FAT_SIZE = LONG_AT(@SECTOR + $24)
+ROOT_CLUSTER = LONG_AT(@SECTOR + $2C)
+INFO_SECTOR = ContentsAtW(@SECTOR + $30)
+IF FAT_COUNT = 0 OR FAT_SIZE = 0 THEN FAIL_CARD("Not a FAT32 volume")
+FAT_START = VOLUME_START + RESERVED
+DATA_START = FAT_START + FAT_COUNT * FAT_SIZE
+CLUSTER_LIMIT = ((TOTAL - RESERVED - FAT_COUNT * FAT_SIZE) >> SECTOR_SHIFT) + 2
+IF CLUSTER_LIMIT > FAT_SIZE * 128 THEN CLUSTER_LIMIT = FAT_SIZE * 128
+CLUSTER_SHIFT = SECTOR_SHIFT + 9
+CLUSTER_BYTES = 1
+CLUSTER_BYTES = CLUSTER_BYTES << CLUSTER_SHIFT
+
+' ---- the bitmap ----
+BITMAP_BANKS = (CLUSTER_LIMIT >> 16) + 1
+BITMAP_BANK = BANK.ALLOC(BITMAP_BANKS)
+IF BITMAP_BANK = 0 THEN FAIL_CARD("Insufficient memory")
+CLEAR_BITMAP(BITMAP_BANK)
+
+
+' ---- the walk ----
+DIR_CLUSTERS = CLAIM_CHAIN(ROOT_CLUSTER, LETTER + "\")
+START_FRAME(ROOT_CLUSTER, DIR_CLUSTERS)
+DO
+  IF FRAME_LEFT(DEPTH) = 0 THEN
+    IF DEPTH = 0 THEN EXIT DO
+    DEPTH = DEPTH - 1
+    PATH = LEFT$(PATH, PATH_LENGTHS(DEPTH))
+    NEED_READ = 1
+    CONTINUE
+  END IF
+  IF NEED_READ THEN
+    DIR_LOADED = DATA_START + ((FRAME_CLUSTER(DEPTH) - 2) << SECTOR_SHIFT) + FRAME_SECTOR(DEPTH)
+    READ_SECTOR(DIR_LOADED, @SECTOR)
+    NEED_READ = 0
+  END IF
+  ENTRY = FRAME_ENTRY(DEPTH)                         ' a UBYTE times 32 would wrap
+  ENTRY = @SECTOR + ENTRY * 32
+  FIRST_BYTE = ContentsAt(ENTRY)
+  IF FIRST_BYTE = 0 THEN                             ' the end of the directory
+    FRAME_LEFT(DEPTH) = 0
+    CONTINUE
+  END IF
+  NEXT_ENTRY()                                       ' before CHECK_ENTRY starts a new frame
+  IF FIRST_BYTE <> $E5 THEN CHECK_ENTRY()
+LOOP
+
+
+' ---- the FATs ----
+' Counts the free, bad and lost clusters a FAT sector at a time, and compares FAT 2 with
+' FAT 1. Without -F the compare stops at the first sector that differs; with -F each sector
+' that differs is copied to the other FATs.
+FAT_USED = (CLUSTER_LIMIT + 127) >> 7
+FAT_PLACE = 0
+DO WHILE FAT_PLACE < FAT_USED
+  READ_SECTOR(FAT_START + FAT_PLACE, @FAT_SECTOR)
+  FAT_LOADED = FAT_START + FAT_PLACE
+  WAS_DIFFER = FATS_DIFFER
+  FATS_DIFFER = 0
+  COMPARE = 0
+  IF FAT_COUNT > 1 AND (WAS_DIFFER = 0 OR FIX = 1) THEN
+    READ_SECTOR(FAT_LOADED + FAT_SIZE, @SECTOR)
+    COMPARE = 1
+  END IF
+  ENTRIES = 128
+  IF FAT_PLACE = FAT_USED - 1 THEN ENTRIES = ((CLUSTER_LIMIT - 1) AND 127) + 1
+  BANK.USE(BITMAP_BANK + (FAT_PLACE >> 9))
+  BASE = FAT_PLACE AND 511
+  BASE = WINDOW_START + BASE * 16
+  ' Entries 0 and 1 of the FAT are not clusters.
+  FIRST_INDEX = 0
+  IF FAT_PLACE = 0 THEN FIRST_INDEX = 2
+  BIT = 1 << FIRST_INDEX
+  OFFSET = FIRST_INDEX
+  OFFSET = @FAT_SECTOR + OFFSET * 4
+  COUNT_LEFT = ENTRIES - FIRST_INDEX
+  SECTOR_FREE = 0
+  SECTOR_BAD = 0
+  SECTOR_LOST = 0
+  ' With COMPARE 1, sets FATS_DIFFER when SECTOR differs from FAT_SECTOR. Then counts the
+  ' COUNT_LEFT entries from OFFSET: SECTOR_FREE for 0, SECTOR_BAD for $0FFFFFF7, SECTOR_LOST for
+  ' any other value whose cluster's bit is clear. BIT steps through the bits of the bitmap byte
+  ' at BASE. The top 4 bits of an entry are not part of it.
+  ASM
+          lda @COMPARE
+          beq classify
+          ldy #0
+  compare:
+          lda @FAT_SECTOR,y
+          cmp @SECTOR,y
+          bne differ
+          lda @FAT_SECTOR + 256,y
+          cmp @SECTOR + 256,y
+          bne differ
+          iny
+          bne compare
+          bra classify
+  differ:
+          lda #1
+          sta @FATS_DIFFER
+  classify:
+          lda @OFFSET
+          sta @FAT_POINTER
+          lda @OFFSET + 1
+          sta @FAT_POINTER + 1
+          lda @BASE
+          sta @MAP_POINTER
+          lda @BASE + 1
+          sta @MAP_POINTER + 1
+  entry:
+          ldy #3
+          lda (@FAT_POINTER),y
+          and #$0F
+          sta @ENTRY_TOP
+          dey
+          ora (@FAT_POINTER),y
+          dey
+          ora (@FAT_POINTER),y
+          dey
+          ora (@FAT_POINTER),y
+          bne used
+          inc @SECTOR_FREE
+          bra step
+  used:
+          lda @ENTRY_TOP
+          cmp #$0F
+          bne in_chain
+          ldy #2
+          lda (@FAT_POINTER),y
+          dey
+          and (@FAT_POINTER),y
+          cmp #$FF
+          bne in_chain
+          dey
+          lda (@FAT_POINTER),y
+          cmp #$F7
+          bne in_chain
+          inc @SECTOR_BAD
+          bra step
+  in_chain:
+          lda (@MAP_POINTER)
+          and @BIT
+          bne step
+          inc @SECTOR_LOST
+  step:
+          clc
+          lda @FAT_POINTER
+          adc #4
+          sta @FAT_POINTER
+          bcc same_page
+          inc @FAT_POINTER + 1
+  same_page:
+          asl @BIT
+          bne same_byte
+          lda #1
+          sta @BIT
+          inc @MAP_POINTER
+          bne same_byte
+          inc @MAP_POINTER + 1
+  same_byte:
+          dec @COUNT_LEFT
+          bne entry
+  END ASM
+  BANK.USE(CALLER_BANK)
+  IF FATS_DIFFER AND FIX THEN
+    FOR INDEX = 2 TO FAT_COUNT
+      FAT_LOADED = FAT_LOADED + FAT_SIZE
+      WRITE_SECTOR(FAT_LOADED, @FAT_SECTOR)
+    NEXT
+    FAT_LOADED = FAT_START + FAT_PLACE
+  END IF
+  FATS_DIFFER = FATS_DIFFER OR WAS_DIFFER
+  FREE_CLUSTERS = FREE_CLUSTERS + SECTOR_FREE
+  BAD_CLUSTERS = BAD_CLUSTERS + SECTOR_BAD
+  IF SECTOR_LOST <> 0 THEN
+    IF LOST_CLUSTERS = 0 THEN LOST_FIRST = FAT_PLACE
+    LOST_LAST = FAT_PLACE
+  END IF
+  LOST_CLUSTERS = LOST_CLUSTERS + SECTOR_LOST
+  FAT_PLACE = FAT_PLACE + 1
+LOOP
+
+
+' ---- the lost chains ----
+' With -F, each lost chain becomes a file FILEnnnn.CHK in the root. A lost cluster that no lost
+' cluster points to starts a chain. A second round takes the lost clusters left, which are in
+' loops.
+IF FIX = 1 AND LOST_CLUSTERS <> 0 THEN
+  POINTED_BANK = BANK.ALLOC(BITMAP_BANKS)
+  IF POINTED_BANK = 0 THEN FAIL_CARD("Insufficient memory")
+  CLEAR_BITMAP(POINTED_BANK)
+  RANGE_END = (LOST_LAST + 1) << 7
+  IF RANGE_END > CLUSTER_LIMIT THEN RANGE_END = CLUSTER_LIMIT
+  LOST_CLUSTER = START_OF_RANGE()
+  DO WHILE LOST_CLUSTER < RANGE_END
+    IF IS_LOST(LOST_CLUSTER) THEN
+      POINTEE = NEXT_CLUSTER(LOST_CLUSTER)
+      IF POINTEE >= 2 AND POINTEE < CLUSTER_LIMIT THEN MARK_IN(POINTED_BANK, POINTEE)
+    END IF
+    LOST_CLUSTER = LOST_CLUSTER + 1
+  LOOP
+  FILE_NUMBER = NEXT_FILE_NUMBER()
+  ROOT_START()
+  DATE_STAMP()
+  FOR ROUND = 0 TO 1
+    LOST_CLUSTER = START_OF_RANGE()
+    DO WHILE LOST_CLUSTER < RANGE_END AND ROOM_FULL = 0
+      IF IS_LOST(LOST_CLUSTER) THEN
+        IF ROUND = 1 OR MARKED_IN(POINTED_BANK, LOST_CLUSTER) = 0 THEN SAVE_CHAIN(LOST_CLUSTER)
+      END IF
+      LOST_CLUSTER = LOST_CLUSTER + 1
+    LOOP
+  NEXT
+END IF
+
+IF LOST_CLUSTERS <> 0 THEN
+  PRINT DIGITS(LOST_CLUSTERS); " lost clusters found";
+  IF FIX THEN PRINT " in "; DIGITS(CHAIN_COUNT); " chains";
+  PRINT
+  PROBLEMS = 1
+END IF
+
+IF FATS_DIFFER THEN
+  PRINT "FAT 2 differs from FAT 1"
+  PROBLEMS = 1
+END IF
+
+READ_SECTOR(VOLUME_START + INFO_SECTOR, @SECTOR)
+IF LONG_AT(@SECTOR) = INFO_LEAD AND LONG_AT(@SECTOR + 484) = INFO_MIDDLE THEN
+  INFO_FREE = LONG_AT(@SECTOR + 488)
+  IF INFO_FREE <> NO_COUNT AND INFO_FREE <> FREE_CLUSTERS THEN
+    PRINT "FS info free count is "; DIGITS(INFO_FREE); ", not "; DIGITS(FREE_CLUSTERS)
+    PROBLEMS = 1
+    IF FIX THEN
+      PUT_LONG(@SECTOR + 488, FREE_CLUSTERS)
+      WRITE_SECTOR(VOLUME_START + INFO_SECTOR, @SECTOR)
+    END IF
+  END IF
+END IF
+
+' ---- the sizes ----
+IF PROBLEMS = 1 AND FIX = 0 THEN
+  PRINT
+  PRINT "Errors found, -F parameter not specified"
+  PRINT "Corrections will not be written to disk"
+END IF
+PRINT
+SHOW(CLUSTER_LIMIT - 2, "KB total disk space")
+IF HIDDEN_COUNT <> 0 THEN SHOW(HIDDEN_CLUSTERS, "KB in " + DIGITS(HIDDEN_COUNT) + " hidden files")
+SHOW(DIR_CLUSTERS, "KB in " + DIGITS(DIR_COUNT) + " directories")
+SHOW(FILE_CLUSTERS, "KB in " + DIGITS(FILE_COUNT) + " user files")
+IF SAVED_COUNT <> 0 THEN SHOW(SAVED_CLUSTERS, "KB in " + DIGITS(SAVED_COUNT) + " recovered files")
+IF BAD_CLUSTERS <> 0 THEN SHOW(BAD_CLUSTERS, "KB in bad sectors")
+SHOW(FREE_CLUSTERS, "KB available on disk")
+PRINT '--- 1 blank line
+IF PROBLEMS THEN END 3
+END 0

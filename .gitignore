@@ -34,3 +34,7 @@ UXCBASIC/tests/*.IN
 
 # Claude Code per-machine settings.
 .claude/settings.local.json
+
+# The parked CHKDSK -F test keeps its keys and golden local too.
+attic/chkdsk-v2/*.IN
+attic/chkdsk-v2/*.OUT

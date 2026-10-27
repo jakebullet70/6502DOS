@@ -15,6 +15,8 @@ tests/sd at the start: 256 MB, 2 sectors per cluster, 259079 clusters, the files
 assembled to NAME.COM: the load address $0801, then the code from $0801, and tests/com/NAME.UXB and
 tests/NAME.UXB compiled to NAME.COM. Its folder DOS is build/DOS, the commandlets from
 tools/build.py, and its folder UTILS is build/UTILS. Each test gets a new copy of the image.
+tests/NAME.PY, when it exists, defines card(image), which then changes the copy or writes a card
+of its own in its place.
 
 A test can type keys into the monitor with x16emu -bas:
 - tests/NAME.S, a program assembled with ca65 to run at $1000, typed in with E commands;
@@ -38,6 +40,7 @@ import datetime
 import difflib
 import glob
 import os
+import runpy
 import shutil
 import subprocess
 import sys
@@ -254,6 +257,8 @@ def main():
         base = os.path.splitext(out_path)[0]
         keys = None
         shutil.copyfile(SD_IMAGE, RUN_IMAGE)
+        if os.path.exists(base + ".PY"):
+            runpy.run_path(base + ".PY")["card"](RUN_IMAGE)
         if os.path.exists(base + ".S"):
             keys = program_keys(base + ".S")
         elif os.path.exists(base + ".UXB"):
