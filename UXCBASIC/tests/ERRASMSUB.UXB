@@ -1,0 +1,7 @@
+' ERRASMSUB -- ASM calls a SUB that takes parameters
+SUB SHOW(N AS UBYTE)
+  PRINT N
+END SUB
+ASM
+    jsr SHOW
+END ASM

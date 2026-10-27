@@ -23,11 +23,14 @@ GPC's PEEK(AS.A + AS.P) is g.as_table[g.as_p - 1]: AS.P counts from 1.
 
 from uxc_code import cb_add, cb_put, emit, fx_add
 from uxc_defs import K_ASM_BRANCH, K_ASM_LABELS, K_ASM_WORD, K_EK_ADDR, K_EK_CONST, K_F_ABS, \
-    K_F_HI, K_F_LO, K_SEC_CODE, K_SEC_CONST, K_TT_EOL, K_TT_NAME, K_TT_OP, K_TY_STR
+    K_F_HI, K_F_LO, K_SEC_CODE, K_SEC_CONST, K_SEC_LABEL, K_SK_SUB, K_TT_EOL, K_TT_NAME, K_TT_OP, \
+    K_TY_STR
 import uxc_expr
 import uxc_fold
 import uxc_lex
+import uxc_name
 import uxc_ramreg
+import uxc_sub
 import uxc_tpl as T
 from uxc_state import er_mismatch, er_stop, er_syntax, g
 
@@ -484,12 +487,41 @@ def as_jump():
     g.cb_b = 0
     cb_add()
     as_label_find()
-    if g.as_found < 0:
+    if g.as_found >= 0:
+        g.as_to = g.as_label_at[g.as_found]
+        as_label_word()
+        return
+    as_sub_find()
+    if g.as_sub == 0:
         g.as_kind = K_ASM_WORD
         as_reference_add()
         return
-    g.as_to = g.as_label_at[g.as_found]
-    as_label_word()
+    if g.as_sub == g.sb_current:
+        er_stop("A SUB CANNOT CALL ITSELF")
+    g.sb_called_record = g.as_sub
+    uxc_sub.sb_edge()
+    g.fx_at = g.as_at
+    g.fx_k = K_F_ABS
+    g.fx_s = K_SEC_LABEL
+    g.fx_v = g.as_sub
+    fx_add()
+
+
+def as_sub_find():
+    """AS.SUB.FIND. The SUB named g.as_name, for JMP or JSR. Out: g.as_sub, its record, or 0
+    when the name is not a SUB. A SUB with parameters or a FUNCTION stops the compile."""
+    g.as_saved_name = g.sm_n
+    g.sm_n = g.as_name
+    g.nm_find_quiet = 1
+    uxc_name.nm_find()
+    g.nm_find_quiet = 0
+    g.sm_n = g.as_saved_name
+    g.as_sub = 0
+    if g.sy_r == 0 or g.sy_kind != K_SK_SUB:
+        return
+    if g.sy_np != 0 or g.sy_type != 0:
+        er_stop("ASM CALLS A SUB WITHOUT PARAMETERS")
+    g.as_sub = g.sy_r
 
 
 def as_label_word():
@@ -504,6 +536,9 @@ def as_label_word():
 def as_label_define():
     as_label_find()
     if g.as_found >= 0:
+        as_error_duplicate()
+    as_sub_find()
+    if g.as_sub != 0:
         as_error_duplicate()
     if g.as_label_count == K_ASM_LABELS:
         as_error_labels()

@@ -1424,6 +1424,8 @@ The operands:
 - n, n,X, n,Y: zero page or absolute.
 - (n), (n,X), (n),Y: indirect.
 - label: a branch, JMP or JSR.
+- name: JMP or JSR to a SUB without parameters, when the block has no label of
+  that name.
 - n, label: BBR0-BBR7 and BBS0-BBS7.
 
 - An operand is a constant expression, @name or AddrOf(name).
@@ -1447,7 +1449,12 @@ The operands:
 - A branch to a name that is not a label stops the compile with BRANCH TAKES
   A LABEL.
 - A branch further than 127 bytes stops the compile with BRANCH OUT OF RANGE.
-- A label defined twice in a block stops the compile with DUPLICATE LABEL.
+- A label defined twice in a block stops the compile with DUPLICATE LABEL. So
+  does a label that names a SUB.
+- JMP or JSR to a SUB with parameters, or to a FUNCTION, stops the compile with
+  ASM CALLS A SUB WITHOUT PARAMETERS.
+- JSR to the SUB the block is in stops the compile with A SUB CANNOT CALL
+  ITSELF.
 - A label that the block does not define stops the compile with LABEL NOT
   FOUND, at the line that uses it.
 - A 33rd label, or a 33rd use of a label further down, stops the compile with

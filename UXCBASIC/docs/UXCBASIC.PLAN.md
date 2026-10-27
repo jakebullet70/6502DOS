@@ -1393,6 +1393,9 @@ To do, not designed yet:
     resolved at link time, so it always takes the absolute form.
   - `AND`, `ORA`, `EOR` and `ROR` are read as mnemonics, not as operators, inside a block.
   - The code must keep X, which indexes the expression stack.
+  - `JMP name` or `JSR name` reaches a SUB without parameters when the block has no label of
+    that name. It is a call, as `CALL` is: a call record for the pools and a fixup that keeps
+    the SUB. Done 2026-10-27: `as_sub_find` in `pyuxc/uxc_asm.py`; tests ASMSUB, ERRASMSUB.
   - `#<n` and `#>n` are the low and the high byte. `#<@name` and `#>@name` are K.F.LO and
     K.F.HI fixups.
   - JMP and JSR take a label when the operand is a name alone.

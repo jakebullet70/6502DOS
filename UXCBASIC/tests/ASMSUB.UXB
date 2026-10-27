@@ -1,0 +1,29 @@
+' ASMSUB -- JSR and JMP to a SUB from an ASM block
+DIM N AS UBYTE
+SUB BUMP()
+  ASM
+    inc @N
+    jsr ADD_TEN         ' a SUB further down, from a SUB
+  END ASM
+END SUB
+SUB NEVER()             ' left out: nothing calls it
+  N = 99
+END SUB
+N = 0
+ASM
+    jsr BUMP
+    jsr bump            ' upper and lower case are the same
+    jmp done
+done:
+END ASM
+PRINT N
+ASM
+    jsr tail
+    jmp over
+tail: jmp ADD_TEN       ' JMP to a SUB: its RTS returns to the JSR
+over:
+END ASM
+PRINT N
+SUB ADD_TEN()
+  N = N + 10
+END SUB
