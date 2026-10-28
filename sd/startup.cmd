@@ -15,6 +15,7 @@ PATH$ = "C:\DOS;C:\;c:\utils"
 print "Checking disk..."
 diskinfo c:
 FONT C:\UTILS\GUI.F08
+POPD -C
 
 
 REM BIND LS FILES

@@ -1,0 +1,36 @@
+'=============================================================================================
+' -- PUSHD [folder] [-L] [-C] [-H]
+' -- saves the current folder on the folder stack, then changes to folder and its drive. With no
+' -- folder it saves the current folder and stays there. POPD takes the last one off.
+' -- The stack holds 6 folders, in C:\6502DOS.REG (DIRSTACK.UXI).
+' -- -L lists the stack, the newest first. -C empties it. -H or -? runs HELP PUSHD. A switch
+' -- takes either case, and goes alone.
+' -- A full stack prints Directory stack full. A folder that does not exist prints its error
+' -- message. Both leave the stack and the current folder as they were. A switch other than
+' -- these prints Invalid switch, and a second parameter prints Too many parameters. Each gives
+' -- exit code 1. Exit code 0 otherwise.
+' --
+' -- From a prompt:
+' --     PUSHD C:\DOCS
+' --     PUSHD -L
+'=============================================================================================
+#INCLUDE "DOS.UXI"
+#INCLUDE "HEAP.UXI"
+#INCLUDE "DIRSTACK.UXI"
+
+READ_ARGUMENTS(1)
+RUN_SWITCH("PUSHD")
+COUNT_STACK()
+IF DEPTH = STACK_SIZE THEN FAIL("Directory stack full")
+SAVED = CURRENT_FOLDER()
+IF FOLDER <> "" THEN
+  GO_TO(FOLDER)
+  IF DOS.ERROR <> 0 THEN FAIL(DOS.ERRMSG(DOS.ERROR))
+END IF
+DOS.REG_SET(STACK_KEY(DEPTH + 1), SAVED)
+IF DOS.ERROR <> 0 THEN
+  ERROR_NUMBER = DOS.ERROR
+  GO_TO(SAVED)
+  FAIL(DOS.ERRMSG(ERROR_NUMBER))
+END IF
+END 0

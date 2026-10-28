@@ -1,0 +1,84 @@
+' DIRSTACK.UXI: the folder stack of PUSHD and POPD. It is kept in the settings store
+' C:\6502DOS.REG as the keys DIRSTACK1 to DIRSTACK6, DIRSTACK1 the oldest. Each value is a full
+' path: C:\DOCS. Include DOS.UXI and HEAP.UXI first.
+CONST SLOT_P1 AS UBYTE = 0, SLOT_P9 AS UBYTE = 8
+CONST KEY_PREFIX$ = "DIRSTACK", STACK_SIZE AS UBYTE = 6
+
+DIM ARGUMENT AS STRING * 255, FOLDER AS STRING * 255, SAVED AS STRING * 255
+DIM SLOT AS UBYTE, DEPTH AS UBYTE, INDEX AS UBYTE, SWITCH AS UBYTE, ERROR_NUMBER AS UBYTE
+
+SUB FAIL(MESSAGE AS STRING)
+  PRINT MESSAGE
+  END 1
+END SUB
+
+' The key of stack slot NUMBER, 1 to STACK_SIZE.
+FUNCT STACK_KEY(NUMBER AS UBYTE) AS STRING
+  RETURN KEY_PREFIX$ + CHR$(ASC("0") + NUMBER)
+END FUNCT
+
+' Sets DEPTH to the number of folders on the stack: the slots up to the first empty one.
+SUB COUNT_STACK()
+  DEPTH = 0
+  DO WHILE DEPTH < STACK_SIZE
+    IF DOS.REG_GET(STACK_KEY(DEPTH + 1), "") = "" THEN EXIT DO
+    DEPTH = DEPTH + 1
+  LOOP
+END SUB
+
+' The current drive and folder: C:\DOCS, C:\ at the root.
+FUNCT CURRENT_FOLDER() AS STRING
+  RETURN CHR$(ASC("A") + DOS.GETDRIVE()) + ":\" + DOS.GETCWD(0)
+END FUNCT
+
+' Changes to PATH, and to its drive when it has one. DOS.ERROR is set on a failure.
+SUB GO_TO(PATH AS STRING)
+  DOS.CHDIR(PATH)
+  IF DOS.ERROR <> 0 THEN RETURN
+  IF MID$(PATH, 2, 1) = ":" THEN DOS.SETDRIVE((ASC(PATH) OR $20) - ASC("a"))
+END SUB
+
+' Reads P1$ to P9$ into SWITCH, the small letter of a switch or 0, and FOLDER. TAKES_FOLDER is
+' 0 for POPD. Ends the program with exit code 1 on a bad switch or too many parameters.
+SUB READ_ARGUMENTS(TAKES_FOLDER AS UBYTE)
+  FOR SLOT = SLOT_P1 TO SLOT_P9
+    ARGUMENT = HEAP.SYS_STRINGS_GET(SLOT)
+    IF ARGUMENT = "" THEN CONTINUE
+    IF ASC(ARGUMENT) = ASC("-") THEN
+      IF LEN(ARGUMENT) <> 2 THEN FAIL("Invalid switch")
+      INDEX = ASC(MID$(ARGUMENT, 2)) OR $20
+      IF INDEX <> ASC("c") AND INDEX <> ASC("l") AND INDEX <> ASC("h") AND INDEX <> ASC("?") THEN FAIL("Invalid switch")
+      IF SWITCH <> 0 OR FOLDER <> "" THEN FAIL("Too many parameters")
+      SWITCH = INDEX
+    ELSE
+      IF TAKES_FOLDER = 0 OR SWITCH <> 0 OR FOLDER <> "" THEN FAIL("Too many parameters")
+      FOLDER = ARGUMENT
+    END IF
+  NEXT
+END SUB
+
+' Runs SWITCH, when there is one, and ends the program: -C empties the stack, -L lists it
+' newest first, -H and -? run HELP TOPIC.
+SUB RUN_SWITCH(TOPIC AS STRING)
+  SELECT CASE SWITCH
+    CASE 0
+      RETURN
+    CASE ASC("c")
+      FOR INDEX = 1 TO STACK_SIZE
+        DOS.REG_SET(STACK_KEY(INDEX), "")
+        IF DOS.ERROR <> 0 THEN FAIL(DOS.ERRMSG(DOS.ERROR))
+      NEXT
+    CASE ASC("l")
+      COUNT_STACK()
+      DO WHILE DEPTH > 0
+        PRINT DOS.REG_GET(STACK_KEY(DEPTH), "")
+        DEPTH = DEPTH - 1
+      LOOP
+    CASE ELSE
+      HEAP.SYS_STRINGS_SET(SLOT_P1, TOPIC)
+      DOS.EXEC("C:\DOS\HELP.COM", " " + TOPIC)
+      IF DOS.ERROR <> 0 THEN FAIL(DOS.ERRMSG(DOS.ERROR))
+      END DOS.EXITCODE()
+  END SELECT
+  END 0
+END SUB

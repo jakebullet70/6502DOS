@@ -1,0 +1,28 @@
+'=============================================================================================
+' -- POPD [-L] [-C] [-H]
+' -- takes the last folder PUSHD saved off the folder stack and changes to it and its drive.
+' -- -L lists the stack, the newest first. -C empties it; the startup script runs POPD -C. -H or
+' -- -? runs HELP POPD. A switch takes either case, and goes alone.
+' -- An empty stack prints Directory stack empty. A folder that no longer exists prints its
+' -- error message and is still taken off. A switch other than these prints Invalid switch, and
+' -- any other parameter prints Too many parameters. Each gives exit code 1. Exit code 0
+' -- otherwise.
+' --
+' -- From a prompt:
+' --     POPD
+' --     POPD -C
+'=============================================================================================
+#INCLUDE "DOS.UXI"
+#INCLUDE "HEAP.UXI"
+#INCLUDE "DIRSTACK.UXI"
+
+READ_ARGUMENTS(0)
+RUN_SWITCH("POPD")
+COUNT_STACK()
+IF DEPTH = 0 THEN FAIL("Directory stack empty")
+FOLDER = DOS.REG_GET(STACK_KEY(DEPTH), "")
+DOS.REG_SET(STACK_KEY(DEPTH), "")
+IF DOS.ERROR <> 0 THEN FAIL(DOS.ERRMSG(DOS.ERROR))
+GO_TO(FOLDER)
+IF DOS.ERROR <> 0 THEN FAIL(DOS.ERRMSG(DOS.ERROR))
+END 0

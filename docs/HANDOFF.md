@@ -2305,9 +2305,29 @@ the beta 1 list).
        from the header comments of `ZIP.UXB` and `UNZIP.UXB`. HELP.HLP 21584 bytes (was
        20135). Build 2068 ms, the new baseline. CMDLETS golden updated (the topic list gains
        `ZIP UNZIP`, nothing else): CMDLETS ok 3.4 s. `HELP UNZIP` checked by a scratch test,
-       then deleted. `SI` has no HELP topic yet.
-  6. `BE`, the batch enhancer (`ASK`/`CHOICE` to `ERRORLEVEL`, `BOX`, `BEEP`, `DELAY`,
-     `ROWCOL`). Talk it through with the user first.
+       then deleted. `SI` has no HELP topic yet. Committed `7a7d161`.
+  6. `BE` dropped (the user, 2026-10-28): the shell has `INPUT` and `PAUSE`. The user reviews
+     the menu options themself.
+  7. `PUSHD` and `POPD` (the user, 2026-10-28), in `C:\DOS`: `src/dos/PUSHD.UXB`,
+     `src/dos/POPD.UXB` and their shared `src/dos/DIRSTACK.UXI`.
+     - The stack is 6 folders, the keys `DIRSTACK1` (oldest) to `DIRSTACK6` of
+       `C:\6502DOS.REG`, each a full path. The depth is the slots up to the first empty one,
+       so a push or a pop is one `reg_set`.
+     - `PUSHD [folder]` saves the current folder, then changes to folder and its drive; with
+       no folder it saves and stays (the user's pick). A full stack prints `Directory stack
+       full`; a bad folder prints its error message; both change nothing. `POPD` on an empty
+       stack prints `Directory stack empty`. A popped folder that is gone is still taken off.
+     - Switches, either case, alone: `-L` lists newest first, `-C` empties, `-H`/`-?` set P1$
+       and exec `C:\DOS\HELP.COM` with the topic. Exit code 1 on each error.
+     - `POPD -C` is in `sd/startup.cmd` (after `FONT`) and in the ignored `card/startup.cmd`
+       (after `diskinfo c:`), which overrides it on `build/SD.IMG`.
+     - HELP topics `PUSHD` and `POPD` at the end of `HELP.HLP`.
+     - `PUSHD.COM` 3150 bytes, `POPD.COM` 3031. Build 2394 ms, then 1810 ms, the new baseline.
+     - Tests (`.IN`/`.OUT` local): PUSHD (new; errors, push, list, pop, full stack, `-c`)
+       ok 4.2 s; PUSHDHLP (new; `POPD -h`, `PUSHD -?`) ok 2.5 s; CMDLETS golden updated (the
+       topic list gains `PUSHD POPD`) ok 3.8 s. A scratch boot of `build/SD.IMG` twice on one
+       image: `PUSHD \UTILS` on the first, `PUSHD -L` empty on the second.
+  8. Next: `DELTREE`, then `SUBST`. Talk them through first.
   - Ideas kept, not picked: `UNDELETE` (needs a check that the x16-rom library keeps the high
     word of a deleted entry's cluster), `MIRROR`, `DISKEDIT`, `WIPEINFO`, `NC` (two-panel
     file manager on the GUI library), `NCD` (needs a child to set the shell's folder), `FF`
@@ -2317,8 +2337,8 @@ the beta 1 list).
   PATH from the WinGet links. Build 4400 ms wall (the ROM 3.30 s). The build with the new
   calls took 10495 ms (the ROM 10.28 s): a new `DOS.UXI` recompiles every program. The
   baseline stays 4400 ms for a build that leaves `DOS.UXI` alone.
-- Steps since the last full suite: 4 (the ZIP CRC fix, the ROM `bank_save` fix, ZIPDEF, the
-  ZIP and UNZIP HELP topics). Full suite after ZIP step 4 (2026-10-27): 59 tests,
+- Steps since the last full suite: 5 (the ZIP CRC fix, the ROM `bank_save` fix, ZIPDEF, the
+  ZIP and UNZIP HELP topics, PUSHD and POPD). Full suite after ZIP step 4 (2026-10-27): 59 tests,
   0 failed, 105.6 s.
 - Before it, full suite after FONTEDIT step 4 (2026-10-27): 116 tests,
   5 failed, 230.7 s. `CHKDSK`, `FILES`, `HDIR`, `HDIRARG` and `TREE` failed on the card's new

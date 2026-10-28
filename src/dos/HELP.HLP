@@ -557,3 +557,23 @@ UNZIP -l archive [names]
     UNZIP GAMES
     UNZIP -o -d C:\GAMES GAMES.ZIP *.PRG
     UNZIP -l GAMES.ZIP DOCS\*.TXT
+:PUSHD
+PUSHD [folder] [-L] [-C] [-H]   (Command line only)
+  Saves the current folder on the folder stack, then changes to folder and
+  its drive. With no folder it saves the current folder and stays there.
+  The stack holds 6 folders, kept in C:\6502DOS.REG. POPD takes the last
+  one off. The startup script empties it.
+  -L lists the stack, the newest first. -C empties it. -H or -? shows this
+  help. A switch takes either case, and goes alone.
+  Examples:
+    PUSHD C:\DOCS
+    PUSHD -L
+:POPD
+POPD [-L] [-C] [-H]             (Command line only)
+  Takes the last folder PUSHD saved off the folder stack, and changes to it
+  and its drive.
+  -L lists the stack, the newest first. -C empties it. -H or -? shows this
+  help. A switch takes either case, and goes alone.
+  Examples:
+    POPD
+    POPD -C
