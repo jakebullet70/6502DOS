@@ -29,7 +29,7 @@
 .import fat32_root, fat32_sectors_per_cluster, fat32_cluster_count
 .import sync_sector_buffer, sdcard_read_sector, sd_input, sd_output, jsrfar1
 .import DPB, current_drive, create_attr
-.importzp saved_bank, file_context, file_size
+.importzp saved_bank, bank_save, file_context, file_size
 
 ; The search state of a find buffer, before FIND_ATTR.
 FIND_PATTERN  = 0               ; the name part of findfirst's path, ended by 0
@@ -773,7 +773,7 @@ lib_read:
         ldx r1+1
         beq @done               ; fat32_read takes 0 bytes as 256
 @read:
-        jsr fat32_set_context
+        jsr lib_set_bank
         bcc lib_errno_set
         lda r0
         sta fat32_ptr
@@ -794,6 +794,13 @@ lib_read:
 @done:
         clc
         rts
+
+; lib_set_bank: sets bank_save to saved_bank, then does fat32_set_context with context A.
+; Changes X and Y.
+lib_set_bank:
+        ldy saved_bank
+        sty bank_save
+        jmp fat32_set_context
 
 ; lib_errno_set: returns carry set and A = the error of the library's errno.
 lib_errno_set:
@@ -871,7 +878,7 @@ lib_io:
 ; drive stops the write early, with no error. Returns r1 = the bytes written. RAM bank 0 must be
 ; selected, and saved_bank must be the bank of a buffer at $A000-$BFFF. Changes X and Y.
 lib_write:
-        jsr fat32_set_context
+        jsr lib_set_bank
         bcc @fault
         jsr fat32_get_size      ; lib_gap = the position - the size
         ldy lib_entry

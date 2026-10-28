@@ -3,7 +3,9 @@
 ' -- adds files to a ZIP archive, and makes the archive when it does not exist. files are up
 ' -- to 8 names or patterns with * and ?. A folder adds an entry for itself; with -r, the
 ' -- files and folders in it too, and theirs, down to 16 folders deep. Hidden and system files
-' -- are left out. A line each names the entry: adding: NAME (stored 0%).
+' -- are left out. A line each names the entry: adding: NAME (deflated N%), with the saving in
+' -- percent. A folder, and a file of up to 32768 bytes that deflate does not shrink, is
+' -- stored: adding: NAME (stored 0%).
 ' -- An entry is named by its path as typed, with / between folders, cut of a drive and of a
 ' -- leading \, .\ or ..\. A file whose name is in the archive already replaces that entry.
 ' -- New entries come first, then the old ones kept. The archive and ZIP's two work files,
@@ -30,7 +32,7 @@
 #INCLUDE "ZIPFILE.UXI"
 CONST TEMP_FILE AS STRING = "ZIPTEMP.$$$", LIST_FILE AS STRING = "ZIPLIST.$$$"
 ' Version 2.0 made on MS-DOS, so the low byte of the external attributes is the FAT's.
-CONST VERSION_MADE AS UBYTE = 20, VERSION_STORED AS UBYTE = 10
+CONST VERSION_MADE AS UBYTE = 20, VERSION_STORED AS UBYTE = 10, VERSION_DEFLATED AS UBYTE = 20
 CONST EXTERNAL_AT AS UBYTE = 38, FLAG_DESCRIPTOR AS UBYTE = 8
 CONST FULL_DESCRIPTOR AS UBYTE = 16, BARE_DESCRIPTOR AS UBYTE = 12
 ' The name table: TABLE_SLOTS slots of 8 bytes in TABLE_BANKS banks, at most TABLE_MAX used.
@@ -56,6 +58,37 @@ DIM TABLE_BANK AS UBYTE, CALLER_BANK AS UBYTE, TABLE_COUNT AS UWORD
 DIM KEY AS ULONG, FREE_SLOT AS UWORD, SLOT_AT AS UWORD
 DIM DEPTH AS UBYTE, PATH_LENGTHS(DEPTH_MAX) AS UBYTE
 DIM FIND_STACK(DEPTH_MAX * DOS.FIND_ATTR) AS UBYTE
+DIM DATA_AT AS ULONG, PACKED AS ULONG
+
+' Deflate, with fixed Huffman codes only. The file is read 512 bytes at a time into the window,
+' 32768 bytes in the 4 RAM banks from WINDOW_BANK to WINDOW_END - 1, a ring: an offset in it
+' is 0 to $7FFF. CURSOR is the offset of the next byte to code, with AHEAD bytes read past it.
+' The head table, in bank HEAD_BANK, holds for each hash of 3 bytes the offset where they came
+' last: the low byte at $A000 + the hash, the high byte at $B000 + the hash. A match is at
+' most 31743 bytes back, so the reads ahead never reach it. A block is coded into bank
+' OUT_BANK from $A000; it takes 7168 bytes and the match that ends past them at most, so its
+' codes fit the bank. BIT_ACC holds the BIT_COUNT bits, 0 to 7, not yet a byte.
+CONST WINDOW_BANKS AS UBYTE = 4, DEFLATE_BANKS AS UBYTE = 6
+CONST WINDOW_SIZE AS ULONG = 32768
+DIM BIT_ACC AS UBYTE AT $59, BIT_COUNT AS UBYTE AT $5A, PUT_VALUE AS ULONG AT $5B
+DIM PUT_COUNT AS UBYTE AT $5F, OUT_PTR AS UWORD AT $60, OUT_BANK AS UBYTE AT $62
+DIM WINDOW_BANK AS UBYTE AT $63, WINDOW_END AS UBYTE AT $64, HEAD_BANK AS UBYTE AT $65
+DIM CURSOR AS UWORD AT $66, AHEAD AS UWORD AT $68, BLOCK_IN AS UWORD AT $6A
+DIM CUR_PTR AS UWORD AT $6C, CUR_BANK AS UBYTE AT $6E, SRC_PTR AS UWORD AT $6F
+DIM SRC_BANK AS UBYTE AT $71, MATCH_LENGTH AS UWORD AT $72, MAX_LENGTH AS UWORD AT $74
+DIM DISTANCE AS UWORD AT $76, HEAD_PTR AS UWORD AT $78, AT_END AS UBYTE AT $7A
+DIM HASH_BYTE0 AS UBYTE AT $7B, HASH_BYTE1 AS UBYTE AT $7C, HASH_BYTE2 AS UBYTE AT $7D
+' DEF_BLOCK keeps BASIC's X here: X indexes the expression stack, which DEF_REFILL uses.
+DIM SAVED_X AS UBYTE AT $7E
+' The fixed codes, their bits in the order they are written. A literal's code is 8 bits below
+' 144, else 9. LENGTH_SYMBOL gives a length less 3 its length symbol less 257, 0 to 28, whose
+' code is 7 bits below 23, else 8. DIST_SMALL gives a distance less 1, below 256, its
+' distance symbol, and DIST_LARGE a distance less 1 shifted right 7. A base is less 3 for a
+' length, less 1 for a distance.
+DIM LIT_CODE_LOW(256) AS UBYTE, LIT_CODE_HIGH(256) AS UBYTE, LENGTH_SYMBOL(256) AS UBYTE
+DIM LENGTH_CODE(29) AS UBYTE, LENGTH_BASE(29) AS UBYTE, LENGTH_EXTRA(29) AS UBYTE
+DIM DIST_SMALL(256) AS UBYTE, DIST_LARGE(256) AS UBYTE, DIST_CODE(30) AS UBYTE
+DIM DIST_BASE_LOW(30) AS UBYTE, DIST_BASE_HIGH(30) AS UBYTE, DIST_EXTRA(30) AS UBYTE
 
 ' Closes the files, deletes the work files, prints MESSAGE and ends ZIP with exit code CODE.
 SUB ABORT(MESSAGE AS STRING, CODE AS UBYTE)
@@ -203,6 +236,800 @@ SUB TABLE_ADD(AT AS ULONG)
   TABLE_COUNT = TABLE_COUNT + 1
 END SUB
 
+' The saving of SMALLER bytes over ORIGINAL, in percent, rounded, as Info-ZIP gives it; 0 when
+' there is none.
+FUNCT SAVING(ORIGINAL AS ULONG, SMALLER AS ULONG) AS UBYTE
+  DO WHILE ORIGINAL > $FFFFFF
+    ORIGINAL = (ORIGINAL + $80) >> 8
+    SMALLER = (SMALLER + $80) >> 8
+  LOOP
+  IF ORIGINAL <= SMALLER THEN RETURN 0
+  RETURN (1 + 200 * (ORIGINAL - SMALLER) / ORIGINAL) / 2
+END FUNCT
+
+' Writes the BYTES bytes of the window from offset FROM to TEMP. Leaves a window bank selected.
+SUB WINDOW_PUT(FROM AS UWORD, BYTES AS UWORD)
+  DIM PART AS UWORD
+  DO WHILE BYTES > 0
+    BANK.USE(WINDOW_BANK + (FROM >> 13))
+    PART = $2000 - (FROM AND $1FFF)
+    IF BYTES < PART THEN PART = BYTES
+    PUT(TEMP, $A000 + (FROM AND $1FFF), PART)
+    FROM = (FROM + PART) AND $7FFF
+    BYTES = BYTES - PART
+  LOOP
+END SUB
+
+' Writes the codes in bank OUT_BANK, from $A000 to OUT_PTR, to TEMP, and moves OUT_PTR back to
+' $A000. Leaves OUT_BANK selected.
+SUB OUT_FLUSH()
+  BANK.USE(OUT_BANK)
+  IF OUT_PTR > $A000 THEN PUT(TEMP, $A000, OUT_PTR - $A000)
+  OUT_PTR = $A000
+END SUB
+
+' Adds the PUT_COUNT low bits of PUT_VALUE, the lowest first, to the codes at OUT_PTR. The
+' bits above them must be 0, and bytes 2 and 3 of PUT_VALUE too; BIT_COUNT plus PUT_COUNT is
+' at most 24. Keeps X and Y; selects OUT_BANK.
+SUB DEF_PUT_BITS()
+  ASM
+      phx
+      ldx @BIT_COUNT
+      beq joined
+  shift:
+      asl @PUT_VALUE
+      rol @PUT_VALUE + 1
+      rol @PUT_VALUE + 2
+      dex
+      bne shift
+  joined:
+      lda @PUT_VALUE
+      ora @BIT_ACC
+      sta @PUT_VALUE
+      lda @BIT_COUNT
+      clc
+      adc @PUT_COUNT
+      sta @BIT_COUNT
+      ldx @OUT_BANK
+      stx $00
+  emit:
+      lda @BIT_COUNT
+      cmp #8
+      bcc kept
+      sbc #8
+      sta @BIT_COUNT
+      lda @PUT_VALUE
+      sta (@OUT_PTR)
+      inc @OUT_PTR
+      bne moved
+      inc @OUT_PTR + 1
+  moved:
+      lda @PUT_VALUE + 1
+      sta @PUT_VALUE
+      lda @PUT_VALUE + 2
+      sta @PUT_VALUE + 1
+      stz @PUT_VALUE + 2
+      bra emit
+  kept:
+      lda @PUT_VALUE
+      sta @BIT_ACC
+      plx
+  END ASM
+END SUB
+
+' Adds the BITS low bits of VALUE to the codes, as DEF_PUT_BITS.
+SUB PUT_BITS(VALUE AS UWORD, BITS AS UBYTE)
+  PUT_VALUE = VALUE
+  PUT_COUNT = BITS
+  DEF_PUT_BITS()
+END SUB
+
+' Sets CUR_PTR and CUR_BANK to the window's offset CURSOR. For DEF_BLOCK: changes X.
+SUB DEF_AT_CURSOR()
+  ASM
+      lda @CURSOR
+      sta @CUR_PTR
+      lda @CURSOR + 1
+      tax
+      and #$1F
+      ora #$A0
+      sta @CUR_PTR + 1
+      txa
+      lsr a
+      lsr a
+      lsr a
+      lsr a
+      lsr a
+      clc
+      adc @WINDOW_BANK
+      sta @CUR_BANK
+  END ASM
+END SUB
+
+' Moves CUR_PTR, whose low byte has wrapped, to its next page, and at the end of a bank to the
+' next, after the last to the first. Keeps X and Y.
+SUB DEF_CUR_PAGE()
+  ASM
+      inc @CUR_PTR + 1
+      lda @CUR_PTR + 1
+      cmp #$C0
+      bne done
+      lda #$A0
+      sta @CUR_PTR + 1
+      inc @CUR_BANK
+      lda @CUR_BANK
+      cmp @WINDOW_END
+      bne done
+      lda @WINDOW_BANK
+      sta @CUR_BANK
+  done:
+  END ASM
+END SUB
+
+' DEF_CUR_PAGE for SRC_PTR and SRC_BANK.
+SUB DEF_SRC_PAGE()
+  ASM
+      inc @SRC_PTR + 1
+      lda @SRC_PTR + 1
+      cmp #$C0
+      bne done
+      lda #$A0
+      sta @SRC_PTR + 1
+      inc @SRC_BANK
+      lda @SRC_BANK
+      cmp @WINDOW_END
+      bne done
+      lda @WINDOW_BANK
+      sta @SRC_BANK
+  done:
+  END ASM
+END SUB
+
+' Sets each offset in the head table to 0. Keeps X; selects HEAD_BANK.
+SUB DEF_CLEAR_HEAD()
+  ASM
+      phx
+      lda @HEAD_BANK
+      sta $00
+      stz @HEAD_PTR
+      lda #$A0
+      sta @HEAD_PTR + 1
+      ldy #0
+      lda #0
+  clear:
+      sta (@HEAD_PTR),y
+      iny
+      bne clear
+      inc @HEAD_PTR + 1
+      ldx @HEAD_PTR + 1
+      cpx #$C0
+      bne clear
+      plx
+  END ASM
+END SUB
+
+' Reads up to 512 bytes of SOURCE into the window, after the AHEAD bytes past CURSOR, and adds
+' them to CRC, LENGTH and AHEAD. A short read sets AT_END.
+SUB DEF_REFILL()
+  DIM LOAD_AT AS UWORD
+  LOAD_AT = (CURSOR + AHEAD) AND $7FFF
+  BANK.USE(WINDOW_BANK + (LOAD_AT >> 13))
+  LOAD_AT = $A000 + (LOAD_AT AND $1FFF)
+  COUNT = DOS.READ_FILE(SOURCE, LOAD_AT, BUFFER_SIZE)
+  IF COUNT < BUFFER_SIZE THEN AT_END = 1
+  CRC_DATA = LOAD_AT
+  CRC_COUNT = COUNT
+  CRC_ADD()
+  AHEAD = AHEAD + COUNT
+  LENGTH = LENGTH + COUNT
+END SUB
+
+' Reads 512 bytes more when fewer than 258 wait past CURSOR and the file has more. Sets
+' MAX_LENGTH to AHEAD, at most 258, CUR_PTR and CUR_BANK to CURSOR, and HASH_BYTE0 to
+' HASH_BYTE2 to the 3 bytes there, read through SRC_PTR when they cross a page. For
+' DEF_BLOCK: changes X.
+SUB DEF_LOOK()
+  ASM
+      lda @AT_END
+      bne loaded
+      lda @AHEAD + 1
+      beq refill
+      cmp #2
+      bcs loaded
+      lda @AHEAD
+      cmp #2
+      bcs loaded
+  refill:
+      ldx @SAVED_X
+      jsr DEF_REFILL
+  loaded:
+      lda @AHEAD + 1
+      cmp #1
+      bcc short
+      bne capped
+      lda @AHEAD
+      cmp #2
+      bcc short
+  capped:
+      lda #2
+      sta @MAX_LENGTH
+      lda #1
+      sta @MAX_LENGTH + 1
+      bra limited
+  short:
+      lda @AHEAD
+      sta @MAX_LENGTH
+      lda @AHEAD + 1
+      sta @MAX_LENGTH + 1
+  limited:
+      jsr DEF_AT_CURSOR
+      lda @CUR_BANK
+      sta $00
+      lda @CUR_PTR
+      cmp #$FE
+      bcs crossing
+      ldy #0
+      lda (@CUR_PTR),y
+      sta @HASH_BYTE0
+      iny
+      lda (@CUR_PTR),y
+      sta @HASH_BYTE1
+      iny
+      lda (@CUR_PTR),y
+      sta @HASH_BYTE2
+      bra done
+  crossing:
+      lda @CUR_PTR
+      sta @SRC_PTR
+      lda @CUR_PTR + 1
+      sta @SRC_PTR + 1
+      lda @CUR_BANK
+      sta @SRC_BANK
+      ldx #0
+  next_byte:
+      lda @SRC_BANK
+      sta $00
+      lda (@SRC_PTR)
+      sta @HASH_BYTE0,x
+      inc @SRC_PTR
+      bne stepped
+      jsr DEF_SRC_PAGE
+  stepped:
+      inx
+      cpx #3
+      bne next_byte
+  done:
+  END ASM
+END SUB
+
+' Puts CURSOR in the head table under the hash of the 3 bytes from DEF_LOOK, and sets
+' MATCH_LENGTH to the bytes from CURSOR that match those at the offset the head held, up to
+' MAX_LENGTH, and DISTANCE to how far back they are. MATCH_LENGTH is 0 when MAX_LENGTH is
+' below 3, and when the offset is CURSOR or more than 31743 back. For DEF_BLOCK: changes X.
+SUB DEF_FIND()
+  ASM
+      stz @MATCH_LENGTH
+      stz @MATCH_LENGTH + 1
+      lda @MAX_LENGTH + 1
+      bne hash
+      lda @MAX_LENGTH
+      cmp #3
+      bcs hash
+      jmp done
+  hash:
+      ' HEAD_PTR = $A000 + the hash: (byte 0 << 8 XOR byte 1 << 4 XOR byte 2) AND $FFF.
+      lda @HASH_BYTE1
+      asl a
+      asl a
+      asl a
+      asl a
+      eor @HASH_BYTE2
+      sta @HEAD_PTR
+      lda @HASH_BYTE1
+      lsr a
+      lsr a
+      lsr a
+      lsr a
+      eor @HASH_BYTE0
+      and #$0F
+      ora #$A0
+      sta @HEAD_PTR + 1
+      ' DISTANCE = the offset in the head, which gets CURSOR.
+      lda @HEAD_BANK
+      sta $00
+      lda (@HEAD_PTR)
+      sta @DISTANCE
+      lda @CURSOR
+      sta (@HEAD_PTR)
+      lda @HEAD_PTR + 1
+      ora #$10
+      sta @HEAD_PTR + 1
+      lda (@HEAD_PTR)
+      sta @DISTANCE + 1
+      lda @CURSOR + 1
+      sta (@HEAD_PTR)
+      ' SRC_PTR and SRC_BANK at that offset; DISTANCE = CURSOR less it, in the ring.
+      lda @DISTANCE
+      sta @SRC_PTR
+      lda @DISTANCE + 1
+      tax
+      and #$1F
+      ora #$A0
+      sta @SRC_PTR + 1
+      txa
+      lsr a
+      lsr a
+      lsr a
+      lsr a
+      lsr a
+      clc
+      adc @WINDOW_BANK
+      sta @SRC_BANK
+      sec
+      lda @CURSOR
+      sbc @DISTANCE
+      sta @DISTANCE
+      lda @CURSOR + 1
+      sbc @DISTANCE + 1
+      and #$7F
+      sta @DISTANCE + 1
+      ' 31743 is $7BFF.
+      ora @DISTANCE
+      beq done
+      lda @DISTANCE + 1
+      cmp #$7C
+      bcs done
+  compare:
+      lda @SRC_BANK
+      sta $00
+      lda (@SRC_PTR)
+      ldx @CUR_BANK
+      stx $00
+      cmp (@CUR_PTR)
+      bne compared
+      inc @MATCH_LENGTH
+      bne counted
+      inc @MATCH_LENGTH + 1
+  counted:
+      lda @MATCH_LENGTH
+      cmp @MAX_LENGTH
+      bne further
+      lda @MATCH_LENGTH + 1
+      cmp @MAX_LENGTH + 1
+      beq compared
+  further:
+      inc @SRC_PTR
+      bne source_moved
+      jsr DEF_SRC_PAGE
+  source_moved:
+      inc @CUR_PTR
+      bne compare
+      jsr DEF_CUR_PAGE
+      bra compare
+  compared:
+      lda @MATCH_LENGTH + 1
+      bne done
+      lda @MATCH_LENGTH
+      cmp #3
+      bcs done
+      stz @MATCH_LENGTH
+  done:
+  END ASM
+END SUB
+
+' Adds the code of the literal HASH_BYTE0, and sets MATCH_LENGTH to 1. For DEF_BLOCK: changes
+' X.
+SUB DEF_LITERAL()
+  ASM
+      ldx @HASH_BYTE0
+      lda @LIT_CODE_LOW,x
+      sta @PUT_VALUE
+      lda @LIT_CODE_HIGH,x
+      sta @PUT_VALUE + 1
+      stz @PUT_VALUE + 2
+      lda #8
+      cpx #144
+      bcc counted
+      lda #9
+  counted:
+      sta @PUT_COUNT
+      jsr DEF_PUT_BITS
+      lda #1
+      sta @MATCH_LENGTH
+      stz @MATCH_LENGTH + 1
+  END ASM
+END SUB
+
+' Adds the codes of a match of MATCH_LENGTH bytes, 3 to 258, DISTANCE back. For DEF_BLOCK:
+' changes X.
+SUB DEF_MATCH()
+  ASM
+      ' The length's code, then its extra bits, in one.
+      lda @MATCH_LENGTH
+      sec
+      sbc #3
+      tax
+      ldy @LENGTH_SYMBOL,x
+      txa
+      sec
+      sbc @LENGTH_BASE,y
+      cpy #23
+      bcs eight_bits
+      lsr a
+      sta @PUT_VALUE + 1
+      lda #0
+      ror a
+      ora @LENGTH_CODE,y
+      sta @PUT_VALUE
+      lda #7
+      bra length_bits
+  eight_bits:
+      sta @PUT_VALUE + 1
+      lda @LENGTH_CODE,y
+      sta @PUT_VALUE
+      lda #8
+  length_bits:
+      clc
+      adc @LENGTH_EXTRA,y
+      sta @PUT_COUNT
+      stz @PUT_VALUE + 2
+      jsr DEF_PUT_BITS
+      ' The distance less 1: its code, then its extra bits.
+      lda @DISTANCE
+      bne lowered
+      dec @DISTANCE + 1
+  lowered:
+      dec @DISTANCE
+      lda @DISTANCE + 1
+      bne far
+      ldx @DISTANCE
+      ldy @DIST_SMALL,x
+      bra coded
+  far:
+      lda @DISTANCE
+      asl a
+      lda @DISTANCE + 1
+      rol a
+      tax
+      ldy @DIST_LARGE,x
+  coded:
+      lda @DIST_CODE,y
+      sta @PUT_VALUE
+      stz @PUT_VALUE + 1
+      stz @PUT_VALUE + 2
+      lda #5
+      sta @PUT_COUNT
+      jsr DEF_PUT_BITS
+      lda @DIST_EXTRA,y
+      beq done
+      sta @PUT_COUNT
+      sec
+      lda @DISTANCE
+      sbc @DIST_BASE_LOW,y
+      sta @PUT_VALUE
+      lda @DISTANCE + 1
+      sbc @DIST_BASE_HIGH,y
+      sta @PUT_VALUE + 1
+      stz @PUT_VALUE + 2
+      jsr DEF_PUT_BITS
+  done:
+  END ASM
+END SUB
+
+' Codes a block at OUT_PTR: its header, fixed codes and not the last; a code for each literal
+' or match from CURSOR on; its end code. The block ends at the end of the file, or at the first
+' code that starts 7168 bytes or more into it. Sets BLOCK_IN to the bytes it codes.
+SUB DEF_BLOCK()
+  ASM
+      stx @SAVED_X
+      stz @BLOCK_IN
+      stz @BLOCK_IN + 1
+      lda #2
+      sta @PUT_VALUE
+      stz @PUT_VALUE + 1
+      stz @PUT_VALUE + 2
+      lda #3
+      sta @PUT_COUNT
+      jsr DEF_PUT_BITS
+  token:
+      ' 7168 is $1C00.
+      lda @BLOCK_IN + 1
+      cmp #$1C
+      bcs closing
+      jsr DEF_LOOK
+      lda @AHEAD
+      ora @AHEAD + 1
+      beq closing
+      jsr DEF_FIND
+      lda @MATCH_LENGTH
+      ora @MATCH_LENGTH + 1
+      beq literal
+      jsr DEF_MATCH
+      bra advance
+  literal:
+      jsr DEF_LITERAL
+  advance:
+      ' MATCH_LENGTH bytes coded.
+      clc
+      lda @CURSOR
+      adc @MATCH_LENGTH
+      sta @CURSOR
+      lda @CURSOR + 1
+      adc @MATCH_LENGTH + 1
+      and #$7F
+      sta @CURSOR + 1
+      sec
+      lda @AHEAD
+      sbc @MATCH_LENGTH
+      sta @AHEAD
+      lda @AHEAD + 1
+      sbc @MATCH_LENGTH + 1
+      sta @AHEAD + 1
+      clc
+      lda @BLOCK_IN
+      adc @MATCH_LENGTH
+      sta @BLOCK_IN
+      lda @BLOCK_IN + 1
+      adc @MATCH_LENGTH + 1
+      sta @BLOCK_IN + 1
+      bra token
+  closing:
+      ' The end code, 256: 7 bits of 0.
+      stz @PUT_VALUE
+      stz @PUT_VALUE + 1
+      stz @PUT_VALUE + 2
+      lda #7
+      sta @PUT_COUNT
+      jsr DEF_PUT_BITS
+      ldx @SAVED_X
+  END ASM
+END SUB
+
+' A = the 8 bits of A in the other order. Keeps X and Y.
+SUB DEF_REVERSE()
+  ASM
+      sta @HASH_BYTE0
+      lda #1
+  next:
+      ' The 1 leaves A after the eighth bit comes in.
+      lsr @HASH_BYTE0
+      rol a
+      bcc next
+  END ASM
+END SUB
+
+' A = 1 << A, for A 0 to 7. Keeps X and Y.
+SUB DEF_POWER()
+  ASM
+      sta @HASH_BYTE1
+      lda #1
+  double:
+      dec @HASH_BYTE1
+      bmi done
+      asl a
+      bra double
+  done:
+  END ASM
+END SUB
+
+' Fills LIT_CODE_LOW and LIT_CODE_HIGH. A literal below 144 has the 8-bit code $30 + it, else
+' the 9-bit code $100 + it.
+SUB DEF_LIT_TABLES()
+  ASM
+      phx
+      ldx #0
+  next:
+      txa
+      cpx #144
+      bcs nine
+      clc
+      adc #$30
+      jsr DEF_REVERSE
+      sta @LIT_CODE_LOW,x
+      stz @LIT_CODE_HIGH,x
+      bra stepped
+  nine:
+      jsr DEF_REVERSE
+      sec
+      rol a
+      sta @LIT_CODE_LOW,x
+      lda #0
+      rol a
+      sta @LIT_CODE_HIGH,x
+  stepped:
+      inx
+      bne next
+      plx
+  END ASM
+END SUB
+
+' Fills LENGTH_SYMBOL, LENGTH_BASE, LENGTH_EXTRA and LENGTH_CODE. Symbol 257 + n, n from 8 to
+' 27, has (n - 4) >> 2 extra bits; 285, n 28, is 258 alone. A symbol below 280 has the 7-bit
+' code n + 1, else the 8-bit code $C0 + n - 23.
+SUB DEF_LEN_TABLES()
+  ASM
+      phx
+      ldx #0
+      ldy #0
+  symbol:
+      lda #0
+      cpx #8
+      bcc extra_set
+      txa
+      sec
+      sbc #4
+      lsr a
+      lsr a
+  extra_set:
+      sta @LENGTH_EXTRA,x
+      tya
+      sta @LENGTH_BASE,x
+      lda @LENGTH_EXTRA,x
+      jsr DEF_POWER
+      sta @HASH_BYTE2
+      txa
+  fill:
+      sta @LENGTH_SYMBOL,y
+      iny
+      dec @HASH_BYTE2
+      bne fill
+      inx
+      cpx #28
+      bne symbol
+      lda #28
+      sta @LENGTH_SYMBOL + 255
+      lda #255
+      sta @LENGTH_BASE + 28
+      stz @LENGTH_EXTRA + 28
+      ldx #0
+  code:
+      txa
+      cpx #23
+      bcs eight
+      inc a
+      jsr DEF_REVERSE
+      lsr a
+      bra coded
+  eight:
+      clc
+      adc #$A9
+      jsr DEF_REVERSE
+  coded:
+      sta @LENGTH_CODE,x
+      inx
+      cpx #29
+      bne code
+      plx
+  END ASM
+END SUB
+
+' Fills DIST_SMALL, DIST_LARGE, DIST_BASE_LOW, DIST_BASE_HIGH, DIST_EXTRA and DIST_CODE.
+' Symbol n from 4 has (n - 2) >> 1 extra bits; its code is n in 5 bits. Symbols 0 to 15 cover
+' the distances less 1 below 256, 16 to 29 the rest, 128 to an entry of DIST_LARGE from 2 on.
+' Uses DISTANCE for the base.
+SUB DEF_DIST_TABLES()
+  ASM
+      phx
+      stz @DISTANCE
+      stz @DISTANCE + 1
+      ldx #0
+      ldy #0
+  symbol:
+      lda #0
+      cpx #4
+      bcc extra_set
+      txa
+      lsr a
+      dec a
+  extra_set:
+      sta @DIST_EXTRA,x
+      lda @DISTANCE
+      sta @DIST_BASE_LOW,x
+      lda @DISTANCE + 1
+      sta @DIST_BASE_HIGH,x
+      txa
+      jsr DEF_REVERSE
+      lsr a
+      lsr a
+      lsr a
+      sta @DIST_CODE,x
+      lda @DIST_EXTRA,x
+      cpx #16
+      bcc small
+      sbc #7
+  small:
+      jsr DEF_POWER
+      sta @HASH_BYTE2
+      txa
+  fill:
+      cpx #16
+      bcs large
+      sta @DIST_SMALL,y
+      bra filled
+  large:
+      sta @DIST_LARGE,y
+  filled:
+      iny
+      dec @HASH_BYTE2
+      bne fill
+      cpx #15
+      bne add
+      ldy #2
+  add:
+      ' The base goes up by 1 << the extra bits.
+      lda @DIST_EXTRA,x
+      cmp #8
+      bcs high
+      jsr DEF_POWER
+      clc
+      adc @DISTANCE
+      sta @DISTANCE
+      bcc added
+      inc @DISTANCE + 1
+      bra added
+  high:
+      sbc #8
+      jsr DEF_POWER
+      clc
+      adc @DISTANCE + 1
+      sta @DISTANCE + 1
+  added:
+      inx
+      cpx #30
+      bne symbol
+      plx
+  END ASM
+END SUB
+
+' Deflates SOURCE to TEMP, and sets LENGTH and CRC. A block whose codes come to more bits than
+' its bytes stored goes as a stored block. Leaves the window holding the file's last 32768
+' bytes, a file of up to 32768 bytes from offset 0.
+SUB DEFLATE_FILE()
+  DIM START_CURSOR AS UWORD, START_ACC AS UBYTE, START_BITS AS UBYTE, FINAL AS UBYTE
+  DIM CODED_BITS AS UWORD, STORED_BITS AS UWORD
+  DEF_CLEAR_HEAD()
+  CURSOR = 0
+  AHEAD = 0
+  AT_END = 0
+  BIT_ACC = 0
+  BIT_COUNT = 0
+  OUT_PTR = $A000
+  DO
+    START_ACC = BIT_ACC
+    START_BITS = BIT_COUNT
+    START_CURSOR = CURSOR
+    DEF_BLOCK()
+    FINAL = 0
+    IF AT_END <> 0 AND AHEAD = 0 THEN FINAL = 1
+    ' A block's codes fit 8192 bytes, so its bits fit a UWORD. A stored block has 3 bits, 0 to
+    ' 7 to reach a byte, the length and its complement, then the bytes.
+    CODED_BITS = ((OUT_PTR - $A000) << 3) + BIT_COUNT - START_BITS
+    STORED_BITS = (BLOCK_IN << 3) + 35 + ((5 - START_BITS) AND 7)
+    IF STORED_BITS < CODED_BITS THEN
+      OUT_PTR = $A000
+      BIT_ACC = START_ACC
+      BIT_COUNT = START_BITS
+      PUT_BITS(FINAL, 3)
+      IF BIT_COUNT > 0 THEN PUT_BITS(0, 8 - BIT_COUNT)
+      PUT_BITS(BLOCK_IN, 16)
+      PUT_BITS(BLOCK_IN XOR $FFFF, 16)
+      OUT_FLUSH()
+      WINDOW_PUT(START_CURSOR, BLOCK_IN)
+    ELSE
+      ' The block's first bit, in the first byte of the bank, marks the last block.
+      IF FINAL THEN
+        BANK.USE(OUT_BANK)
+        ContentsAt($A000) = ContentsAt($A000) OR (1 << START_BITS)
+      END IF
+      OUT_FLUSH()
+    END IF
+  LOOP UNTIL FINAL
+  IF BIT_COUNT > 0 THEN
+    BUFFER(0) = BIT_ACC
+    PUT(TEMP, @BUFFER, 1)
+  END IF
+END SUB
+
 ' Adds the file or folder PATH, with FILE_TIME, FILE_DATE and FILE_ATTRIBUTES, to TEMP and
 ' its central directory entry to LIST. A name the table holds, and the archive and the work
 ' files, are left out.
@@ -238,6 +1065,10 @@ SUB ADD_ENTRY(PATH AS STRING, IS_FOLDER AS UBYTE)
   RECORD(3) = 2
   RECORD(4) = VERSION_MADE
   RECORD(6) = VERSION_STORED
+  IF IS_FOLDER = 0 THEN
+    RECORD(6) = VERSION_DEFLATED
+    RECORD(ENTRY_METHOD) = METHOD_DEFLATED
+  END IF
   ContentsAtW(@RECORD + ENTRY_TIME) = FILE_TIME
   ContentsAtW(@RECORD + ENTRY_DATE) = FILE_DATE
   ContentsAtW(@RECORD + NAME_SIZE_AT) = LEN(ENTRY_NAME)
@@ -246,7 +1077,7 @@ SUB ADD_ENTRY(PATH AS STRING, IS_FOLDER AS UBYTE)
   ContentsAtW(@RECORD + ENTRY_LOCAL) = ContentsAtW(@LOCAL_AT)
   ContentsAtW(@RECORD + ENTRY_LOCAL + 2) = ContentsAtW(@LOCAL_AT + 2)
   ' The local header is the central entry's bytes from the version needed to the extra
-  ' field's size. Its CRC and sizes are written after the data.
+  ' field's size. A file's is written again after its data, with the method, CRC and sizes.
   HEADER(0) = SIGNATURE_P
   HEADER(1) = SIGNATURE_K
   HEADER(2) = 3
@@ -256,41 +1087,55 @@ SUB ADD_ENTRY(PATH AS STRING, IS_FOLDER AS UBYTE)
   NEXT
   PUT(TEMP, @HEADER, LOCAL_SIZE)
   PUT(TEMP, @ENTRY_NAME + 2, LEN(ENTRY_NAME))
+  DATA_AT = TEMP_SIZE
   CRC = $FFFFFFFF
   LENGTH = 0
-  DO WHILE IS_FOLDER = 0
-    COUNT = DOS.READ_FILE(SOURCE, @BUFFER, BUFFER_SIZE)
-    IF COUNT = 0 THEN EXIT DO
-    CRC_DATA = @BUFFER
-    CRC_COUNT = COUNT
-    CRC_ADD()
-    PUT(TEMP, @BUFFER, COUNT)
-    LENGTH = LENGTH + COUNT
-  LOOP
   IF IS_FOLDER = 0 THEN
+    DEFLATE_FILE()
+    BANK.USE(CALLER_BANK)
     DOS.CLOSE_FILE(SOURCE)
     SOURCE = NOFILE
+  END IF
+  PACKED = TEMP_SIZE - DATA_AT
+  IF IS_FOLDER = 0 AND PACKED >= LENGTH AND LENGTH <= WINDOW_SIZE THEN
+    ' No saving: the file again, stored, from the window, which holds all of it from offset
+    ' 0. The deflated bytes past it are written over by what follows: the central entry and
+    ' the end record at least.
+    DOS.SEEK(TEMP, FROM_START, DATA_AT AND $FFFF, DATA_AT >> 16)
+    TEMP_SIZE = DATA_AT
+    WINDOW_PUT(0, LENGTH)
+    BANK.USE(CALLER_BANK)
+    RECORD(6) = VERSION_STORED
+    RECORD(ENTRY_METHOD) = METHOD_STORED
+    PACKED = LENGTH
   END IF
   CRC = CRC XOR $FFFFFFFF
   ContentsAtW(@RECORD + ENTRY_CRC) = ContentsAtW(@CRC)
   ContentsAtW(@RECORD + ENTRY_CRC + 2) = ContentsAtW(@CRC + 2)
-  ContentsAtW(@RECORD + ENTRY_PACKED) = ContentsAtW(@LENGTH)
-  ContentsAtW(@RECORD + ENTRY_PACKED + 2) = ContentsAtW(@LENGTH + 2)
+  ContentsAtW(@RECORD + ENTRY_PACKED) = ContentsAtW(@PACKED)
+  ContentsAtW(@RECORD + ENTRY_PACKED + 2) = ContentsAtW(@PACKED + 2)
   ContentsAtW(@RECORD + ENTRY_LENGTH) = ContentsAtW(@LENGTH)
   ContentsAtW(@RECORD + ENTRY_LENGTH + 2) = ContentsAtW(@LENGTH + 2)
-  IF LENGTH > 0 THEN
-    ' The CRC and the two sizes, at 14 in the local header.
-    LOCAL_AT = LOCAL_AT + 14
+  IF IS_FOLDER = 0 THEN
+    ' The local header's 22 bytes from 4, the version needed, to the sizes.
+    FOR AT = 4 TO LOCAL_SIZE - 5
+      HEADER(AT) = RECORD(AT + 2)
+    NEXT
+    LOCAL_AT = LOCAL_AT + 4
     DOS.SEEK(TEMP, FROM_START, LOCAL_AT AND $FFFF, LOCAL_AT >> 16)
-    IF DOS.WRITE_FILE(TEMP, @RECORD + ENTRY_CRC, 12) <> 12 THEN ABORT(DOS.ERRMSG(DOS.ERROR), 3)
-    DOS.SEEK(TEMP, FROM_END, 0, 0)
+    IF DOS.WRITE_FILE(TEMP, @HEADER + 4, 22) <> 22 THEN ABORT(DOS.ERRMSG(DOS.ERROR), 3)
+    DOS.SEEK(TEMP, FROM_START, TEMP_SIZE AND $FFFF, TEMP_SIZE >> 16)
   END IF
   TABLE_ADD(LIST_SIZE)
   PUT(LIST, @RECORD, ENTRY_SIZE)
   PUT(LIST, @ENTRY_NAME + 2, LEN(ENTRY_NAME))
   ENTRY_COUNT = ENTRY_COUNT + 1
   ADDED = ADDED + 1
-  PRINT " (stored 0%)"
+  IF RECORD(ENTRY_METHOD) = METHOD_DEFLATED THEN
+    PRINT " (deflated "; DECIMAL(SAVING(LENGTH, PACKED)); "%)"
+  ELSE
+    PRINT " (stored 0%)"
+  END IF
   LINE_OPEN = 0
 END SUB
 
@@ -503,7 +1348,15 @@ FOR SLOT = 0 TO TABLE_BANKS - 1
     ContentsAtW(SLOT_AT + 2) = 0
   NEXT
 NEXT
+WINDOW_BANK = BANK.ALLOC(DEFLATE_BANKS)
+IF WINDOW_BANK = 0 THEN ABORT(DOS.ERRMSG(DOS.ERROR), 3)
+WINDOW_END = WINDOW_BANK + WINDOW_BANKS
+HEAD_BANK = WINDOW_END
+OUT_BANK = WINDOW_END + 1
 BANK.USE(CALLER_BANK)
+DEF_LIT_TABLES()
+DEF_LEN_TABLES()
+DEF_DIST_TABLES()
 TEMP = DOS.CREATE_FILE(TEMP_NAME, 0)
 IF TEMP = NOFILE THEN ABORT(DOS.ERRMSG(DOS.ERROR), 3)
 LIST = DOS.CREATE_FILE(LIST_NAME, 0)

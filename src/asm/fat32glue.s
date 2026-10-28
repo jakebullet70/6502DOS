@@ -10,13 +10,13 @@
 .export fat32_size, fat32_dirent, fat32_errno, fat32_readonly, skip_mask
 .export sector_buffer, sector_buffer_end, sector_lba
 .export sdcard_read_sector, sdcard_write_sector, sdcard_set_fast_mode, to_lower
-.importzp saved_bank
 .import jsrfar1, sd_input, sd_output
 
-; bank_save: the RAM bank of a buffer at $A000-$BFFF: the caller's bank.
-bank_save = saved_bank
-
 .segment "KERNELZP" : zeropage
+
+; Trap: x16_banked_copy moves bank_save on when a copy ends at $BFFF, so bank_save is not
+; saved_bank: lib_bank would return in the next bank.
+bank_save:        .res 1        ; the RAM bank of a buffer at $A000-$BFFF
 
 fat32_bufptr:     .res 2        ; the current context's byte in sector_buffer
 fat32_lfn_bufptr: .res 2

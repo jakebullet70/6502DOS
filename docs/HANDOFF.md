@@ -2257,7 +2257,50 @@ the beta 1 list).
        NEW.ZIP, TREE.ZIP and the updated OLD.ZIP read off the run image.
      - Build 1800 ms, exit 0, the new baseline (the COMs were current, so nothing compiled).
      - Full suite: 59 tests, 0 failed, 105.6 s (`STOPPED_TESTS` skips 52).
-     - Next: step 5, ZIP deflate asm. Ask before writing the asm.
+     - Step 4 committed `5525e65`.
+     - Step 5, ZIP deflate (asm approved: 1 try per hash slot, a stored block for each block
+       that does not shrink). Done and committed.
+       - Design in `ZIP.UXB` (comment above the zero page DIMs): the window is a 32 KB ring
+         in 4 banks, loaded 512 bytes at a time by `DEF_REFILL` (BASIC, called from asm). The
+         head table, 4096 slots, is 1 bank (lo bytes at `$A000`, hi at `$B000`), cleared per
+         file. The output bank holds one block (7168 input bytes or less). Matches go back at
+         most 31743 bytes. Zero page `$59–$7E`; `SAVED_X` at `$7E` keeps BASIC's X (the
+         expression stack) across asm that calls BASIC. `DEFLATE_BANKS` = 6, on top of the
+         4 name-table banks.
+       - Routines: `DEF_PUT_BITS`, `DEF_AT_CURSOR`, `DEF_CUR_PAGE`, `DEF_SRC_PAGE`,
+         `DEF_CLEAR_HEAD`, `DEF_LOOK`, `DEF_FIND`, `DEF_LITERAL`, `DEF_MATCH`, `DEF_BLOCK`,
+         plus `DEF_REVERSE`, `DEF_POWER`, `DEF_LIT_TABLES`, `DEF_LEN_TABLES` and
+         `DEF_DIST_TABLES` (all asm), and `DEFLATE_FILE`, `WINDOW_PUT`, `OUT_FLUSH`,
+         `PUT_BITS` and `SAVING` (BASIC). `DEFLATE_FILE` picks a stored block when it is
+         smaller. A file of up to 32768 bytes that does not shrink is rewritten as stored from
+         the window, and the local header is patched from offset 4 (22 bytes).
+       - Traps hit: an ASM block takes at most 32 label references (`K_ASM_LABELS`), which
+         is why `DEF_BLOCK` is split; a label may not share a SUB's name (`finish`/`FINISH`);
+         names are at most 16 characters.
+       - Size: `ZIP.COM` 18290 bytes (it was 14105). Still to cut: `SAVING` 719 bytes (ULONG
+         `*` and `/`), and `DEF_REFILL` 375.
+       - Tests: ZIPS ok 4.5 s, golden updated (BIG.BIN deflated 92%, 5000 to 400 bytes, the
+         bytes match). New ZIPDEF (`tests/ZIPDEF.PY` tracked; .IN and .OUT local), files
+         EMPTY, TEXT (3883), MIX (16000), RAND (8000), HALF (10008); ZIP then UNZIP -d OUT.
+         ZIPDEF ok 3.6 s, golden made: TEXT deflated 92%, MIX 86%, RAND stored 0%, HALF 78%.
+         Python's `zipfile.testzip` passes DEF.ZIP, and every file in it and in `OUT` matches
+         its source.
+       - CRC bug fixed (2026-10-27): a read that ended at `$BFFF` returned with the next RAM
+         bank selected, so `CRC_ADD` read the window's chunk at `$BE00` from the wrong bank.
+         Scratch test ZIPTMP (S8000 to S33000) ok, every CRC right, then deleted.
+       - ROM fix (asm, the user approved): `x16_banked_copy` (`fat32.s`, read and write)
+         does `inx` and `stx bank_save` when the copy ends at or crosses `$BFFF`.
+         `bank_save` was an alias of `saved_bank`, which `lib_bank` restores. Now
+         `bank_save` is its own `KERNELZP` byte in `fat32glue.s`, and `lib_set_bank`
+         (`fat32dos.s`) copies `saved_bank` to it before `lib_read` and `lib_write`, so
+         `read`, `write` and `exec_rest` return in the caller's bank. It also fixes
+         `R_RGLOAD`, which returns `$00` as the region's bank, for an 8192-byte region.
+         Cost: ROM +7 bytes, zero page +1. `DEF_REFILL` lost its re-select: `ZIP.COM`
+         18290 bytes (-15). Build 2425 ms, the new baseline. Tests: ZIPS ok 3.3 s, UNZIPX
+         ok 2.8 s, RGMULTI ok 1.3 s, WRITE ok 2.1 s, SEEK ok 1.3 s.
+       - Diagnostic scripts, copied to `build/zipdiag/`: `check.py` (testzip and a byte compare of a card's
+         archive), `diag.py` (decodes fixed and stored blocks token by token), `crcs.py`,
+         `crcsim.py`, `sizes.py` (bytes per SUB).
   6. `BE`, the batch enhancer (`ASK`/`CHOICE` to `ERRORLEVEL`, `BOX`, `BEEP`, `DELAY`,
      `ROWCOL`). Talk it through with the user first.
   - Ideas kept, not picked: `UNDELETE` (needs a check that the x16-rom library keeps the high
@@ -2269,7 +2312,7 @@ the beta 1 list).
   PATH from the WinGet links. Build 4400 ms wall (the ROM 3.30 s). The build with the new
   calls took 10495 ms (the ROM 10.28 s): a new `DOS.UXI` recompiles every program. The
   baseline stays 4400 ms for a build that leaves `DOS.UXI` alone.
-- Steps since the last full suite: 0. Full suite after ZIP step 4 (2026-10-27): 59 tests,
+- Steps since the last full suite: 3 (the ZIP CRC fix, the ROM `bank_save` fix, ZIPDEF). Full suite after ZIP step 4 (2026-10-27): 59 tests,
   0 failed, 105.6 s.
 - Before it, full suite after FONTEDIT step 4 (2026-10-27): 116 tests,
   5 failed, 230.7 s. `CHKDSK`, `FILES`, `HDIR`, `HDIRARG` and `TREE` failed on the card's new
