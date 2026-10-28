@@ -4,11 +4,49 @@
 ; block of max 254 or 255. The copy loops therefore move a pointer to the block + 1 and run Y
 ; from the length down to 1.
 
-; Copy (C clear) or append (C set) the string at ZP_PTR to the block at A/Y, cut at the block's
-; max. A copy of a block onto itself is safe. Keeps X.
+; ZP_PTR = A/Y, then A/Y = the word after the JSR that called the caller of R_ARG, and that JSR
+; returns past the word. R_ARG.tmp is the same with ZP_TMP = A/Y. Keeps X.
+R_ARG   .block
+        #tpl
+        sta ZP_PTR
+        sty ZP_PTR+1
+        bra +
+tmp     sta ZP_TMP
+        sty ZP_TMP+1
++       phx
+        tsx                     ; $104,x: the last byte of the caller's JSR
+        lda $104,x
+        sta ZP_DST
+        clc
+        adc #2
+        sta $104,x
+        lda $105,x
+        sta ZP_DST+1
+        adc #0
+        sta $105,x
+        ldy #2
+        lda (ZP_DST),y
+        pha
+        dey
+        lda (ZP_DST),y
+        ply
+        plx
+        rts
+        #endtpl
+        .endblock
+
+; R_SCAT.block: copy (C clear) or append (C set) the string at ZP_PTR to the block at A/Y, cut
+; at the block's max. A copy of a block onto itself is safe. R_SCAT is the copy and
+; R_SCAT.append the append, of the string at A/Y to the block in the word after the JSR. Keeps
+; X.
 R_SCAT  .block
         #tpl
-        sta ZP_DST
+        #rec jsr, R_ARG
+        clc
+        bra block
+append  #rec jsr, R_ARG
+        sec
+block   sta ZP_DST
         sty ZP_DST+1
         lda #0                  ; a copy starts at 0
         bcc +
@@ -223,12 +261,13 @@ done    lda ZP_TMP
         #endtpl
         .endblock
 
-; The temp at A/Y = MID$(string, start, length). The length is the WORD in ZP_TMP. The string
-; and the start, a WORD, are on the expression stack. A start of 0 is the same as 1. Pops
-; both, keeps X.
-; WARNING: the temp must not be the source block. The copy runs from the end down.
+; The block in the word after the JSR = MID$(string, start, length), cut at the block's max.
+; The length is the WORD in A/Y. The string and the start, a WORD, are on the expression stack.
+; A start of 0 is the same as 1. The block may be the source: the copy runs up. Pops both,
+; keeps X.
 R_MID   .block
         #tpl
+        #rec jsr, R_ARG, R_ARG.tmp - R_ARG.rec_code
         sta ZP_DST
         sty ZP_DST+1
         lda ZP_TMP+1
@@ -259,7 +298,11 @@ take    ldy #1                  ; R_RIGHT enters here, with ZP_PTR set.
 +       cmp ZP_TMP
         bcc +
         lda ZP_TMP              ; the length: the shorter of the length asked and the rest
++       cmp (ZP_DST)
+        bcc +
+        lda (ZP_DST)            ; cut at the max
 +       sta (ZP_DST),y
+        sta ZP_TMP              ; the count
         tay
         beq done
         lda ZP_PTR              ; (ZP_PTR),y with y = 1 is the first character taken
@@ -268,12 +311,14 @@ take    ldy #1                  ; R_RIGHT enters here, with ZP_PTR set.
         sta ZP_PTR
         bcc +
         inc ZP_PTR+1
-+       inc ZP_DST              ; (ZP_DST),y with y = 1 is the first character of the temp
-        bne copy
++       inc ZP_DST              ; (ZP_DST),y with y = 1 is the first character of the block
+        bne +
         inc ZP_DST+1
-copy    lda (ZP_PTR),y
++       ldy #0
+copy    iny
+        lda (ZP_PTR),y
         sta (ZP_DST),y
-        dey
+        cpy ZP_TMP
         bne copy
 done    rts
         #endtpl
@@ -636,11 +681,12 @@ done    rts
         #endtpl
         .endblock
 
-; The temp at A/Y = LEFT$(string, length). The length is the WORD in ZP_TMP. The string is on
-; the expression stack. Pops it, keeps X.
-; WARNING: the temp must not be the source block.
+; The block in the word after the JSR = LEFT$(string, length), cut at the block's max. The
+; length is the WORD in A/Y. The string is on the expression stack. The block may be the
+; source. Pops it, keeps X.
 R_LEFT  .block
         #tpl
+        #rec jsr, R_ARG, R_ARG.tmp - R_ARG.rec_code
         sta ZP_DST
         sty ZP_DST+1
         lda ZP_TMP+1
@@ -652,11 +698,12 @@ R_LEFT  .block
         #endtpl
         .endblock
 
-; The temp at A/Y = RIGHT$(string, length). The length is the WORD in ZP_TMP. The string is on
-; the expression stack. Pops it, keeps X.
-; WARNING: the temp must not be the source block.
+; The block in the word after the JSR = RIGHT$(string, length), cut at the block's max. The
+; length is the WORD in A/Y. The string is on the expression stack. The block may be the
+; source. Pops it, keeps X.
 R_RIGHT .block
         #tpl
+        #rec jsr, R_ARG, R_ARG.tmp - R_ARG.rec_code
         sta ZP_DST
         sty ZP_DST+1
         lda ZP_TMP+1
@@ -680,11 +727,21 @@ R_RIGHT .block
         #endtpl
         .endblock
 
-; The temp at A/Y = UCASE$ of the string at ZP_PTR when C is set, LCASE$ when C is clear. Only
-; A to Z and a to z change. The temp may be the source block. Keeps X.
+; R_CASE: the block at A/Y = UCASE$ of itself when C is set, LCASE$ when C is clear. Only A to
+; Z and a to z change. R_CASE.upper is UCASE$ and R_CASE.lower LCASE$ of the string at A/Y,
+; into the block in the word after the JSR, cut at the block's max. The block may be the
+; source. Keeps X.
 R_CASE  .block
         #tpl
-        sta ZP_DST
+        sta ZP_PTR
+        sty ZP_PTR+1
+        bra main
+upper   #rec jsr, R_ARG
+        sec
+        bra main
+lower   #rec jsr, R_ARG
+        clc
+main    sta ZP_DST
         sty ZP_DST+1
         lda #$41                ; LCASE$ changes A to Z
         bcc +
@@ -693,16 +750,20 @@ R_CASE  .block
         clc
         adc #26
         sta ZP_TMP+1            ; past the last letter to change
+        ldy #1
+        lda (ZP_PTR),y          ; the length
+        cmp (ZP_DST)
+        bcc +
+        lda (ZP_DST)            ; cut at the max
++       sta (ZP_DST),y
+        tay
+        beq done
         inc ZP_PTR              ; (ZP_PTR),y with y = 1 is the first character
         bne +
         inc ZP_PTR+1
-+       inc ZP_DST              ; (ZP_DST),y with y = 1 is the first character of the temp
-        bne +
++       inc ZP_DST              ; (ZP_DST),y with y = 1 is the first character of the block
+        bne copy
         inc ZP_DST+1
-+       lda (ZP_PTR)            ; the length
-        sta (ZP_DST)
-        tay
-        beq done
 copy    lda (ZP_PTR),y
         cmp ZP_TMP
         bcc +
@@ -713,5 +774,61 @@ copy    lda (ZP_PTR),y
         dey
         bne copy
 done    rts
+        #endtpl
+        .endblock
+
+; The block in the word after the JSR = TRIM$ of the string at A/Y: the string without the
+; spaces at its start and its end, cut at the block's max. R_TRIM.ltrim is LTRIM$, the start
+; only, and R_TRIM.rtrim is RTRIM$, the end only. Only $20 is a space. The block may be the
+; source. Keeps X.
+; Each entry gives two flags to the scans: C, the end, and the C it pushes, the start. R_ARG
+; comes before the PHP, as it reads the stack.
+R_TRIM  .block
+        #tpl
+        #rec jsr, R_ARG
+        sec                     ; TRIM$: the start too
+        bra +
+rtrim   #rec jsr, R_ARG
+        clc                     ; RTRIM$: the end only
++       php
+        sec
+        bra +
+ltrim   #rec jsr, R_ARG
+        sec                     ; LTRIM$: the start only
+        php
+        clc
++       sta ZP_DST
+        sty ZP_DST+1
+        inc ZP_PTR              ; (ZP_PTR),y with y = n is character n, up to take
+        bne +
+        inc ZP_PTR+1
++       lda (ZP_PTR)
+        sta ZP_TMP              ; the count
+        stz ZP_TMP+1            ; the first character, counted from 0
+        bcc start
+        tay                     ; the last character. An empty string stops at its length, 0.
+end     lda (ZP_PTR),y
+        cmp #' '
+        bne +
+        dey
+        bne end
++       sty ZP_TMP
+start   plp
+        bcc take
+        ldy #0
+        lda ZP_TMP
+        beq take
+-       iny
+        lda (ZP_PTR),y
+        cmp #' '
+        bne take
+        inc ZP_TMP+1
+        dec ZP_TMP
+        bne -
+take    lda ZP_PTR              ; ZP_PTR back at the block
+        bne +
+        dec ZP_PTR+1
++       dec ZP_PTR
+        #rec jmp, R_MID, R_MID.take - R_MID.rec_code
         #endtpl
         .endblock

@@ -86,7 +86,8 @@ def sg_empty_local():
 
 def sg_let():
     """SG.LET. The text is copied into the block, cut at its max. A$ = A$ copies nothing.
-    A$ = "" stores 0 in the length byte."""
+    A$ = "" stores 0 in the length byte. A string function that is the whole right side writes
+    the block itself (sg_target)."""
     sg_writable()
     uxc_record.rd_section()
     g.sg_destination = g.sy_val
@@ -94,6 +95,10 @@ def sg_let():
     g.sg_template = T.T_SCOPY
     if g.sy_cnt == 0:
         g.sg_template = T.T_SCOPY_P
+    g.sg_direct_on = 0
+    if g.sg_template == T.T_SCOPY and g.sg_section != K_SEC_VAR:
+        g.sg_direct_on = 1
+        g.sg_direct_max = g.sy_cnt
     uxc_lex.lx_next()
     g.sg_appending = 0
     if g.sy_cnt > 0:
@@ -108,6 +113,7 @@ def sg_let():
     g.sg_depth = g.sb_depth
     uxc_expr.ex_expr()
     g.sg_appending = 0
+    g.sg_direct_on = 0
     sg_is_destination()
     if g.sg_same == 1:
         g.ex_vn = g.ex_vn - 1
@@ -259,7 +265,7 @@ def sg_scan_known():
     A new built-in function in ex_operand goes in this list too, or sg_scan_array reports it
     as UNDECLARED NAME."""
     g.sg_scan_unknown = 1
-    if g.tk_s in ("LEN", "ASC", "VAL", "CHR$", "STR$", "MID$", "LEFT$", "RIGHT$", "UCASE$", "LCASE$", "PEEK", "NOT", "INSTR", "POS",
+    if g.tk_s in ("LEN", "ASC", "VAL", "CHR$", "STR$", "MID$", "LEFT$", "RIGHT$", "UCASE$", "LCASE$", "TRIM$", "LTRIM$", "RTRIM$", "PEEK", "NOT", "INSTR", "POS",
                   "LVAL", "AND", "OR", "XOR", "MOD", "GETKEY", "OPEN", "EOF", "READ", "ADDROF",
                   "CONTENTSAT", "CONTENTSATW", "STRINGAT", "GETEXTKEY", "WAITKEY", "KEYMODS",
                   "WITH", "REGION_BYTES"):
@@ -351,7 +357,7 @@ def sg_function():
     own, nested as a SUB call's arguments are, and g.sg_called keeps the function's name for
     each depth."""
     g.sg_found = 0
-    if uxc_lex.instr("|LEN|ASC|VAL|LVAL|CHR$|STR$|MID$|LEFT$|RIGHT$|UCASE$|LCASE$|INSTR|OPEN|EOF|READ|",
+    if uxc_lex.instr("|LEN|ASC|VAL|LVAL|CHR$|STR$|MID$|LEFT$|RIGHT$|UCASE$|LCASE$|TRIM$|LTRIM$|RTRIM$|INSTR|OPEN|EOF|READ|",
                      "|" + g.tk_s + "|") == 0:
         return
     g.sg_name = g.tk_s
@@ -418,6 +424,8 @@ def sg_one():
         sg_eof()
     elif g.sg_name == "UCASE$" or g.sg_name == "LCASE$":
         sg_case()
+    elif g.sg_name == "TRIM$" or g.sg_name == "LTRIM$" or g.sg_name == "RTRIM$":
+        sg_trim()
     else:
         sg_str()
 
@@ -438,14 +446,45 @@ def sg_case():
         sg_push_literal()
         return
     sg_tos()
-    sg_new_temp()
-    g.sl_s[0] = K_SEC_TEMP
-    g.sl_v[0] = g.sg_temp
-    if g.sg_name == "UCASE$":
+    sg_source()
+    g.sg_need = 0
+    sg_target()
+    if g.sg_in_place == 1 and g.sg_name == "UCASE$":
+        emit(T.T_UCASE_SELF)
+    elif g.sg_in_place == 1:
+        emit(T.T_LCASE_SELF)
+    elif g.sg_name == "UCASE$":
         emit(T.T_UCASE)
     else:
         emit(T.T_LCASE)
-    sg_push_temp()
+    sg_push_target()
+
+
+def sg_trim():
+    """SG.TRIM. TRIM$, LTRIM$ and RTRIM$, as g.sg_name. Of a literal it is a literal."""
+    if g.ex_vt[g.ex_i] != K_TY_STR:
+        er_mismatch()
+    sg_take_literal()
+    if g.sg_was_literal == 1:
+        g.ex_vn = g.ex_vn - 1
+        g.sg_text = g.sg_last_text
+        if g.sg_name != "RTRIM$":
+            g.sg_text = g.sg_text.lstrip(" ")
+        if g.sg_name != "LTRIM$":
+            g.sg_text = g.sg_text.rstrip(" ")
+        sg_push_literal()
+        return
+    sg_tos()
+    sg_source()
+    g.sg_need = 0
+    sg_target()
+    if g.sg_name == "TRIM$":
+        emit(T.T_TRIM)
+    elif g.sg_name == "LTRIM$":
+        emit(T.T_LTRIM)
+    else:
+        emit(T.T_RTRIM)
+    sg_push_target()
 
 
 def sg_eof():
@@ -523,15 +562,15 @@ def sg_chr():
         sg_push_literal()
         return
     uxc_expr.ex_tob()
-    sg_new_temp()
-    g.sl_s[0] = K_SEC_TEMP
-    g.sl_v[0] = g.sg_temp
+    g.sg_source = -1
+    g.sg_need = 1
+    sg_target()
     g.sg_chr_start = g.cb_n
     g.sg_chr_fixups = g.fx_n
     emit(T.T_CHR)
     g.sg_chr_end = g.cb_n
     g.sg_chr_temp = g.sg_temp
-    sg_push_temp()
+    sg_push_target()
 
 
 def sg_str():
@@ -551,9 +590,12 @@ def sg_str():
         uxc_expr.ex_tow()
     if g.sg_str_long == 1:
         uxc_expr.ex_tol()
-    sg_new_temp()
-    g.sl_s[0] = K_SEC_TEMP
-    g.sl_v[0] = g.sg_temp
+    # R_STR writes with no cut: " 65535" is 6 characters, "-2147483648" 11.
+    g.sg_source = -1
+    g.sg_need = 6
+    if g.sg_str_long == 1:
+        g.sg_need = 11
+    sg_target()
     g.sg_str_template = T.T_STR
     if g.sg_str_signed == 1:
         g.sg_str_template = T.T_SSTR
@@ -562,13 +604,15 @@ def sg_str():
     if g.sg_str_long == 1 and g.sg_str_signed == 1:
         g.sg_str_template = T.T_SLSTR
     emit(g.sg_str_template)
-    sg_push_temp()
+    sg_push_target()
 
 
 def sg_mid():
     """SG.MID. MID$(string, start[, length]): the string and the start are pushed, and the
     length is in A/Y, 255 when it is left out."""
     sg_tos()
+    sg_source()
+    source = g.sg_source
     sg_stack()
     if g.tk_t != K_TT_OP or g.tk_k != 44:
         er_syntax()
@@ -577,12 +621,12 @@ def sg_mid():
     sg_stack()
     g.sg_default = 255
     sg_last_word()
-    sg_new_temp()
-    g.sl_s[0] = K_SEC_TEMP
-    g.sl_v[0] = g.sg_temp
+    g.sg_source = source
+    g.sg_need = 0
+    sg_target()
     emit(T.T_MID)
     g.ex_sd = g.ex_sd - 2
-    sg_push_temp()
+    sg_push_target()
 
 
 def sg_left_right():
@@ -592,18 +636,20 @@ def sg_left_right():
     if g.sg_name == "RIGHT$":
         record = T.T_RIGHT
     sg_tos()
+    sg_source()
+    source = g.sg_source
     sg_stack()
     if g.tk_t != K_TT_OP or g.tk_k != 44:
         er_syntax()
     sg_argument()
     uxc_expr.ex_tow()
     sg_close()
-    sg_new_temp()
-    g.sl_s[0] = K_SEC_TEMP
-    g.sl_v[0] = g.sg_temp
+    g.sg_source = source
+    g.sg_need = 0
+    sg_target()
     emit(record)
     g.ex_sd = g.ex_sd - 1
-    sg_push_temp()
+    sg_push_target()
 
 
 def sg_instr():
@@ -1043,6 +1089,51 @@ def sg_copy():
     g.sl_v[0] = g.sg_temp
     emit(T.T_SCOPY)
     sg_push_temp()
+
+
+def sg_target():
+    """SG.TARGET. Slot 0 = the block a string function writes, with the token after its ) and
+    g.sg_need the least max it writes safely. When the call is the whole right side of sg_let
+    and the destination's max is at least g.sg_need, the block is the destination and
+    g.sg_direct is 1. Else, when g.sg_source is a temp, the block is that temp and
+    g.sg_in_place is 1. Else it is the statement's next temp."""
+    g.sg_direct = 0
+    g.sg_in_place = 0
+    if g.sg_direct_on == 1 and g.tk_t == K_TT_EOL and g.ex_vn == g.sg_base \
+            and g.sb_depth == g.sg_depth and g.sg_direct_max >= g.sg_need:
+        g.sg_direct = 1
+        g.sl_s[0] = g.sg_section
+        g.sl_v[0] = g.sg_destination
+        return
+    if g.sg_source != -1:
+        g.sg_in_place = 1
+        g.sg_temp = g.sg_source
+        g.sl_s[0] = K_SEC_TEMP
+        g.sl_v[0] = g.sg_temp
+        return
+    sg_new_temp()
+    g.sl_s[0] = K_SEC_TEMP
+    g.sl_v[0] = g.sg_temp
+
+
+def sg_source():
+    """SG.SOURCE. g.sg_source = the temp sg_tos just took as a string function's source, or -1
+    when it is not a temp or is the printed one. sg_target writes that temp in place."""
+    g.sg_source = -1
+    if g.ex_vs[g.ex_vn] == K_SEC_TEMP and g.ex_vv[g.ex_vn] != K_TEMP_PRINTED:
+        g.sg_source = g.ex_vv[g.ex_vn]
+
+
+def sg_push_target():
+    """SG.PUSH.TARGET. The block sg_target chose, as the new top entry."""
+    if g.sg_direct == 0:
+        sg_push_temp()
+        return
+    g.ex_k = K_EK_ADDR
+    g.ex_s = g.sg_section
+    g.ex_v = g.sg_destination
+    g.ex_ty = K_TY_STR
+    uxc_expr.ex_pushv()
 
 
 def sg_push_temp():

@@ -1731,3 +1731,44 @@ To do, not designed yet:
 
   - 15 bytes. It replaces `T_PUSHB` and `T_STW_SY`, about 6 bytes less a store.
   - It needs new asm.
+- **Shorter string calls** (user, 2026-10-28; pyuxc only). A string function writes its result
+  to a temp, and the assignment copies the temp to the variable. Each call passes two
+  addresses in A/Y, so the template stores the first one in zero page before it loads the
+  second. Measured with pyuxc on 2026-10-28:
+  - `REST = TRIM$(REST)` is 31 bytes and one temp:
+
+    ```
+    lda #<REST / ldy #>REST     4   the source
+    sta ZP_PTR / sty ZP_PTR+1   4   T_TRIM
+    lda #<T1 / ldy #>T1         4
+    jsr R_TRIM                  3
+    lda #<T1 / ldy #>T1         4   T_SCOPY
+    sta ZP_PTR / sty ZP_PTR+1   4
+    lda #<REST / ldy #>REST     4
+    clc / jsr R_SCAT            4
+    ```
+
+  - `TOKEN = UCASE$(LEFT$(REST, SPACE - 1))` is 61 bytes and two temps. `LEFT$` writes T1,
+    `UCASE$` copies T1 to T2, and `T_SCOPY` copies T2 to `TOKEN`. The word is copied 3 times.
+    The same work as two statements, `TOKEN = LEFT$(...)` then `TOKEN = UCASE$(TOKEN)`, is
+    13 bytes more.
+  - A temp is 257 bytes of RAM. The SUBs of one level share one pool of temps.
+
+  Three changes, each its own step. Done 2026-10-28, test `STRCALL`:
+  1. **Straight to the variable.** When the right side of a string assignment is one function
+     call, the function writes the variable, not a temp, and `T_SCOPY` is left out. It saves
+     16 bytes a statement, one temp, and one copy of the string. The routine must stop at
+     the variable's max. It is safe when the source is the variable itself for `TRIM$`,
+     `LTRIM$`, `RTRIM$`, `UCASE$`, `LCASE$` and `LEFT$`. It is not safe for `+` with the
+     variable on the right, as in `A = B + A`.
+  2. **A temp changed in place.** `UCASE$`, `LCASE$`, `TRIM$`, `LTRIM$`, `RTRIM$`, `LEFT$`,
+     `RIGHT$` or `MID$` of a temp writes that temp, not a new one. In the example it saves
+     T2: 257 bytes of RAM and one copy. For `UCASE$` and `LCASE$` the source is already in
+     A/Y, so the template is `sec` or `clc` and `jsr R_CASE`: 8 bytes less a call.
+  3. **The second address after the `jsr`.** `jsr R_TRIM` then `.word T1`: the routine calls
+     `R_ARG`, which stores A/Y in zero page, reads the word after the return address and
+     moves the return past it. `T_SCOPY`, `T_SCAT`, `T_UCASE` and `T_LCASE` are 12 bytes to
+     5, and `T_MID`, `T_LEFT`, `T_RIGHT`, `T_TRIM`, `T_LTRIM` and `T_RTRIM` 11 to 5. `R_ARG`
+     is 44 bytes and the routines' entries up to 40 more. A call takes about 74 cycles more.
+
+  With 1 and 3, `REST = TRIM$(REST)` is 9 bytes. It needs new asm.

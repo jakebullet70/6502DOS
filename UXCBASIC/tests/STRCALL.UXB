@@ -1,0 +1,73 @@
+' STRCALL -- string calls that write the variable, change a temp in place, or read the block after the JSR
+DIM S$ * 3
+DIM A$ * 20
+DIM R$ * 20
+DIM T$ * 20
+DIM N AS UBYTE
+' A cut at a small max
+S$ = UCASE$("abcdef")
+PRINT "<"; S$; ">"
+S$ = LCASE$("XYZW")
+PRINT "<"; S$; ">"
+S$ = MID$("HELLO", 2)
+PRINT "<"; S$; ">"
+S$ = LEFT$("WXYZ", 4)
+PRINT "<"; S$; ">"
+S$ = RIGHT$("12345", 5)
+PRINT "<"; S$; ">"
+S$ = TRIM$("  ABCDEF ")
+PRINT "<"; S$; ">"
+S$ = LTRIM$("  QRSTU")
+PRINT "<"; S$; ">"
+S$ = RTRIM$("JKLMN  ")
+PRINT "<"; S$; ">"
+S$ = STR$(12345)
+PRINT "<"; S$; ">"
+S$ = CHR$(65)
+PRINT "<"; S$; ">"
+S$ = "AB" + "CDE"
+PRINT "<"; S$; ">"
+' The source is the variable itself
+A$ = "ABCDEF"
+A$ = MID$(A$, 2)
+PRINT "<"; A$; ">"
+A$ = RIGHT$(A$, 3)
+PRINT "<"; A$; ">"
+A$ = "  PQ  "
+A$ = LTRIM$(A$)
+PRINT "<"; A$; ">"
+A$ = RTRIM$(A$)
+PRINT "<"; A$; ">"
+A$ = LCASE$(A$)
+PRINT "<"; A$; ">"
+A$ = UCASE$(A$)
+PRINT "<"; A$; ">"
+A$ = LEFT$(A$, 1)
+PRINT "<"; A$; ">"
+A$ = A$ + A$
+PRINT "<"; A$; ">"
+' A temp changed in place
+R$ = " abc def "
+N = 7
+PRINT "<"; UCASE$(LEFT$(R$, 4)); ">"
+T$ = UCASE$(LEFT$(R$, 4)) + "X"
+PRINT "<"; T$; ">"
+T$ = MID$(TRIM$(R$), 2, 4) + "X"
+PRINT "<"; T$; ">"
+T$ = LEFT$(STR$(N) + R$, 5)
+PRINT "<"; T$; ">"
+T$ = LCASE$(MID$(UCASE$(R$), 3))
+PRINT "<"; T$; ">"
+T$ = TRIM$(" " + R$ + " ")
+PRINT "<"; T$; ">"
+T$ = RIGHT$(UCASE$(R$), 4)
+PRINT "<"; T$; ">"
+T$ = LTRIM$(LCASE$("  ZY")) + RTRIM$(UCASE$("xw  ")) + "!"
+PRINT "<"; T$; ">"
+' A string call in the arguments of a call whose source is a temp
+T$ = MID$(R$ + "Z", LEN(STR$(N)) + 2, 3)
+PRINT "<"; T$; ">"
+T$ = LEFT$(R$ + "Z", LEN(UCASE$(R$)))
+PRINT "<"; T$; ">"
+T$ = RIGHT$(TRIM$(R$), ASC(CHR$(50)) - 48) + "!"
+PRINT "<"; T$; ">"

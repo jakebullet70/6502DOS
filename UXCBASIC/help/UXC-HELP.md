@@ -438,8 +438,12 @@ The functions:
 - UCASE$(s) is s with a to z made A to Z, and LCASE$(s) is s with A to Z made a
   to z. Other characters stay as they are: UCASE$("dir a1") is "DIR A1". Both
   are reserved words.
+- TRIM$(s) is s without the spaces at its start and its end. LTRIM$(s) drops
+  only the spaces at the start, and RTRIM$(s) only the spaces at the end:
+  TRIM$("  AB C ") is "AB C", LTRIM$(" 5") is "5", and RTRIM$("ADA   ") is
+  "ADA". Only the space, code 32, is trimmed. All three are reserved words.
 
-LEN, ASC, UCASE$ and LCASE$ of a literal, and CHR$ and STR$ of a constant, are
+LEN, ASC, UCASE$, LCASE$, TRIM$, LTRIM$ and RTRIM$ of a literal, and CHR$ and STR$ of a constant, are
 worked out by the compiler.
 
 A SUB takes a STRING parameter with no size: SUB SHOW(T$). The SUB works on the

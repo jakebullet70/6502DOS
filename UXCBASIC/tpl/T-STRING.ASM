@@ -19,12 +19,8 @@
 ; The block S0 = the string at A/Y, cut at the max of S0.
 T_SCOPY .block
         #tpl
-        sta ZP_PTR
-        sty ZP_PTR+1
-        #lo lda, S0
-        #hi ldy, S0
-        clc
         #rec jsr, R_SCAT
+        #dw S0
         #endtpl
         .endblock
 
@@ -36,7 +32,7 @@ T_SCOPY_P .block
         #ab lda, S0
         #ab ldy, S0, 1
         clc
-        #rec jsr, R_SCAT
+        #rec jsr, R_SCAT, R_SCAT.block - R_SCAT.rec_code
         #endtpl
         .endblock
 
@@ -50,12 +46,8 @@ T_SCLEAR .block
 ; The block S0 += the string at A/Y, cut at the max of S0.
 T_SCAT  .block
         #tpl
-        sta ZP_PTR
-        sty ZP_PTR+1
-        #lo lda, S0
-        #hi ldy, S0
-        sec
-        #rec jsr, R_SCAT
+        #rec jsr, R_SCAT, R_SCAT.append - R_SCAT.rec_code
+        #dw S0
         #endtpl
         .endblock
 
@@ -99,7 +91,7 @@ done
         #endtpl
         .endblock
 
-; The temp S0 = CHR$(A).
+; The block S0 = CHR$(A).
 T_CHR   .block
         #tpl
         #ab sta, S0, 2
@@ -108,7 +100,7 @@ T_CHR   .block
         #endtpl
         .endblock
 
-; The temp S0 = STR$(A/Y).
+; The block S0 = STR$(A/Y).
 T_STR   .block
         #tpl
         sta ZP_TMP
@@ -126,15 +118,12 @@ T_VAL   .block
         #endtpl
         .endblock
 
-; The temp S0 = MID$(string, start, A/Y). The string and the start were pushed. MID$ with no
+; The block S0 = MID$(string, start, A/Y). The string and the start were pushed. MID$ with no
 ; length passes 255.
 T_MID   .block
         #tpl
-        sta ZP_TMP
-        sty ZP_TMP+1
-        #lo lda, S0
-        #hi ldy, S0
         #rec jsr, R_MID
+        #dw S0
         #endtpl
         .endblock
 
@@ -184,7 +173,7 @@ T_LINPUT .block
         #endtpl
         .endblock
 
-; The temp S0 = STR$(A/Y), signed.
+; The block S0 = STR$(A/Y), signed.
 T_SSTR  .block
         #tpl
         sta ZP_TMP
@@ -195,7 +184,7 @@ T_SSTR  .block
         #endtpl
         .endblock
 
-; The temp S0 = STR$(A/Y/ZP_HI)
+; The block S0 = STR$(A/Y/ZP_HI)
 T_LSTR  .block
         #tpl
         pha
@@ -208,7 +197,7 @@ T_LSTR  .block
         #endtpl
         .endblock
 
-; The temp S0 = STR$(A/Y/ZP_HI), signed
+; The block S0 = STR$(A/Y/ZP_HI), signed
 T_SLSTR .block
         #tpl
         pha
@@ -228,48 +217,74 @@ T_LVAL  .block
         #endtpl
         .endblock
 
-; The temp S0 = LEFT$(string, A/Y). The string was pushed.
+; The block S0 = LEFT$(string, A/Y). The string was pushed.
 T_LEFT  .block
         #tpl
-        sta ZP_TMP
-        sty ZP_TMP+1
-        #lo lda, S0
-        #hi ldy, S0
         #rec jsr, R_LEFT
+        #dw S0
         #endtpl
         .endblock
 
-; The temp S0 = RIGHT$(string, A/Y). The string was pushed.
+; The block S0 = RIGHT$(string, A/Y). The string was pushed.
 T_RIGHT .block
         #tpl
-        sta ZP_TMP
-        sty ZP_TMP+1
-        #lo lda, S0
-        #hi ldy, S0
         #rec jsr, R_RIGHT
+        #dw S0
         #endtpl
         .endblock
 
-; The temp S0 = UCASE$ of the string at A/Y.
+; The block S0 = UCASE$ of the string at A/Y.
 T_UCASE .block
         #tpl
-        sta ZP_PTR
-        sty ZP_PTR+1
-        #lo lda, S0
-        #hi ldy, S0
+        #rec jsr, R_CASE, R_CASE.upper - R_CASE.rec_code
+        #dw S0
+        #endtpl
+        .endblock
+
+; The block S0 = LCASE$ of the string at A/Y.
+T_LCASE .block
+        #tpl
+        #rec jsr, R_CASE, R_CASE.lower - R_CASE.rec_code
+        #dw S0
+        #endtpl
+        .endblock
+
+; The block at A/Y = UCASE$ of itself.
+T_UCASE_SELF .block
+        #tpl
         sec
         #rec jsr, R_CASE
         #endtpl
         .endblock
 
-; The temp S0 = LCASE$ of the string at A/Y.
-T_LCASE .block
+; The block at A/Y = LCASE$ of itself.
+T_LCASE_SELF .block
         #tpl
-        sta ZP_PTR
-        sty ZP_PTR+1
-        #lo lda, S0
-        #hi ldy, S0
         clc
         #rec jsr, R_CASE
+        #endtpl
+        .endblock
+
+; The block S0 = TRIM$ of the string at A/Y.
+T_TRIM  .block
+        #tpl
+        #rec jsr, R_TRIM
+        #dw S0
+        #endtpl
+        .endblock
+
+; The block S0 = LTRIM$ of the string at A/Y.
+T_LTRIM .block
+        #tpl
+        #rec jsr, R_TRIM, R_TRIM.ltrim - R_TRIM.rec_code
+        #dw S0
+        #endtpl
+        .endblock
+
+; The block S0 = RTRIM$ of the string at A/Y.
+T_RTRIM .block
+        #tpl
+        #rec jsr, R_TRIM, R_TRIM.rtrim - R_TRIM.rec_code
+        #dw S0
         #endtpl
         .endblock

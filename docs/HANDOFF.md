@@ -2,6 +2,71 @@
 
 ## Open questions
 
+UXCBASIC built-ins `TRIM$`, `LTRIM$`, `RTRIM$` (2026-10-28), done, committed. Only the
+space, `$20`, is trimmed; of a literal the compiler folds a literal.
+
+- `tpl/R-STRING.ASM` `R_TRIM`, 74 bytes, linked only by a program that uses one: entries
+  `R_TRIM` (both ends), `.rtrim`, `.ltrim`. Each entry sets C (scan the end) and pushes a C
+  (scan the start). ZP_PTR points one past the block during the scans, so y = n is
+  character n, up to 255; it goes back before the jump into `R_MID.take`, which copies.
+  Trap: with the block pointer, character 255 is y = 256.
+- `tpl/T-STRING.ASM` `T_TRIM`, `T_LTRIM`, `T_RTRIM`, 11 bytes a call. Record ids from 224
+  on shift by 3, and from 242 on by 4; pyuxc reads them by name.
+- `pyuxc/uxc_str.py`: `sg_scan_known`, `sg_function`, `sg_one`, new `sg_trim`.
+  `pyuxc/uxc_name.py` `nm_word`: the three are reserved words.
+- BIND lines in `lib/STR.UXI` and `UXCBASIC/tests/STRINGS.UXI` (its TRIM TODO lines gone).
+  UXC-HELP `## Strings` has a bullet and the fold line.
+- Build 13527 ms, every program recompiled (templates changed), the new baseline. Tests:
+  new `TRIM` ok 1.7 s (golden read by hand), `STRNS` ok 1.7 s.
+
+UXCBASIC "Shorter string calls" (UXCBASIC plan section 5, 2026-10-28), 3 steps, asm approved
+for steps 1, 2 and 3. All 3 steps done and tested, committed. The plan doc's entry is
+marked done:
+
+- Step 1, straight to the variable. `sg_target` and `sg_push_target` in `pyuxc/uxc_str.py`:
+  when one string function call is the whole right side of `sg_let` (the token after its `)`
+  is the end of the line, nothing under it on the stack, the statement's depth), it writes the
+  destination block and `T_SCOPY` is left out. Only a block destination, not a STRING
+  parameter (`T_SCOPY_P`). `g.sg_need` is the least max the routine writes safely: 0 for
+  `LEFT$`, `RIGHT$`, `MID$`, `UCASE$`, `LCASE$`, `TRIM$`, `LTRIM$`, `RTRIM$`; 1 for `CHR$`; 6
+  for `STR$`, 11 for a LONG `STR$` (`R_STR` does not cut). `sg_direct_on` has a 0 default in
+  `uxc_state.dim()`.
+- `tpl/R-STRING.ASM`: `R_MID.take` cuts at the block's max and copies up, so the block may be
+  the source (+12 bytes, about +12 cycles a call and +3 a character). `R_CASE` cuts at the
+  block's max (+6 bytes, about +10 cycles a call). `T-STRING.ASM` comments say "block".
+- Measured with pyuxc: `REST$ = TRIM$(REST$)` 31 to 15 bytes, no temp;
+  `TOKEN$ = UCASE$(LEFT$(REST$, SPACE - 1))` 61 to 45 bytes, one temp.
+- Step 2, a temp changed in place. `sg_source` notes the source when it is a temp (not
+  `K_TEMP_PRINTED`); `sg_target` then writes that temp when step 1 does not apply. It covers
+  `UCASE$`, `LCASE$`, `TRIM$`, `LTRIM$`, `RTRIM$`, `LEFT$`, `RIGHT$` and `MID$` (the user).
+  Every `sg_target` caller sets `g.sg_source` just before it; `sg_mid` and `sg_left_right`
+  keep it across their arguments, which may hold a `STR$` or another call.
+- `R_CASE` has its old entry at `R_CASE.main`; `R_CASE` itself first stores A/Y in `ZP_PTR`
+  (+4 bytes). New `T_UCASE_SELF`, `T_LCASE_SELF`: `sec`/`clc`, `jsr R_CASE`, 4 bytes.
+- Measured with pyuxc, against the same source with the reuse off: `PRINT UCASE$(LEFT$(..))`
+  and `TOKEN$ = UCASE$(LEFT$(..)) + "X"` 8 bytes less a statement, one temp less;
+  `MID$(TRIM$(..), ..) + "X"` and `LEFT$(STR$(..) + REST$, ..)` the same code, one temp less.
+  A program with one temp fewer is 3 bytes shorter.
+- Step 3, the block in the word after the `JSR`. New `R_ARG`, 44 bytes: `ZP_PTR` = A/Y
+  (`R_ARG.tmp`: `ZP_TMP` = A/Y), then A/Y = the word after its caller's caller's `JSR`, which
+  returns past it. It reads the stack at `$104,x` after `phx`/`tsx`, so a routine calls it
+  before any push; it keeps X, not C. Entries that read the word: `R_SCAT` (copy),
+  `R_SCAT.append`, `R_MID`, `R_LEFT`, `R_RIGHT`, `R_CASE.upper`, `R_CASE.lower`, `R_TRIM`,
+  `.rtrim`, `.ltrim`. `R_SCAT.block` is the old entry, for `T_SCOPY_P`. `R_CASE` itself is the
+  in-place entry, C given.
+- `T_SCOPY`, `T_SCAT`, `T_UCASE`, `T_LCASE` 12 to 5 bytes; `T_MID`, `T_LEFT`, `T_RIGHT`,
+  `T_TRIM`, `T_LTRIM`, `T_RTRIM` 11 to 5. Routines: `R_SCAT` +10, `R_CASE` +12, `R_TRIM` +9,
+  `R_MID`, `R_LEFT`, `R_RIGHT` +3 each. About +74 cycles a call. pyuxc unchanged: the slot is
+  the same S0.
+- Measured with pyuxc: `REST$ = TRIM$(REST$)` 15 to 9 bytes. Over src/bas, src/scom, src/dos
+  and src/utils (37 programs) the templates save 12249 bytes, against at most 84 bytes of
+  routines a program; `SHOW` (1 call) is 47 bytes longer, `CMDSHELL` about 920 shorter,
+  `GUIDEMO` about 2100.
+- Build 13658 ms, every program recompiled, the new baseline. Tests: `TRIM` ok 1.7 s,
+  `STRNS` ok 1.7 s, new `STRCALL` ok 1.7 s (golden read by hand: a cut at max 3, each call
+  on its own variable, the in-place cases, a string call in the arguments of a call on a
+  temp), `STRLR` ok 1.6 s, `STRSUB` ok 1.6 s.
+
 The sprite, VRAM and graphics plan is not complete. It is under Next, at "sprite commands in
 namespace VERA". No asm is written for it. Each question waits on the user.
 

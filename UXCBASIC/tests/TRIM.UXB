@@ -1,0 +1,28 @@
+' TRIM -- TRIM$, LTRIM$ and RTRIM$ of a literal, a variable, a temp, and back into the source
+DIM T$ * 20
+DIM L$ * 255
+PRINT "<"; TRIM$("  AB C "); "|"; LTRIM$("  AB C "); "|"; RTRIM$("  AB C "); "|"; TRIM$("   "); "|"; TRIM$(""); ">"
+T$ = "  X  Y  "
+PRINT "<"; TRIM$(T$); "|"; LTRIM$(T$); "|"; RTRIM$(T$); ">"
+T$ = "   "
+PRINT "<"; TRIM$(T$); "|"; LTRIM$(T$); "|"; RTRIM$(T$); ">"; LEN(TRIM$(T$))
+T$ = ""
+PRINT "<"; TRIM$(T$); "|"; LTRIM$(T$); "|"; RTRIM$(T$); ">"
+T$ = "ADA"
+PRINT "<"; TRIM$(T$); "|"; LTRIM$(T$); "|"; RTRIM$(T$); ">"
+T$ = " Q"
+PRINT "<"; TRIM$(T$); "|"; RTRIM$(T$); ">"
+T$ = "Q "
+PRINT "<"; TRIM$(T$); "|"; LTRIM$(T$); ">"
+PRINT "<"; LTRIM$(STR$(5)); "|"; TRIM$(RTRIM$(" A ") + " "); "|"; STR.TRIM$(" B "); ">"
+T$ = "  KEEP  "
+T$ = TRIM$(T$)
+PRINT "<"; T$; ">"; LEN(T$)
+L$ = " "
+DO WHILE LEN(L$) < 255
+    L$ = L$ + " "
+LOOP
+PRINT LEN(TRIM$(L$)); LEN(LTRIM$(L$)); LEN(RTRIM$(L$))
+L$ = LEFT$(L$, 253) + "Z "
+PRINT LEN(TRIM$(L$)); LEN(LTRIM$(L$)); LEN(RTRIM$(L$))
+#INCLUDE "STRINGS.UXI"

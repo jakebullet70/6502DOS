@@ -16,6 +16,9 @@ NAMESPACE STR
   BIND INSTR INSTR    ' STR.INSTR(S$, F$[, START])   the position of F$ in S$, or 0
   BIND LEFT$ LEFT$    ' STR.LEFT$(S$, N)             the first N characters of S$
   BIND RIGHT$ RIGHT$  ' STR.RIGHT$(S$, N)            the last N characters of S$
+  BIND TRIM$ TRIM$    ' STR.TRIM$(S$)                S$ without the spaces at its start and end
+  BIND LTRIM$ LTRIM$  ' STR.LTRIM$(S$)               S$ without the spaces at its start
+  BIND RTRIM$ RTRIM$  ' STR.RTRIM$(S$)               S$ without the spaces at its end
   BIND AddressOf AddrOf
 
   ' The position of the last FIND$ in TEXT$ that starts at or before START, or 0. START 0
