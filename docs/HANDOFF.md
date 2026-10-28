@@ -2259,7 +2259,7 @@ the beta 1 list).
      - Full suite: 59 tests, 0 failed, 105.6 s (`STOPPED_TESTS` skips 52).
      - Step 4 committed `5525e65`.
      - Step 5, ZIP deflate (asm approved: 1 try per hash slot, a stored block for each block
-       that does not shrink). Done and committed.
+       that does not shrink). Committed `f09ac37`.
        - Design in `ZIP.UXB` (comment above the zero page DIMs): the window is a 32 KB ring
          in 4 banks, loaded 512 bytes at a time by `DEF_REFILL` (BASIC, called from asm). The
          head table, 4096 slots, is 1 bank (lo bytes at `$A000`, hi at `$B000`), cleared per
@@ -2301,6 +2301,11 @@ the beta 1 list).
        - Diagnostic scripts, copied to `build/zipdiag/`: `check.py` (testzip and a byte compare of a card's
          archive), `diag.py` (decodes fixed and stored blocks token by token), `crcs.py`,
          `crcsim.py`, `sizes.py` (bytes per SUB).
+     - HELP topics `ZIP` and `UNZIP` (2026-10-28), at the end of `src/dos/HELP.HLP`, taken
+       from the header comments of `ZIP.UXB` and `UNZIP.UXB`. HELP.HLP 21584 bytes (was
+       20135). Build 2068 ms, the new baseline. CMDLETS golden updated (the topic list gains
+       `ZIP UNZIP`, nothing else): CMDLETS ok 3.4 s. `HELP UNZIP` checked by a scratch test,
+       then deleted. `SI` has no HELP topic yet.
   6. `BE`, the batch enhancer (`ASK`/`CHOICE` to `ERRORLEVEL`, `BOX`, `BEEP`, `DELAY`,
      `ROWCOL`). Talk it through with the user first.
   - Ideas kept, not picked: `UNDELETE` (needs a check that the x16-rom library keeps the high
@@ -2312,7 +2317,8 @@ the beta 1 list).
   PATH from the WinGet links. Build 4400 ms wall (the ROM 3.30 s). The build with the new
   calls took 10495 ms (the ROM 10.28 s): a new `DOS.UXI` recompiles every program. The
   baseline stays 4400 ms for a build that leaves `DOS.UXI` alone.
-- Steps since the last full suite: 3 (the ZIP CRC fix, the ROM `bank_save` fix, ZIPDEF). Full suite after ZIP step 4 (2026-10-27): 59 tests,
+- Steps since the last full suite: 4 (the ZIP CRC fix, the ROM `bank_save` fix, ZIPDEF, the
+  ZIP and UNZIP HELP topics). Full suite after ZIP step 4 (2026-10-27): 59 tests,
   0 failed, 105.6 s.
 - Before it, full suite after FONTEDIT step 4 (2026-10-27): 116 tests,
   5 failed, 230.7 s. `CHKDSK`, `FILES`, `HDIR`, `HDIRARG` and `TREE` failed on the card's new

@@ -526,3 +526,34 @@ THEMED [name]                   (Command line only)
   THEMED is in C:\UTILS.
   Example:
     THEMED BLUE.GTH
+:ZIP
+ZIP [-r] archive files          (Command line only)
+  Adds files to the ZIP archive, and makes the archive when it is missing.
+  files are up to 8 names or patterns with * and ?. An archive name with
+  no . gets .ZIP.
+  A folder adds an entry for itself. -r adds the files and folders in it
+  too, down to 16 folders deep. Hidden and system files are left out.
+  A file whose name is in the archive already replaces that entry.
+  Each file is deflated, and its line tells the saving in percent. A file
+  of up to 32768 bytes that deflate does not shrink is stored.
+  ZIP is in C:\UTILS.
+  Examples:
+    ZIP GAMES *.PRG
+    ZIP -r C:\BACKUP DOCS SRC\*.UXB
+:UNZIP
+UNZIP [-o] [-d folder] archive [names] (Command line only)
+UNZIP -l archive [names]
+  Extracts the entries of the ZIP archive into the current folder, or into
+  folder with -d, and makes the folders their names hold.
+  names are names or patterns with * and ?, in any case, and pick the
+  entries. With no names every entry is picked.
+  -o replaces a file that exists. Without -o UNZIP asks: y replaces it,
+  A replaces it and every one after, N keeps it and every one after.
+  An entry whose name has a drive or a .. folder is skipped.
+  -l lists the entries with their lengths, dates and times.
+  An archive name with no . that does not open gets .ZIP.
+  UNZIP is in C:\UTILS.
+  Examples:
+    UNZIP GAMES
+    UNZIP -o -d C:\GAMES GAMES.ZIP *.PRG
+    UNZIP -l GAMES.ZIP DOCS\*.TXT
