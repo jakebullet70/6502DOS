@@ -114,6 +114,7 @@ api_exec:
         sta RAM_BANK
         tsx
         stx PSP_STACK
+        stz SYS_P               ; a UXCBASIC program's first SYS loads P from it
         jsr @start
         lda #0                  ; RTS from the program: exit code 0
         bra exit_normal

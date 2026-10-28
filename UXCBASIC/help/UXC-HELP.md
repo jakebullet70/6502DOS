@@ -1956,6 +1956,176 @@ IF RESULT = 1 THEN GUI.STATUS_LINE("Saved.")
 
 Alt+O or Enter on OK makes SHOW return 1. Esc returns EV_CANCEL.
 
+## The DB library
+
+DB.UXI, in lib/, reads and writes tables and their indexes through the
+6502DOS call db. Its names are in the namespace DB.
+
+- DB.UXI needs DOS.UXI before it. See [[Including files]].
+- A table is a .DB file of records, each with the same fields. An index is a
+  .IDX file that keeps a table's records in the order of a key.
+- Records and fields count from 1.
+- Each routine sets DOS.ERROR: 0 when it succeeds, else an error number.
+- A field holds text. GET returns it with its padding: a C field's spaces
+  after the text, an N field's spaces before it.
+
+### Tables
+
+```
+FUNCTION OPEN_TABLE(PATH AS STRING) AS UBYTE
+FUNCTION CREATE(PATH AS STRING, TABLE AS UWORD, COUNT AS UBYTE) AS UBYTE
+SUB DEFINE(TABLE AS UWORD, NUMBER AS UBYTE, NAME AS STRING,
+  KIND AS STRING, LENGTH AS UBYTE, DECIMALS AS UBYTE)
+SUB CLOSE_TABLE()
+```
+
+- An open table takes a RAM bank, its workspace. OPEN_TABLE and CREATE
+  return the workspace and set DB.WORKSPACE to it. On an error they return
+  0, and DB.WORKSPACE stays.
+- Each other routine works on the table in DB.WORKSPACE. A program with two
+  tables open sets DB.WORKSPACE to switch between them.
+- OPEN_TABLE opens the table PATH, with no record current. A file that is
+  not a table gives error 11.
+- DEFINE fills entry NUMBER of the field table at TABLE. The field table
+  holds DB.FIELD_SIZE (16) bytes a field.
+- NAME is 1 to 10 characters: A to Z, 0 to 9 and _, in capitals. KIND is
+  "C", "N", "L" or "D". DECIMALS is for an N field, else 0.
+- The lengths: C 1 to 254, N 1 to 10, L 1, D 8. An L field holds T, F or ?.
+  A D field holds YYYYMMDD.
+- CREATE makes the table PATH with the COUNT fields of the field table at
+  TABLE, and opens it with no records. A file PATH is emptied. A table has
+  1 to 32 fields. A field of length 0, or a record past 1000 bytes, gives
+  error 13.
+- CLOSE_TABLE closes the table and its indexes, frees its workspace and sets
+  DB.WORKSPACE to 0.
+
+### Fields
+
+```
+FUNCTION RECORD_COUNT() AS UWORD
+FUNCTION FIELD_COUNT() AS UBYTE
+FUNCTION FIELD_NAME(N AS UBYTE) AS STRING
+FUNCTION FIELD_TYPE(N AS UBYTE) AS ENUM.FIELD_KIND
+FUNCTION FIELD_LENGTH(N AS UBYTE) AS UBYTE
+FUNCTION FIELD_DECIMALS(N AS UBYTE) AS UBYTE
+FUNCTION FIELD_NUMBER(NAME AS STRING) AS UBYTE
+```
+
+- FIELD_TYPE returns a member of ENUM DB.FIELD_KIND: CHARACTER, NUMBER,
+  LOGICAL or DATE. Each member is its type's letter in ASCII, so
+  CHR$(DB.FIELD_TYPE(N)) gives "C", "N", "L" or "D".
+- FIELD_TYPE returns NONE, 0, for field 0, and NONE with error 13 for a field
+  past the last.
+- FIELD_NAME returns "" for field 0, and "" with error 13 for a field past the
+  last.
+- FIELD_NUMBER returns the number of the field NAME, in any case, or 0.
+
+### Records
+
+```
+SUB GO(RECORD AS UWORD)
+FUNCTION GET(N AS UBYTE) AS STRING
+SUB PUT(N AS UBYTE, TEXT AS STRING)
+FUNCTION APPEND() AS UWORD
+SUB WRITE_RECORD()
+SUB DELETE()
+SUB RECALL()
+FUNCTION PACK() AS UWORD
+```
+
+- GO makes RECORD current. A record outside 1 to RECORD_COUNT gives error
+  13.
+- GET returns the text of field N of the current record.
+- PUT sets field N of the current record to TEXT, padded with spaces:
+  right-aligned in an N field, else left-aligned. Text longer than the field
+  gives error 13.
+- APPEND makes a new blank record current and returns its number, 0 on an
+  error. The first WRITE_RECORD adds it to the table.
+- DELETE marks the current record deleted. RECALL clears the mark.
+- PUT, DELETE and RECALL change the record in the workspace only.
+  WRITE_RECORD writes it to the table, and its keys to the open indexes. A
+  key already in a unique index gives error 13 and writes nothing.
+- A deleted record stays in the table until PACK. GO and the moves still
+  reach it. DB.DELETED is 1 when the record the last GO or move reached is
+  deleted, else 0.
+- GET, PUT, DELETE, RECALL and WRITE_RECORD with no record current give
+  error 13.
+- PACK removes the deleted records, builds the open indexes again, and
+  returns the count of records left. No record is current after it. A
+  failed PACK leaves no table in the workspace. CLOSE_TABLE still frees it.
+
+### Indexes
+
+```
+FUNCTION INDEX_CREATE(PATH AS STRING, KEYS AS STRING,
+  UNIQUE AS UBYTE) AS UBYTE
+FUNCTION INDEX_OPEN(PATH AS STRING) AS UBYTE
+SUB INDEX_CLOSE(SLOT AS UBYTE)
+SUB ORDER(SLOT AS UBYTE)
+FUNCTION FIND(KEY AS STRING) AS UWORD
+FUNCTION FIRST_RECORD() AS UWORD
+FUNCTION LAST_RECORD() AS UWORD
+FUNCTION NEXT_RECORD() AS UWORD
+FUNCTION PREVIOUS_RECORD() AS UWORD
+```
+
+- A table has at most 3 indexes open, in slots 0 to 2. A fourth gives error
+  4.
+- INDEX_CREATE builds the index PATH from every record, on KEYS: 1 to 4
+  field names joined by +, in any case, as "CITY+NAME". UNIQUE 1 refuses two
+  records with one key. The index opens and becomes the order. It returns
+  the slot.
+- A name in KEYS that is not a field, or a fifth name, gives error 13.
+- INDEX_OPEN opens the index PATH and returns its slot. The order stays. An
+  index on another table's fields gives error 11.
+- INDEX_CREATE and INDEX_OPEN return DB.RECORD_ORDER (255) on an error.
+- INDEX_CLOSE closes the index in SLOT. When it was the order, the order
+  becomes the records' order in the file.
+- ORDER makes the index in SLOT the order. DB.RECORD_ORDER as SLOT makes it
+  the records' order in the file. No record of the order is current after
+  it.
+- FIRST_RECORD, LAST_RECORD, NEXT_RECORD and PREVIOUS_RECORD make a record
+  of the order current and return it, 0 when there is none. With no record
+  of the order current, NEXT_RECORD gives the first and PREVIOUS_RECORD the
+  last.
+- FIND makes current the first record whose key starts with KEY, else the
+  first key above KEY, and returns it. Error 2 means its key does not start
+  with KEY. FIND returns 0 when no key is at or above KEY. FIND in the
+  records' order gives error 13.
+- A key is the text of its fields, joined, cut to 100 bytes. Keys compare
+  byte by byte.
+- An N field enters a key rewritten, so that it sorts as a number. A KEY
+  for FIND on an N field must be in the rewritten form: each space and the
+  . become 0, so 12.50 in a field of 8 is 00012050.
+
+### Example
+
+```
+#INCLUDE "DOS.UXI"
+#INCLUDE "DB.UXI"
+DIM FIELDS(32) AS UBYTE, PEOPLE AS UBYTE, RECORD AS UWORD
+DB.DEFINE(@FIELDS, 1, "NAME", "C", 10, 0)
+DB.DEFINE(@FIELDS, 2, "AGE", "N", 3, 0)
+PEOPLE = DB.CREATE("PEOPLE.DB", @FIELDS, 2)
+RECORD = DB.APPEND()
+DB.PUT(1, "ZOE")
+DB.PUT(2, "30")
+DB.WRITE_RECORD()
+RECORD = DB.APPEND()
+DB.PUT(1, "AMY")
+DB.PUT(2, "25")
+DB.WRITE_RECORD()
+DB.INDEX_CREATE("NAME.IDX", "NAME", 0)
+RECORD = DB.FIRST_RECORD()
+DO WHILE RECORD <> 0
+  PRINT RECORD; " "; DB.GET(1); DB.GET(2)
+  RECORD = DB.NEXT_RECORD()
+LOOP
+DB.CLOSE_TABLE()
+```
+
+The loop prints record 2, AMY, then record 1, ZOE.
+
 # The compiler
 
 ## Compiling
@@ -1968,8 +2138,9 @@ python pyuxc/pyuxc.py HELLO.UXB -I ../lib
 ```
 
 - -I FOLDER adds an include folder. It may be given more than once. lib/ at the
-  repo root holds BANK.UXI, CONS.UXI, DOS.UXI, GUI.UXI, HEAP.UXI, INI.UXI,
-  KEYS.UXI, PICKFILE.UXI, STR.UXI and VERA.UXI. See [[Including files]].
+  repo root holds BANK.UXI, CONS.UXI, DB.UXI, DOS.UXI, GUI.UXI, HEAP.UXI,
+  INI.UXI, KEYS.UXI, PICKFILE.UXI, STR.UXI and VERA.UXI. See
+  [[Including files]].
 - -o FOLDER is the folder of the PRG. The folder must exist. The default is
   the source's folder.
 - --result FILE writes the result line to FILE as well.
@@ -2041,7 +2212,7 @@ PRINT TWICE(21)
 
 The libraries in lib/ need these before them:
 
-- BANK.UXI, HEAP.UXI and INI.UXI: DOS.UXI.
+- BANK.UXI, DB.UXI, HEAP.UXI and INI.UXI: DOS.UXI. See [[The DB library]].
 - GUI.UXI: KEYS.UXI and VERA.UXI. See [[The GUI library]].
 - PICKFILE.UXI: KEYS.UXI, DOS.UXI, BANK.UXI, VERA.UXI and GUI.UXI.
 - CONS.UXI, DOS.UXI, KEYS.UXI, STR.UXI and VERA.UXI: none.

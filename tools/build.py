@@ -3,13 +3,13 @@ r"""Build the 6502DOS ROM image.
     python tools/build.py [--release]
 
 Runs tools/genapi.py, assembles every src/asm/*.s and build/gen/*.s with ca65, links them
-with src/asm/rom.cfg into build/6502DOS.ROM, ROM banks 0 and 1, and copies LICENSE and NOTICE
+with src/asm/rom.cfg into build/6502DOS.ROM, ROM banks 0, 1 and 5, and copies LICENSE and NOTICE
 beside it. MSBASIC's 6502dos target, MSBASIC/src/msbasic.s with MSBASIC/src/6502dos.cfg, is
 ROM bank 2, appended to the image; its labels are build/MSBASIC.LBL. MSBASIC/src/6502dos_com.s
 assembles to build/bas/MSBASIC.COM, which starts it. ROM banks 3 and 4, appended next, are the
 one src/bank3/NAME.UXB, which sets #ORG $C000 and #ROMBANKS 3, 4, compiled and linked with
 src/bank3/bank.s and bank.cfg; src/bank3/stub.s assembles to build/bas/NAME.COM, which starts
-it. ca65 and ld65 come from tools/cc65/bin only. Includes are found in src/asm and build/gen. The map is
+it. Bank 5, the table library, follows bank 4. ca65 and ld65 come from tools/cc65/bin only. Includes are found in src/asm and build/gen. The map is
 build/6502DOS.MAP, the label file build/6502DOS.LBL, and each listing build/obj/NAME.LST.
 build/TEST.ROM is the same image with boot_shell cleared: it boots to the monitor, not the shell.
 
@@ -101,8 +101,8 @@ UTILS_OUT = os.path.join(BUILD, "UTILS")
 SHOWN_TESTS = []
 TEMPLATES = os.path.join(ROOT, "UXCBASIC", "tpl")
 MSBASIC_SRC = os.path.join(ROOT, "MSBASIC", "src")
-BANK3_SRC = os.path.join(ROOT, "src", "bank3")
-BANK3_OUT = os.path.join(BUILD, "bank3")
+# bank.s, bank.cfg and stub.s, which each UXCBASIC program in two ROM banks is built with.
+BANK_TOOLS = os.path.join(ROOT, "src", "bank3")
 BANK_SIZE = 0x4000
 PROGRAM_START = 0x0801
 
@@ -217,39 +217,43 @@ def build_basic():
     return program
 
 
-def build_bank3():
-    """Append ROM banks 3 and 4 to build/6502DOS.ROM: the one src/bank3/NAME.UXB, compiled to
-    build/bank3/BANK3.BIN and BANK4.BIN, each assembled with src/bank3/bank.s, which holds it
-    at $C000 and adds the IRQ entry and the vectors. BANK4.BIN is empty when the program fits
-    bank 3. Assemble src/bank3/stub.s to build/bas/NAME.COM, which starts it. Return the COM
-    path."""
-    sources = glob.glob(os.path.join(BANK3_SRC, "*.UXB"))
+def build_rom_program(first):
+    """Append ROM banks first and first + 1 to build/6502DOS.ROM: the one src/bankF/NAME.UXB,
+    F the first bank, which sets #ORG $C000 and #ROMBANKS first, first + 1, compiled to
+    build/bankF/BANKn.BIN for each bank n, each assembled with src/bank3/bank.s, which holds it
+    at $C000 and adds the IRQ entry and the vectors. The second bank's file is empty when the
+    program fits the first. Assemble src/bank3/stub.s to build/bas/NAME.COM, which starts it.
+    Return the COM path."""
+    folder = os.path.join(ROOT, "src", "bank%d" % first)
+    out = os.path.join(BUILD, "bank%d" % first)
+    sources = glob.glob(os.path.join(folder, "*.UXB"))
     if len(sources) != 1:
-        sys.exit("build: src/bank3 must hold one .UXB file")
-    os.makedirs(BANK3_OUT, exist_ok=True)
-    second = os.path.join(BANK3_OUT, "BANK4.BIN")
-    uxb.compile(sources[0], os.path.join(BANK3_OUT, "BANK3.BIN"), second)
+        sys.exit("build: src/bank%d must hold one .UXB file" % first)
+    os.makedirs(out, exist_ok=True)
+    second = os.path.join(out, "BANK%d.BIN" % (first + 1))
+    uxb.compile(sources[0], os.path.join(out, "BANK%d.BIN" % first), second)
     if not os.path.exists(second):
         open(second, "wb").close()
-    for bank in (3, 4):
+    for bank in (first, first + 1):
         obj = os.path.join(OBJ, "bank%d.o" % bank)
-        image = os.path.join(BANK3_OUT, "BANK%d.ROM" % bank)
-        run([CA65, "-D", "BANK=%d" % bank, "-I", ASM, "-I", GEN, "--bin-include-dir", BANK3_OUT,
+        image = os.path.join(out, "BANK%d.ROM" % bank)
+        run([CA65, "-D", "BANK=%d" % bank, "-I", ASM, "-I", GEN, "--bin-include-dir", out,
              "-o", obj, "-l", os.path.join(OBJ, "BANK%d.LST" % bank),
-             os.path.join(BANK3_SRC, "bank.s")])
-        run([LD65, "-C", os.path.join(BANK3_SRC, "bank.cfg"), "-o", image, obj])
+             os.path.join(BANK_TOOLS, "bank.s")])
+        run([LD65, "-C", os.path.join(BANK_TOOLS, "bank.cfg"), "-o", image, obj])
         if os.path.getsize(ROM) != bank * BANK_SIZE or os.path.getsize(image) != BANK_SIZE:
             sys.exit("build: banks 0 to %d are not 16 KB each" % bank)
-        with open(ROM, "ab") as out:
-            out.write(open(image, "rb").read())
-    obj = os.path.join(OBJ, "stub.o")
-    stub = os.path.join(OBJ, "STUB.BIN")
-    run([CA65, "-I", ASM, "-I", GEN, "-o", obj, os.path.join(BANK3_SRC, "stub.s")])
+        with open(ROM, "ab") as out_file:
+            out_file.write(open(image, "rb").read())
+    obj = os.path.join(OBJ, "stub%d.o" % first)
+    stub = os.path.join(OBJ, "STUB%d.BIN" % first)
+    run([CA65, "-D", "BANK=%d" % first, "-I", ASM, "-I", GEN, "-o", obj,
+         os.path.join(BANK_TOOLS, "stub.s")])
     run([LD65, "-C", os.path.join(OBJ, "program.cfg"), "-o", stub, obj])
     name = os.path.splitext(os.path.basename(sources[0]))[0].upper() + ".COM"
     program = os.path.join(BAS_OUT, name)
-    with open(program, "wb") as out:
-        out.write(PROGRAM_START.to_bytes(2, "little") + open(stub, "rb").read())
+    with open(program, "wb") as out_file:
+        out_file.write(PROGRAM_START.to_bytes(2, "little") + open(stub, "rb").read())
     return program
 
 
@@ -408,9 +412,16 @@ def main():
     run([LD65, "-C", os.path.join(ASM, "rom.cfg"), "-o", ROM,
          "-m", os.path.join(BUILD, "6502DOS.MAP"), "-Ln", LABELS]
         + objects)
+    image = open(ROM, "rb").read()
+    if len(image) != 3 * BANK_SIZE:
+        sys.exit("build: banks 0, 1 and 5 are not 16 KB each")
+    with open(ROM, "wb") as out:
+        out.write(image[:2 * BANK_SIZE])
     basic = build_basic()
     make_templates()
-    bank3 = build_bank3()
+    bank3 = build_rom_program(3)
+    with open(ROM, "ab") as out:
+        out.write(image[2 * BANK_SIZE:])
     make_test_rom()
     for name in ("LICENSE", "NOTICE"):
         shutil.copyfile(os.path.join(ROOT, name), os.path.join(BUILD, name))

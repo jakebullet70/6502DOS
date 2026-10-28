@@ -2,7 +2,20 @@
 
 ## Open questions
 
-UXCBASIC built-ins `TRIM$`, `LTRIM$`, `RTRIM$` (2026-10-28), done, committed. Only the
+Resume here (2026-10-28): DB, item 11, A2c3 done: the compares, `$`, `.AND.`, `.OR.`,
+`.NOT.` and the logical type in `DB.COM`, test `DBLOGIC` (item 11, A2c3, below). ENUM step done:
+`DB.FIELD_TYPE` returns `ENUM DB.FIELD_KIND`; `DB.COM`'s codes are ENUMs (below). A2c4a
+done: `RECNO()`, `EOF()`, `BOF()`, `DELETED()`, test `DBFUNC` (below). A2c4b done: calls
+with arguments, `LEN()`, `UPPER()` (below). Next: A2c4c, more functions, each small (the
+user: A2a was too long), then A2d, `STORE` and the memory variables, all in RAM. Decided 2026-10-28: `DB.COM` is UXCBASIC, not asm, built in low RAM
+first (the user), then compiled with `#ROMBANKS` into ROM banks 6 and 7 as
+`src/bank3/ROMSHELL.UXB` is; it calls the library through `DB.UXI`. A1's `DB.COM` is 4876
+bytes, about 4.5 KB of code against the 32 KB of the two banks. Owed to the doc batch:
+DB.PLAN's program section (asm to UXCBASIC, built in RAM first, the sizes, the float now in
+bank 5 behind call 58, not in banks 6 and 7), A1 and A2a done, bank 5's size table. Deferred: D6b's savings (proposed, below) and
+the doc batch owed for D2 to D6b. Ask before any asm.
+
+UXCBASIC built-ins `TRIM$`, `LTRIM$`, `RTRIM$` (2026-10-28), done, committed in b380b7b. Only the
 space, `$20`, is trimmed; of a literal the compiler folds a literal.
 
 - `tpl/R-STRING.ASM` `R_TRIM`, 74 bytes, linked only by a program that uses one: entries
@@ -20,7 +33,7 @@ space, `$20`, is trimmed; of a literal the compiler folds a literal.
   new `TRIM` ok 1.7 s (golden read by hand), `STRNS` ok 1.7 s.
 
 UXCBASIC "Shorter string calls" (UXCBASIC plan section 5, 2026-10-28), 3 steps, asm approved
-for steps 1, 2 and 3. All 3 steps done and tested, committed. The plan doc's entry is
+for steps 1, 2 and 3. All 3 steps done and tested, committed in b380b7b. The plan doc's entry is
 marked done:
 
 - Step 1, straight to the variable. `sg_target` and `sg_push_target` in `pyuxc/uxc_str.py`:
@@ -66,6 +79,10 @@ marked done:
   `STRNS` ok 1.7 s, new `STRCALL` ok 1.7 s (golden read by hand: a cut at max 3, each call
   on its own variable, the in-place cases, a string call in the arguments of a call on a
   temp), `STRLR` ok 1.6 s, `STRSUB` ok 1.6 s.
+
+The DB decisions of 2026-10-28 are in `docs/DB.PLAN.md`: MSBASIC's float in DB.COM, trimmed of
+`LOG`, `SQR`, `FPWRT`, `EXP` and the polynomials, `N` fields of 1 to 10 characters, and the `N`
+rewrite in the key. `docs/DB.PLAN.md`, `tools/db.py` and the D2 to D4 work are not committed.
 
 The sprite, VRAM and graphics plan is not complete. It is under Next, at "sprite commands in
 namespace VERA". No asm is written for it. Each question waits on the user.
@@ -264,6 +281,471 @@ the beta 1 list).
       `font-8x16`, whose HANDOFF has the details. `main` stays 8x8 at 640x240. Build after the
       revert 6988 ms (4 programs recompiled for `VERA.UXI`, and the ROM), the new baseline.
       `VERABOX` ok 1.0 s, `GUISHADOW` ok 0.9 s.
+11. DB (2026-10-28): `docs/DB.PLAN.md`, not committed. The user takes it; the next session
+    starts its step D1, `tools/db.py`, the Python reference (no asm). A table
+    and index library in ROM bank 5 behind one call, `db` 57 at `$03EB`, and `DB.COM`, a dot
+    prompt in ROM banks 6 and 7, after dBASE II's design. The files are 6502DOS's own; no
+    dBASE file is read. Steps D1 to D7, then A1 to A7. No asm is written. PLAN's memory map
+    row for ROM banks 5 and up and section 13's ROM bank item owe a pointer to it, in the
+    next doc batch.
+    - D1 (2026-10-28): `tools/db.py` dumps and checks `.DB` and `.IDX` files, builds an
+      index, and `make(folder)` writes the test tables: `PEOPLE.DB` with `PNAME`, `PCITY`,
+      `PBAL` and `PID.IDX` (unique), `BIG.DB` and `BIG.IDX` (100-byte key, 5 levels), and
+      `EMPTY.DB` and `EMPTY.IDX`. The tables go on a test's own card through its `NAME.PY`,
+      not into `tests/sd`, whose listings are in other goldens. Checked by a scratch script:
+      every index good, `N` keys sort as numbers over 5000 values and -9999 to 99999, a bad
+      key and a bad field are found. No X16 test ran; no build.
+    - The D1 work changed the plan. A blank `N` field sorted between 0.99 and 1.00, so a space
+      and the `.` now both count as 0 in the key: 12.50 in a field of 8 is `00012050`, and
+      -12.50 is `-9987949`. 65535 keys of 100 bytes, added in order, reach 10 levels (9 in
+      random order), so the path in the workspace is 10 levels of a page and an entry, 3 x 558
+      bytes, and the workspace is 4747. The split rule and the empty index, one empty leaf at
+      page 1, are written in the plan.
+    - D2 (2026-10-28): ROM bank 5 is in the image. `src/asm/db.s` links with the kernel in
+      `rom.cfg` (memory `BANK5`, segments `B5CODE`, `FARIRQ5`, `B5VECTORS`), so `api_table`
+      takes its `.bank`; `tools/build.py` cuts it from the link and appends it after bank 4.
+      The image is 98304 bytes. Call 57 `db` (`api_db`, `$03EB`): Y the function, A the
+      workspace bank, selected for the function, the caller's bank selected again after.
+      Dispatch by RTS from `db_table`. `db_info` is written: X 0 gives r0 = `$A020`, the
+      header, X 1 to fields the field's entry at `$A020 + 16 X`, a field past the last error
+      13. `db_need`: a workspace whose header lacks `DB` and version 1 holds no table, error 6.
+      Every other function gives error 1. `tools/api.py` has `DB_FUNCTIONS`; `genapi.py`
+      writes `DB_NAME` and `DB_COUNT` to `api.inc` and a db functions table to `API.md`.
+      No `jsrfar` in bank 5: it reaches the kernel through the RAM call entries.
+      - Cost: bank 5 156 bytes (code 136, IRQ entry 14, vectors 6), 16228 free. Bank 0 +3
+        (`api_table`), RAM +3 (call entry). Estimate was 200 for the entry, table and IRQ.
+      - Build 14050 ms, every program recompiled (`DOS.UXI` gained `API_DB`), the new
+        baseline. Tests: new `DB` (`tests/DB.S`) ok 1.3 s, `FAR` ok 1.2 s.
+      - Docs owed in the next batch: PLAN's memory map row for ROM bank 5, DB.PLAN's step D2
+        done.
+    - D3 (2026-10-28): `db_open`, `db_close`, `db_goto`, `db_get` written in `db.s`.
+      Workspace state: `DB_HANDLE` $A000, `DB_CURRENT` $A001 (0 none), `DB_WANT` $A003;
+      header $A020; the current record `DB_RECORD` = $A231. `db_ptr`, 2 bytes of KERNELZP
+      (now $80-$E4). `open` opens read and write (access 2), reads 16 bytes, checks the
+      magic, fields 1 to 32 and a record of at most 1000, then reads 16 x fields + 1; a fault
+      clears the magic and closes the file; not a table or a short read gives error 11. A
+      table open in the workspace stays open (a stale bank may hold a magic, so open never
+      closes it). `goto`: r0 1 to records else 13; offset = header length + (r0 - 1) x
+      record length, 32-bit shift-add, then `seek` and `read` into `DB_RECORD`; X = the delete
+      flag; a failed read leaves no record current. `get`: field 1 to fields, a record
+      current, else 13. Functions change r0 and r1 (`DB_FUNCTIONS_NOTE` says so). The `db`
+      call's errors list grew to the file calls' errors and 11.
+      - Trap met: paths are length-prefixed; a test with a 0-ended path gets error 2.
+      - Cost: bank 5 code 516 bytes (+380), bank 5 free 15848. KZP +2. Plan's estimate for
+        open to write was 650.
+      - Build 1877 ms, ROM only (`DOS.UXI` unchanged), the new baseline. Tests: new `DBREAD`
+        (`DBREAD.S`, `.IN`, `.PY`: `db.make` tables, `WIDE.DB` of 1000-byte records so record
+        100 starts past 64 KB, `NOTDB.DB`) ok 1.2 s; `DB` ok 1.2 s. Golden checked by hand
+        against `tools/db.py dump`.
+      - Docs owed: DB.PLAN step D3 done.
+    - D4 (2026-10-28): `db_create`, `db_put`, `db_append`, `db_write`, `db_flag` written in
+      `db.s`. `db_pack` moved to its own step, D4b (the user, 2026-10-28): it needs the path
+      in the workspace (256 bytes), a temporary file, delete and rename, and 2 handles; no
+      call truncates a file, and `db.py check` wants the exact size, so no pack in place.
+      - `create`: X 1 to 32, each field's length 1 or more, a record of at most 1000, else 13.
+        It copies the caller's entries, works out the offsets (the caller's +14 is ignored)
+        and the record's length, makes the file (`create`, no attributes), stamps the date
+        (`getdate`) and writes the header and field table in one write. The table stays open
+        with 0 records, as dBASE's CREATE. A failed create leaves no table.
+      - `put`: blanks the field, then copies the text: right-aligned in an `N` field, else
+        left-aligned. Longer than the field, field 0, or no record current: 13.
+      - `append`: current = records + 1, r0 = it; the record is spaces, `?` in each `L` field
+        (`db.py` rejects a blank `L`). 65535 records: 13. It writes nothing.
+      - `write`: seeks to the current record and writes it; a record past the last raises
+        the count. Then it stamps the date and rewrites the 16-byte header at offset 0, every
+        write. A short write gives 29.
+      - `flag`: X 0 a space, 1 `*`, in the workspace record only; else 13. `write` writes it.
+      - Shared: `db_seek` (from `goto`), `db_record`, `db_field` (needs a record and field X,
+        db_ptr = the text less 1, Y = length, A = type), `db_current`, `db_save` beside
+        `db_load` (`db_count` compares the bytes), `db_stamp`, `db_shut` (open's and create's
+        failure close), `db_long` (A = 13, carry set on a record past 1000).
+      - Trap met: `db_bad_data` is out of branch range from most of the bank; the routines
+        are ordered around it (`db_append`, `db_put`, `db_current`, it, `db_flag`,
+        `db_field`, `db_entry`, `db_goto`, with `db_goto` 122 bytes back). `db_create`
+        reaches it with a `jmp`.
+      - Cost: bank 5 code 998 bytes (+482), bank 5 free 15366. KZP and the workspace
+        unchanged. Estimated 330.
+      - Build 1917 ms, ROM only, the new baseline. Tests: new `DBWRITE` (`DBWRITE.S`, `.IN`,
+        `.PY`) ok 1.5 s, 37 calls, golden checked by hand; `DBREAD` ok 1.3 s; `DB` ok 1.2 s
+        after its call 3 became `db_pack` (create is written), golden updated (the echo of
+        the typed `ldy` only).
+      - `tools/tests.py`: `NAME.PY` may define `check(image)`, run after the emulator; its
+        faults fail the test. `DBWRITE.PY`'s check pulls `NEW.DB` off the card with
+        `mksd.read`, runs `db.read_table`, and compares the file with `db.py`'s bytes for the
+        same table, the date left out; no other `.DB` file may exist.
+      - Docs owed: DB.PLAN steps D2 to D4 done, D4b for pack, and the create row's out (the
+        table is open). The hook is documented in `tools/tests.py`'s docstring only.
+    - D4b (2026-10-28, "go asm"): `db_pack` written in `db.s`.
+      - `create` and `open` copy the path to `DB_PATH` ($BE00, 256 bytes) with `db_keep`.
+        `pack` builds `DB_TEMP` ($BF00): the path with its last character `$`, or `&` for a
+        `$` (`PACK.DB` gives `PACK.D$`). The kernel reads a path in the caller's RAM bank, so
+        both work from the workspace.
+      - `pack`: creates the new file (handle in `DB_SPARE`, $A005), writes the header and field
+        table, reads each record from 1 and writes those not `*`, counting the kept ones in
+        `DB_CURRENT` while it counts the header's records down. Then the count, the date and
+        the 16-byte header (`db_header`, split from `db_write`'s tail), close both, delete the
+        table's file, rename the new one, and `db_open` the path: r0 = records, X = fields, no
+        record current. `db_swap` swaps `DB_HANDLE` and `DB_SPARE` around each write to the
+        new file, keeping A and carry.
+      - A failure before the delete closes and deletes the new file and leaves no table
+        (`db_shut`); the table's file is unchanged. A failed delete or rename leaves no table
+        and the records in the new file. Call 57's text says a failed pack leaves no table;
+        its errors gained 17 (rename).
+      - Trap in the contract: the path is the one open or create was given; a relative path
+        names another file once the program changes its directory.
+      - Cost: bank 5 code 1296 bytes (+298), bank 5 free 15068. Workspace +513 (the paths,
+        `DB_SPARE`). Estimated 250.
+      - Build 1971 ms, ROM only, the new baseline. Tests: new `DBPACK` (`DBPACK.S`, `.IN`,
+        `.PY`; 28 calls: pack with no table 6, create, 4 records, 2 deleted, pack r0 = 2, get
+        `C` from record 2, open, pack again r0 = 2) ok 1.5 s, golden checked by hand, the
+        `.PY` check compares `PACK.DB` with `db.py`'s bytes and finds no `PACK.D$`. `DB` ok
+        1.3 s after its call 3 became `ix_create` (golden: the typed `ldy` only). `DBWRITE`
+        ok 1.4 s, `DBREAD` ok 1.3 s.
+      - Saving to propose: r0 = `DB_HEADER` is set inline 4 times (create, open, `db_header`,
+        pack), and r0 r1 = the header and its length twice (create, pack).
+      - Docs owed: DB.PLAN step D4b done, the workspace's path rows; with D2 to D4's.
+    - D5 (2026-10-28, "go d5 asm"): reading an index, done in `db.s`.
+      - Workspace: `DB_ORDER` $A006 (a slot's offset, 0, 32 or 64, or $FF for the record
+        order), `DB_SPOT` $A007 ($80 past the last, $40 before the first), `IX_TOP` $A008 (the
+        path's length, 3 bytes a level), `IX_LOADED` $A009 (the page in the buffer, 0 for
+        none), `IX_FILL`/`IX_LEFT` $A00B/$A00C (ix_open's scratch). `IX_SLOTS` $AA20, 3 x 32:
+        page 0's 16 bytes, the handle at +16, the width (key + 4) at +17. `IX_PATH` $AA80, 10
+        levels of a page and a key. `IX_PAGE` $AC00, one 512-byte buffer for the order's
+        index. $A619-$AA1F stays free for D6's record as read.
+      - Design: the path stack holds (page, key) per level; at a node level the key is the
+        page below it that was taken. `ix_point` gives db_ptr = page + 2 + key x width: the 2
+        bytes before a key are the page below it. The first/last/next/prev functions also
+        work in the record order. `ix_find` lands on the first key at or above the search key;
+        it returns carry clear when the key starts with the search key, else error 2; when
+        no key is at or above, r0 = 0. A key longer than the index's, or the record order,
+        gives error 13. `ix_open` checks the magic, the version, the key fields against the
+        table, and the key's length; it gives error 11 when they fail and error 4 when
+        3 indexes are open. `ix_order` loses the place.
+        `db_close` and `db_pack` close the indexes (`ix_shut`); `db_keep` frees the slots;
+        `db_goto` clears `DB_SPOT`. A new `db_load_x` reads from handle X, and `db_want` no
+        longer loads X.
+      - Trap: the place in an index is the index's own; `db_goto` does not move it.
+      - Trap: `ix_load` changes r0 and r1 (the seek and the read), so `ix_find` keeps its key
+        in the zero-page `ix_key`, the key less 1, for `ix_compare`.
+      - Cost: bank 5 code 2339 bytes (+1043), 14025 free; zero page +2 (`ix_key`). Build
+        1968 ms, the new baseline.
+      - Test `DBINDEX` (new; `.S`, `.PY` card = `db.make`, `.IN` local): 49 calls, results at
+        $2000 through a 2-byte pointer, walks at $2200. The golden was checked against
+        `db.py` by a scratchpad script (`checkix.py`): PNAME's 40 forward and back, PBAL's
+        first and last, find D (record 3, then 38), find "" (the first), BIG's first 12 and
+        the 12 before its last, find 5 (record 33, a prefix match), EMPTY's zeros and error 2.
+        `DBINDEX` ok 1.3 s, `DB` ok 0.8 s, `DBREAD` ok 0.9 s, `DBWRITE` ok 1.0 s, `DBPACK` ok
+        1.2 s.
+      - `api.py`: functions 12 to 19 written, with their outs; call 57's text has the index
+        errors. `API.md` regenerated.
+      - Saving to propose: `ix_prev`'s pop loop and `ix_up` are alike.
+      - Docs owed: DB.PLAN D5 done; the workspace rows; with the earlier steps.
+    - D6 is split in two (the user, 2026-10-28, "go"): D6a, `ix_create` and the insert with its
+      split; D6b, the delete, `db_write`'s update of the open indexes, and `db_pack`'s rebuild.
+    - D6a (2026-10-28): done in `db.s`.
+      - Workspace: state bytes $A00D-$A01A (`IX_EXACT`, `IX_SAME`, `IX_GREW`, `IX_AT`,
+        `IX_MOVES`, the `ix_make` scratch, `IX_TAKE`, `IX_NAME`). Slot +18 `IX_CAP`, the keys a
+        page. `IX_SIZE` $AA9F, the key's length, then `IX_ITEM` $AAA0, one entry (key, record,
+        page above). `IX_PAGE` may hold one entry past 512 bytes in a split. `IX_NEW` $AF00,
+        the second page.
+      - Design: `ix_descend` (from `ix_find`) goes root to leaf. `ix_compare` with `IX_EXACT`
+        set compares the record after an equal key, high byte first, and sets `IX_SAME`; a
+        unique index with `IX_SAME` set refuses the insert. `ix_insert`: `ix_gap` opens room
+        and puts `IX_ITEM` in; a page past `IX_CAP` splits as `db.py` does (`ix_split`): the
+        middle entry goes to `IX_ITEM`, its page above becomes the new page's page below, the
+        new page's number becomes the item's page above; then the level above. A root split
+        makes a new root in `IX_NEW`. `ix_alloc` takes the first free page (its first 2 bytes
+        are the next) or the page past the last. The header (`ix_brand`) is written when a
+        page was taken. `ix_make` builds the key with the `N` rewrite. `ix_create` checks the
+        fields (`ix_fields`, shared with `ix_open`), writes pages 0 and 1, inserts each record,
+        writes the header, makes the index the order; a failure closes and deletes the file.
+        New: `ix_free`, `ix_drop`, `ix_width` (width and `IX_CAP`), `ix_area`, `ix_seek`,
+        `ix_span`, `ix_store`, `ix_flush`, `ix_copy`, `ix_back`, `ix_blank`, `db_save_x`.
+      - Cost: bank 5 code 3379 bytes (+1040), 12985 free; zero page +0 (`ix_key` doubles as the
+        copy's destination). Build 1950 ms, the new baseline.
+      - Test `DBIXMAKE` (new; `.S`, `.PY`, `.IN` local): 24 calls. The card holds PEOPLE.DB and
+        TALL.DB (40 records of a 100-byte key, records 7 and 23 equal). `check` compares each
+        built `.IDX` byte for byte with `db.build_index`, and wants no file from the failed
+        builds. Walks of PNAME, PBAL and TALL checked against `db.py` by a scratchpad script
+        (`checkmake.py`). TALL.IDX is 14 pages, root 9. `DBIXMAKE` ok 3.7 s, `DBINDEX` ok
+        1.7 s, `DBWRITE` ok 1.4 s.
+      - `api.py`: function 11 written, with its out; call 57's text has `ix_create`'s errors.
+        `API.md` regenerated.
+      - Speed: each insert reads the pages of the path and writes one; DBIXMAKE's 200
+        inserts take most of its 3.7 s. BIG (600 records, 5 levels) was left out of the test.
+      - Docs owed: DB.PLAN D6a done; the workspace rows.
+    - D6a savings (2026-10-28):
+      - `ix_split` zeroes the left page with `sta abs,y` per half: about 24 to 10 cycles a
+        byte, +4 bytes. Kept.
+      - A root page cache (`IX_ROOT`, 512 bytes) was tried and reverted: `DBIXMAKE` was no
+        faster, since a one-level index keeps its page loaded and only TALL's inserts skipped
+        a read. The insert time is likely the sector writes, one page an insert.
+      - Bank 5 code 3383 bytes, 12981 free. Build 1957 ms, the new baseline.
+      - Tests: `DBIXMAKE` ok 3.7 s, `DBINDEX` ok 1.7 s (golden back to the pre-cache one),
+        `DBWRITE` ok 1.5 s.
+      - `db_close` is right: the goldens hold carry clear after a close; A = 1 is the A that
+        `lib_close` leaves, which the call does not define.
+    - D6b (2026-10-28, "go D6b asm"): done in `db.s`.
+      - Workspace: state bytes 25 to 31 (`IX_KEEP`, `IX_FROM`, `IX_DIFF`, `IX_HAD`, `IX_HOLE`,
+        `IX_SIDE`, `IX_ABOVE`); `IX_NAME` is gone. `DB_OLD` $A619, 1000 bytes, the record as
+        the file holds it; `IX_GONE`, `IX_HOLD` after it, to $AA04. Slot +19 `IX_WORK`.
+        `IX_NAMES` $B100, 3 x 256, each open index's path, copied by `ix_open` and `ix_create`
+        (`ix_keep`, `ix_name`).
+      - `db_write` calls `ix_update` first. With an index open it reads the record from the
+        file to `DB_OLD` (not for an appended one). Pass 1, each open slot: makes the old key
+        (`IX_FROM` $80, `ix_make` adds `DB_OLD - DB_RECORD` to the field's pointer), then the
+        new one; `ix_byte` counts the bytes that differ at `IX_DIFF`. A changed key of a unique
+        index is looked up (`ix_aim`); `IX_SAME` gives error 13 before any index changes. Pass
+        2: `ix_delete` the old entry, `ix_insert` the new. Then the order again, and in an
+        index the place at the current record (`ix_aim`, `ix_settle`), so `ix_next` goes on
+        from the record's new place.
+      - `ix_delete`: an entry in a node takes the last entry of the leaf below it. `ix_cut`
+        removes a key. `ix_mend`: a page left with no keys takes the key between it and the
+        page beside it (after it, else before it) from the page above, goes into the page
+        beside, and goes on the free list (`ix_give`, which shares `ix_link` with `ix_alloc`).
+        The page beside splits when it overflows (`ix_spill`, split from `ix_insert` with
+        `ix_level`), and the key that goes up returns to the page above. Else the page above,
+        one key short, is mended the same way. A root node left with no keys gives way to its
+        page below. Pages are emptied only to no keys, never at half: `db.py`'s check needs a
+        node with a key and the leaves at one depth, both kept.
+      - `db_pack` marks the open slots at `IX_WORK` and keeps the order, and after its
+        `db_open` calls `ix_remake`: `ix_build` (`ix_create` past `ix_free`) in each slot from
+        its path in `IX_NAMES`; `create` empties the old file. Then the order, no record current.
+      - New: `ix_settle` (from `ix_find`), `ix_aim` (from `ix_insert`), `ix_rightmost` (from
+        `ix_right`), `ix_pop`.
+      - Cost: bank 5 code 4315 bytes (+932), 12049 free. Estimated 500 for the delete. Build
+        2143 ms with API.md, the new baseline.
+      - Test `DBIXEDIT` (new; `.S`, `.PY`, `.IN` local): 41 calls. PEOPLE.DB with PNAME and
+        PID open: a name to ZZZ (next gives 0, prev the record), an ID taken from another
+        record (error 13, nothing written), an append, a pack (r0 = 37, the indexes rebuilt in
+        their slots, the order kept). TALL.DB: 40 keys changed, then a walk from the place, 39
+        to 1. TINY.DB, keys A to E, 4 a page: 6 key changes that merge with the page after,
+        lose an entry from a node, merge with the page before, and lower the root twice; the
+        tree ends as traced by hand (root 3 [C], 2 [A B], 1 [D E]). `check` compares the records
+        with the run's and runs `db.check_index` on each index; TALL.IDX ends with 22 pages,
+        free 2. `DBIXEDIT` ok 4.2 s, near the limit: the 40 TALL writes take most of it.
+      - Other tests: `DBIXMAKE` ok 3.6 s (golden: r0 after a failed `ix_create` points at the
+        path's copy), `DBINDEX` ok 1.7 s, `DBWRITE` ok 1.4 s, `DBPACK` ok 1.5 s, `DB` ok 1.2 s
+        (golden and comment: call 3, `ix_create` with no table, gives error 6 since D6a).
+      - `api.py`: call 57's errors for `write` and `pack`; write's and pack's outs. `API.md`
+        regenerated.
+      - Savings to propose: `IX_ITEM - 2` set in `ix_key` 4 times and in `db_ptr` 3 times (8
+        bytes each); the old-key make twice in `ix_update`; the slot loop's step 3 times.
+      - Docs owed: DB.PLAN D6 done, the workspace rows (`DB_OLD`, `IX_NAMES`), the sizes.
+    - D7 (2026-10-28), done: `lib/DB.UXI`, namespace `DB`, include `DOS.UXI` first.
+      - A table's workspace is its RAM bank: `OPEN_TABLE(PATH)` and `CREATE(PATH, TABLE,
+        COUNT)` take a bank with `bank_alloc` and return it, 0 on an error (the bank freed,
+        `WORKSPACE` kept); `CLOSE_TABLE()` frees it and sets `WORKSPACE` to 0. Every other
+        routine works on `DB.WORKSPACE`; a program sets it to switch tables. `DELETED` is set
+        by each move.
+      - Routines: `DEFINE(TABLE, NUMBER, NAME, KIND, LENGTH, DECIMALS)` fills a caller's field
+        table; `RECORD_COUNT`, `FIELD_COUNT`, `FIELD_NAME`, `FIELD_TYPE`, `FIELD_LENGTH`,
+        `FIELD_DECIMALS` (through `db_info`, read in the bank), `FIELD_NUMBER(NAME)`; `GO`,
+        `GET`, `PUT`, `APPEND`, `WRITE_RECORD`, `DELETE`, `RECALL`, `PACK`; `INDEX_CREATE(PATH,
+        KEYS, UNIQUE)` with KEYS as field names joined by `+` ("CITY+NAME"), `INDEX_OPEN`,
+        `INDEX_CLOSE`, `ORDER` (`RECORD_ORDER` = $FF), `FIND`, `FIRST_RECORD`, `LAST_RECORD`,
+        `NEXT_RECORD`, `PREVIOUS_RECORD`. Reserved words forced the names: `GOTO`, `OPEN`,
+        `CLOSE`, `WRITE`, `NEXT`, `SELECT`, `TYPE` are taken.
+      - Test `DBLIB` (new; `tests/DBLIB.UXB`, `DBLIB.PY`: card = `db.make` plus `DBLIB.COM` in
+        `extra`, since the card replaces the test card; check = NEW.DB's 2 records, NEWIX.IDX
+        good, no BAD.IDX). `DBLIB.COM` 5729 bytes. Golden made and checked by hand: the walk
+        after `INDEX_CREATE` is `3 BOB | 1 ZOE | 2 AMY`.
+      - Fixed (asm, the user's OK): `IX_FROM` ($A01A) was never set before the first
+        `ix_update`, and x16emu fills RAM with random bytes. A random bit 7 made `ix_build`'s
+        `ix_make` read the key from `DB_OLD`, so `ix_create` built a wrong index. `db_keep`
+        now clears it: +3 bytes, bank 5. Found with x16emu `-wuninit`, which warns on each
+        read of RAM never written.
+      - Fixed (asm, the user's OK): a UXCBASIC program's first `SYS` loaded P from `SYS_P`
+        ($030F, `R_SYS`, `plp`), never written, so a call could run with D or I set. `exec`
+        now clears `SYS_P` before it starts a program: +3 bytes, bank 0.
+      - The flaky check (NEW.DB with no magic, 1 run in 5 before the fixes) did not come back
+        in 8 runs after them.
+      - Build 2191 ms, the new baseline. Tests: `DBLIB` ok 1.5 s (8 runs; `--update` 4.5 s),
+        `DBIXMAKE` ok 3.7 s, `DBIXEDIT` ok 4.3 s, `DBINDEX` ok 1.7 s, `DBWRITE` ok 1.8 s,
+        `DBPACK` ok 1.5 s, `DBREAD` ok 1.3 s, `DB` ok 1.2 s.
+      - Help: UXC-HELP topic "The DB library" (Tables, Fields, Records, Indexes, Example),
+        after "The GUI library"; `DB.UXI` in the `-I` lib list and the include list. Its
+        example compiles (2868 bytes); not run. `MKHELP.PY` 0.15 s, 46 topics.
+      - Owed to the doc batch: PLAN.md's lib table row, DB.PLAN D7 done.
+      - Harmless `-wuninit` reads: `ix_byte` compares with `IX_ITEM` before it is written;
+        `IX_DIFF` is counted in `ix_build`; bank 0 code at `$C870` reads RAM bank 0 `$A809`.
+      - A stray folder `C:\c\Users\...\scratchpad\dbm` was made by a wrong path; the removal
+        was blocked; the user deletes it.
+    - A1 (2026-10-28), done in RAM: `src/bas/DB.UXB` builds to `build/bas/DB.COM`, 4876 bytes,
+      a normal program at $0801. The user: build the dot prompt in low RAM first, then move it
+      to ROM banks 6 and 7.
+      - Prompt `. `, a line read with `DOS.CON_LINE` (it echoes the line end). A command word
+        may be cut to 4 letters (`DISP STRU`); `IS(FULL)` matches it. Commands: `USE path`
+        (adds `.DB` with no `.`; `USE` alone closes), `LIST` (number, `*` when deleted, the
+        fields with padding; leaves the table past the last), `GO n`, `GOTO n`, `GO TOP`,
+        `GO BOTTOM`, `SKIP [n]` (stops at 1 or at count + 1), `DISPLAY STRUCTURE`, `QUIT`.
+        Messages: `No table in use`, `Record out of range`, `Unknown command`, else
+        `DOS.ERRMSG`. GO and SKIP print `Record n`.
+      - The current record is `CURRENT`, 1 to count + 1, moved by arithmetic in record order;
+        A5 changes LIST and SKIP to the moves (`FIRST_RECORD`, `NEXT_RECORD`) for index order.
+      - `WORD` is a reserved name: the word read is `TOKEN`. `PRINT n` puts a space on each
+        side of a number: `MID$(STR$(n), 2)` drops them.
+      - For the move to ROM, done ahead (asm, the user's OK): `src/bank3/stub.s` takes
+        `-D BANK` (`lda #BANK`, 7 bytes, same bytes for bank 3, checked); `bank.s` and
+        `bank.cfg` comments name banks 6 and 7. `tools/build.py`'s `build_bank3` became
+        `build_rom_program(first)`: `src/bankF/NAME.UXB` to `build/bankF`, banks F and F + 1,
+        stub with `-D BANK=F`; `BANK_TOOLS` is `src/bank3`. Only `build_rom_program(3)` is
+        called. The move: put `DB.UXB` with `#ORG $C000`, `#DATA $0801`, `#ROMBANKS 6, 7` in
+        `src/bank6` (move the code to a `.UXI`, as CMDSHELL does, or a name clash gives two
+        `DB.COM`), and call `build_rom_program(6)` after bank 5 is appended.
+      - Test `DBDOT` (new; `DBDOT.PY` card: CLUB.DB, 4 records of every type, record 3
+        deleted, EMPTY.DB, `DB.COM` in `extra`; `DBDOT.IN` types the commands). Golden read
+        by hand.
+      - Build 2265 ms, the new baseline. Tests: `DBDOT` ok 0.9 s (`--update` 4.6 s),
+        `SHBOOT` ok 1.3 s.
+    - A2a (2026-10-28), done: call 58, `fp`, MSBASIC's float in ROM bank 5 (asm, the user's
+      OK). The user chose MSBASIC's float over scaled LONGs or calling bank 2; UXCBASIC cannot
+      link a ca65 file (only inline `ASM` blocks of 32 labels), so the copy sits in bank 5
+      behind a call, not in `DB.COM` (the user's choice).
+      - `src/asm/fp.s` (new, `B5CODE`, after `db.s`): `api_fp` dispatches Y through
+        `fp_table`, keeps the stack pointer in `fp_sp`; `fp_bad_data` ends from any depth with
+        error 13 (overflow, division by 0, bad input). Functions: 0 `fin`, 1 `fout`, 2-5
+        `add sub mul div` (r0 = r0 op r1), 6 `cmp` (A $FF/0/1), 7 `int` (rounds down), 8
+        `from_long`, 9 `to_long` (r1 r2, error 13 at 2^31), 10 `fix` (X decimals 0-9, no
+        exponent, error 13 when the size times 10^X rounds to 2^31). A Y past 10 gives error 1.
+      - The copy of `MSBASIC/src/float.s` (CONFIG_2C, 5 bytes, FAST_FIN, no ROR workaround)
+        keeps MSBASIC's labels; LOG, SQR, FPWRT, EXP, the polynomials, TEMP1-3, CHARAC and
+        the line-number printers are gone. `CHRGET` is a reader over r0's text with a count
+        in `FP_LEFT` (a space ends a number; `fin` skips the spaces before it). `FOUT` writes
+        through `(TXTPTR),y` into the caller's buffer; `fout` points TXTPTR one byte low for a
+        value of 0 or more so the space lands on the length byte.
+      - Zero page: 23 bytes of KERNELZP (`fp_sp`, TMPEXP to ARGSIGN in MSBASIC's order,
+        RESULT 4), now $80-$FD, 2 bytes free. INDEX, DEST, TXTPTR, SGNCPR, FACEXTENSION,
+        ARGEXTENSION, STRNG2, VARPNT and `FP_LEFT` are r4-r9; `fp` changes r4-r9 (in the
+        note in API.md).
+      - Trap: QINT cannot take an exponent of $A0 or more (at $A0 it shifts 256 times);
+        `fp_qint` gives error 13 there, for `to_long` and `fix`.
+      - Bank 5 code $C000-$D9AF: `fp` is 2258 bytes; about 9,700 free.
+      - `tools/api.py`: call 58 and `FP_FUNCTIONS`, `FP_FUNCTIONS_NOTE`. `tools/genapi.py`:
+        `function_tables()` runs the DB and FP tables for api.inc (`FP_NAME`, `FP_COUNT`), the
+        numbering check and API.md's "The fp functions". DOS.UXI gains `API_FP`.
+      - Test `FP` (new): `tests/com/FP.S` runs from the card (`FP.IN`: `RUN FP.COM`), 47
+        calls from a table, and prints A, X, the flags and r1 r2 in hex for each, then the 16
+        texts. A COM's writes do not survive `exit` (exec copies the parent's memory back), so
+        a COM test prints its results. Golden read by hand.
+      - Build: 14189 ms once (the new `API_FP` in DOS.UXI recompiles every program), then
+        2067 ms, the new baseline. Tests: `FP` failed once at 5.2 s on its first normal run,
+        then ok 0.9 s three times, not reproduced, no stray emulator; `DB` ok 0.8 s. After a
+        Windows crash: files intact, build 1936 ms, the new baseline; `FP` ok 0.8 s.
+      - The user: A2a was too long a step; split steps smaller.
+    - A2b (2026-10-28), done: `lib/FLOAT.UXI`, namespace `FP`, include `DOS.UXI` first. A
+      value is 5 bytes at an address (a UBYTE array of `FP.SIZE`, passed by `AddrOf`).
+      `FROM_TEXT(target, text)` returns the characters read (0 on error 13), `TO_TEXT(source)`,
+      `FIXED(source, decimals)` ("" on error), `ADD`, `SUBTRACT`, `MULTIPLY`, `DIVIDE`
+      (target = target op source; `SUB` is a keyword), `COMPARE` (BYTE -1/0/1), `FLOOR`,
+      `FROM_LONG`, `TO_LONG` (rounds down: -2.5 gives -3). Text results come back in
+      `DOS.CALL_TEXT`. `PAIR`, a LONG at $04, is r1 r2. Unused routines are dropped; all 11
+      used cost about 970 bytes with their calls. No ROM change, no build.
+      - Test `FPLIB` (new): `tests/FPLIB.UXB`, every routine and its errors. Golden read by
+        hand. ok 0.8 s.
+      - Owed to the doc batch: a help topic for `FLOAT.UXI`, PLAN.md's lib table rows for
+        `DB.UXI` and `FLOAT.UXI`.
+    - A2c is split: A2c1 numbers and `?`; A2c2 text, fields and `?` lists; A2c3 the compares,
+      `$`, `.AND.`, `.OR.`, `.NOT.`; A2c4 the functions.
+    - A2c1 (2026-10-28), done: `DB.UXB` includes `FLOAT.UXI`. `EVAL_NUMBER` is CMDSHELL's,
+      two stacks of 16, values of `FP.SIZE` bytes in `VALUE_STACK` (85 bytes, `VALUE_AT(slot)`):
+      numbers through `FP.FROM_TEXT`, `+ - * /`, unary minus (flips the sign bit unless the
+      exponent is 0), brackets. `? expr` prints `FP.TO_TEXT` (0.5 prints `.5`); `?` alone an
+      empty line. `?` needs no space after it. Errors: `Syntax error`, `Division by zero`
+      (divisor's exponent 0), `Number out of range` (an fp error); `FAILED` is cleared per
+      line.
+      - Trap: FIN skips spaces inside a number, so `? 1 2` prints 12.
+      - `DB.COM` 6887 bytes, 2011 more. Build 2170 ms, the new baseline.
+      - Test `DBEXPR` (new; `DBEXPR.PY` runs DBDOT's card). Golden read by hand. ok 0.8 s
+        (`--update` 4.5 s). `DBDOT` ok 0.8 s.
+    - A2c2 (2026-10-28), done: `EVAL_NUMBER` is now `EVALUATE`. `VALUE_TYPE(17)` holds
+      `KIND_NUMBER` or `KIND_TEXT` per value. A text value is its start and length in
+      `TEXT_BUFFER` (255 bytes, cleared per expression); the texts sit in stack order, so `+`
+      on two texts only adds the lengths, no copy. Past 254 characters: `Text too long`.
+      Text in `"` or `'`, no escape. A name (letter, then letters, digits, `_`) is a field
+      of the current record through `DB.FIELD_NUMBER`: N a number, C, L and D text for now;
+      no table or no field: `Variable not found`. Past the last record a field is blank. A
+      blank N field (it ends in a space, as N is right-aligned) is 0. Text takes `+` only;
+      mixed types, unary minus or `- * /` on text: `Type mismatch`. `? a, b` prints the
+      values with a space between; an error after part of a line goes on a new line
+      (`PART_LINE`).
+      - Trap: `DB.GET` and `FP.TO_TEXT` return the one `DOS.CALL_TEXT`; copy before the next
+        call.
+      - `DB.COM` 8593 bytes, 1706 more; RAM 17 + 255 + 1 bytes more. Build 2198 ms, the new
+        baseline.
+      - Test `DBTEXT` (new; `DBTEXT.PY` runs DBDOT's card). Golden read by hand; the first
+        run found `? 1,` printing `1 ` and a blank N field giving `Number out of range`,
+        both fixed. ok 1.2 s (`--update` 4.5 s). `DBEXPR` ok 1.2 s, `DBDOT` ok 1.2 s.
+    - A2c3 (2026-10-28), done: `KIND_LOGICAL`, 0 or 1 in a value's first byte; `.T.` `.F.`
+      `.Y.` `.N.` in any case; an L field is true for T or Y in either case, blank or past the
+      last record false. `?` prints `.T.` or `.F.`. Operators, first to last: unary minus,
+      `* /`, `+ -`, `= # < > <= >= $`, `.NOT.`, `.AND.`, `.OR.` (`PRIORITY` 7 to 1); `.NOT.`
+      is a prefix operator like the minus. Codes below 7 stand for minus, `.NOT.`, `.AND.`,
+      `.OR.`, `<=`, `>=`; a typed character below 7 is no operator. A text compare runs over
+      the right text's length (`COMPARE_TEXT`), so `"ABC" = "AB"` is true and `"AB" = "ABC"`
+      false; `"" $ x` is false (INSTR). A compare of texts cuts them from `TEXT_BUFFER`.
+      Logicals take `.AND.`, `.OR.`, `.NOT.` only; numbers and texts not those;
+      `$` text only: else `Type mismatch`. `.word.` is read by `DOT_WORD`; an unknown one is
+      a `Syntax error`. `CHAR_AT(position)` is new; `CURRENT_CHAR` calls it.
+      - `WORD` is a reserved name in UXCBASIC (the local is `DOTTED`).
+      - `DB.COM` 10673 bytes, 2080 more, not yet looked into. Build 2261 ms, the new baseline.
+      - Test `DBLOGIC` (new; `DBLOGIC.PY` runs DBDOT's card). Golden read by hand. ok 1.4 s
+        (`--update` 4.5 s). `DBTEXT`, `DBEXPR`, `DBDOT` ok 1.2 s each.
+    - ENUM step (2026-10-28), done: `DB.FIELD_TYPE` returns `ENUM DB.FIELD_KIND`
+      (`NONE = 0, CHARACTER = 67, DATE = 68, LOGICAL = 76, NUMBER = 78`, each the letter in
+      ASCII) in place of a 1-character STRING; NONE for field 0 and, with error 13, past the
+      last (INFO gives 0 on an error). `DISPLAY STRUCTURE` prints `CHR$()` of it. In
+      `DB.COM`, `ENUM OPERATION` (`NEGATE = 1` to `GREATER_EQUAL = 6`) and `ENUM VALUE_KIND`
+      (`NUMBER`, `TEXT`, `LOGICAL`) replace the CONSTs. UXC-HELP's DB topic updated.
+      - `DB.COM` 10534 bytes, 139 less; the second ENUM costs 0. Build 2357 ms, the new
+        baseline.
+      - `DBLIB.UXB` prints `CHR$(DB.FIELD_TYPE(N))`, and `FIELD_TYPE(0)`, `FIELD_TYPE(8)`
+        and the error: golden line 13 is `1 [] 13  0  0  13`, read by hand. `DBLIB` ok
+        1.5 s (`--update` 4.6 s). `DBLOGIC` ok 1.3 s; `DBEXPR`, `DBTEXT`, `DBDOT` ok 1.2 s.
+      - Trap: the runner stops at the first line that departs from the golden, so a failing
+        test with a card check also reports its file as missing (`NEW.DB is missing`).
+    - A2c4 is split: A2c4a the functions with no argument; A2c4b on, the rest a few at a
+      time (`STR()`, `VAL()`, `SUBSTR()`, `TRIM()`, `LEN()`, `INT()`, `UPPER()`, `DATE()`,
+      `FILE()`).
+    - A2c4a (2026-10-28), done: `READ_FIELD` is now `READ_NAME`; a name with `(` right after
+      it goes to `READ_FUNCTION`, which takes `( )` with spaces inside and compares the name
+      in capitals: `RECNO()`, `EOF()`, `BOF()`, `DELETED()`. An other name: `Unknown
+      function`; anything in the brackets: `Syntax error`. No table: `RECNO()` 0, the rest
+      `.F.`. Past the last record `RECNO()` is the count + 1 and `DELETED()` `.F.`. `BOF()`
+      is true after `SKIP` back stopped at record 1 (`BEFORE_FIRST`, cleared by `MOVE_TO`), or
+      with no records. `LIST` ends through `MOVE_TO`. `PUSH_WHOLE(n)` pushes a UWORD through
+      `FP.FROM_LONG`.
+      - `DB.COM` 11208 bytes, 674 more, not yet looked into; A2c4b's function codes are to be
+        an ENUM. Build 2446 ms, the new baseline.
+      - Test `DBFUNC` (new; `DBFUNC.PY` runs DBDOT's card). The runner needs a `.OUT` to
+        exist before `--update`: an empty one does. Golden read by hand. ok 1.3 s
+        (`--update` 4.6 s). `DBDOT` 1.2 s, `DBLOGIC` 1.3 s, `DBTEXT` 1.3 s, all ok.
+    - A2c4b (2026-10-28), done: `ENUM BUILT_IN` (`NONE = 0`, `RECORD_NUMBER = 7` to
+      `UPPER_CASE`; codes 7 to 31, apart from `OPERATION`'s). `FUNCTION_NUMBER` finds a name
+      by `INSTR` in a list of 8-character names in the ENUM's order. `READ_NAME` is a FUNCT:
+      a function with arguments (`TEXT_LENGTH` up) goes on the operator stack with
+      `CALL_BASE(16)` holding the value count under it, and the result 1 makes `EVALUATE`
+      read the first argument. `APPLY_TO_BRACKET` applies down to a `(` or a call; it serves
+      `)`, the comma and the end. `)` on a call runs `APPLY_FUNCTION` with the argument
+      count; a wrong count is `Syntax error`. A comma under a call ends an argument, else the
+      expression. `EVALUATE` checks the value stack (17) before each value. `LEN(text)` and
+      `UPPER(text)` work in place on the top text, the end of `TEXT_BUFFER`; a non-text is
+      `Type mismatch`. Trap: `CALL` is a reserved name.
+      - `DB.COM` 11934 bytes, 726 more, not yet looked into. Build 2413 ms, the new baseline.
+      - `DBFUNC.IN` adds `GO 2` and 11 lines: nesting, `+` around a call, `LEN(1)`, two
+        arguments, `LEN()`, an open call, `(1, 2)`, 18 arguments. Golden read by hand.
+        `DBFUNC` ok 1.3 s (`--update` 4.5 s); `DBEXPR` 1.2 s, `DBLOGIC` 1.3 s, `DBTEXT`
+        1.2 s, all ok.
+    - `CUT_SPACES` (2026-10-28) is `REST = TRIM$(REST)`, UXCBASIC's new built-in. `DB.COM`
+      11847 bytes, 87 fewer. Build 2317 ms, the new baseline. `DBFUNC` 1.3 s, `DBTEXT`
+      1.2 s, `DBDOT` 1.3 s, all ok.
+    - The user put `REST = TRIM$(REST)` in place of the 3 calls of `CUT_SPACES`, and the
+      main loop reads `REST = TRIM$(COMMAND_LINE)`. `DB.COM` 11880 bytes, 33 more: one
+      `REST = TRIM$(REST)` is 31 bytes. The SUB stays out; the fix is in the UXCBASIC
+      templates, **Shorter string calls** in `UXCBASIC/docs/UXCBASIC.PLAN.md`. Build 2297 ms.
+    - With **Shorter string calls** (commit b380b7b), `DB.COM` is 11342 bytes, 538 fewer.
+      `REST = TRIM$(REST)` is 9 bytes, from 31. `TOKEN = UCASE$(LEFT$(REST, SPACE - 1))` is
+      32 bytes, from 61. Build 1777 ms, the new baseline. `DBTEXT` ok 1.3 s.
 
 ## State
 
@@ -2901,6 +3383,9 @@ the beta 1 list).
      - Files: `XCOPY` (done), `MOVE`, `MORE` (paged display), `ATTRIB`, `TREE`. The
        shell already has `COPY`, `RENAME` or `REN`, and `DELETE` or `DEL`.
      - System: `TIME`, `DATE`, `UPTIME`.
+     - Settings (the user, 2026-10-28): a `.SCOM` program, `src/scom/`, that reads and writes
+       a key of `C:\6502DOS.REG` with `reg_get` (call 55) and `reg_set` (call 56). Its name,
+       one program or two (read, write), and its syntax are to settle with the user.
      - Paths: `PUSH` saves the current path, and `POP` loads it back (the user, 2026-10-17).
      - The API calls `attrib` (8) and `filetime` (9) go to `api_bad`: `ATTRIB` needs asm
        first.

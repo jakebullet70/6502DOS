@@ -1,0 +1,102 @@
+' FLOAT.UXI: numbers in MSBASIC's 5-byte float through call 58, fp, in namespace FP. Include
+' DOS.UXI first.
+'
+' A value is 5 bytes at an address: DIM a UBYTE array of FP.SIZE and pass its AddrOf. ADD,
+' SUBTRACT, MULTIPLY and DIVIDE change their first value. A value holds about 9 significant
+' digits.
+' Each routine sets DOS.ERROR: 0 when it succeeds, else 13 for text that is not a number, an
+' overflow, a division by 0, or a value past a LONG.
+'
+' DIM PRICE(FP.SIZE) AS UBYTE, COUNT(FP.SIZE) AS UBYTE
+' FP.FROM_TEXT(AddrOf(PRICE), "12.5")
+' FP.FROM_LONG(AddrOf(COUNT), 3)
+' FP.MULTIPLY(AddrOf(PRICE), AddrOf(COUNT))
+' PRINT FP.TO_TEXT(AddrOf(PRICE)); " "; FP.FIXED(AddrOf(PRICE), 2)
+'
+' This prints 37.5 37.50.
+
+NAMESPACE FP
+  CONST FP_FIN AS UBYTE = 0, FP_FOUT AS UBYTE = 1, FP_ADD AS UBYTE = 2, FP_SUB AS UBYTE = 3
+  CONST FP_MUL AS UBYTE = 4, FP_DIV AS UBYTE = 5, FP_CMP AS UBYTE = 6, FP_INT AS UBYTE = 7
+  CONST FP_FROM_LONG AS UBYTE = 8, FP_TO_LONG AS UBYTE = 9, FP_FIX AS UBYTE = 10
+
+  CONST SIZE AS UBYTE = 5                    ' the bytes of a value
+
+  DIM PAIR AS LONG AT $04                    ' r1 and r2, a LONG for FROM_LONG and TO_LONG
+
+  ' Calls fp function NUMBER on the values at FIRST and SECOND, in r0 and r1.
+  SUB CALL_FP(NUMBER AS UBYTE, FIRST AS UWORD, SECOND AS UWORD)
+    DOS.R0 = FIRST
+    DOS.R1 = SECOND
+    DOS.REG_Y = NUMBER
+    SYS DOS.API_FP
+    DOS.READ_ERR_STATUS()
+  END SUB
+
+  ' Reads the number in TEXT, after any spaces, into TARGET. Returns the characters read, with
+  ' the spaces; the reading stops at the first character that is not part of the number. 0
+  ' with error 13 when TEXT holds no number.
+  FUNCT FROM_TEXT(TARGET AS UWORD, TEXT AS STRING) AS UBYTE
+    CALL_FP(FP_FIN, @TEXT + 1, TARGET)
+    IF DOS.ERROR <> 0 THEN RETURN 0
+    RETURN DOS.REG_X
+  END FUNCT
+
+  ' The value at SOURCE as text, at most 16 characters: 12.5, -3, 1E+10, -1E-03.
+  FUNCT TO_TEXT(SOURCE AS UWORD) AS STRING
+    CALL_FP(FP_FOUT, SOURCE, @DOS.CALL_TEXT + 1)
+    RETURN DOS.CALL_TEXT
+  END FUNCT
+
+  ' The value at SOURCE as text with DECIMALS digits after the point, 0 to 9, rounded: 0.67,
+  ' -3.0, 1235. Error 13 for a value of 2^31 or more after the scaling, or DECIMALS past 9.
+  FUNCT FIXED(SOURCE AS UWORD, DECIMALS AS UBYTE) AS STRING
+    DOS.REG_X = DECIMALS
+    CALL_FP(FP_FIX, SOURCE, @DOS.CALL_TEXT + 1)
+    IF DOS.ERROR <> 0 THEN RETURN ""
+    RETURN DOS.CALL_TEXT
+  END FUNCT
+
+  SUB ADD(TARGET AS UWORD, SOURCE AS UWORD)
+    CALL_FP(FP_ADD, TARGET, SOURCE)
+  END SUB
+
+  SUB SUBTRACT(TARGET AS UWORD, SOURCE AS UWORD)
+    CALL_FP(FP_SUB, TARGET, SOURCE)
+  END SUB
+
+  SUB MULTIPLY(TARGET AS UWORD, SOURCE AS UWORD)
+    CALL_FP(FP_MUL, TARGET, SOURCE)
+  END SUB
+
+  ' Division by 0 gives error 13 and leaves TARGET as it was.
+  SUB DIVIDE(TARGET AS UWORD, SOURCE AS UWORD)
+    CALL_FP(FP_DIV, TARGET, SOURCE)
+  END SUB
+
+  ' -1 when the value at FIRST is less than the value at SECOND, 0 when equal, else 1.
+  FUNCT COMPARE(FIRST AS UWORD, SECOND AS UWORD) AS BYTE
+    CALL_FP(FP_CMP, FIRST, SECOND)
+    RETURN DOS.REG_A
+  END FUNCT
+
+  ' Rounds the value at TARGET down to a whole number: -2.5 becomes -3.
+  SUB FLOOR(TARGET AS UWORD)
+    CALL_FP(FP_INT, TARGET, 0)
+  END SUB
+
+  SUB FROM_LONG(TARGET AS UWORD, VALUE AS LONG)
+    DOS.R0 = TARGET
+    PAIR = VALUE
+    DOS.REG_Y = FP_FROM_LONG
+    SYS DOS.API_FP
+    DOS.READ_ERR_STATUS()
+  END SUB
+
+  ' The value at SOURCE rounded down: -2.5 gives -3. 0 with error 13 past a LONG.
+  FUNCT TO_LONG(SOURCE AS UWORD) AS LONG
+    CALL_FP(FP_TO_LONG, SOURCE, 0)
+    IF DOS.ERROR <> 0 THEN RETURN 0
+    RETURN PAIR
+  END FUNCT
+END NAMESPACE

@@ -17,7 +17,8 @@ assembled to NAME.COM: the load address $0801, then the code from $0801, and tes
 tests/NAME.UXB compiled to NAME.COM. Its folder DOS is build/DOS, the commandlets from
 tools/build.py, and its folder UTILS is build/UTILS. Each test gets a new copy of the image.
 tests/NAME.PY, when it exists, defines card(image), which then changes the copy or writes a card
-of its own in its place.
+of its own in its place. It may also define check(image), which reads the card after the run and
+returns a list of faults; a fault fails the test.
 
 A test can type keys into the monitor with x16emu -bas:
 - tests/NAME.S, a program assembled with ca65 to run at $1000, typed in with E commands;
@@ -276,8 +277,9 @@ def main():
         base = os.path.splitext(out_path)[0]
         keys = None
         shutil.copyfile(SD_IMAGE, RUN_IMAGE)
-        if os.path.exists(base + ".PY"):
-            runpy.run_path(base + ".PY")["card"](RUN_IMAGE)
+        hooks = runpy.run_path(base + ".PY") if os.path.exists(base + ".PY") else {}
+        if "card" in hooks:
+            hooks["card"](RUN_IMAGE)
         if os.path.exists(base + ".S"):
             keys = program_keys(base + ".S")
         elif os.path.exists(base + ".UXB"):
@@ -290,16 +292,21 @@ def main():
         cut = (lambda text: text) if name == "BOOT" else after_dos_banner
         got = boot(rom, None if update else cut(want), keys, cut=cut)
         took = time.time() - took
+        faults = hooks["check"](RUN_IMAGE) if "check" in hooks else []
         if update:
             with open(out_path, "w", encoding="latin-1", newline="\n") as out:
                 out.write(got)
             print("WROTE %-12s %4.1f s" % (test_name(out_path), took))
+            for fault in faults:
+                print("      fault: " + fault)
             continue
-        if cut(got) == cut(want) and took <= LIMIT:
+        if cut(got) == cut(want) and took <= LIMIT and not faults:
             print("ok    %-12s %4.1f s" % (test_name(out_path), took))
             continue
         failed.append(test_name(out_path))
         print("FAIL  %-12s %4.1f s" % (test_name(out_path), took))
+        for fault in faults:
+            print("      fault: " + fault)
         print("      expected:")
         for line in want.split("\n"):
             print("      | " + line)

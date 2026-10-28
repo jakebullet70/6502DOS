@@ -1,0 +1,821 @@
+' DB.UXB -- DB, the dot prompt over the table library (docs/DB.PLAN.md). Reads a command at
+' the prompt ". " and runs it: USE, LIST, GO or GOTO, SKIP, DISPLAY STRUCTURE, ? and QUIT. A
+' command word may be cut to its first 4 letters, as DISP STRU.
+'
+' An expression has numbers, text in " or ', the logicals .T. .F. .Y. .N., and fields by name.
+' An L field is logical, true for T or Y in either case. A C or D field is text.
+#INCLUDE "DOS.UXI"
+#INCLUDE "DB.UXI"
+#INCLUDE "FLOAT.UXI"
+
+DIM COMMAND_LINE AS STRING * 128    ' the line typed at the prompt
+DIM REST AS STRING * 128            ' the line after the words read
+DIM TOKEN AS STRING * 20            ' the word NEXT_WORD read, in capitals
+DIM TABLE_NAME AS STRING * 80       ' the path of the table in use
+DIM TABLE AS UBYTE                  ' the table's workspace, 0 for none
+DIM CURRENT AS UWORD                ' the current record; RECORD_COUNT + 1 past the last
+DIM BEFORE_FIRST AS UBYTE           ' 1 after SKIP has stopped at record 1 on its way back
+DIM RUNNING AS UBYTE
+DIM CURSOR AS UBYTE                 ' the character of REST an expression reads, from 1
+DIM FAILED AS UBYTE                 ' 1 once a command has printed an error
+DIM PART_LINE AS UBYTE              ' 1 while ? has printed part of a line
+
+' The expression stacks of EVALUATE. An operator is its character, or a code below 7 for a
+' unary minus, .NOT., .AND., .OR., <= and >=. An open function call is its BUILT_IN code, with
+' the value count under its arguments in CALL_BASE. A value is FP.SIZE bytes, and the value
+' stack holds 17. A text value is its start in TEXT_BUFFER, then its length. The texts of the
+' stack sit in TEXT_BUFFER in stack order, so the two texts + joins are next to each other,
+' and the top value's text is the end of TEXT_BUFFER. A logical value is 0 or 1 in its first
+' byte.
+CONST STACK_SIZE AS UBYTE = 16
+ENUM OPERATION
+  NEGATE = 1, LOGICAL_NOT, LOGICAL_AND, LOGICAL_OR, LESS_EQUAL, GREATER_EQUAL
+END ENUM
+' The functions. The codes start at 7, above OPERATION's, and stay below 32.
+' Checklist: FUNCTION_NUMBER's names are in this order. TEXT_LENGTH is the first that takes
+' arguments.
+ENUM BUILT_IN
+  NONE = 0
+  RECORD_NUMBER = 7, END_OF_FILE, START_OF_FILE, IS_DELETED, TEXT_LENGTH, UPPER_CASE
+END ENUM
+ENUM VALUE_KIND
+  NUMBER, TEXT, LOGICAL
+END ENUM
+DIM OPERATOR_STACK(16) AS UBYTE
+DIM CALL_BASE(16) AS UBYTE
+DIM VALUE_STACK(85) AS UBYTE
+DIM VALUE_TYPE(17) AS UBYTE
+DIM OPERATOR_COUNT AS UBYTE, VALUE_COUNT AS UBYTE
+DIM TEXT_BUFFER AS STRING * 255
+
+' Cuts the spaces at the start and the end of REST.
+' SUB CUT_SPACES()
+'  REST = TRIM$(REST)
+' END SUB
+
+' Sets TOKEN to the first word of REST, in capitals, and REST to what follows it.
+SUB NEXT_WORD()
+  DIM SPACE AS UBYTE
+  // CUT_SPACES()
+  REST = TRIM$(REST)
+  SPACE = INSTR(REST, " ")
+  IF SPACE = 0
+    TOKEN = UCASE$(REST)
+    REST = ""
+  ELSE
+    TOKEN = UCASE$(LEFT$(REST, SPACE - 1))
+    REST = MID$(REST, SPACE + 1)
+  ENDIF
+  // CUT_SPACES()
+  REST = TRIM$(REST)
+END SUB
+
+' 1 when TOKEN is FULL, or its first 4 letters or more.
+FUNCT IS(FULL AS STRING) AS UBYTE
+  IF LEN(TOKEN) < 4 AND LEN(TOKEN) < LEN(FULL) THEN RETURN 0
+  RETURN TOKEN = LEFT$(FULL, LEN(TOKEN))
+END FUNCT
+
+' NUMBER in decimal, right-aligned in WIDTH characters.
+FUNCT RIGHT_ALIGN(NUMBER AS UWORD, WIDTH AS UBYTE) AS STRING
+  RETURN RIGHT$("          " + MID$(STR$(NUMBER), 2), WIDTH)
+END FUNCT
+
+' Prints the last call's error as DOS.ERRMSG gives it.
+SUB REPORT_DOS()
+  PRINT DOS.ERRMSG(DOS.ERROR)
+END SUB
+
+' 1 when a table is in use, else prints so and gives 0.
+FUNCT IN_USE() AS UBYTE
+  IF TABLE <> 0 THEN RETURN 1
+  PRINT "No table in use"
+  RETURN 0
+END FUNCT
+
+' Makes RECORD current: a record of the table, or RECORD_COUNT + 1, past the last.
+SUB MOVE_TO(RECORD AS UWORD)
+  CURRENT = RECORD
+  BEFORE_FIRST = 0
+  IF CURRENT <= DB.RECORD_COUNT() THEN DB.GO(CURRENT)
+END SUB
+
+' Prints "Record n", the current record.
+SUB SHOW_RECORD()
+  PRINT "Record "; MID$(STR$(CURRENT), 2)
+END SUB
+
+' USE path: closes the table in use, then opens path, with .DB added when it has no
+' extension. USE alone only closes.
+SUB DO_USE()
+  IF TABLE <> 0
+    DB.CLOSE_TABLE()
+    TABLE = 0
+  ENDIF
+  IF REST = "" THEN RETURN
+  TABLE_NAME = UCASE$(REST)
+  IF INSTR(TABLE_NAME, ".") = 0 THEN TABLE_NAME = TABLE_NAME + ".DB"
+  TABLE = DB.OPEN_TABLE(TABLE_NAME)
+  IF TABLE = 0
+    REPORT_DOS()
+    RETURN
+  ENDIF
+  MOVE_TO(1)
+END SUB
+
+' LIST: prints each record: its number, * when it is deleted, then its fields. The last
+' record leaves the table at its end.
+SUB DO_LIST()
+  DIM RECORD AS UWORD, COUNT AS UWORD, FIELD AS UBYTE, FIELDS AS UBYTE
+  IF IN_USE() = 0 THEN RETURN
+  COUNT = DB.RECORD_COUNT()
+  FIELDS = DB.FIELD_COUNT()
+  FOR RECORD = 1 TO COUNT
+    DB.GO(RECORD)
+    PRINT RIGHT_ALIGN(RECORD, 5);
+    IF DB.DELETED
+      PRINT "*";
+    ELSE
+      PRINT " ";
+    ENDIF
+    FOR FIELD = 1 TO FIELDS
+      PRINT " "; DB.GET(FIELD);
+    NEXT
+    PRINT
+  NEXT
+  MOVE_TO(COUNT + 1)
+END SUB
+
+' GO n, GOTO n, GO TOP or GO BOTTOM: makes that record current.
+SUB DO_GO()
+  DIM RECORD AS UWORD, COUNT AS UWORD
+  IF IN_USE() = 0 THEN RETURN
+  COUNT = DB.RECORD_COUNT()
+  NEXT_WORD()
+  IF IS("TOP")
+    RECORD = 1
+  ELSEIF IS("BOTTOM")
+    RECORD = COUNT
+    IF COUNT = 0 THEN RECORD = 1
+  ELSE
+    RECORD = VAL(TOKEN)
+    IF RECORD = 0 OR RECORD > COUNT
+      PRINT "Record out of range"
+      RETURN
+    ENDIF
+  ENDIF
+  MOVE_TO(RECORD)
+  SHOW_RECORD()
+END SUB
+
+' SKIP or SKIP n: moves n records, 1 when n is left out, back when n is negative. It stops at
+' record 1, or past the last.
+SUB DO_SKIP()
+  DIM TARGET AS LONG, STEP_SIZE AS WORD, COUNT AS UWORD, BACK_PAST AS UBYTE
+  IF IN_USE() = 0 THEN RETURN
+  COUNT = DB.RECORD_COUNT()
+  STEP_SIZE = 1
+  IF REST <> "" THEN STEP_SIZE = VAL(REST)
+  TARGET = CURRENT
+  TARGET = TARGET + STEP_SIZE
+  BACK_PAST = 0
+  IF TARGET < 1
+    TARGET = 1
+    BACK_PAST = 1
+  ENDIF
+  IF TARGET > COUNT + 1 THEN TARGET = COUNT + 1
+  MOVE_TO(TARGET)
+  BEFORE_FIRST = BACK_PAST
+  SHOW_RECORD()
+END SUB
+
+' DISPLAY STRUCTURE: prints the table's path, its records and each field, then the record's
+' length, the delete flag included.
+SUB DO_DISPLAY()
+  DIM FIELD AS UBYTE, FIELDS AS UBYTE
+  NEXT_WORD()
+  IF IS("STRUCTURE") = 0
+    PRINT "Unknown command"
+    RETURN
+  ENDIF
+  IF IN_USE() = 0 THEN RETURN
+  FIELDS = DB.FIELD_COUNT()
+  PRINT "Table   "; TABLE_NAME
+  PRINT "Records"; RIGHT_ALIGN(DB.RECORD_COUNT(), 6)
+  PRINT "Field Name       Type Length Dec"
+  FOR FIELD = 1 TO FIELDS
+    PRINT RIGHT_ALIGN(FIELD, 5); " "; LEFT$(DB.FIELD_NAME(FIELD) + "          ", 10); " ";
+    PRINT CHR$(DB.FIELD_TYPE(FIELD)); "    "; RIGHT_ALIGN(DB.FIELD_LENGTH(FIELD), 6);
+    IF DB.FIELD_TYPE(FIELD) = DB.FIELD_KIND.NUMBER THEN PRINT RIGHT_ALIGN(DB.FIELD_DECIMALS(FIELD), 4);
+    PRINT
+  NEXT
+  PRINT "Total                 "; RIGHT_ALIGN(DB.INFO(0, 8), 6)
+END SUB
+
+' Prints MESSAGE on a line of its own and sets FAILED.
+SUB REPORT_ERROR(MESSAGE AS STRING)
+  IF PART_LINE THEN PRINT
+  PRINT MESSAGE
+  FAILED = 1
+END SUB
+
+SUB SYNTAX_ERROR()
+  REPORT_ERROR("Syntax error")
+END SUB
+
+' The character of REST at POSITION, from 1; 0 past the end.
+FUNCT CHAR_AT(POSITION AS UBYTE) AS UBYTE
+  IF POSITION > LEN(REST) THEN RETURN 0
+  RETURN ContentsAt(@REST + 1 + POSITION)
+END FUNCT
+
+FUNCT CURRENT_CHAR() AS UBYTE
+  RETURN CHAR_AT(CURSOR)
+END FUNCT
+
+SUB TYPE_MISMATCH()
+  REPORT_ERROR("Type mismatch")
+END SUB
+
+SUB SKIP_SPACES()
+  DO WHILE CURRENT_CHAR() = 32
+    CURSOR = CURSOR + 1
+  LOOP
+END SUB
+
+' The address of value SLOT of the value stack.
+FUNCT VALUE_AT(SLOT AS UBYTE) AS UWORD
+  RETURN AddrOf(VALUE_STACK) + SLOT * FP.SIZE
+END FUNCT
+
+' The text of value SLOT, a text value.
+FUNCT TEXT_OF(SLOT AS UBYTE) AS STRING
+  DIM VALUE AS UWORD
+  VALUE = VALUE_AT(SLOT)
+  RETURN MID$(TEXT_BUFFER, ContentsAt(VALUE), ContentsAt(VALUE + 1))
+END FUNCT
+
+FUNCT IS_LETTER(CODE AS UBYTE) AS UBYTE
+  RETURN (CODE >= 65 AND CODE <= 90) OR (CODE >= 97 AND CODE <= 122)
+END FUNCT
+
+FUNCT IS_DIGIT(CODE AS UBYTE) AS UBYTE
+  RETURN CODE >= 48 AND CODE <= 57
+END FUNCT
+
+FUNCT PRIORITY(OPERATOR AS UBYTE) AS UBYTE
+  SELECT CASE OPERATOR
+    CASE OPERATION.NEGATE
+      RETURN 7
+    CASE 42, 47
+      RETURN 6
+    CASE 43, 45
+      RETURN 5
+    CASE 35, 36, 60, 61, 62, OPERATION.LESS_EQUAL, OPERATION.GREATER_EQUAL
+      RETURN 4
+    CASE OPERATION.LOGICAL_NOT
+      RETURN 3
+    CASE OPERATION.LOGICAL_AND
+      RETURN 2
+    CASE OPERATION.LOGICAL_OR
+      RETURN 1
+  END SELECT
+  RETURN 0
+END FUNCT
+
+' -1, 0 or 1 as the text at LEFT_VALUE is below, equal to or above the text at RIGHT_VALUE,
+' byte by byte over the length of the right one: "ABC" = "AB" is true, "AB" = "ABC" false.
+FUNCT COMPARE_TEXT(LEFT_VALUE AS UWORD, RIGHT_VALUE AS UWORD) AS BYTE
+  DIM LEFT_AT AS UWORD, RIGHT_AT AS UWORD, INDEX AS UBYTE, LEFT_CODE AS UBYTE, RIGHT_CODE AS UBYTE
+  LEFT_AT = @TEXT_BUFFER + 1 + ContentsAt(LEFT_VALUE)
+  RIGHT_AT = @TEXT_BUFFER + 1 + ContentsAt(RIGHT_VALUE)
+  INDEX = 0
+  DO WHILE INDEX < ContentsAt(RIGHT_VALUE + 1)
+    IF INDEX = ContentsAt(LEFT_VALUE + 1) THEN RETURN -1
+    LEFT_CODE = ContentsAt(LEFT_AT + INDEX)
+    RIGHT_CODE = ContentsAt(RIGHT_AT + INDEX)
+    IF LEFT_CODE < RIGHT_CODE THEN RETURN -1
+    IF LEFT_CODE > RIGHT_CODE THEN RETURN 1
+    INDEX = INDEX + 1
+  LOOP
+  RETURN 0
+END FUNCT
+
+' Pops the top operator and applies it to the top value, or to the top two.
+SUB APPLY_OPERATOR()
+  DIM OPERATOR AS UBYTE, LEFT_VALUE AS UWORD, RIGHT_VALUE AS UWORD, KIND AS ENUM.VALUE_KIND
+  DIM ORDER AS BYTE, TRUTH AS UBYTE
+  OPERATOR_COUNT = OPERATOR_COUNT - 1
+  OPERATOR = OPERATOR_STACK(OPERATOR_COUNT)
+  RIGHT_VALUE = VALUE_AT(VALUE_COUNT - 1)
+  KIND = VALUE_TYPE(VALUE_COUNT - 1)
+  IF OPERATOR = OPERATION.LOGICAL_NOT
+    IF KIND <> VALUE_KIND.LOGICAL
+      TYPE_MISMATCH()
+      RETURN
+    ENDIF
+    ContentsAt(RIGHT_VALUE) = ContentsAt(RIGHT_VALUE) XOR 1
+    RETURN
+  ENDIF
+  IF OPERATOR = OPERATION.NEGATE
+    IF KIND <> VALUE_KIND.NUMBER
+      TYPE_MISMATCH()
+      RETURN
+    ENDIF
+    ' The sign is the top bit of the mantissa. An exponent of 0 is the value 0.
+    IF ContentsAt(RIGHT_VALUE) <> 0 THEN ContentsAt(RIGHT_VALUE + 1) = ContentsAt(RIGHT_VALUE + 1) XOR 128
+    RETURN
+  ENDIF
+  VALUE_COUNT = VALUE_COUNT - 1
+  LEFT_VALUE = VALUE_AT(VALUE_COUNT - 1)
+  IF VALUE_TYPE(VALUE_COUNT - 1) <> KIND
+    TYPE_MISMATCH()
+    RETURN
+  ENDIF
+  IF PRIORITY(OPERATOR) = 4
+    ' A compare: the two values become one logical value.
+    IF KIND = VALUE_KIND.LOGICAL
+      TYPE_MISMATCH()
+      RETURN
+    ENDIF
+    TRUTH = 0
+    IF OPERATOR = 36
+      IF KIND <> VALUE_KIND.TEXT
+        TYPE_MISMATCH()
+        RETURN
+      ENDIF
+      IF INSTR(MID$(TEXT_BUFFER, ContentsAt(RIGHT_VALUE), ContentsAt(RIGHT_VALUE + 1)), MID$(TEXT_BUFFER, ContentsAt(LEFT_VALUE), ContentsAt(LEFT_VALUE + 1))) <> 0 THEN TRUTH = 1
+    ELSE
+      IF KIND = VALUE_KIND.NUMBER
+        ORDER = FP.COMPARE(LEFT_VALUE, RIGHT_VALUE)
+      ELSE
+        ORDER = COMPARE_TEXT(LEFT_VALUE, RIGHT_VALUE)
+      ENDIF
+      SELECT CASE OPERATOR
+        CASE 61
+          IF ORDER = 0 THEN TRUTH = 1
+        CASE 35
+          IF ORDER <> 0 THEN TRUTH = 1
+        CASE 60
+          IF ORDER < 0 THEN TRUTH = 1
+        CASE 62
+          IF ORDER > 0 THEN TRUTH = 1
+        CASE OPERATION.LESS_EQUAL
+          IF ORDER <= 0 THEN TRUTH = 1
+        CASE ELSE
+          IF ORDER >= 0 THEN TRUTH = 1
+      END SELECT
+    ENDIF
+    ' The two texts are the last of TEXT_BUFFER, and are spent.
+    IF KIND = VALUE_KIND.TEXT THEN TEXT_BUFFER = LEFT$(TEXT_BUFFER, ContentsAt(LEFT_VALUE) - 1)
+    ContentsAt(LEFT_VALUE) = TRUTH
+    VALUE_TYPE(VALUE_COUNT - 1) = VALUE_KIND.LOGICAL
+    RETURN
+  ENDIF
+  IF KIND = VALUE_KIND.LOGICAL
+    IF OPERATOR = OPERATION.LOGICAL_AND
+      ContentsAt(LEFT_VALUE) = ContentsAt(LEFT_VALUE) AND ContentsAt(RIGHT_VALUE)
+    ELSEIF OPERATOR = OPERATION.LOGICAL_OR
+      ContentsAt(LEFT_VALUE) = ContentsAt(LEFT_VALUE) OR ContentsAt(RIGHT_VALUE)
+    ELSE
+      TYPE_MISMATCH()
+    ENDIF
+    RETURN
+  ENDIF
+  IF OPERATOR = OPERATION.LOGICAL_AND OR OPERATOR = OPERATION.LOGICAL_OR
+    TYPE_MISMATCH()
+    RETURN
+  ENDIF
+  IF KIND = VALUE_KIND.TEXT
+    IF OPERATOR <> 43
+      TYPE_MISMATCH()
+      RETURN
+    ENDIF
+    ContentsAt(LEFT_VALUE + 1) = ContentsAt(LEFT_VALUE + 1) + ContentsAt(RIGHT_VALUE + 1)
+    RETURN
+  ENDIF
+  SELECT CASE OPERATOR
+    CASE 43
+      FP.ADD(LEFT_VALUE, RIGHT_VALUE)
+    CASE 45
+      FP.SUBTRACT(LEFT_VALUE, RIGHT_VALUE)
+    CASE 42
+      FP.MULTIPLY(LEFT_VALUE, RIGHT_VALUE)
+    CASE ELSE
+      IF ContentsAt(RIGHT_VALUE) = 0
+        REPORT_ERROR("Division by zero")
+        RETURN
+      ENDIF
+      FP.DIVIDE(LEFT_VALUE, RIGHT_VALUE)
+  END SELECT
+  IF DOS.ERROR <> 0 THEN REPORT_ERROR("Number out of range")
+END SUB
+
+' Pushes an operator. Reports a syntax error when the stack is full.
+SUB PUSH_OPERATOR(OPERATOR AS UBYTE)
+  IF OPERATOR_COUNT = STACK_SIZE
+    SYNTAX_ERROR()
+    RETURN
+  ENDIF
+  OPERATOR_STACK(OPERATOR_COUNT) = OPERATOR
+  OPERATOR_COUNT = OPERATOR_COUNT + 1
+END SUB
+
+' Pushes TEXT on the value stack. Reports an error when the texts of the stack pass 254
+' characters.
+SUB PUSH_TEXT(TEXT AS STRING)
+  DIM TOTAL AS UWORD, VALUE AS UWORD
+  TOTAL = LEN(TEXT_BUFFER)
+  TOTAL = TOTAL + LEN(TEXT)
+  IF TOTAL > 254
+    REPORT_ERROR("Text too long")
+    RETURN
+  ENDIF
+  VALUE = VALUE_AT(VALUE_COUNT)
+  ContentsAt(VALUE) = LEN(TEXT_BUFFER) + 1
+  ContentsAt(VALUE + 1) = LEN(TEXT)
+  TEXT_BUFFER = TEXT_BUFFER + TEXT
+  VALUE_TYPE(VALUE_COUNT) = VALUE_KIND.TEXT
+  VALUE_COUNT = VALUE_COUNT + 1
+END SUB
+
+' Pushes the number TEXT starts with, and moves CURSOR past what was read.
+SUB PUSH_NUMBER(TEXT AS STRING)
+  DIM LENGTH AS UBYTE
+  LENGTH = FP.FROM_TEXT(VALUE_AT(VALUE_COUNT), TEXT)
+  IF DOS.ERROR <> 0
+    REPORT_ERROR("Number out of range")
+    RETURN
+  ENDIF
+  CURSOR = CURSOR + LENGTH
+  VALUE_TYPE(VALUE_COUNT) = VALUE_KIND.NUMBER
+  VALUE_COUNT = VALUE_COUNT + 1
+END SUB
+
+' Pushes a logical value, TRUTH 0 or 1.
+SUB PUSH_LOGICAL(TRUTH AS UBYTE)
+  ContentsAt(VALUE_AT(VALUE_COUNT)) = TRUTH
+  VALUE_TYPE(VALUE_COUNT) = VALUE_KIND.LOGICAL
+  VALUE_COUNT = VALUE_COUNT + 1
+END SUB
+
+' Pushes the whole number NUMBER.
+SUB PUSH_WHOLE(NUMBER AS UWORD)
+  FP.FROM_LONG(VALUE_AT(VALUE_COUNT), NUMBER)
+  VALUE_TYPE(VALUE_COUNT) = VALUE_KIND.NUMBER
+  VALUE_COUNT = VALUE_COUNT + 1
+END SUB
+
+' The function named NAME, in capitals; NONE for an unknown name.
+FUNCT FUNCTION_NUMBER(NAME AS STRING) AS ENUM.BUILT_IN
+  DIM PLACE AS UBYTE
+  IF LEN(NAME) > 8 THEN RETURN BUILT_IN.NONE
+  ' 8 characters a name. A name padded with spaces can only match at the start of one.
+  PLACE = INSTR("RECNO   EOF     BOF     DELETED LEN     UPPER   ", LEFT$(NAME + "        ", 8))
+  IF PLACE = 0 THEN RETURN BUILT_IN.NONE
+  RETURN PLACE / 8 + BUILT_IN.RECORD_NUMBER
+END FUNCT
+
+' Reads the brackets after the function ROUTINE, one with no arguments, with CURSOR on the (,
+' and pushes its value: RECNO(), EOF(), BOF() or DELETED(). With no table in use, RECNO() is
+' 0 and the rest .F..
+SUB READ_FUNCTION(ROUTINE AS ENUM.BUILT_IN)
+  DIM RECORD AS UWORD, AT_END AS UBYTE, AT_START AS UBYTE, GONE AS UBYTE
+  CURSOR = CURSOR + 1
+  SKIP_SPACES()
+  IF CURRENT_CHAR() <> 41
+    SYNTAX_ERROR()
+    RETURN
+  ENDIF
+  CURSOR = CURSOR + 1
+  RECORD = 0
+  AT_END = 0
+  AT_START = 0
+  GONE = 0
+  IF TABLE <> 0
+    RECORD = CURRENT
+    ' A table with no records is at its start and its end.
+    IF CURRENT > DB.RECORD_COUNT()
+      AT_END = 1
+      IF CURRENT = 1 THEN AT_START = 1
+    ELSE
+      IF DB.DELETED THEN GONE = 1
+    ENDIF
+    IF BEFORE_FIRST THEN AT_START = 1
+  ENDIF
+  IF ROUTINE = BUILT_IN.RECORD_NUMBER
+    PUSH_WHOLE(RECORD)
+  ELSEIF ROUTINE = BUILT_IN.END_OF_FILE
+    PUSH_LOGICAL(AT_END)
+  ELSEIF ROUTINE = BUILT_IN.START_OF_FILE
+    PUSH_LOGICAL(AT_START)
+  ELSE
+    PUSH_LOGICAL(GONE)
+  ENDIF
+END SUB
+
+' Applies the function ROUTINE to the top ARGUMENTS values, which become its value: LEN(text)
+' or UPPER(text).
+SUB APPLY_FUNCTION(ROUTINE AS ENUM.BUILT_IN, ARGUMENTS AS UBYTE)
+  DIM SLOT AS UBYTE, VALUE AS UWORD, START AS UBYTE
+  IF ARGUMENTS <> 1
+    SYNTAX_ERROR()
+    RETURN
+  ENDIF
+  SLOT = VALUE_COUNT - 1
+  IF VALUE_TYPE(SLOT) <> VALUE_KIND.TEXT
+    TYPE_MISMATCH()
+    RETURN
+  ENDIF
+  VALUE = VALUE_AT(SLOT)
+  START = ContentsAt(VALUE)
+  IF ROUTINE = BUILT_IN.TEXT_LENGTH
+    TEXT_BUFFER = LEFT$(TEXT_BUFFER, START - 1)
+    FP.FROM_LONG(VALUE, ContentsAt(VALUE + 1))
+    VALUE_TYPE(SLOT) = VALUE_KIND.NUMBER
+  ELSE
+    TEXT_BUFFER = LEFT$(TEXT_BUFFER, START - 1) + UCASE$(MID$(TEXT_BUFFER, START))
+  ENDIF
+END SUB
+
+' Applies the operators down to the innermost ( or function call.
+SUB APPLY_TO_BRACKET()
+  DO WHILE OPERATOR_COUNT > 0 AND PRIORITY(OPERATOR_STACK(OPERATOR_COUNT - 1)) > 0
+    APPLY_OPERATOR()
+    IF FAILED THEN RETURN
+  LOOP
+END SUB
+
+' The letters between the dot at CURSOR and the next dot, in capitals, as in .AND.; "" when
+' no dot follows them.
+FUNCT DOT_WORD() AS STRING
+  DIM FINISH AS UBYTE
+  FINISH = CURSOR + 1
+  DO WHILE IS_LETTER(CHAR_AT(FINISH)) <> 0
+    FINISH = FINISH + 1
+  LOOP
+  IF CHAR_AT(FINISH) <> 46 THEN RETURN ""
+  RETURN UCASE$(MID$(REST, CURSOR + 1, FINISH - CURSOR - 1))
+END FUNCT
+
+' Reads the text in quotes at CURSOR, " or ', and pushes it.
+SUB READ_TEXT()
+  DIM LENGTH AS UBYTE
+  LENGTH = INSTR(MID$(REST, CURSOR + 1), CHR$(CURRENT_CHAR())) - 1
+  IF LENGTH = 255
+    SYNTAX_ERROR()
+    RETURN
+  ENDIF
+  PUSH_TEXT(MID$(REST, CURSOR + 1, LENGTH))
+  CURSOR = CURSOR + LENGTH + 2
+END SUB
+
+' Reads the name at CURSOR. A name with ( right after it is a function. One with no
+' arguments pushes its value, as READ_FUNCTION. One with arguments goes on the operator stack,
+' CURSOR moves past the (, and the result is 1. Else it pushes the field of the current
+' record: a number for an N field, a logical for an L field, else text. Past the last record
+' a field is blank.
+FUNCT READ_NAME() AS UBYTE
+  DIM START AS UBYTE, FIELD AS UBYTE, COUNT AS UBYTE, TEXT AS STRING * 255, KIND AS ENUM.DB.FIELD_KIND
+  DIM TRUTH AS UBYTE, ROUTINE AS ENUM.BUILT_IN
+  START = CURSOR
+  DO WHILE IS_LETTER(CURRENT_CHAR()) OR IS_DIGIT(CURRENT_CHAR()) OR CURRENT_CHAR() = 95
+    CURSOR = CURSOR + 1
+  LOOP
+  IF CURRENT_CHAR() = 40
+    ROUTINE = FUNCTION_NUMBER(UCASE$(MID$(REST, START, CURSOR - START)))
+    IF ROUTINE = BUILT_IN.NONE
+      REPORT_ERROR("Unknown function")
+      RETURN 0
+    ENDIF
+    IF ROUTINE < BUILT_IN.TEXT_LENGTH
+      READ_FUNCTION(ROUTINE)
+      RETURN 0
+    ENDIF
+    PUSH_OPERATOR(ROUTINE)
+    IF FAILED THEN RETURN 0
+    CALL_BASE(OPERATOR_COUNT - 1) = VALUE_COUNT
+    CURSOR = CURSOR + 1
+    RETURN 1
+  ENDIF
+  FIELD = 0
+  IF TABLE <> 0 THEN FIELD = DB.FIELD_NUMBER(MID$(REST, START, CURSOR - START))
+  IF FIELD = 0
+    REPORT_ERROR("Variable not found")
+    RETURN 0
+  ENDIF
+  TEXT = ""
+  IF CURRENT <= DB.RECORD_COUNT() THEN TEXT = DB.GET(FIELD)
+  KIND = DB.FIELD_TYPE(FIELD)
+  IF KIND = DB.FIELD_KIND.NUMBER
+    ' An N field is right-aligned, so a blank one ends in a space. It is 0.
+    IF TEXT = "" OR RIGHT$(TEXT, 1) = " " THEN TEXT = "0"
+    ' PUSH_NUMBER moves CURSOR, so it is kept.
+    START = CURSOR
+    PUSH_NUMBER(TEXT)
+    CURSOR = START
+  ELSEIF KIND = DB.FIELD_KIND.LOGICAL
+    ' INSTR gives 0 for "", a blank field past the last record.
+    TRUTH = 0
+    IF INSTR("TtYy", LEFT$(TEXT, 1)) <> 0 THEN TRUTH = 1
+    PUSH_LOGICAL(TRUTH)
+  ELSE
+    IF TEXT = ""
+      FOR COUNT = 1 TO DB.FIELD_LENGTH(FIELD)
+        TEXT = TEXT + " "
+      NEXT
+    ENDIF
+    PUSH_TEXT(TEXT)
+  ENDIF
+  RETURN 0
+END FUNCT
+
+' Reads an expression in REST at CURSOR into value 0 of the value stack: numbers, text,
+' logicals, fields and functions, with brackets and, first to last, a unary minus, * /, + -,
+' the compares = # < > <= >= $, .NOT., .AND., .OR.. Text takes + and the compares; $ is text
+' in text. It stops at the first character that cannot go on the expression. UXCBASIC has no
+' recursion, so the brackets, the function calls and the order of the operators are worked
+' with the two stacks.
+SUB EVALUATE()
+  DIM CODE AS UBYTE, NEW_PRIORITY AS UBYTE, OPERATOR AS UBYTE, LENGTH AS UBYTE
+  DIM DOTTED AS STRING * 20
+  OPERATOR_COUNT = 0
+  VALUE_COUNT = 0
+  TEXT_BUFFER = ""
+  DO
+    ' A value: any number of (, - and .NOT., then a number, a text, a logical, a field or a
+    ' function. A function's arguments add values with no operator between them.
+    IF VALUE_COUNT > STACK_SIZE
+      SYNTAX_ERROR()
+      RETURN
+    ENDIF
+    SKIP_SPACES()
+    CODE = CURRENT_CHAR()
+    IF CODE = 40 OR CODE = 45
+      IF CODE = 45 THEN CODE = OPERATION.NEGATE
+      PUSH_OPERATOR(CODE)
+      IF FAILED THEN RETURN
+      CURSOR = CURSOR + 1
+      CONTINUE
+    ENDIF
+    IF CODE = 46 AND IS_LETTER(CHAR_AT(CURSOR + 1)) <> 0
+      DOTTED = DOT_WORD()
+      CURSOR = CURSOR + LEN(DOTTED) + 2
+      IF DOTTED = "NOT"
+        PUSH_OPERATOR(OPERATION.LOGICAL_NOT)
+        IF FAILED THEN RETURN
+        CONTINUE
+      ENDIF
+      IF DOTTED = "T" OR DOTTED = "Y"
+        PUSH_LOGICAL(1)
+      ELSEIF DOTTED = "F" OR DOTTED = "N"
+        PUSH_LOGICAL(0)
+      ELSE
+        SYNTAX_ERROR()
+      ENDIF
+    ELSEIF CODE = 34 OR CODE = 39
+      READ_TEXT()
+    ELSEIF IS_LETTER(CODE)
+      ' A function with arguments opens like a (.
+      IF READ_NAME() THEN CONTINUE
+    ELSEIF IS_DIGIT(CODE) OR CODE = 46
+      PUSH_NUMBER(MID$(REST, CURSOR))
+    ELSE
+      SYNTAX_ERROR()
+    ENDIF
+    IF FAILED THEN RETURN
+    ' An operator: any number of ), then a binary operator or the end of the expression.
+    DO
+      SKIP_SPACES()
+      CODE = CURRENT_CHAR()
+      IF CODE <> 41 THEN EXIT DO
+      APPLY_TO_BRACKET()
+      IF FAILED THEN RETURN
+      IF OPERATOR_COUNT = 0
+        SYNTAX_ERROR()
+        RETURN
+      ENDIF
+      OPERATOR_COUNT = OPERATOR_COUNT - 1
+      OPERATOR = OPERATOR_STACK(OPERATOR_COUNT)
+      IF OPERATOR <> 40
+        APPLY_FUNCTION(OPERATOR, VALUE_COUNT - CALL_BASE(OPERATOR_COUNT))
+        IF FAILED THEN RETURN
+      ENDIF
+      CURSOR = CURSOR + 1
+    LOOP
+    ' A comma inside a function's brackets ends an argument. Else it ends the expression.
+    IF CODE = 44
+      APPLY_TO_BRACKET()
+      IF FAILED THEN RETURN
+      IF OPERATOR_COUNT > 0 AND OPERATOR_STACK(OPERATOR_COUNT - 1) <> 40
+        CURSOR = CURSOR + 1
+        CONTINUE
+      ENDIF
+    ENDIF
+    ' A character below 32 would read as one of the codes.
+    OPERATOR = CODE
+    IF CODE < 32 THEN OPERATOR = 0
+    LENGTH = 1
+    IF CODE = 60 OR CODE = 62
+      IF CHAR_AT(CURSOR + 1) = 61
+        OPERATOR = OPERATION.GREATER_EQUAL
+        IF CODE = 60 THEN OPERATOR = OPERATION.LESS_EQUAL
+        LENGTH = 2
+      ENDIF
+    ELSEIF CODE = 46
+      DOTTED = DOT_WORD()
+      OPERATOR = 0
+      IF DOTTED = "AND" THEN OPERATOR = OPERATION.LOGICAL_AND
+      IF DOTTED = "OR" THEN OPERATOR = OPERATION.LOGICAL_OR
+      LENGTH = LEN(DOTTED) + 2
+    ENDIF
+    ' A character that is no operator, ( and the end among them, has priority 0.
+    NEW_PRIORITY = PRIORITY(OPERATOR)
+    IF NEW_PRIORITY = 0 THEN EXIT DO
+    DO WHILE OPERATOR_COUNT > 0 AND PRIORITY(OPERATOR_STACK(OPERATOR_COUNT - 1)) >= NEW_PRIORITY
+      APPLY_OPERATOR()
+      IF FAILED THEN RETURN
+    LOOP
+    PUSH_OPERATOR(OPERATOR)
+    IF FAILED THEN RETURN
+    CURSOR = CURSOR + LENGTH
+  LOOP
+  ' The end: apply what is left. A ( or a function call still open is an error.
+  APPLY_TO_BRACKET()
+  IF FAILED THEN RETURN
+  IF OPERATOR_COUNT > 0 THEN SYNTAX_ERROR()
+END SUB
+
+' ? a, b: prints the values with a space between. ? alone prints an empty line.
+SUB DO_PRINT()
+  CURSOR = 1
+  SKIP_SPACES()
+  IF CURRENT_CHAR() = 0
+    PRINT
+    RETURN
+  ENDIF
+  DO
+    EVALUATE()
+    IF FAILED THEN RETURN
+    IF VALUE_TYPE(0) = VALUE_KIND.TEXT
+      PRINT TEXT_OF(0);
+    ELSEIF VALUE_TYPE(0) = VALUE_KIND.LOGICAL
+      IF ContentsAt(VALUE_AT(0)) = 1
+        PRINT ".T.";
+      ELSE
+        PRINT ".F.";
+      ENDIF
+    ELSE
+      PRINT FP.TO_TEXT(VALUE_AT(0));
+    ENDIF
+    PART_LINE = 1
+    SKIP_SPACES()
+    IF CURRENT_CHAR() = 0 THEN EXIT DO
+    IF CURRENT_CHAR() <> 44
+      SYNTAX_ERROR()
+      RETURN
+    ENDIF
+    CURSOR = CURSOR + 1
+    PRINT " ";
+  LOOP
+  PRINT
+  PART_LINE = 0
+END SUB
+
+RUNNING = 1
+DO WHILE RUNNING
+  PRINT ". ";
+  DOS.CON_LINE(COMMAND_LINE)
+  FAILED = 0
+  PART_LINE = 0
+  REST = TRIM$(COMMAND_LINE)
+  // CUT_SPACES()
+  // REST = TRIM$(REST)
+  IF LEFT$(REST, 1) = "?"
+    ' ? needs no space after it, so it is not a word.
+    REST = MID$(REST, 2)
+    TOKEN = "?"
+  ELSE
+    NEXT_WORD()
+  ENDIF
+  IF TOKEN = "?"
+    DO_PRINT()
+  ELSEIF TOKEN = ""
+    ' an empty line
+  ELSEIF IS("USE")
+    DO_USE()
+  ELSEIF IS("LIST")
+    DO_LIST()
+  ELSEIF IS("GOTO") OR TOKEN = "GO"
+    DO_GO()
+  ELSEIF IS("SKIP")
+    DO_SKIP()
+  ELSEIF IS("DISPLAY")
+    DO_DISPLAY()
+  ELSEIF IS("QUIT")
+    RUNNING = 0
+  ELSE
+    PRINT "Unknown command"
+  ENDIF
+LOOP
+IF TABLE <> 0 THEN DB.CLOSE_TABLE()

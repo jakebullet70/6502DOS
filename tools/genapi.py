@@ -51,6 +51,9 @@ def check():
             faults.append("error %d does not fit in a byte" % number)
     if api.GATE_ENTRIES + 3 * count() > 0x400:
         faults.append("the call entries run past $03FF")
+    for prefix, number, name, note, functions in function_tables():
+        if [f[0] for f in functions] != list(range(len(functions))):
+            faults.append("%s_FUNCTIONS numbers must run 0, 1, 2, ..." % prefix)
     offset = 0
     for start, size, name, field in api.FIND_BUFFER:
         if start != offset:
@@ -61,6 +64,12 @@ def check():
             faults.append("DOS.UXI name %s runs past %d characters; add it to UXI_ERROR_NAMES"
                           % (name, UXI_NAME_PART))
     return faults
+
+
+def function_tables():
+    """The calls that run a function by Y: (prefix, call number, call name, note, functions)."""
+    return [("DB", 57, "db", api.DB_FUNCTIONS_NOTE, api.DB_FUNCTIONS),
+            ("FP", 58, "fp", api.FP_FUNCTIONS_NOTE, api.FP_FUNCTIONS)]
 
 
 def count():
@@ -106,6 +115,12 @@ def api_inc():
     lines.append("")
     for number, name in api.BREAK_MODES:
         lines.append("BREAK_%-16s = %d" % (name, number))
+    lines.append("")
+    for prefix, call_number, call_name, note, functions in function_tables():
+        for number, name, in_, out, written in functions:
+            lines.append("%s_%-*s = %d" % (prefix, 21 - len(prefix), name.upper(), number))
+        lines.append("%s_COUNT%s = %d" % (prefix, " " * (16 - len(prefix)), len(functions)))
+        lines.append("")
     return lines
 
 
@@ -179,6 +194,13 @@ def api_md():
     lines += ["", "## Break modes", "", "| Mode | Asm name |", "|---|---|"]
     for number, name in api.BREAK_MODES:
         lines.append("| %d | `BREAK_%s` |" % (number, name))
+    for prefix, call_number, call_name, note, functions in function_tables():
+        lines += ["", "## The %s functions" % call_name, "",
+                  "Call %d, `%s`, runs function Y. %s" % (call_number, call_name, note), "",
+                  "| Y | Asm name | In | Out | Written |", "|---|---|---|---|---|"]
+        for number, name, in_, out, written in functions:
+            lines.append("| %d | `%s_%s` | %s | %s | %s |" % (number, prefix, name.upper(), in_,
+                                                           out, "yes" if written else "no"))
     return lines
 
 

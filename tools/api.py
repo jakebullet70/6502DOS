@@ -424,6 +424,113 @@ CALLS = [
          in_=[("r0", "key"), ("r1", "value")],
          errors=[4, 5, 13, 21, 29, 30],
          written=True),
+    call(57, "db", None, ("The table and index library in ROM bank 5. Runs function Y of "
+          "DB_FUNCTIONS with RAM bank A, the table's workspace, selected, then selects the "
+          "caller's RAM bank again. A program takes one bank from `bank_alloc` for each open "
+          "table. A function not written, or a Y past the last, gives error 1. A function "
+          "that needs a table gives error 6 when the bank holds none. `open` gives error 11 "
+          "for a file that is not a table. A field past the table's last, a record outside 1 "
+          "to the number of records, `get`, `put`, `write` or `flag` with no record current, "
+          "text longer than its field, a full table, and a `create` with no fields, a field "
+          "of length 0 or a record past 1000 bytes give error 13. A short write gives error "
+          "29. A failed `pack` leaves no table. `ix_open` gives error 11 for a file that is "
+          "not an index on the table's fields, and error 4 for a fourth index. `ix_create` "
+          "gives error 13 for bad key fields or flags, or a key not unique, and error 4 for a "
+          "fourth index; a failed build deletes the file. `write` gives error 13 for a key "
+          "already in a unique index, and writes nothing, and error 11 when an index lacks the "
+          "record's old key. A failed build in `pack` leaves that index and those after it "
+          "closed, and its file deleted. `ix_close` "
+          "or `ix_order` of a slot with no index gives error 6. `ix_find` in the record "
+          "order, or with a key longer than the index's, gives error 13. `close` closes the "
+          "indexes. The file calls' errors pass through."),
+         in_=[("Y", "function"), ("A", "the table's RAM bank"), ("X r0-r3", "by function")],
+         out=[("X r0", "by function")],
+         errors=[1, 2, 3, 4, 5, 6, 11, 13, 15, 17, 21, 29, 30],
+         written=True),
+    call(58, "fp", None, ("The float library in ROM bank 5, MSBASIC's arithmetic. Runs function "
+          "Y of FP_FUNCTIONS. A value is MSBASIC's 5-byte float: the exponent, then the "
+          "mantissa, high byte first, whose top bit is the sign. A Y past the last gives error "
+          "1. An overflow gives error 13."),
+         in_=[("Y", "function"), ("X r0-r2", "by function")],
+         out=[("A X r0-r2", "by function")],
+         errors=[1, 13],
+         written=True),
+]
+
+# The functions of call 57, db: (Y, name, in, out, written). The name becomes DB_NAME in asm.
+# DB_FUNCTIONS_NOTE heads their table in API.md.
+DB_FUNCTIONS_NOTE = ("A buffer in `r0` or `r1` lies in `$0400-$9EFF`. An address given back "
+                     "in `r0` is in the table's RAM bank. A function may change `r0` and `r1`.")
+DB_FUNCTIONS = [
+    (0, "create", "`r0` path<br>`r1` field table, 16 bytes a field<br>`X` fields",
+     "none; the table is open, with no records", True),
+    (1, "open", "`r0` path", "`r0` records<br>`X` fields", True),
+    (2, "close", "none", "none", True),
+    (3, "info", "`X` field, 0 for the table",
+     "`r0` the field's 16-byte entry, or the table's 16-byte header", True),
+    (4, "goto", "`r0` record", "`X` the delete flag", True),
+    (5, "get", "`X` field<br>`r0` buffer", "the buffer, filled with the length-prefixed text",
+     True),
+    (6, "put", "`X` field<br>`r0` length-prefixed text",
+     "none; the field takes the text padded with spaces, right-aligned in an `N` field", True),
+    (7, "append", "none", ("`r0` the new record, blank and current, `?` in each `L` field; "
+                         "the first `write` adds it"), True),
+    (8, "write", "none", ("none; the open indexes take the record's keys, and the header the "
+                          "records and the date"), True),
+    (9, "flag", "`X` 0 recall, 1 delete", "none; `write` writes it", True),
+    (10, "pack", "none", ("`r0` records<br>`X` fields; no record is current; the open indexes "
+                          "are built again, in their slots, and the order stays"), True),
+    (11, "ix_create", "`r0` path<br>`r1` key fields, 4 bytes<br>`X` flags, $01 unique",
+     ("`X` the index's slot, 0 to 2; the index is built from every record, opened, and the "
+      "order, with no record of it current"), True),
+    (12, "ix_open", "`r0` path", "`X` the index's slot, 0 to 2; the order stays", True),
+    (13, "ix_close", "`X` slot", "none; the record order follows when it was the order", True),
+    (14, "ix_order", "`X` slot, $FF for record order",
+     "none; no record of the order is current", True),
+    (15, "ix_find", "`r0` length-prefixed key",
+     ("`r0` the first record whose key starts with it, or is above it, now current, 0 for "
+      "none<br>`X` the delete flag; carry clear when its key starts with it, else error 2"),
+     True),
+    (16, "ix_first", "none",
+     "`r0` the first record of the order, 0 when it has none<br>`X` the delete flag", True),
+    (17, "ix_last", "none",
+     "`r0` the last record of the order, 0 when it has none<br>`X` the delete flag", True),
+    (18, "ix_next", "none",
+     ("`r0` the record after the current one, the first when none is current, 0 past the "
+      "last<br>`X` the delete flag"), True),
+    (19, "ix_prev", "none",
+     ("`r0` the record before the current one, the last when none is current, 0 before the "
+      "first<br>`X` the delete flag"), True),
+]
+
+# The functions of call 58, fp: (Y, name, in, out, written). The name becomes FP_NAME in asm.
+# FP_FUNCTIONS_NOTE heads their table in API.md.
+FP_FUNCTIONS_NOTE = ("`r0` and `r1` point at a value or a length-prefixed text, in low RAM or "
+                     "in the RAM bank selected. A function changes `r4` to `r9`.")
+FP_FUNCTIONS = [
+    (0, "fin", "`r0` text<br>`r1` value",
+     ("`r1`'s value: the number that starts the text<br>`X` the characters read, the spaces "
+      "before the number included; error 13 when no number starts the text"), True),
+    (1, "fout", "`r0` value<br>`r1` buffer, 17 bytes",
+     ("the buffer, filled with the value as length-prefixed text, as MSBASIC's `PRINT` gives "
+      "it without the space before a value of 0 or more"), True),
+    (2, "add", "`r0` value<br>`r1` value", "`r0`'s value: `r0` + `r1`", True),
+    (3, "sub", "`r0` value<br>`r1` value", "`r0`'s value: `r0` - `r1`", True),
+    (4, "mul", "`r0` value<br>`r1` value", "`r0`'s value: `r0` * `r1`", True),
+    (5, "div", "`r0` value<br>`r1` value",
+     "`r0`'s value: `r0` / `r1`; error 13 when `r1` is 0", True),
+    (6, "cmp", "`r0` value<br>`r1` value",
+     "`A` $FF when `r0` is below `r1`, 0 when they are equal, 1 when `r0` is above", True),
+    (7, "int", "`r0` value", "`r0`'s value rounded down to a whole number", True),
+    (8, "from_long", "`r0` value<br>`r1 r2` signed 32-bit number", "`r0`'s value: the number",
+     True),
+    (9, "to_long", "`r0` value",
+     ("`r1 r2` the value rounded down, as a signed 32-bit number; error 13 at 2^31 or more in "
+      "size"), True),
+    (10, "fix", "`r0` value<br>`r1` buffer, 13 bytes<br>`X` decimals, 0 to 9",
+     ("the buffer, filled with the value rounded to `X` decimals as length-prefixed text: `-` "
+      "when it is below 0, the digits, and a point before the decimals; error 13 when the "
+      "size times 10^`X` rounds to 2^31 or more"), True),
 ]
 
 # The break modes of con_break: (number, name). The name becomes BREAK_NAME in asm.

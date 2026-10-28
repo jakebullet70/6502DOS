@@ -1,0 +1,344 @@
+' DB.UXI: tables and indexes through call 57, db (docs/DB.PLAN.md), in namespace DB.
+' Include DOS.UXI first.
+'
+' A table lives in a RAM bank, its workspace. OPEN_TABLE and CREATE take the bank and return
+' it; CLOSE_TABLE frees it. Each other routine works on the table in DB.WORKSPACE, which
+' OPEN_TABLE and CREATE set. Set DB.WORKSPACE to work on another open table.
+' Each routine sets DOS.ERROR: 0 when it succeeds, else a DOS 2.0 error number.
+'
+' DIM PEOPLE AS UBYTE
+' PEOPLE = DB.OPEN_TABLE("PEOPLE.DB")
+' DB.GO(1)
+' PRINT DB.GET(DB.FIELD_NUMBER("NAME"))
+' DB.CLOSE_TABLE()
+'
+' Trap: a field's text keeps its padding: a C field its spaces after, an N field its spaces
+' before.
+
+NAMESPACE DB
+  CONST DB_CREATE AS UBYTE = 0, DB_OPEN AS UBYTE = 1, DB_CLOSE AS UBYTE = 2, DB_INFO AS UBYTE = 3
+  CONST DB_GOTO AS UBYTE = 4, DB_GET AS UBYTE = 5, DB_PUT AS UBYTE = 6, DB_APPEND AS UBYTE = 7
+  CONST DB_WRITE AS UBYTE = 8, DB_FLAG AS UBYTE = 9, DB_PACK AS UBYTE = 10
+  CONST IX_CREATE AS UBYTE = 11, IX_OPEN AS UBYTE = 12, IX_CLOSE AS UBYTE = 13
+  CONST IX_ORDER AS UBYTE = 14, IX_FIND AS UBYTE = 15, IX_FIRST AS UBYTE = 16
+  CONST IX_LAST AS UBYTE = 17, IX_NEXT AS UBYTE = 18, IX_PREV AS UBYTE = 19
+  CONST RAM_BANK AS UWORD = $0000
+
+  ' ORDER(RECORD_ORDER) walks the records in their order in the file. INDEX_CREATE and
+  ' INDEX_OPEN return it on an error.
+  CONST RECORD_ORDER AS UBYTE = $FF
+
+  ' The bytes of one field's entry in the table that DEFINE fills and CREATE takes.
+  CONST FIELD_SIZE AS UBYTE = 16
+
+  DIM WORKSPACE AS UBYTE                     ' the RAM bank of the table the routines work on
+  DIM DELETED AS UBYTE                       ' 1 when the record the last move reached is deleted
+
+  ' Calls db function NUMBER on the table in WORKSPACE, with the registers already set.
+  SUB CALL_DB(NUMBER AS UBYTE)
+    DOS.REG_Y = NUMBER
+    DOS.REG_A = WORKSPACE
+    SYS DOS.API_DB
+    DOS.READ_ERR_STATUS()
+  END SUB
+
+  ' Calls a function that moves to a record: returns the record, and sets DELETED. Error 2
+  ' from FIND still returns its record.
+  FUNCT MOVE(NUMBER AS UBYTE) AS UWORD
+    CALL_DB(NUMBER)
+    IF DOS.ERROR <> 0 AND DOS.ERROR <> DOS.ERR_NOT_FOUND THEN RETURN 0
+    DELETED = DOS.REG_X = 42
+    RETURN DOS.R0
+  END FUNCT
+
+  ' A free RAM bank, 0 with DOS.ERROR set when none is free.
+  FUNCT TAKE_BANK() AS UBYTE
+    DOS.REG_A = 1
+    SYS DOS.API_BANK_ALLOC
+    DOS.READ_ERR_STATUS()
+    IF DOS.ERROR <> 0 THEN RETURN 0
+    RETURN DOS.REG_A
+  END FUNCT
+
+  ' Calls open or create, NUMBER, in BANK, with r0 and r1 already set. Returns BANK and makes
+  ' it the workspace. On an error frees BANK, keeps the workspace, and returns 0.
+  FUNCT START(BANK AS UBYTE, NUMBER AS UBYTE) AS UBYTE
+    DIM CALLER AS UBYTE, CODE AS UBYTE
+    CALLER = WORKSPACE
+    WORKSPACE = BANK
+    CALL_DB(NUMBER)
+    IF DOS.ERROR = 0 THEN RETURN BANK
+    CODE = DOS.ERROR
+    WORKSPACE = CALLER
+    DOS.REG_A = BANK
+    SYS DOS.API_BANK_FREE
+    DOS.ERROR = CODE
+    RETURN 0
+  END FUNCT
+
+  ' The word at OFFSET in db_info's entry N: the table's 16-byte header for 0, else field N's
+  ' 16-byte entry. 0 with DOS.ERROR set for a field past the last.
+  FUNCT INFO(N AS UBYTE, OFFSET AS UBYTE) AS UWORD
+    DIM CALLER AS UBYTE, VALUE AS UWORD
+    DOS.REG_X = N
+    CALL_DB(DB_INFO)
+    IF DOS.ERROR <> 0 THEN RETURN 0
+    CALLER = ContentsAt(RAM_BANK)
+    ContentsAt(RAM_BANK) = WORKSPACE
+    VALUE = ContentsAtW(DOS.R0 + OFFSET)
+    ContentsAt(RAM_BANK) = CALLER
+    RETURN VALUE
+  END FUNCT
+
+  ' ---- tables ----
+
+  ' Fills entry NUMBER, from 1, of the field table at TABLE for CREATE: NAME, 1 to 10
+  ' characters, A to Z, 0 to 9 and _, in capitals; KIND "C", "N", "L" or "D"; LENGTH; and
+  ' DECIMALS for an N field, else 0. TABLE holds FIELD_SIZE bytes a field.
+  SUB DEFINE(TABLE AS UWORD, NUMBER AS UBYTE, NAME AS STRING, KIND AS STRING, LENGTH AS UBYTE, DECIMALS AS UBYTE)
+    DIM ENTRY AS UWORD, INDEX AS UBYTE
+    ENTRY = TABLE + (NUMBER - 1) * FIELD_SIZE
+    FOR INDEX = 0 TO 10
+      ContentsAt(ENTRY + INDEX) = 0
+    NEXT
+    FOR INDEX = 1 TO LEN(NAME)
+      ContentsAt(ENTRY + INDEX - 1) = ContentsAt(@NAME + 1 + INDEX)
+    NEXT
+    ContentsAt(ENTRY + 11) = ASC(KIND)
+    ContentsAt(ENTRY + 12) = LENGTH
+    ContentsAt(ENTRY + 13) = DECIMALS
+  END SUB
+
+  ' Makes the table PATH with COUNT fields from the table at TABLE, which DEFINE fills. A file
+  ' PATH is emptied. Returns its workspace, open with no records, or 0. A field of length 0, or
+  ' a record past 1000 bytes, gives error 13.
+  FUNCT CREATE(PATH AS STRING, TABLE AS UWORD, COUNT AS UBYTE) AS UBYTE
+    DIM BANK AS UBYTE
+    BANK = TAKE_BANK()
+    IF BANK = 0 THEN RETURN 0
+    DOS.R0 = @PATH + 1
+    DOS.R1 = TABLE
+    DOS.REG_X = COUNT
+    RETURN START(BANK, DB_CREATE)
+  END FUNCT
+
+  ' Opens the table PATH. Returns its workspace, with no record current, or 0. A file that is
+  ' not a table gives error 11.
+  FUNCT OPEN_TABLE(PATH AS STRING) AS UBYTE
+    DIM BANK AS UBYTE
+    BANK = TAKE_BANK()
+    IF BANK = 0 THEN RETURN 0
+    DOS.R0 = @PATH + 1
+    RETURN START(BANK, DB_OPEN)
+  END FUNCT
+
+  ' Closes the table and its indexes, and frees its workspace. WORKSPACE becomes 0.
+  SUB CLOSE_TABLE()
+    DIM CODE AS UBYTE
+    CALL_DB(DB_CLOSE)
+    CODE = DOS.ERROR
+    DOS.REG_A = WORKSPACE
+    SYS DOS.API_BANK_FREE
+    WORKSPACE = 0
+    DOS.ERROR = CODE
+  END SUB
+
+  FUNCT RECORD_COUNT() AS UWORD
+    RETURN INFO(0, 4)
+  END FUNCT
+
+  FUNCT FIELD_COUNT() AS UBYTE
+    RETURN INFO(0, 3) AND 255
+  END FUNCT
+
+  ' The name of field N, from 1, or "" with error 13 past the last field.
+  FUNCT FIELD_NAME(N AS UBYTE) AS STRING
+    DIM CALLER AS UBYTE, LENGTH AS UBYTE
+    IF N = 0 THEN RETURN ""
+    DOS.REG_X = N
+    CALL_DB(DB_INFO)
+    IF DOS.ERROR <> 0 THEN RETURN ""
+    CALLER = ContentsAt(RAM_BANK)
+    ContentsAt(RAM_BANK) = WORKSPACE
+    LENGTH = 0
+    DO WHILE LENGTH < 10 AND ContentsAt(DOS.R0 + LENGTH) <> 0
+      ContentsAt(@DOS.CALL_TEXT + 2 + LENGTH) = ContentsAt(DOS.R0 + LENGTH)
+      LENGTH = LENGTH + 1
+    LOOP
+    ContentsAt(RAM_BANK) = CALLER
+    ContentsAt(@DOS.CALL_TEXT + 1) = LENGTH
+    RETURN DOS.CALL_TEXT
+  END FUNCT
+
+  ' A field's type: each member is the type's letter in ASCII.
+  ENUM FIELD_KIND
+    NONE = 0, CHARACTER = 67, DATE = 68, LOGICAL = 76, NUMBER = 78
+  END ENUM
+
+  ' The type of field N, from 1; NONE for 0, and NONE with error 13 past the last field.
+  FUNCT FIELD_TYPE(N AS UBYTE) AS ENUM.FIELD_KIND
+    IF N = 0 THEN RETURN FIELD_KIND.NONE
+    RETURN INFO(N, 11) AND 255
+  END FUNCT
+
+  ' FIELD_LENGTH and FIELD_DECIMALS take N from 1; 0 gives a byte of the table's header.
+  FUNCT FIELD_LENGTH(N AS UBYTE) AS UBYTE
+    RETURN INFO(N, 12) AND 255
+  END FUNCT
+
+  FUNCT FIELD_DECIMALS(N AS UBYTE) AS UBYTE
+    RETURN INFO(N, 13) AND 255
+  END FUNCT
+
+  ' The number of the field named NAME, in any case, or 0.
+  FUNCT FIELD_NUMBER(NAME AS STRING) AS UBYTE
+    DIM N AS UBYTE, COUNT AS UBYTE, WANTED AS STRING * 10
+    IF LEN(NAME) > 10 THEN RETURN 0
+    WANTED = UCASE$(NAME)
+    COUNT = FIELD_COUNT()
+    FOR N = 1 TO COUNT
+      IF FIELD_NAME(N) = WANTED THEN RETURN N
+    NEXT
+    RETURN 0
+  END FUNCT
+
+  ' Makes RECORD current. Sets DELETED.
+  SUB GO(RECORD AS UWORD)
+    DOS.R0 = RECORD
+    CALL_DB(DB_GOTO)
+    DELETED = DOS.REG_X = 42
+  END SUB
+
+  ' The text of field N of the current record, its padding kept.
+  FUNCT GET(N AS UBYTE) AS STRING
+    DOS.R0 = @DOS.CALL_TEXT + 1
+    DOS.REG_X = N
+    CALL_DB(DB_GET)
+    IF DOS.ERROR <> 0 THEN RETURN ""
+    RETURN DOS.CALL_TEXT
+  END FUNCT
+
+  ' Sets field N of the current record to TEXT, padded with spaces: right-aligned in an N
+  ' field, else left-aligned. Text longer than the field gives error 13. WRITE_RECORD writes it.
+  SUB PUT(N AS UBYTE, TEXT AS STRING)
+    DOS.R0 = @TEXT + 1
+    DOS.REG_X = N
+    CALL_DB(DB_PUT)
+  END SUB
+
+  ' Makes a new blank record current and returns its number, 0 on an error. The first
+  ' WRITE_RECORD adds it to the table.
+  FUNCT APPEND() AS UWORD
+    CALL_DB(DB_APPEND)
+    IF DOS.ERROR <> 0 THEN RETURN 0
+    DELETED = 0
+    RETURN DOS.R0
+  END FUNCT
+
+  ' Writes the current record, and its keys to the open indexes. A key already in a unique
+  ' index gives error 13, and writes nothing.
+  SUB WRITE_RECORD()
+    CALL_DB(DB_WRITE)
+  END SUB
+
+  ' Marks the current record deleted. WRITE_RECORD writes the mark.
+  SUB DELETE()
+    DOS.REG_X = 1
+    CALL_DB(DB_FLAG)
+  END SUB
+
+  ' Clears the current record's delete mark. WRITE_RECORD writes it.
+  SUB RECALL()
+    DOS.REG_X = 0
+    CALL_DB(DB_FLAG)
+  END SUB
+
+  ' Removes the deleted records and rebuilds the open indexes. Returns the records left, with
+  ' no record current. A failed pack closes the table: see docs/API.md.
+  FUNCT PACK() AS UWORD
+    CALL_DB(DB_PACK)
+    IF DOS.ERROR <> 0 THEN RETURN 0
+    RETURN DOS.R0
+  END FUNCT
+
+  ' ---- indexes ----
+
+  ' Builds the index PATH from every record on the key KEYS: 1 to 4 field names joined by +,
+  ' as "CITY+NAME". UNIQUE 1 refuses two records with one key. The index opens and becomes the
+  ' order. Returns its slot, 0 to 2, or RECORD_ORDER. A name that is not a field, or a fifth
+  ' field, gives error 13.
+  FUNCT INDEX_CREATE(PATH AS STRING, KEYS AS STRING, UNIQUE AS UBYTE) AS UBYTE
+    DIM FIELDS AS ULONG, COUNT AS UBYTE, START AS UBYTE, INDEX AS UBYTE, NUMBER AS UBYTE
+    FIELDS = 0
+    COUNT = 0
+    START = 1
+    FOR INDEX = 1 TO LEN(KEYS) + 1
+      IF INDEX > LEN(KEYS) OR ContentsAt(@KEYS + 1 + INDEX) = 43
+        NUMBER = 0
+        IF COUNT < 4 THEN NUMBER = FIELD_NUMBER(MID$(KEYS, START, INDEX - START))
+        IF NUMBER = 0
+          DOS.ERROR = DOS.ERR_BAD_DATA
+          RETURN RECORD_ORDER
+        ENDIF
+        ContentsAt(@FIELDS + COUNT) = NUMBER
+        COUNT = COUNT + 1
+        START = INDEX + 1
+      ENDIF
+    NEXT
+    DOS.R0 = @PATH + 1
+    DOS.R1 = @FIELDS
+    DOS.REG_X = UNIQUE
+    CALL_DB(IX_CREATE)
+    IF DOS.ERROR <> 0 THEN RETURN RECORD_ORDER
+    RETURN DOS.REG_X
+  END FUNCT
+
+  ' Opens the index PATH on the table. Returns its slot, 0 to 2, or RECORD_ORDER. The order
+  ' stays. An index on other fields gives error 11, a fourth index error 4.
+  FUNCT INDEX_OPEN(PATH AS STRING) AS UBYTE
+    DOS.R0 = @PATH + 1
+    CALL_DB(IX_OPEN)
+    IF DOS.ERROR <> 0 THEN RETURN RECORD_ORDER
+    RETURN DOS.REG_X
+  END FUNCT
+
+  ' Closes the index in SLOT. The record order follows when it was the order.
+  SUB INDEX_CLOSE(SLOT AS UBYTE)
+    DOS.REG_X = SLOT
+    CALL_DB(IX_CLOSE)
+  END SUB
+
+  ' Makes the index in SLOT, or RECORD_ORDER, the order that the moves follow. No record of it
+  ' is current.
+  SUB ORDER(SLOT AS UBYTE)
+    DOS.REG_X = SLOT
+    CALL_DB(IX_ORDER)
+  END SUB
+
+  ' Makes current the first record of the order whose key starts with KEY, or else is above
+  ' it, and returns it; 0 when no key is at or above KEY. Error 2 when its key does not start
+  ' with KEY. Sets DELETED. Trap: an N field's text is in the key rewritten: see DB.PLAN.
+  FUNCT FIND(KEY AS STRING) AS UWORD
+    DOS.R0 = @KEY + 1
+    RETURN MOVE(IX_FIND)
+  END FUNCT
+
+  ' These four make a record of the order current and return it, 0 when there is none. They
+  ' set DELETED. NEXT_RECORD gives the first and PREVIOUS_RECORD the last when no record of
+  ' the order is current.
+  FUNCT FIRST_RECORD() AS UWORD
+    RETURN MOVE(IX_FIRST)
+  END FUNCT
+
+  FUNCT LAST_RECORD() AS UWORD
+    RETURN MOVE(IX_LAST)
+  END FUNCT
+
+  FUNCT NEXT_RECORD() AS UWORD
+    RETURN MOVE(IX_NEXT)
+  END FUNCT
+
+  FUNCT PREVIOUS_RECORD() AS UWORD
+    RETURN MOVE(IX_PREV)
+  END FUNCT
+END NAMESPACE
