@@ -16,6 +16,7 @@
 ' --     Esc           end the program; a dialog asks first when the theme is not saved
 ' -- The status line, the screen's last row, tells what Load and Save did. A dialog tells why
 ' -- they failed.
+' -- -H or -? as the first parameter runs HELP THEMED.
 ' -- Exit code 0.
 ' --
 ' -- From a prompt:
@@ -27,6 +28,7 @@
 #INCLUDE "CONS.UXI"
 #INCLUDE "VERA.UXI"
 #INCLUDE "GUI.UXI"
+#INCLUDE "HELPSW.UXI"
 
 CONST ROLES AS UBYTE = 13
 ' The role list's box, 34 columns by 24 rows, the inside's first column, and the rows of the
@@ -224,6 +226,7 @@ SUB SAVE_THEME()
 END SUB
 
 START_COLOR = DOS.GET_COLOR()
+HELP_SWITCH("THEMED")
 FILE_NAME = UCASE$(HEAP.SYS_STRINGS_GET(0))
 IF FILE_NAME = "" THEN FILE_NAME = "CUSTOM"
 IF INSTR(FILE_NAME, ".") = 0 THEN FILE_NAME = FILE_NAME + ".GTH"

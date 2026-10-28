@@ -10,6 +10,7 @@
 ' -- the extension .BAK. A file cut at 2047 bytes is not saved. Quit or Esc ends the program
 ' -- without saving. The theme takes effect when the form is drawn again, after a button.
 ' -- The status line, the screen's last row, tells what Load and Save did.
+' -- -H or -? as the first parameter runs HELP HELPED.
 ' -- Exit code 0.
 ' --
 ' -- From a prompt:
@@ -21,6 +22,7 @@
 #INCLUDE "CONS.UXI"
 #INCLUDE "VERA.UXI"
 #INCLUDE "GUI.UXI"
+#INCLUDE "HELPSW.UXI"
 
 CONST BTN_LOAD AS UBYTE = 1, BTN_SAVE AS UBYTE = 2, BTN_QUIT AS UBYTE = 3
 ' The memo's size. The button row is the form's row below the "Text" section.
@@ -93,6 +95,7 @@ SUB MAKE_FORM()
 END SUB
 
 START_COLOR = DOS.GET_COLOR()
+HELP_SWITCH("HELPED")
 FILE_NAME = UCASE$(HEAP.SYS_STRINGS_GET(0))
 IF FILE_NAME = "" THEN FILE_NAME = "README.TXT"
 MAKE_PATH()

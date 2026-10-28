@@ -14,6 +14,7 @@
 ' --
 ' -- An archive name with no . in its last part gets .ZIP added. ZIP writes the new archive
 ' -- to ZIPTEMP.$$$, then deletes the old one and renames the work file.
+' -- -H or -? as the first parameter runs HELP ZIP.
 ' -- No archive or no files prints Required parameter missing, and a switch but -r prints
 ' -- Invalid switch, each exit code 1. An old archive that is not a ZIP archive, or is ZIP64
 ' -- or split, prints its error, as UNZIP does, exit code 2. A name that matches nothing prints
@@ -30,6 +31,7 @@
 #INCLUDE "HEAP.UXI"
 #INCLUDE "BANK.UXI"
 #INCLUDE "ZIPFILE.UXI"
+#INCLUDE "HELPSW.UXI"
 CONST TEMP_FILE AS STRING = "ZIPTEMP.$$$", LIST_FILE AS STRING = "ZIPLIST.$$$"
 ' Version 2.0 made on MS-DOS, so the low byte of the external attributes is the FAT's.
 CONST VERSION_MADE AS UBYTE = 20, VERSION_STORED AS UBYTE = 10, VERSION_DEFLATED AS UBYTE = 20
@@ -1294,6 +1296,7 @@ SUB FINISH()
 END SUB
 
 ' ---- the arguments ----
+HELP_SWITCH("ZIP")
 ARCHIVE = NOFILE
 TEMP = NOFILE
 LIST = NOFILE

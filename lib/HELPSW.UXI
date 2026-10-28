@@ -1,0 +1,25 @@
+' HELPSW.UXI: the help switch of a program that has a topic in C:\DOS\HELP.HLP. Include
+' DOS.UXI first.
+
+CONST HELP_TAIL AS UWORD = $0781          ' the command tail's text, which ends with a CR
+
+' Runs HELP TOPIC and ends the program with HELP's exit code when the first parameter of the
+' command tail is -H or -?, in either case. Returns otherwise. HELP that does not run prints
+' its error message and gives exit code 1. HELP takes TOPIC from its tail, as P1$ is still -H.
+SUB HELP_SWITCH(TOPIC AS STRING)
+  DIM PLACE AS UWORD, CHARACTER AS UBYTE
+  PLACE = HELP_TAIL
+  DO WHILE ContentsAt(PLACE) = ASC(" ")
+    PLACE = PLACE + 1
+  LOOP
+  IF ContentsAt(PLACE) <> ASC("-") THEN RETURN
+  CHARACTER = ContentsAt(PLACE + 1) OR $20
+  IF CHARACTER <> ASC("h") AND CHARACTER <> ASC("?") THEN RETURN
+  IF ContentsAt(PLACE + 2) > ASC(" ") THEN RETURN
+  DOS.EXEC("C:\DOS\HELP.COM", TOPIC)
+  IF DOS.ERROR <> 0 THEN
+    PRINT DOS.ERRMSG(DOS.ERROR)
+    END 1
+  END IF
+  END DOS.EXITCODE()
+END SUB

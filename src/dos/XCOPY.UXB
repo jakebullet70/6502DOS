@@ -20,6 +20,7 @@
 ' -- N File(s).
 ' -- A directory MAX_DEPTH levels down, or one whose paths would pass PATH_MAX characters,
 ' -- prints Path too long and the path, and is not copied.
+' -- -H or -? as the first parameter runs HELP XCOPY.
 ' -- Exit codes:
 ' --   0  the files are copied.
 ' --   1  no file matches: it prints File not found.
@@ -37,6 +38,7 @@
 #INCLUDE "DOS.UXI"
 #INCLUDE "HEAP.UXI"
 #INCLUDE "KEYS.UXI"
+#INCLUDE "HELPSW.UXI"
 CONST SLOT_P1 AS UBYTE = 0, SLOT_P9 AS UBYTE = 8
 CONST MAX_DEPTH AS UBYTE = 32, PATH_MAX AS UBYTE = 255
 CONST NAME_ROOM AS UBYTE = 33                      ' "\" and a name of 32
@@ -268,6 +270,7 @@ SUB RESUME_SEARCH()
 END SUB
 
 ' ---- the arguments ----
+HELP_SWITCH("XCOPY")
 FOR SLOT = SLOT_P1 TO SLOT_P9
   ARGUMENT = HEAP.SYS_STRINGS_GET(SLOT)
   IF ARGUMENT = "" THEN CONTINUE

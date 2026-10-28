@@ -18,6 +18,7 @@
 ' -- An archive that does not open as given and has no . in its name opens with .ZIP added.
 ' -- names pick the entries: each is a name or a pattern with * and ?, in any case, with \ or /
 ' -- between folders. With no names, every entry is picked.
+' -- -H or -? as the first parameter runs HELP UNZIP.
 ' -- No archive, or -d with no folder, prints Required parameter missing, and a switch but -l,
 ' -- -o and -d prints Invalid switch. Each gives exit code 1. An archive that does not open
 ' -- prints its error message, a file with no end record prints Not a ZIP archive, and a ZIP64
@@ -35,6 +36,7 @@
 #INCLUDE "HEAP.UXI"
 #INCLUDE "BANK.UXI"
 #INCLUDE "ZIPFILE.UXI"
+#INCLUDE "HELPSW.UXI"
 CONST BLANKS AS STRING = "         "
 CONST DASHES AS STRING = "---------"
 CONST HEX_DIGITS AS STRING = "0123456789abcdef"
@@ -860,6 +862,7 @@ SUB EXTRACT_ENTRY()
 END SUB
 
 ' ---- the arguments ----
+HELP_SWITCH("UNZIP")
 SLOT = SLOT_P1
 DO WHILE SLOT <= SLOT_P9
   ARGUMENT = HEAP.SYS_STRINGS_GET(SLOT)

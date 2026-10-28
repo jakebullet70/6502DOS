@@ -2,6 +2,10 @@
 HELP [topic]
   Prints the help on topic. With no topic it lists the topics.
   HELP SHELL tells about the shell's statements.
+  HELP -R remakes the topic index, C:\DOS\HELP.IDX, after HELP.HLP is
+  edited. Without a good index HELP still works, more slowly.
+  A program with a topic here shows it for -H or -? first: TREE -? is
+  HELP TREE.
   DISKFREE, DISKINFO, DATE, TIME, UPTIME, MEM and WHERE work at the prompt
   and in a script.
   EXIST is for scripts and prints nothing.
@@ -474,9 +478,11 @@ XCOPY source [target] [-s] [-e] [-p] [-l] [-y] (Command line only)
     XCOPY C:\DOCS C:\BAK -s
     XCOPY DOCS\*.TXT BAK -sp
 :HELPBAS
-HELPBAS [topic]                 (Command line only)
+HELPBAS [topic | -R]            (Command line only)
   Prints the help on the MSBASIC keyword topic, from C:\DOS\HELPBAS.HLP.
   With no topic it lists the topics. Small letters are the same as capitals.
+  HELPBAS -R remakes the topic index, C:\DOS\HELPBAS.IDX, after HELPBAS.HLP
+  is edited. Without a good index HELPBAS still works, more slowly.
   Examples:
     HELPBAS PRINT
     HELPBAS str$
@@ -489,7 +495,7 @@ HDIR [d:][path] [-1..-9] [-l] [-n -e -d -s] [-t] [-a] [-c] (Command line only)
   -1 to -9 set the number of columns, 2 when left out.
   -l runs the names across each row. -t shows the dates.
   -a skips hidden and system names. -c clears the screen first.
-  -? lists the switches. Switches may share one -: -2le.
+  Switches may share one -: -2le.
   The listing stops at each full screen. Esc or Ctrl+C there ends it.
   Output to a file or to NUL has no colors and no stops.
   HDIR is in C:\UTILS.

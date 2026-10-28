@@ -12,7 +12,9 @@
 ' -- Shift+F1 asks DOS help on: on the status row, with the word at the cursor, its letters
 ' -- and digits, as the topic. Enter shows the topic from C:\DOS\HELP.HLP until a key is
 ' -- pressed, or with no topic the topic names. A topic not in HELP.HLP shows No help for
-' -- TOPIC on the status row. Tab or an extended key goes back to the text.
+' -- TOPIC on the status row. Tab or an extended key goes back to the text. The topic is found
+' -- by C:\DOS\HELP.IDX, as HELP finds it, when HELP.HLP is under 64 KB; else, or with no good
+' -- index, HELP.HLP is read from the start.
 ' -- A help file that does not open shows its error on the status row.
 ' -- Ctrl+C is a key, not the STOP key. A save writes TED.$$$ in the file's directory, then
 ' -- gives it the file's name, so a failed save keeps the file as it was. Lines end in CR LF,
@@ -31,6 +33,7 @@
 ' -- A line ends at CR, LF or CR LF; the text keeps LF. A tab goes to the next column that is
 ' -- a multiple of 8. Another character below 32 shows as ".".
 ' -- The text takes up to 8 RAM banks and holds 65535 bytes; the clipboard takes $9700 to $9EFF.
+' -- -H or -? as the first parameter runs HELP TED.
 ' -- A larger file prints File too large, and one with no RAM bank left Insufficient memory;
 ' -- both give exit code 2. A file that does not exist gives an empty text, and the
 ' -- status row says New file. No file name prints Required parameter missing, and a second
@@ -46,6 +49,7 @@
 #INCLUDE "KEYS.UXI"
 #INCLUDE "CONS.UXI"
 #INCLUDE "BANK.UXI"
+#INCLUDE "HELPSW.UXI"
 CONST SLOT_P1 AS UBYTE = 0, SLOT_P2 AS UBYTE = 1
 
 ' The status row's colors, black on light grey.
@@ -63,6 +67,7 @@ CONST MAX_BANKS AS UBYTE = 8, MAX_ROOM AS UWORD = 65535, RUN_SIZE AS UBYTE = 255
 ' LOAD's code for a file larger than MAX_ROOM.
 CONST TOO_LARGE AS UBYTE = 254
 CONST HELP_NAME$ = "C:\DOS\TED.HLP", DOS_HELP_NAME$ = "C:\DOS\HELP.HLP"
+CONST DOS_INDEX_NAME$ = "C:\DOS\HELP.IDX"
 
 
 DIM FILE_NAME AS STRING * 80, STATUS AS STRING * 120, MESSAGE AS STRING * 40
@@ -547,6 +552,98 @@ END SUB
 
 
 
+' The letter at LETTER of TOPIC, as a capital.
+FUNCT TOPIC_AT(LETTER AS UBYTE) AS UBYTE
+  DIM CHARACTER AS UBYTE
+  CHARACTER = ContentsAt(@TOPIC + 2 + LETTER)
+  IF CHARACTER >= ASC("a") THEN CHARACTER = CHARACTER - 32
+  RETURN CHARACTER
+END FUNCT
+
+
+
+' Seeks HELP_FILE, the open DOS_HELP_NAME$, to the :TOPIC line that DOS_INDEX_NAME$ gives, or
+' to its end when the index has no TOPIC, so that nothing is found. Seeks to the start of
+' HELP_FILE, to be read in full, when HELP_FILE is 64 KB or more, the index does not open, the
+' index's first line is not the size of HELP_FILE, or the position does not hold :TOPIC.
+' The index is in the format that HELP.UXB tells.
+SUB SEEK_TOPIC(HELP_FILE AS UWORD)
+  DIM INDEX_FILE AS UWORD, COUNT AS UWORD, SPOT AS UWORD, NUMBER AS UWORD, SIZE AS UWORD
+  DIM PLACE AS UWORD, CHARACTER AS UBYTE, LETTER AS UBYTE, TOPIC_LENGTH AS UBYTE
+  DIM MATCHING AS UBYTE, IN_NUMBER AS UBYTE, SIZE_LINE AS UBYTE, LOOKUP AS UBYTE
+  ' LOOKUP: 0 no good index, 1 a good index without TOPIC, 2 TOPIC found at PLACE.
+  TOPIC_LENGTH = LEN(TOPIC)
+  PLACE = 0
+  LOOKUP = 0
+  INDEX_FILE = NOFILE
+  DOS.SEEK(HELP_FILE, 2, 0, 0)
+  SIZE = DOS.POSITION_LOW
+  IF DOS.POSITION_HIGH = 0 THEN INDEX_FILE = DOS.OPEN_FILE(DOS_INDEX_NAME$, DOS.ACCESS_READ)
+  IF INDEX_FILE <> NOFILE THEN
+    ' Each line: the name letters until a space, then the number until LF. The first line has
+    ' no name.
+    SIZE_LINE = 1
+    IN_NUMBER = 1
+    NUMBER = 0
+    DO
+      COUNT = DOS.READ_FILE(INDEX_FILE, @ROW_TEXT, COLUMNS)
+      SPOT = 0
+      DO WHILE SPOT < COUNT
+        CHARACTER = ROW_TEXT(SPOT)
+        SPOT = SPOT + 1
+        IF CHARACTER = LF THEN
+          IF SIZE_LINE = 1 THEN
+            LOOKUP = 1
+            IF NUMBER <> SIZE THEN
+              LOOKUP = 0
+              COUNT = 0
+            END IF
+          ELSEIF MATCHING = 1 AND LETTER = TOPIC_LENGTH THEN
+            LOOKUP = 2
+            PLACE = NUMBER
+            COUNT = 0
+          END IF
+          IF COUNT = 0 THEN EXIT DO
+          SIZE_LINE = 0
+          IN_NUMBER = 0
+          MATCHING = 1
+          LETTER = 0
+          NUMBER = 0
+        ELSEIF IN_NUMBER = 1 THEN
+          IF CHARACTER >= ASC("0") AND CHARACTER <= ASC("9") THEN
+            NUMBER = NUMBER * 10 + CHARACTER - ASC("0")
+          END IF
+        ELSEIF CHARACTER = ASC(" ") THEN
+          IN_NUMBER = 1
+        ELSE
+          IF LETTER >= TOPIC_LENGTH OR TOPIC_AT(LETTER) <> CHARACTER THEN MATCHING = 0
+          LETTER = LETTER + 1
+        END IF
+      LOOP
+    LOOP UNTIL COUNT < COLUMNS
+    DOS.CLOSE_FILE(INDEX_FILE)
+  END IF
+  IF LOOKUP = 2 THEN
+    DOS.SEEK(HELP_FILE, 0, PLACE, 0)
+    COUNT = DOS.READ_FILE(HELP_FILE, @ROW_TEXT, TOPIC_LENGTH + 2)
+    IF COUNT < TOPIC_LENGTH + 2 OR ROW_TEXT(0) <> ASC(":") THEN LOOKUP = 0
+    IF ROW_TEXT(TOPIC_LENGTH + 1) <> LF AND ROW_TEXT(TOPIC_LENGTH + 1) <> KEYS.ENTER THEN LOOKUP = 0
+    LETTER = 0
+    DO WHILE LETTER < TOPIC_LENGTH
+      IF ROW_TEXT(LETTER + 1) <> TOPIC_AT(LETTER) THEN LOOKUP = 0
+      LETTER = LETTER + 1
+    LOOP
+  END IF
+  IF LOOKUP = 1 THEN
+    DOS.SEEK(HELP_FILE, 2, 0, 0)
+  ELSE
+    IF LOOKUP = 0 THEN PLACE = 0
+    DOS.SEEK(HELP_FILE, 0, PLACE, 0)
+  END IF
+END SUB
+
+
+
 ' Shows HELP_NAME$, or with DOS_HELP = 1 the topic TOPIC of DOS_HELP_NAME$, on a clear screen
 ' until a key is pressed, then asks for the page. In the file a line :HEADING starts the topic
 ' HEADING, in capitals, up to the next such line. With no topic the lines before the first
@@ -557,7 +654,7 @@ END SUB
 SUB SHOW_TEXT(DOS_HELP AS UBYTE)
   DIM HELP_FILE AS UWORD, COUNT AS UWORD, PLACE AS UWORD, CHARACTER AS UBYTE
   DIM AT_LINE_START AS UBYTE, IN_HEADING AS UBYTE, SHOWING AS UBYTE, MATCHING AS UBYTE
-  DIM LETTER AS UBYTE, TOPIC_LENGTH AS UBYTE, TOPIC_LETTER AS UBYTE
+  DIM LETTER AS UBYTE, TOPIC_LENGTH AS UBYTE
   TOPIC_LENGTH = 0
   IF DOS_HELP = 1 THEN
     HELP_FILE = DOS.OPEN_FILE(DOS_HELP_NAME$, DOS.ACCESS_READ)
@@ -569,6 +666,7 @@ SUB SHOW_TEXT(DOS_HELP AS UBYTE)
     MESSAGE = DOS.ERRMSG(DOS.ERROR)
     RETURN
   END IF
+  IF TOPIC_LENGTH <> 0 THEN SEEK_TOPIC(HELP_FILE)
   SHOWING = 0
   IF TOPIC_LENGTH = 0 THEN
     SHOWING = 1
@@ -606,9 +704,7 @@ SUB SHOW_TEXT(DOS_HELP AS UBYTE)
             DOS.REG_A = CHARACTER
             SYS DOS.API_CON_OUT
           END IF
-          TOPIC_LETTER = ContentsAt(@TOPIC + 2 + LETTER)
-          IF TOPIC_LETTER >= ASC("a") THEN TOPIC_LETTER = TOPIC_LETTER - 32
-          IF LETTER >= TOPIC_LENGTH OR TOPIC_LETTER <> CHARACTER THEN MATCHING = 0
+          IF LETTER >= TOPIC_LENGTH OR TOPIC_AT(LETTER) <> CHARACTER THEN MATCHING = 0
           LETTER = LETTER + 1
         END IF
       ELSEIF SHOWING = 1 THEN
@@ -914,6 +1010,7 @@ END FUNCT
 
 
 '--- program starts here -------------------------------------------
+HELP_SWITCH("TED")
 FILE_NAME = HEAP.SYS_STRINGS_GET(SLOT_P1)
 IF FILE_NAME = "" THEN
   PRINT "Required parameter missing"

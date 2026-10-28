@@ -19,7 +19,9 @@ build/bas/NAME.COM with tools/uxb.py when the COM file is older than the source,
 includes, than the template table or than pyuxc. Each src/scom/NAME.UXB, a
 commandlet, compiles the same way to build/DOS/NAME.SCOM, a long name on the card. Each
 src/dos/NAME.UXB, a DOS utility, compiles to
-build/DOS/NAME.COM, and each src/dos/NAME.TXT and NAME.HLP is copied to build/DOS. Each
+build/DOS/NAME.COM, and each src/dos/NAME.TXT and NAME.HLP is copied to build/DOS, with
+build/DOS/HELP.IDX and build/DOS/HELPBAS.IDX, the indexes of HELP.HLP and HELPBAS.HLP that
+HELP -R and HELPBAS -R write. Each
 src/utils/FOLDER/NAME.UXB, a utility, compiles to build/UTILS/NAME.COM, and the files of
 src/utils/FOLDER are copied to build/UTILS/SRC/FOLDER. Each test named in SHOWN_TESTS, tests/NAME.UXB,
 compiles to build/UTILS/NAME.COM as well.
@@ -47,6 +49,7 @@ import glob
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -150,7 +153,22 @@ def compile_scom():
         uxb.compile(source, os.path.join(SCOM_OUT, name))
     for text in sorted(glob.glob(os.path.join(UTILITIES, "*.TXT")) + glob.glob(os.path.join(UTILITIES, "*.HLP"))):
         shutil.copyfile(text, os.path.join(SCOM_OUT, os.path.basename(text).upper()))
+    for name in ("HELP", "HELPBAS"):
+        write_help_index(os.path.join(UTILITIES, name + ".HLP"), os.path.join(SCOM_OUT, name + ".IDX"))
     return SCOM_OUT
+
+
+def write_help_index(source, target):
+    """Write target, the index of the help file source, byte for byte as HELP -R writes it: the
+    size of source after a space, then each topic name of a :NAME line, cut at 81 characters, a
+    space and the byte position of the line. Lines end with CR LF."""
+    with open(source, "rb") as help_file:
+        data = help_file.read()
+    lines = [b" %d" % len(data)]
+    for heading in re.finditer(rb"^:([^\r\n]*)[\r\n]", data, re.M):
+        lines.append(heading.group(1)[:81] + b" %d" % heading.start())
+    with open(target, "wb") as index:
+        index.write(b"".join(line + b"\r\n" for line in lines))
 
 
 def compile_utils():

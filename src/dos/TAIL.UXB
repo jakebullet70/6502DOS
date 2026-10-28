@@ -7,6 +7,7 @@
 ' -- TAIL reads back from the end of the file only as far as the lines it writes, so it does
 ' -- not see a Ctrl+Z before them.
 ' -- A device on handle 0 gives no text, so TAIL alone at the prompt prints nothing.
+' -- -H or -? as the first parameter runs HELP TAIL.
 ' -- -n with no count prints Required parameter missing, a count that is not a number up to
 ' -- 65535 prints Invalid parameter, another switch prints Invalid switch, and a second name
 ' -- prints Too many parameters. Each gives exit code 1. A file that does not open prints its
@@ -18,6 +19,7 @@
 '=============================================================================================
 #INCLUDE "DOS.UXI"
 #INCLUDE "HEAP.UXI"
+#INCLUDE "HELPSW.UXI"
 CONST SLOT_P1 AS UBYTE = 0, SLOT_P9 AS UBYTE = 8
 CONST BUFFER_SIZE AS UWORD = 512
 CONST LF AS UBYTE = 10, CR AS UBYTE = 13, CTRL_Z AS UBYTE = 26
@@ -43,6 +45,7 @@ SUB FAIL(MESSAGE AS STRING)
 END SUB
 
 ' ---- the arguments ----
+HELP_SWITCH("TAIL")
 COUNT = 10
 SLOT = SLOT_P1
 DO WHILE SLOT <= SLOT_P9

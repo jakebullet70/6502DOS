@@ -10,6 +10,7 @@
 ' -- . and .. are skipped. Hidden and system names are listed.
 ' -- A directory MAX_DEPTH levels down, or one whose path would pass PATH_MAX characters, is
 ' -- listed but not entered.
+' -- -H or -? as the first parameter runs HELP TREE.
 ' -- A drive that is not a letter, or that the kernel does not know, prints Invalid drive. A path
 ' -- that is not a directory prints Invalid path. A switch other than -F prints Invalid switch,
 ' -- and a second path prints Too many parameters. Each gives exit code 1. A read error prints
@@ -20,6 +21,7 @@
 '=============================================================================================
 #INCLUDE "DOS.UXI"
 #INCLUDE "HEAP.UXI"
+#INCLUDE "HELPSW.UXI"
 CONST SLOT_P1 AS UBYTE = 0, SLOT_P9 AS UBYTE = 8
 CONST BRANCH$ = " +- ", BAR$ = " |  ", NO_BAR$ = "    "
 CONST MAX_DEPTH AS UBYTE = 32, PATH_MAX AS UBYTE = 250
@@ -106,6 +108,7 @@ SUB RESUME_SEARCH()
 END SUB
 
 ' ---- the arguments ----
+HELP_SWITCH("TREE")
 FOR SLOT = SLOT_P1 TO SLOT_P9
   ARGUMENT = HEAP.SYS_STRINGS_GET(SLOT)
   IF ARGUMENT = "" THEN CONTINUE

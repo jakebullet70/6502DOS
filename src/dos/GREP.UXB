@@ -14,6 +14,7 @@
 ' -- A CR, an LF, or a CR and an LF end a line. Ctrl+Z ends the text. A line over 512
 ' -- characters is taken as two or more lines.
 ' -- With no file, GREP ends when handle 0 has nothing to read.
+' -- -H or -? as the first parameter runs HELP GREP.
 ' -- Exit code 0 when a line is written or counted, 1 when none is. No pattern prints Required
 ' -- parameter missing, a [ with no ] prints Invalid parameter, another switch prints Invalid
 ' -- switch, and a third name prints Too many parameters. A file that does not open prints
@@ -25,6 +26,7 @@
 '=============================================================================================
 #INCLUDE "DOS.UXI"
 #INCLUDE "HEAP.UXI"
+#INCLUDE "HELPSW.UXI"
 CONST SLOT_P1 AS UBYTE = 0, SLOT_P9 AS UBYTE = 8
 CONST BUFFER_SIZE AS UWORD = 512, LINE_SIZE AS UWORD = 512
 CONST LF AS UBYTE = 10, CR AS UBYTE = 13, CTRL_Z AS UBYTE = 26
@@ -224,6 +226,7 @@ SUB END_LINE()
 END SUB
 
 ' ---- the arguments ----
+HELP_SWITCH("GREP")
 SLOT = SLOT_P1
 DO WHILE SLOT <= SLOT_P9
   ARGUMENT = HEAP.SYS_STRINGS_GET(SLOT)

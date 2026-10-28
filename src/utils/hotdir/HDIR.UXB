@@ -1,5 +1,5 @@
 '=============================================================================================
-' -- HDIR [d:][path][pattern] [-a] [-c] [-l] [-n] [-e] [-d] [-s] [-t] [-1 to -9] [-?]
+' -- HDIR [d:][path][pattern] [-a] [-c] [-l] [-n] [-e] [-d] [-s] [-t] [-1 to -9]
 ' -- lists the names in a directory as a grid in colors, after HotDIR. For the command line,
 ' -- not for scripts.
 ' -- A path that names a directory lists every name in it. Any other path is a directory and a
@@ -19,6 +19,7 @@
 ' -- the lines drawn with - | and +.
 ' -- The last row counts the directories and files and gives the drive's free space and size.
 ' -- . and .. are skipped. At most MAX_ENTRIES names are listed.
+' -- -H or -? as the first parameter runs HELP HDIR.
 ' -- Exit codes:
 ' --   0  the names are listed, or the listing is stopped at a full screen.
 ' --   1  Invalid drive, Invalid path, Invalid switch, Too many parameters, or File not found.
@@ -31,6 +32,7 @@
 #INCLUDE "DOS.UXI"
 #INCLUDE "HEAP.UXI"
 #INCLUDE "CONS.UXI"
+#INCLUDE "HELPSW.UXI"
 CONST SLOT_P1 AS UBYTE = 0, SLOT_P9 AS UBYTE = 8
 CONST VERSION$ = "1.0.0"
 CONST BY_NAME AS UBYTE = 0, BY_EXTENSION AS UBYTE = 1, BY_DATE AS UBYTE = 2, BY_SIZE AS UBYTE = 3
@@ -57,7 +59,7 @@ DIM OLD_DIRECTORY AS STRING * 255, DIRECTORY AS STRING * 255, SEARCH AS STRING *
 DIM SLOT AS UBYTE, INDEX AS UBYTE, SWITCH AS UBYTE, SEPARATOR AS UBYTE
 DIM DRIVE AS UBYTE, PREFIX AS STRING * 2, DRIVE_LETTER AS STRING * 1
 DIM SORT_BY AS UBYTE, COLUMNS AS UBYTE, ACROSS AS UBYTE, CLEAR_FIRST AS UBYTE
-DIM SHOW_DATES AS UBYTE, SHOW_HELP AS UBYTE, FIND_ATTRIBUTES AS UBYTE
+DIM SHOW_DATES AS UBYTE, FIND_ATTRIBUTES AS UBYTE
 DIM TABLE(MAX_ENTRIES * RECORD_BYTES) AS UBYTE, ORDER(MAX_ENTRIES) AS UBYTE
 DIM COUNT AS UWORD, MORE_ENTRIES AS UBYTE, ADDRESS AS UWORD, PENDING AS UBYTE
 DIM POSITION AS UWORD, PLACE AS UWORD
@@ -259,22 +261,7 @@ SUB PAUSE()
   ROWS = 0
 END SUB
 
-SUB SHOW_USAGE()
-  USE_COLOR(DOS.YELLOW)
-  PRINT "HDIR "; VERSION$; " - a HotDIR for 6502DOS - public domain 2026"
-  USE_COLOR(DOS.CYAN)
-  PRINT "Usage: HDIR [d:][path][pattern] [switches]"
-  USE_COLOR(DOS.WHITE)
-  PRINT "  -1 to -9  the number of columns, 2 when none is given"
-  PRINT "  -l        names across each row, not down each column"
-  PRINT "  -n -e     sort by name, by extension"
-  PRINT "  -d -s     sort by date, by size"
-  PRINT "  -t        show each date"
-  PRINT "  -a        skip hidden and system names"
-  PRINT "  -c        clear the screen first"
-  PRINT "Switches may share one -: -2le"
-END SUB
-
+HELP_SWITCH("HDIR")
 ORIGINAL_COLOR = DOS.GET_COLOR()
 BACKGROUND = ORIGINAL_COLOR AND $F0
 DOS.STOP_KEY(DOS.STOP.OFF)
@@ -308,8 +295,6 @@ FOR SLOT = SLOT_P1 TO SLOT_P9
       SELECT CASE SWITCH OR $20
         CASE ASC("1") TO ASC("9")
           COLUMNS = SWITCH - ASC("0")
-        CASE ASC("?"), ASC("h")
-          SHOW_HELP = 1
         CASE ASC("a")
           FIND_ATTRIBUTES = DOS.ATTR_DIRECTORY
         CASE ASC("c")
@@ -336,10 +321,6 @@ FOR SLOT = SLOT_P1 TO SLOT_P9
     START = ARGUMENT
   END IF
 NEXT
-IF SHOW_HELP THEN
-  SHOW_USAGE()
-  QUIT(0)
-END IF
 
 ' ---- the directory and the pattern ----
 IF MID$(START, 2, 1) = ":" THEN

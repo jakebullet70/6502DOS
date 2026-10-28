@@ -6,6 +6,7 @@
 ' -- A CR, an LF, or a CR and an LF end a line. Ctrl+Z ends the text.
 ' -- With no file, HEAD ends when handle 0 has nothing to read, so HEAD alone at the prompt
 ' -- prints nothing.
+' -- -H or -? as the first parameter runs HELP HEAD.
 ' -- -n with no count prints Required parameter missing, a count that is not a number up to
 ' -- 65535 prints Invalid parameter, another switch prints Invalid switch, and a second name
 ' -- prints Too many parameters. Each gives exit code 1. A file that does not open prints its
@@ -17,6 +18,7 @@
 '=============================================================================================
 #INCLUDE "DOS.UXI"
 #INCLUDE "HEAP.UXI"
+#INCLUDE "HELPSW.UXI"
 CONST SLOT_P1 AS UBYTE = 0, SLOT_P9 AS UBYTE = 8
 CONST BUFFER_SIZE AS UWORD = 512
 CONST LF AS UBYTE = 10, CR AS UBYTE = 13, CTRL_Z AS UBYTE = 26
@@ -35,6 +37,7 @@ SUB FAIL(MESSAGE AS STRING)
 END SUB
 
 ' ---- the arguments ----
+HELP_SWITCH("HEAD")
 COUNT = 10
 SLOT = SLOT_P1
 DO WHILE SLOT <= SLOT_P9
