@@ -1108,7 +1108,7 @@ Short names:
   The build compiles each `src/utils/FOLDER/NAME.UXB` to `build/UTILS/NAME.COM`, and copies
   each `src/utils/FOLDER` to `build/UTILS/SRC/FOLDER`. `sd/startup.cmd` puts `C:\UTILS` in
   `PATH$`.
-- `HDIR [d:][path] [-1..-9] [-l] [-n] [-e] [-d] [-s] [-t] [-a] [-c] [-?]` is a utility,
+- `HDIR [d:][path] [-1..-9] [-l] [-n] [-e] [-d] [-s] [-t] [-a] [-c]` is a utility,
   `HDIR.COM`, for the command line. It lists a directory as a grid in colors, after HotDIR
   (`github.com/jakebullet70/HotDir`, Unlicense).
   - A path that names a directory lists every name in it. Any other path is a directory and a

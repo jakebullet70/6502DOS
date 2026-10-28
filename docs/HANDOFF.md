@@ -2326,8 +2326,84 @@ the beta 1 list).
      - Tests (`.IN`/`.OUT` local): PUSHD (new; errors, push, list, pop, full stack, `-c`)
        ok 4.2 s; PUSHDHLP (new; `POPD -h`, `PUSHD -?`) ok 2.5 s; CMDLETS golden updated (the
        topic list gains `PUSHD POPD`) ok 3.8 s. A scratch boot of `build/SD.IMG` twice on one
-       image: `PUSHD \UTILS` on the first, `PUSHD -L` empty on the second.
-  8. Next: `DELTREE`, then `SUBST`. Talk them through first.
+       image: `PUSHD \UTILS` on the first, `PUSHD -L` empty on the second. Committed 7556797.
+  8. HELP index (the user, 2026-10-28), committed 95c0499. `HELP.HLP` read line by line from the
+     top took 3.2 s at 8 MHz for the last topic and for the topic list.
+     - `C:\DOS\HELP.IDX`: line 1 is the size of `HELP.HLP` after a space; each line after it is
+       `NAME position`, the byte position of the `:NAME` line. CR LF. `tools/build.py`
+       (`write_help_index`) and `HELP -R` write the same bytes; checked on a scratch image.
+     - HELP opens the index, and uses it when its size line is the size of `HELP.HLP` (a seek to
+       the end, not `DOS.SIZE`, which cost 322 bytes). It seeks to the position and checks the
+       line is `:TOPIC`. A missing index, a wrong size or a wrong line reads `HELP.HLP` from the
+       start, as before. A topic not in a good index prints `No help for` at once.
+     - `HELP -R` (either case) writes the index from 255-byte reads and prints `75 topics`. A
+       write error prints its message, exit code 2.
+     - `HELP POPD` 3.2 s to about 0.4 s; `HELP` 3 s to about 0.3 s. The HELP topic gains two
+       lines on `-R`.
+     - `HELP.COM` 1619 to 4002 bytes (+2383): `-R` about 1080, 32-bit `STR$` and `LVAL` about
+       440. `HELP.IDX` 925 bytes. Build 3508 ms, 2246 ms, then 2277 ms, the new baseline.
+     - Trap: numbers DIMed in a SUB are not zeroed; `TOPICS` printed 15380 until set to 0.
+     - Tests (`.IN`/`.OUT` local): HELPIDX (new; delete the index, `HELP CD`, `HELP -r`,
+       `HELP CD`) ok 1.8 s; CMDLETS ok 2.3 s.
+     - EDIT still scans `HELP.HLP` for its help key; the user keeps EDIT for other work first.
+  9. HELPBAS and TED use the index (the user, 2026-10-28), committed 95c0499.
+     - HELPBAS takes HELP's index code and `-R`: `C:\DOS\HELPBAS.IDX`, the same format, written
+       by `build.py` for both files. The topic list keeps its wrap before column 79 through
+       `LIST_NAME`. `HELPBAS -R` prints `97 topics`; its index matches the build's byte for byte.
+       `HELPBAS XOR` (last topic) about 1.7 s to about 0.6 s at 8 MHz. `HELPBAS.COM` 1675 to
+       4189 bytes. The HELPBAS topic in `HELP.HLP` gains two lines on `-R`.
+     - TED: `SEEK_TOPIC` reads `HELP.IDX` byte by byte in UWORDs, no `LINPUT`, `LVAL` or 32-bit
+       math, so it skips the index when `HELP.HLP` is 64 KB or more. It checks the size line and
+       the `:TOPIC` line at the position; a good index without the topic seeks to the end, so No
+       help for comes at once. `TOPIC_AT` gives a topic letter as a capital, shared with
+       `SHOW_TEXT`. Shift+F1 on POPD about 0.9 s to about 0.1 s past the base. `TED.COM` 12467 to
+       13642 bytes (+1175): the scan about 890, the position check 273; shifts instead of `* 10`
+       cost 58 more. The topic list (no topic) still scans `HELP.HLP`.
+     - Builds 2839 ms, 2440 ms, 2043 ms, the new baseline.
+     - Tests: TED golden updated (its topic list was stale since ZIP; HEAD failed it too) ok
+       2.8 s; HELPBIDX (new, local; delete the index, `HELPBAS atn`, `-r`, `atn`, `nosuch`) ok
+       1.7 s; HELPIDX ok 2.8 s. TED Shift+F1 on MEM, PUSHD and ZZ gives the same screens with and
+       without `HELP.IDX`; HELPBAS's list and No help the same with and without its index.
+     - Full suite: 64 tests, 0 failed, 96.0 s. Steps since the full suite: 0.
+  10. Help switch, part 1 of 3 (the user, 2026-10-28), committed 95c0499. Each DOS and UTILS
+      program with a topic in `HELP.HLP` runs `HELP NAME` for `-H` or `-?` (either case) as its
+      first parameter, as PUSHD and POPD do. EDIT is left out; the user keeps it for other work.
+     - `lib/HELPSW.UXI`: `HELP_SWITCH(TOPIC)` reads the command tail at `$0781` byte by byte:
+       spaces, `-`, `h` or `?` (`OR $20`), then a space or the CR. It runs `HELP.COM` with the
+       tail `TOPIC` and ends with HELP's exit code; HELP that does not run prints its error
+       message, exit code 1.
+     - HELP: with P1$ `-H` or `-?` it takes the topic from the first word of its tail, or
+       `HELP` when that word starts with `-`, so `HELP -?` is `HELP HELP`. The exec'd HELP
+       still sees P1$ `-H`, so no `SYS_STRINGS_SET`. `HELP.COM` 4002 to 4231 bytes.
+     - `DIRSTACK.UXI` drops its `SYS_STRINGS_SET` and the space before the topic: `PUSHD.COM`
+       3150 to 2798, `POPD.COM` 3031 to 2679 bytes.
+     - Part 1: TREE, MORE, HEAD, TAIL, GREP, each about +375 bytes: the sub with its string
+       parameter 44, the tail check 156, `DOS.EXEC` 117, the error and exit code 65. With
+       `UCASE$(SYS_STRINGS_GET)` and `SYS_STRINGS_SET` it was about +815. An inline `SYS` for
+       the exec saves 33 more; not taken. Each header gains `-H or -? as the first parameter
+       runs HELP NAME.` The HELP topic in `HELP.HLP` gains two lines on it.
+     - Builds 3001 ms, 3225 ms, the new baseline.
+     - Tests: HELPSW (new, local; the five with `-h`, `-?`, `-H`, then `HEAD -x`) ok 4.6 s;
+       PUSHDHLP 1.2, PUSHD 3.9, HELPIDX 1.8, MORE 1.5, HEAD 1.8, TAIL 2.2, GREP 3.1, XCOPYS 2.9,
+       all ok. Steps since the full suite: 1.
+  11. Help switch, part 2 of 3, committed 95c0499: XCOPY, VIEW, TED, HELPBAS, by the scratchpad
+      script `addsw.py`, as part 1.
+     - `XCOPY.COM` 6929 to 7304, `VIEW.COM` 6189 to 6566, `TED.COM` 13642 to 14018,
+       `HELPBAS.COM` 4189 to 4566 bytes.
+     - Build 3967 ms, the new baseline.
+     - Tests: HELPSW2 (new, local; the four, then `HELP -?` and ERRORLEVEL 0) ok 4.5 s; XCOPY
+       3.5, VIEW 2.3, TED 3.0, HELPIDX 2.3, HELPBIDX 1.9, all ok. Steps since the full suite: 2.
+  12. Help switch, part 3 of 3, committed 95c0499: HDIR, HELPED, THEMED, ZIP, UNZIP, by
+      `addsw.py`. Every program with a `HELP.HLP` topic but EDIT now takes the switch.
+     - HDIR drops `SHOW_USAGE`, `SHOW_HELP` and its `?`/`h` switch letters: `-2h` is now
+       Invalid switch. Its header loses `[-?]`, as do its `HELP.HLP` topic and `PLAN.md`.
+     - `HDIR.COM` 13303 to 13070, `HELPED.COM` 15745 to 16180, `THEMED.COM` 14366 to 14801,
+       `ZIP.COM` 18290 to 18663, `UNZIP.COM` 15111 to 15486 bytes.
+     - Build 4780 ms, the new baseline.
+     - Tests: HELPSW3 (new, local; the five, and `HDIR -2h` with ERRORLEVEL 1) ok 4.5 s;
+       HDIRRED 1.8, HELPED 2.2, THEMED 2.4, UNZIPD 3.4, UNZIPL 1.9, UNZIPX 2.8, ZIPDEF 3.5,
+       ZIPS 3.4, HELPIDX 2.3, all ok. Steps since the full suite: 3.
+  13. Next: `DELTREE`, then `SUBST`. Talk them through first.
   - Ideas kept, not picked: `UNDELETE` (needs a check that the x16-rom library keeps the high
     word of a deleted entry's cluster), `MIRROR`, `DISKEDIT`, `WIPEINFO`, `NC` (two-panel
     file manager on the GUI library), `NCD` (needs a child to set the shell's folder), `FF`
@@ -2337,8 +2413,8 @@ the beta 1 list).
   PATH from the WinGet links. Build 4400 ms wall (the ROM 3.30 s). The build with the new
   calls took 10495 ms (the ROM 10.28 s): a new `DOS.UXI` recompiles every program. The
   baseline stays 4400 ms for a build that leaves `DOS.UXI` alone.
-- Steps since the last full suite: 5 (the ZIP CRC fix, the ROM `bank_save` fix, ZIPDEF, the
-  ZIP and UNZIP HELP topics, PUSHD and POPD). Full suite after ZIP step 4 (2026-10-27): 59 tests,
+- Steps since the last full suite: 6 (the ZIP CRC fix, the ROM `bank_save` fix, ZIPDEF, the
+  ZIP and UNZIP HELP topics, PUSHD and POPD, the HELP index). Full suite after ZIP step 4 (2026-10-27): 59 tests,
   0 failed, 105.6 s.
 - Before it, full suite after FONTEDIT step 4 (2026-10-27): 116 tests,
   5 failed, 230.7 s. `CHKDSK`, `FILES`, `HDIR`, `HDIRARG` and `TREE` failed on the card's new
