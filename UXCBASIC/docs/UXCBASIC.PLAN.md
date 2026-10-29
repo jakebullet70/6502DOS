@@ -1772,3 +1772,24 @@ To do, not designed yet:
      is 44 bytes and the routines' entries up to 40 more. A call takes about 74 cycles more.
 
   With 1 and 3, `REST = TRIM$(REST)` is 9 bytes. It needs new asm.
+- **Cheaper `SUB` calls** (user, 2026-10-29; pyuxc only). Every `SUB` call is a `JSR`, 3 bytes
+  and 6 cycles, and the body ends in an `RTS`, 1 byte and 6 cycles. pyuxc removes a `SUB` that
+  is never called, and inlines none. Three changes, each its own step:
+  1. **Tail calls.** A `JSR` followed by an `RTS` becomes a `JMP`. It saves 1 byte and 6
+     cycles at each place. It is a pass over the emitted code, with no change to the language.
+     - Trap: when a label sits on the `RTS`, the `RTS` stays, and only the 6 cycles are saved.
+     - A `JSR` through the bank trampoline stays as it is.
+  2. **A `SUB` with one caller is inlined.** The body replaces the `JSR`, and the `RTS` is
+     left out. It saves 4 bytes and 12 cycles a `SUB`, more when the arguments are constants.
+     `REPORT_DOS` in `src/bas/DB.UXB`, inlined by hand on 2026-10-29, saved 7 bytes.
+     - A `RETURN` inside the body becomes a `JMP` to the end of the body.
+     - A `SUB` that calls itself, a `SUB` entered by register, and a `SUB` taken by address
+       are not inlined.
+  3. **`INLINE SUB`.** The body is copied in at each call. It saves 12 cycles a call, and costs
+     the size of the body less 3 bytes at each call past the first. Example:
+
+     ```
+     INLINE SUB BORDER(COLOR AS BYTE)
+       POKE $9F2C, COLOR
+     ENDSUB
+     ```

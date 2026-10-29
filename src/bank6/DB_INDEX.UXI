@@ -1,0 +1,162 @@
+' DB_INDEX.UXI -- DB's index commands: USE with INDEX, INDEX ON and SET INDEX TO. Included by
+' DB.UXB.
+
+' Closes the open indexes. The record order follows.
+SUB CLOSE_INDEXES()
+  DIM SLOT AS UBYTE
+  FOR SLOT = 0 TO 2
+    DB.INDEX_CLOSE(SLOT)
+  NEXT
+END SUB
+
+' Opens each index named in REST, the names apart by commas, with .IDX added when one has no
+' extension. The first becomes the order, and its first record current. Stops at the first
+' that fails, and prints its error.
+' Trap: the indexes take the slots from 0, so slot 0 is the first only when none is open.
+SUB OPEN_INDEXES()
+  DIM COMMA AS UBYTE
+  DO WHILE REST <> ""
+    COMMA = INSTR(REST, ",")
+    IF COMMA = 0 THEN COMMA = LEN(REST) + 1
+    IF DB.INDEX_OPEN(WITH_EXTENSION(TRIM$(LEFT$(REST, COMMA - 1)), ".IDX")) = DB.RECORD_ORDER
+      FILE_ERROR()
+      EXIT DO
+    ENDIF
+    REST = TRIM$(MID$(REST, COMMA + 1))
+  LOOP
+  ' With no index open, slot 0 gives error 6, and the record order stays.
+  DB.ORDER(0)
+  TOP_OF_ORDER()
+END SUB
+
+' USE path, or USE path INDEX names: closes the table in use, then opens path, with .DB added
+' when it has no extension, and the indexes, as OPEN_INDEXES. USE alone only closes.
+SUB DO_USE()
+  DIM SPACE AS UBYTE
+  SPACE = INSTR(REST, " ")
+  IF SPACE = 0 THEN SPACE = LEN(REST) + 1
+  NEW_TABLE(LEFT$(REST, SPACE - 1))
+  IF SPACE = 1 THEN RETURN
+  REST = MID$(REST, SPACE)
+  NEXT_WORD()
+  IF TOKEN <> "" AND IS("INDEX") = 0
+    SYNTAX_ERROR()
+    RETURN
+  ENDIF
+  TABLE = DB.OPEN_TABLE(TABLE_NAME)
+  IF TABLE = 0
+    FILE_ERROR()
+    RETURN
+  ENDIF
+  OPEN_INDEXES()
+END SUB
+
+' INDEX ON key TO name, or INDEX ON key TO name UNIQUE: builds the index name, with .IDX added
+' when it has no extension, on key: 1 to 4 field names joined by +. UNIQUE refuses two records
+' with one key. The open indexes close first; the new one is the only one open, and the order.
+' Prints "n records indexed", and the first record of the order becomes current.
+SUB DO_INDEX()
+  DIM KEY AS STRING * 50, UNIQUE AS UBYTE
+  IF IN_USE() = 0 THEN RETURN
+  NEXT_WORD()
+  IF TOKEN <> "ON"
+    SYNTAX_ERROR()
+    RETURN
+  ENDIF
+  KEY = ""
+  DO
+    NEXT_WORD()
+    IF TOKEN = "TO" OR TOKEN = "" THEN EXIT DO
+    KEY = KEY + TOKEN
+  LOOP
+  UNIQUE = 0
+  IF UCASE$(RIGHT$(REST, 7)) = " UNIQUE"
+    UNIQUE = 1
+    REST = LEFT$(REST, LEN(REST) - 7)
+  ENDIF
+  IF TOKEN = "" OR KEY = "" OR REST = "" OR INSTR(REST, " ") <> 0
+    SYNTAX_ERROR()
+    RETURN
+  ENDIF
+  CLOSE_INDEXES()
+  IF DB.INDEX_CREATE(WITH_EXTENSION(REST, ".IDX"), KEY, UNIQUE) = DB.RECORD_ORDER
+    FILE_ERROR()
+  ELSE
+    PRINT RIGHT_ALIGN(DB.RECORD_COUNT(), 6); " records indexed"
+  ENDIF
+  TOP_OF_ORDER()
+END SUB
+
+' SET INDEX TO names: closes the open indexes, then opens names, as OPEN_INDEXES. SET INDEX TO
+' alone leaves the record order.
+SUB DO_SET()
+  NEXT_WORD()
+  IF IS("INDEX")
+    NEXT_WORD()
+    IF TOKEN = "TO"
+      IF IN_USE() = 0 THEN RETURN
+      CLOSE_INDEXES()
+      OPEN_INDEXES()
+      RETURN
+    ENDIF
+  ENDIF
+  SYNTAX_ERROR()
+END SUB
+
+' FIND key: makes current the first record of the order whose key starts with key, the rest of
+' the line, with the quotes around it taken off. Else prints "No find", and the place past the
+' last is current. In the record order, or with a key longer than the index's: Invalid data.
+' Trap: an N field is in the key rewritten (DB.PLAN, the key).
+SUB DO_FIND()
+  DIM RECORD AS UWORD, QUOTE AS UBYTE
+  IF IN_USE() = 0 THEN RETURN
+  QUOTE = ContentsAt(@REST + 2)
+  IF (QUOTE = 34 OR QUOTE = 39) AND LEN(REST) > 1 AND ContentsAt(@REST + 1 + LEN(REST)) = QUOTE
+    REST = MID$(REST, 2, LEN(REST) - 2)
+  ENDIF
+  IF REST = ""
+    SYNTAX_ERROR()
+    RETURN
+  ENDIF
+  RECORD = DB.FIND(REST)
+  IF DOS.ERROR = 0
+    REACHED(RECORD)
+  ELSEIF DOS.ERROR = DOS.ERR_NOT_FOUND
+    PRINT "No find"
+    REACHED(0)
+  ELSE
+    FILE_ERROR()
+  ENDIF
+END SUB
+
+' db.s's slots and paths, in the table's workspace.
+CONST IX_SLOTS AS UWORD = $AA20, IX_NAMES AS UWORD = $B100
+
+' REINDEX: builds each open index again from the table, in its slot, from the path and key
+' fields that db keeps for the slot, and prints "n records indexed" for each. The first index
+' is the order again, and the first record of the order current. A failed build prints its
+' error and closes the indexes.
+SUB DO_REINDEX()
+  DIM SLOT AS UBYTE, FLAGS AS UBYTE, AREA AS UWORD
+  IF IN_USE() = 0 THEN RETURN
+  FOR SLOT = 0 TO 2
+    DB.INDEX_CLOSE(SLOT)
+    IF DOS.ERROR <> 0 THEN EXIT FOR
+    AREA = IX_SLOTS + SLOT * 32
+    ContentsAt(DB.RAM_BANK) = DB.WORKSPACE
+    FLAGS = ContentsAt(AREA + 15)
+    ContentsAt(DB.RAM_BANK) = VARIABLE_BANK
+    DOS.R0 = IX_NAMES + SLOT * 256
+    DOS.R1 = AREA + 11
+    DOS.REG_X = FLAGS
+    DB.CALL_DB(DB.IX_CREATE)
+    IF DOS.ERROR <> 0
+      FILE_ERROR()
+      CLOSE_INDEXES()
+      EXIT FOR
+    ENDIF
+    PRINT RIGHT_ALIGN(DB.RECORD_COUNT(), 6); " records indexed"
+  NEXT
+  DB.ORDER(0)
+  TOP_OF_ORDER()
+END SUB

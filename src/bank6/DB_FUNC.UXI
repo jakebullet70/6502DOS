@@ -1,0 +1,166 @@
+' DB_FUNC.UXI -- the functions of DB.UXB's expressions: RECNO(), DATE(), LEN(), SUBSTR() and
+' the rest. DB.UXB includes it after DB_EXPR.UXI, before DB_MEM.UXI.
+
+' The functions. The codes start at 7, above OPERATION's, and stay below 32.
+' Checklist: FUNCTION_NUMBER's names are in this order. TEXT_LENGTH is the first that takes
+' arguments. NUMBER_TEXT is the first that takes more than one.
+ENUM BUILT_IN
+  NONE = 0
+  RECORD_NUMBER = 7, END_OF_FILE, START_OF_FILE, IS_DELETED, TODAY, TEXT_LENGTH, UPPER_CASE
+  TRIM_END, TEXT_VALUE, WHOLE_PART, FILE_EXISTS, NUMBER_TEXT, PART_TEXT
+END ENUM
+
+' The last two digits of NUMBER.
+FUNCT TWO_DIGITS(NUMBER AS UWORD) AS STRING
+  RETURN RIGHT$(STR$(NUMBER + 100), 2)
+END FUNCT
+
+' The function named NAME, in capitals; NONE for an unknown name.
+FUNCT FUNCTION_NUMBER(NAME AS STRING) AS ENUM.BUILT_IN
+  DIM PLACE AS UBYTE
+  IF LEN(NAME) > 8 THEN RETURN BUILT_IN.NONE
+  ' 8 characters a name. A name padded with spaces can only match at the start of one.
+  PLACE = INSTR("RECNO   EOF     BOF     DELETED DATE    LEN     UPPER   TRIM    VAL     INT     FILE    STR     SUBSTR  ",LEFT$(NAME + "        ", 8))
+  IF PLACE = 0 THEN RETURN BUILT_IN.NONE
+  RETURN PLACE / 8 + BUILT_IN.RECORD_NUMBER
+END FUNCT
+
+' Reads the brackets after the function ROUTINE, one with no arguments, with CURSOR on the (,
+' and pushes its value: RECNO(), EOF(), BOF(), DELETED() or DATE(). With no table in use,
+' RECNO() is 0 and the rest .F.. DATE() is the date of the RTC as text, MM/DD/YY.
+SUB READ_FUNCTION(ROUTINE AS ENUM.BUILT_IN)
+  DIM RECORD AS UWORD, AT_END AS UBYTE, AT_START AS UBYTE, GONE AS UBYTE
+  CURSOR = CURSOR + 1
+  SKIP_SPACES()
+  IF CURRENT_CHAR() <> 41
+    SYNTAX_ERROR()
+    RETURN
+  ENDIF
+  CURSOR = CURSOR + 1
+  IF ROUTINE = BUILT_IN.TODAY
+    DOS.GETDATE()
+    PUSH_TEXT(TWO_DIGITS(DOS.MONTH) + "/" + TWO_DIGITS(DOS.DAY) + "/" + TWO_DIGITS(DOS.YEAR))
+    RETURN
+  ENDIF
+  RECORD = 0
+  AT_END = 0
+  AT_START = 0
+  GONE = 0
+  IF TABLE <> 0
+    RECORD = CURRENT
+    ' A table with no records is at its start and its end.
+    IF PAST_LAST()
+      AT_END = 1
+      IF CURRENT = 1 THEN AT_START = 1
+    ELSE
+      IF DB.DELETED THEN GONE = 1
+    ENDIF
+    IF BEFORE_FIRST THEN AT_START = 1
+  ENDIF
+  IF ROUTINE = BUILT_IN.RECORD_NUMBER
+    PUSH_WHOLE(RECORD)
+  ELSEIF ROUTINE = BUILT_IN.END_OF_FILE
+    PUSH_LOGICAL(AT_END)
+  ELSEIF ROUTINE = BUILT_IN.START_OF_FILE
+    PUSH_LOGICAL(AT_START)
+  ELSE
+    PUSH_LOGICAL(GONE)
+  ENDIF
+END SUB
+
+' The value at SLOT as a whole number, 0 to 255, rounded down. Else reports an error and
+' gives 0.
+FUNCT SMALL_WHOLE(SLOT AS UBYTE) AS UBYTE
+  DIM VALUE AS UWORD
+  IF VALUE_TYPE(SLOT) <> VALUE_KIND.NUMBER
+    TYPE_MISMATCH()
+    RETURN 0
+  ENDIF
+  VALUE = VALUE_AT(SLOT)
+  ' The exponent byte is 136 for 128 to 255 and above it from 256; the sign is bit 7 of the
+  ' next byte.
+  IF ContentsAt(VALUE) > 136 OR ContentsAt(VALUE + 1) > 127
+    OUT_OF_RANGE()
+    RETURN 0
+  ENDIF
+  RETURN FP.TO_LONG(VALUE)
+END FUNCT
+
+' Applies the function ROUTINE to the top ARGUMENTS values, which become its value: LEN(text),
+' UPPER(text), TRIM(text) without its trailing spaces, VAL(text) the number it starts with or
+' 0, INT(number) cut to a whole number toward 0. STR(number, length, decimals) is the number
+' right-aligned in length characters, 10 and 0 when left out; a longer one comes back whole.
+' SUBSTR(text, start, count) is count characters from start, all the rest when count is left
+' out. FILE(text) is .T. when a file or folder matches the path text.
+SUB APPLY_FUNCTION(ROUTINE AS ENUM.BUILT_IN, ARGUMENTS AS UBYTE)
+  DIM SLOT AS UBYTE, VALUE AS UWORD, START AS UBYTE, LENGTH AS UBYTE, KIND AS ENUM.VALUE_KIND
+  DIM NEGATIVE AS UBYTE, MOST AS UBYTE, SECOND AS UBYTE, THIRD AS UBYTE, TEXT AS STRING * 255
+  MOST = 1
+  IF ROUTINE >= BUILT_IN.NUMBER_TEXT THEN MOST = 3
+  IF ARGUMENTS = 0 OR ARGUMENTS > MOST OR (ROUTINE = BUILT_IN.PART_TEXT AND ARGUMENTS = 1)
+    SYNTAX_ERROR()
+    RETURN
+  ENDIF
+  SECOND = 10
+  THIRD = 0
+  IF ROUTINE = BUILT_IN.PART_TEXT THEN THIRD = 255
+  SLOT = VALUE_COUNT - ARGUMENTS
+  IF ARGUMENTS > 1 THEN SECOND = SMALL_WHOLE(SLOT + 1)
+  IF ARGUMENTS = 3 THEN THIRD = SMALL_WHOLE(SLOT + 2)
+  IF FAILED THEN RETURN
+  ' The other arguments are numbers, with no text in TEXT_BUFFER.
+  VALUE_COUNT = SLOT + 1
+  VALUE = VALUE_AT(SLOT)
+  KIND = VALUE_KIND.TEXT
+  IF ROUTINE = BUILT_IN.WHOLE_PART OR ROUTINE = BUILT_IN.NUMBER_TEXT THEN KIND = VALUE_KIND.NUMBER
+  IF VALUE_TYPE(SLOT) <> KIND
+    TYPE_MISMATCH()
+    RETURN
+  ENDIF
+  IF ROUTINE = BUILT_IN.NUMBER_TEXT
+    ' STR.PADL takes at most 82; FP.FIXED takes at most 9 decimals.
+    IF SECOND > 82 OR THIRD > 9
+      OUT_OF_RANGE()
+      RETURN
+    ENDIF
+    VALUE_COUNT = SLOT
+    PUSH_TEXT(STR.PADL(FP.FIXED(VALUE, THIRD), SECOND))
+    IF DOS.ERROR <> 0 THEN OUT_OF_RANGE()
+    RETURN
+  ENDIF
+  IF ROUTINE = BUILT_IN.WHOLE_PART
+    ' FLOOR rounds down, so a negative value is rounded as a positive one.
+    NEGATIVE = ContentsAt(VALUE + 1) AND 128
+    IF NEGATIVE THEN FLIP_SIGN(VALUE)
+    FP.FLOOR(VALUE)
+    IF NEGATIVE THEN FLIP_SIGN(VALUE)
+    RETURN
+  ENDIF
+  ' The text argument is the end of TEXT_BUFFER. It comes off, and the result is pushed.
+  START = ContentsAt(VALUE)
+  TEXT = MID$(TEXT_BUFFER, START)
+  TEXT_BUFFER = LEFT$(TEXT_BUFFER, START - 1)
+  VALUE_COUNT = SLOT
+  SELECT CASE ROUTINE
+    CASE BUILT_IN.TEXT_LENGTH
+      PUSH_WHOLE(LEN(TEXT))
+    CASE BUILT_IN.UPPER_CASE
+      PUSH_TEXT(UCASE$(TEXT))
+    CASE BUILT_IN.TRIM_END
+      PUSH_TEXT(RTRIM$(TEXT))
+    CASE BUILT_IN.PART_TEXT
+      IF SECOND = 0
+        OUT_OF_RANGE()
+        RETURN
+      ENDIF
+      PUSH_TEXT(MID$(TEXT, SECOND, THIRD))
+    CASE BUILT_IN.FILE_EXISTS
+      ' EXISTS gives 255 for a match, and a logical value is 0 or 1.
+      PUSH_LOGICAL(DOS.EXISTS(TEXT) AND 1)
+    CASE ELSE
+      LENGTH = FP.FROM_TEXT(VALUE, TEXT)
+      IF DOS.ERROR <> 0 THEN FP.FROM_LONG(VALUE, 0)
+      VALUE_TYPE(SLOT) = VALUE_KIND.NUMBER
+      VALUE_COUNT = SLOT + 1
+  END SELECT
+END SUB

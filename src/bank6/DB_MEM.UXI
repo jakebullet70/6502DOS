@@ -1,0 +1,171 @@
+' DB_MEM.UXI -- the memory variables of DB.UXB: their slots and pool, ASSIGN, RELEASE and
+' DISPLAY MEMORY. DB.UXB includes it after DB_FUNC.UXI, before READ_NAME.
+
+' The memory variables live in a RAM bank of their own, selected at $A000 while DB runs; the
+' DB library and the DOS calls keep $00. Variable N, 0 to 63, is 16 bytes at VARIABLE_SLOTS +
+' N * 16: its VALUE_KIND, its name, 1 to 10 capitals, as a string block whose size byte is the
+' kind, so StringAt(slot) is the name, then at + 12 the address of its value in the pool. A
+' name of length 0 is a free slot. A number or a logical value is FP.SIZE bytes in the pool, a
+' text is a string block. The values fill the pool from POOL_START to POOL_END with no gap.
+CONST VARIABLE_SLOTS AS UWORD = $A000
+CONST POOL_START AS UWORD = $A400
+CONST POOL_LIMIT AS UWORD = $C000
+CONST VARIABLE_LIMIT AS UBYTE = 64
+DIM VARIABLE_BANK AS UBYTE, CALLER_BANK AS UBYTE
+DIM POOL_END AS UWORD
+
+' The address of variable NUMBER's slot.
+FUNCT SLOT_AT(NUMBER AS UBYTE) AS UWORD
+  DIM OFFSET AS UWORD
+  OFFSET = NUMBER
+  RETURN VARIABLE_SLOTS + OFFSET * 16
+END FUNCT
+
+' The number of the variable NAME, VARIABLE_LIMIT when there is none. NAME "" gives the first
+' free slot.
+FUNCT FIND_VARIABLE(NAME AS STRING) AS UBYTE
+  DIM NUMBER AS UBYTE
+  FOR NUMBER = 0 TO VARIABLE_LIMIT - 1
+    IF StringAt(SLOT_AT(NUMBER)) = NAME THEN RETURN NUMBER
+  NEXT
+  RETURN VARIABLE_LIMIT
+END FUNCT
+
+' Frees every slot and empties the pool.
+SUB CLEAR_VARIABLES()
+  DIM NUMBER AS UBYTE
+  FOR NUMBER = 0 TO VARIABLE_LIMIT - 1
+    ContentsAt(SLOT_AT(NUMBER) + 1) = 0
+  NEXT
+  POOL_END = POOL_START
+END SUB
+
+' Takes variable NUMBER's value out of the pool. The values after it move down, and their
+' slots follow. The slot keeps its name and its old address.
+SUB DROP_VALUE(NUMBER AS UBYTE)
+  DIM SLOT AS UWORD, VALUE AS UWORD, SIZE AS UWORD, OTHER AS UWORD, MOVED AS UWORD
+  SLOT = SLOT_AT(NUMBER)
+  VALUE = ContentsAtW(SLOT + 12)
+  SIZE = FP.SIZE
+  IF ContentsAt(SLOT) = VALUE_KIND.TEXT THEN SIZE = ContentsAt(VALUE + 1) + 2
+  COPY_BYTES(VALUE, VALUE + SIZE, POOL_END - VALUE - SIZE)
+  POOL_END = POOL_END - SIZE
+  ' A free slot's stale address may move too; it is never read.
+  FOR NUMBER = 0 TO VARIABLE_LIMIT - 1
+    OTHER = SLOT_AT(NUMBER) + 12
+    MOVED = ContentsAtW(OTHER)
+    IF MOVED > VALUE THEN ContentsAtW(OTHER) = MOVED - SIZE
+  NEXT
+END SUB
+
+' Pushes the value of variable NUMBER.
+SUB PUSH_VARIABLE(NUMBER AS UBYTE)
+  DIM SLOT AS UWORD, VALUE AS UWORD
+  SLOT = SLOT_AT(NUMBER)
+  VALUE = ContentsAtW(SLOT + 12)
+  IF ContentsAt(SLOT) = VALUE_KIND.TEXT
+    PUSH_TEXT(StringAt(VALUE))
+    RETURN
+  ENDIF
+  COPY_BYTES(VALUE_AT(VALUE_COUNT), VALUE, FP.SIZE)
+  VALUE_TYPE(VALUE_COUNT) = ContentsAt(SLOT)
+  VALUE_COUNT = VALUE_COUNT + 1
+END SUB
+
+' Stores value 0 in the memory variable NAME, made when it is new, when the character at
+' CURSOR is ENDING, 0 for the line's end. A text that does not fit in the pool releases NAME.
+SUB ASSIGN(NAME AS STRING, ENDING AS UBYTE)
+  DIM NUMBER AS UBYTE, SLOT AS UWORD, SOURCE AS UWORD, SIZE AS UWORD, KIND AS UBYTE
+  SKIP_SPACES()
+  IF NAME = "" OR CURRENT_CHAR() <> ENDING
+    SYNTAX_ERROR()
+    RETURN
+  ENDIF
+  NUMBER = FIND_VARIABLE(NAME)
+  IF NUMBER < VARIABLE_LIMIT
+    DROP_VALUE(NUMBER)
+  ELSE
+    NUMBER = FIND_VARIABLE("")
+    IF NUMBER = VARIABLE_LIMIT
+      REPORT_ERROR("Too many variables")
+      RETURN
+    ENDIF
+  ENDIF
+  SLOT = SLOT_AT(NUMBER)
+  KIND = VALUE_TYPE(0)
+  SOURCE = VALUE_AT(0)
+  SIZE = FP.SIZE
+  IF KIND = VALUE_KIND.TEXT
+    ' From 2 bytes before the text, so the copy is a string block; its length is set after.
+    SIZE = ContentsAt(SOURCE + 1) + 2
+    SOURCE = @TEXT_BUFFER + ContentsAt(SOURCE) - 1
+  ENDIF
+  IF POOL_END + SIZE > POOL_LIMIT
+    ContentsAt(SLOT + 1) = 0
+    REPORT_ERROR("Out of memory")
+    RETURN
+  ENDIF
+  ContentsAt(SLOT) = KIND
+  ContentsAt(SLOT + 1) = LEN(NAME)
+  COPY_BYTES(SLOT + 2, @NAME + 2, LEN(NAME))
+  ContentsAtW(SLOT + 12) = POOL_END
+  COPY_BYTES(POOL_END, SOURCE, SIZE)
+  IF KIND = VALUE_KIND.TEXT THEN ContentsAt(POOL_END + 1) = SIZE - 2
+  POOL_END = POOL_END + SIZE
+END SUB
+
+' RELEASE name, name ...: drops those memory variables. RELEASE ALL drops them all.
+SUB DO_RELEASE()
+  DIM NUMBER AS UBYTE, NAME AS STRING * 10
+  IF UCASE$(REST) = "ALL"
+    CLEAR_VARIABLES()
+    RETURN
+  ENDIF
+  CURSOR = 1
+  DO
+    NAME = VARIABLE_NAME()
+    NUMBER = FIND_VARIABLE(NAME)
+    IF NAME = ""
+      SYNTAX_ERROR()
+      RETURN
+    ENDIF
+    IF NUMBER = VARIABLE_LIMIT
+      REPORT_ERROR("Variable not found")
+      RETURN
+    ENDIF
+    DROP_VALUE(NUMBER)
+    ContentsAt(SLOT_AT(NUMBER) + 1) = 0
+    SKIP_SPACES()
+    IF CURRENT_CHAR() = 0 THEN RETURN
+    IF CURRENT_CHAR() <> 44
+      SYNTAX_ERROR()
+      RETURN
+    ENDIF
+    CURSOR = CURSOR + 1
+    SKIP_SPACES()
+  LOOP
+END SUB
+
+' DISPLAY MEMORY: prints each memory variable, its kind C, N or L and its value, text in ",
+' then the count and the bytes free in the pool.
+SUB SHOW_MEMORY()
+  DIM NUMBER AS UBYTE, COUNT AS UBYTE, SLOT AS UWORD
+  COUNT = 0
+  FOR NUMBER = 0 TO VARIABLE_LIMIT - 1
+    SLOT = SLOT_AT(NUMBER)
+    IF ContentsAt(SLOT + 1) <> 0
+      PRINT STR.PADR(StringAt(SLOT), 11); MID$("NCL", ContentsAt(SLOT) + 1, 1); " ";
+      VALUE_COUNT = 0
+      TEXT_BUFFER = ""
+      PUSH_VARIABLE(NUMBER)
+      IF VALUE_TYPE(0) = VALUE_KIND.TEXT
+        PRINT CHR$(34); TEXT_OF(0); CHR$(34)
+      ELSE
+        SHOW_VALUE()
+        PRINT
+      ENDIF
+      COUNT = COUNT + 1
+    ENDIF
+  NEXT
+  PRINT MID$(STR$(COUNT), 2); " variables, "; MID$(STR$(POOL_LIMIT - POOL_END), 2); " bytes free"
+END SUB

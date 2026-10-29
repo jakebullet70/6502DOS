@@ -1,0 +1,338 @@
+' DB_CHANGE.UXI -- the commands of DB.UXB that make or change a table: DELETE, RECALL, PACK,
+' REPLACE, APPEND, EDIT and CREATE. DB.UXB includes it after DB_SCOPE.UXI.
+
+' DELETE scope and RECALL scope, MARKING 1 for DELETE: mark each record of the scope that meets
+' its FOR condition deleted, or clear its mark, and print how many. The scope is the current
+' record.
+SUB DO_MARK(MARKING AS UBYTE)
+  DIM TOTAL AS UWORD
+  IF READ_PLAIN_SCOPE(SCOPE_KIND.CURRENT_RECORD) = 0 THEN RETURN
+  TOTAL = 0
+  DO WHILE NEXT_IN_SCOPE()
+    IF MARKING
+      DB.DELETE()
+    ELSE
+      DB.RECALL()
+    ENDIF
+    DB.WRITE_RECORD()
+    IF DOS.ERROR <> 0
+      FILE_ERROR()
+      RETURN
+    ENDIF
+    TOTAL = TOTAL + 1
+  LOOP
+  IF FAILED THEN RETURN
+  PRINT RIGHT_ALIGN(TOTAL, 6); " records ";
+  IF MARKING
+    PRINT "deleted"
+  ELSE
+    PRINT "recalled"
+  ENDIF
+END SUB
+
+' PACK: removes the deleted records and prints how many are left. The first record of the order
+' is then current. A failed PACK leaves no table in use.
+SUB DO_PACK()
+  DIM RECORDS AS UWORD
+  IF IN_USE() = 0 THEN RETURN
+  RECORDS = DB.PACK()
+  IF DOS.ERROR <> 0
+    FILE_ERROR()
+    REST = ""
+    DO_USE()
+    LOCATE_ACTIVE = 0
+    RETURN
+  ENDIF
+  PRINT RIGHT_ALIGN(RECORDS, 6); " records left"
+  TOP_OF_ORDER()
+END SUB
+
+DIM REPLACE_FIELD(8) AS UBYTE       ' the field of each expression of REPLACE
+
+' Puts value 0 of the value stack in field FIELD of the current record: text cut to the
+' field's length, a number at the field's decimals, a logical as T or F. The value is of the
+' field's kind. A number longer than the field is Number out of range.
+SUB PUT_VALUE(FIELD AS UBYTE)
+  DIM DIGITS AS STRING * 20, KIND AS ENUM.VALUE_KIND
+  KIND = VALUE_TYPE(0)
+  IF KIND = VALUE_KIND.TEXT
+    DB.PUT(FIELD, LEFT$(TEXT_OF(0), DB.FIELD_LENGTH(FIELD)))
+    RETURN
+  ENDIF
+  DIGITS = "F"
+  IF VALUE_STACK(0) THEN DIGITS = "T"
+  IF KIND = VALUE_KIND.NUMBER
+    DIGITS = FP.FIXED(VALUE_AT(0), DB.FIELD_DECIMALS(FIELD))
+    IF DOS.ERROR <> 0 OR LEN(DIGITS) > DB.FIELD_LENGTH(FIELD)
+      OUT_OF_RANGE()
+      RETURN
+    ENDIF
+  ENDIF
+  DB.PUT(FIELD, DIGITS)
+END SUB
+
+' REPLACE scope field WITH expression, ... scope: sets each field, at most SUM_LIMIT, to its
+' expression, left to right, in each record of the scope that meets its FOR condition, and
+' prints how many records. The scope goes before the fields, after them, or both. An N field
+' takes a number, at the field's decimals; an L field a logical; a C or D field text, cut to
+' the field's length. The scope is the current record.
+SUB DO_REPLACE()
+  DIM PAIRS AS UBYTE, NUMBER AS UBYTE, FIELD AS UBYTE, KIND AS ENUM.VALUE_KIND, TOTAL AS UWORD
+  DIM MORE AS UBYTE, FIELD_KIND AS ENUM.DB.FIELD_KIND
+  IF IN_USE() = 0 THEN RETURN
+  CURSOR = 1
+  ' The scope before the fields stops at the first field. A TO there fails at the end.
+  READ_SCOPE(SCOPE_KIND.CURRENT_RECORD)
+  IF FAILED THEN RETURN
+  PAIRS = 0
+  ' Each expression is read here once, for its syntax and its kind.
+  DO
+    SKIP_SPACES()
+    FIELD = DB.FIELD_NUMBER(NAME_AT())
+    IF FIELD = 0
+      REPORT_ERROR("Field not found")
+      RETURN
+    ENDIF
+    SKIP_SPACES()
+    IF NAME_AT() <> "WITH"
+      SYNTAX_ERROR()
+      RETURN
+    ENDIF
+    FIELD_KIND = DB.FIELD_TYPE(FIELD)
+    KIND = VALUE_KIND.TEXT
+    IF FIELD_KIND = DB.FIELD_KIND.NUMBER THEN KIND = VALUE_KIND.NUMBER
+    IF FIELD_KIND = DB.FIELD_KIND.LOGICAL THEN KIND = VALUE_KIND.LOGICAL
+    MORE = READ_LISTED(PAIRS, KIND)
+    IF FAILED THEN RETURN
+    REPLACE_FIELD(PAIRS) = FIELD
+    PAIRS = PAIRS + 1
+    IF MORE = 0 THEN EXIT DO
+  LOOP
+  MORE_SCOPE()
+  IF SCOPE_AT_END() = 0 THEN RETURN
+  TOTAL = 0
+  DO WHILE NEXT_IN_SCOPE()
+    NUMBER = 0
+    DO WHILE NUMBER < PAIRS
+      FIELD = REPLACE_FIELD(NUMBER)
+      CURSOR = SUM_START(NUMBER)
+      EVALUATE()
+      IF FAILED THEN EXIT DO
+      PUT_VALUE(FIELD)
+      IF FAILED THEN EXIT DO
+      NUMBER = NUMBER + 1
+    LOOP
+    ' A record that failed part way is read again, unchanged.
+    IF FAILED
+      MOVE_TO(CURRENT)
+      RETURN
+    ENDIF
+    DB.WRITE_RECORD()
+    IF DOS.ERROR <> 0
+      FILE_ERROR()
+      RETURN
+    ENDIF
+    TOTAL = TOTAL + 1
+  LOOP
+  IF FAILED THEN RETURN
+  PRINT RIGHT_ALIGN(TOTAL, 6); " records replaced"
+END SUB
+
+' Asks for each field of the current record by name and puts the answer in it. A C or D field
+' takes the answer cut to its length, an N field a number expression, an L field T, Y, F or N.
+' An empty answer leaves the field as it is. A wrong answer prints its error and asks again.
+' EDITING 1 shows each field's value before a ?. EDITING 0 shows none, and an empty answer to
+' the first field gives 0 at once. Else gives 1. The record is not written.
+FUNCT ASK_FIELDS(EDITING AS UBYTE) AS UBYTE
+  DIM FIELD AS UBYTE, POSITION AS UBYTE, FIELD_KIND AS ENUM.DB.FIELD_KIND
+  FIELD = 1
+  DO WHILE FIELD <= DB.FIELD_COUNT()
+    FAILED = 0
+    PRINT STR.PADR(DB.FIELD_NAME(FIELD), 10); ": ";
+    IF EDITING THEN PRINT DB.GET(FIELD); " ? ";
+    DOS.CON_LINE(COMMAND_LINE)
+    REST = COMMAND_LINE
+    IF REST = "" AND FIELD = 1 AND EDITING = 0 THEN RETURN 0
+    FIELD_KIND = DB.FIELD_TYPE(FIELD)
+    VALUE_COUNT = 0
+    TEXT_BUFFER = ""
+    IF REST = ""
+      ' The field stays as it is.
+    ELSEIF FIELD_KIND = DB.FIELD_KIND.LOGICAL
+      POSITION = INSTR("TYFN", UCASE$(LEFT$(REST, 1)))
+      IF POSITION = 0
+        TYPE_MISMATCH()
+      ELSE
+        PUSH_LOGICAL(POSITION < 3)
+        PUT_VALUE(FIELD)
+      ENDIF
+    ELSEIF FIELD_KIND = DB.FIELD_KIND.NUMBER
+      CURSOR = 1
+      IF READ_LISTED(0, VALUE_KIND.NUMBER) THEN SYNTAX_ERROR()
+      IF SCOPE_AT_END() THEN PUT_VALUE(FIELD)
+    ELSE
+      PUSH_TEXT(REST)
+      PUT_VALUE(FIELD)
+    ENDIF
+    IF FAILED = 0 THEN FIELD = FIELD + 1
+  LOOP
+  RETURN 1
+END FUNCT
+
+' APPEND BLANK adds a blank record. APPEND asks for each field of a new record, as ASK_FIELDS
+' does, then adds it, and goes on with the next record until the first field's answer is
+' empty. The last record added is current.
+SUB DO_APPEND()
+  DIM RECORD AS UWORD, BLANK AS UBYTE
+  IF IN_USE() = 0 THEN RETURN
+  NEXT_WORD()
+  BLANK = IS("BLANK")
+  IF BLANK = 0 AND TOKEN <> ""
+    SYNTAX_ERROR()
+    RETURN
+  ENDIF
+  ' RECORD is the last record added. SCOPE_AT_END reads the end of a number.
+  RECORD = CURRENT
+  TARGET = 0
+  DO
+    CURRENT = DB.APPEND()
+    IF DOS.ERROR <> 0
+      FILE_ERROR()
+      EXIT DO
+    ENDIF
+    IF BLANK = 0
+      SHOW_RECORD()
+      ' An empty first answer ends APPEND, and the record is not added.
+      IF ASK_FIELDS(0) = 0 THEN EXIT DO
+    ENDIF
+    DB.WRITE_RECORD()
+    IF DOS.ERROR <> 0
+      FILE_ERROR()
+      EXIT DO
+    ENDIF
+    RECORD = CURRENT
+    IF BLANK THEN EXIT DO
+  LOOP
+  MOVE_TO(RECORD)
+END SUB
+
+' EDIT: shows each field of the current record and asks for its new value, as ASK_FIELDS
+' does, then writes the record. An empty answer keeps the value.
+SUB DO_EDIT()
+  IF IN_USE() = 0 THEN RETURN
+  IF REST <> ""
+    SYNTAX_ERROR()
+    RETURN
+  ENDIF
+  IF PAST_LAST()
+    RECORD_ERROR()
+    RETURN
+  ENDIF
+  SHOW_RECORD()
+  ASK_FIELDS(1)
+  DB.WRITE_RECORD()
+  IF DOS.ERROR <> 0 THEN FILE_ERROR()
+END SUB
+
+DIM FIELD_TABLE(512) AS UBYTE       ' the fields of CREATE, DB.FIELD_SIZE bytes each
+
+' 1 when a comma is at CURSOR, past spaces; CURSOR then moves past it and the spaces after.
+FUNCT AFTER_COMMA() AS UBYTE
+  SKIP_SPACES()
+  IF CURRENT_CHAR() <> 44 THEN RETURN 0
+  CURSOR = CURSOR + 1
+  SKIP_SPACES()
+  RETURN 1
+END FUNCT
+
+' Reads the field at CURSOR, name,type,length,decimals, into the entry at ENTRY of FIELD_TABLE,
+' or prints an error. The entry's layout is DB.DEFINE's: the name at 0, padded with 0 to 11
+' bytes, the type at 11, the length at 12, the decimals at 13.
+SUB READ_FIELD(ENTRY AS UWORD)
+  DIM NAME AS STRING * 128, KIND AS ENUM.DB.FIELD_KIND, LENGTH AS UWORD, DECIMALS AS UWORD
+  DIM WELL AS UBYTE, EARLIER AS UWORD, INDEX AS UBYTE
+  WELL = IS_LETTER(CURRENT_CHAR())
+  NAME = NAME_AT()
+  WELL = WELL AND LEN(NAME) <= 10 AND AFTER_COMMA()
+  ' The type's letter in capitals.
+  KIND = CURRENT_CHAR() AND $DF
+  CURSOR = CURSOR + 1
+  LENGTH = 1
+  IF KIND = DB.FIELD_KIND.DATE THEN LENGTH = 8
+  DECIMALS = 0
+  ' C and N take a length, N decimals after it.
+  IF KIND = DB.FIELD_KIND.CHARACTER OR KIND = DB.FIELD_KIND.NUMBER
+    WELL = WELL AND AFTER_COMMA()
+    LENGTH = VAL(NAME_AT())
+    IF KIND = DB.FIELD_KIND.NUMBER AND AFTER_COMMA() THEN DECIMALS = VAL(NAME_AT())
+  ENDIF
+  SKIP_SPACES()
+  IF WELL = 0 OR INSTR("CNLD", CHR$(KIND)) = 0 OR CURRENT_CHAR() <> 0
+    SYNTAX_ERROR()
+    RETURN
+  ENDIF
+  IF LENGTH = 0 OR LENGTH > 255 OR (KIND = DB.FIELD_KIND.NUMBER AND (LENGTH > 10 OR (DECIMALS > 0 AND DECIMALS + 2 > LENGTH)))
+    OUT_OF_RANGE()
+    RETURN
+  ENDIF
+  FOR INDEX = 0 TO 10
+    ContentsAt(ENTRY + INDEX) = 0
+  NEXT
+  COPY_BYTES(ENTRY, @NAME + 2, LEN(NAME))
+  ContentsAt(ENTRY + 11) = KIND
+  ContentsAt(ENTRY + 12) = LENGTH
+  ContentsAt(ENTRY + 13) = DECIMALS
+  EARLIER = AddrOf(FIELD_TABLE)
+  DO WHILE EARLIER < ENTRY
+    INDEX = 0
+    DO WHILE INDEX < 10 AND ContentsAt(EARLIER + INDEX) = ContentsAt(ENTRY + INDEX)
+      INDEX = INDEX + 1
+    LOOP
+    IF INDEX = 10
+      REPORT_ERROR("Duplicate field")
+      RETURN
+    ENDIF
+    EARLIER = EARLIER + DB.FIELD_SIZE
+  LOOP
+END SUB
+
+' CREATE path: asks for the fields of a new table, one a line, as name,type,length,decimals,
+' then makes the table path, with .DB added when it has no extension. The new table is in use,
+' with no records. A file path is emptied. The type is C, N, L or D. C takes a length of 1 to
+' 255; N a length of 1 to 10, then decimals, 0 when left out, with room for a digit and the
+' point; L has length 1, D length 8. A name is 1 to 10 letters, digits and _, from a letter.
+' An empty line ends the fields, at most 32. A wrong line prints its error and is asked again.
+' With no fields no table is made; when the table cannot be made, none is in use.
+SUB DO_CREATE()
+  DIM PATH AS STRING * 80, FIELDS AS UBYTE, ENTRY AS UWORD
+  IF REST = ""
+    SYNTAX_ERROR()
+    RETURN
+  ENDIF
+  PATH = REST
+  PRINT "Name,type,length,decimals"
+  FIELDS = 0
+  ENTRY = AddrOf(FIELD_TABLE)
+  DO WHILE FIELDS < 32
+    FAILED = 0
+    PRINT "Field "; RIGHT_ALIGN(FIELDS + 1, 2); ": ";
+    DOS.CON_LINE(COMMAND_LINE)
+    REST = COMMAND_LINE
+    CURSOR = 1
+    SKIP_SPACES()
+    IF CURRENT_CHAR() = 0 THEN EXIT DO
+    READ_FIELD(ENTRY)
+    IF FAILED = 0
+      FIELDS = FIELDS + 1
+      ENTRY = ENTRY + DB.FIELD_SIZE
+    ENDIF
+  LOOP
+  IF FIELDS = 0 THEN RETURN
+  NEW_TABLE(PATH)
+  TABLE = DB.CREATE(TABLE_NAME, AddrOf(FIELD_TABLE), FIELDS)
+  IF TABLE = 0
+    FILE_ERROR()
+    RETURN
+  ENDIF
+  MOVE_TO(1)
+END SUB

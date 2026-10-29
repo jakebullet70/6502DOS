@@ -422,12 +422,13 @@ def main():
     bank3 = build_rom_program(3)
     with open(ROM, "ab") as out:
         out.write(image[2 * BANK_SIZE:])
+    database = build_rom_program(6)
     make_test_rom()
     for name in ("LICENSE", "NOTICE"):
         shutil.copyfile(os.path.join(ROOT, name), os.path.join(BUILD, name))
     test_files = [os.path.join(TEST_SD_FOLDER, entry) for entry in os.listdir(TEST_SD_FOLDER)
                   if not entry.startswith(".")]
-    programs = compile_bas() + [bank3]
+    programs = compile_bas() + [bank3, database]
     shell = [p for p in programs if os.path.basename(p) in ("CMDSHELL.COM", "ROMSHELL.COM")]
     card_sources = shell + [basic, compile_scom(), compile_utils()]
     make_card(card_sources, [p for p in programs if p not in shell] + test_files)

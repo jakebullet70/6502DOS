@@ -142,7 +142,7 @@ A program reaches the library through one new call in the jump table:
 
 | Y | Function | In | Out |
 |---|---|---|---|
-| 0 | `db_create` | `r0` path<br>`r1` field table, 16 bytes a field<br>`X` fields | none |
+| 0 | `db_create` | `r0` path<br>`r1` field table, 16 bytes a field<br>`X` fields | none; the table is open, with no records |
 | 1 | `db_open` | `r0` path | `r0` records<br>`X` fields |
 | 2 | `db_close` | none | none |
 | 3 | `db_info` | `X` field, 0 for the table | `r0` the field's 16-byte entry, or the table's 16-byte header |
@@ -173,15 +173,21 @@ indexes.
 A program takes one RAM bank from `bank_alloc` for each open table and passes it in `A`. The
 library keeps the table's state there:
 
-| Use | Bytes |
-|---|---|
-| the state: the handles, the current record, the order | 32 |
-| the header and the field table | 529 |
-| the current record | 1000 |
-| the record as it was read, for the keys that change | 1000 |
-| 3 indexes: the header page's first 16 bytes, one page, and the path from the root, 10 levels of a page and an entry, 3 bytes each | 3 × 558 |
-| a second page, for a split | 512 |
-| total | 4747 |
+| Use | Where | Bytes |
+|---|---|---|
+| the state: the handles, the current record, the order, the work bytes | `$A000` | 32 |
+| the header and the field table | `$A020` | 529 |
+| the current record, `DB_RECORD` | `$A231` | 1000 |
+| the record as the file holds it, `DB_OLD`, for the keys that change | `$A619` | 1000 |
+| the delete's empty page and its page below | `$AA01` | 4 |
+| 3 index slots: page 0's first 16 bytes, the handle, the key width, the keys a page holds, the work flag | `$AA20` | 3 × 32 |
+| the path from the root, 10 levels of a page and an entry, 3 bytes each, and the key's length | `$AA80` | 31 |
+| the entry to insert: the key, the record, the page above | `$AAA0` | 104 |
+| the page read, and an entry past it in a split | `$AC00` | 512 |
+| the page built | `$AF00` | 512 |
+| the indexes' paths, length-prefixed | `$B100` | 3 × 256 |
+| the table's path, length-prefixed | `$BE00` | 256 |
+| `pack`'s new file: the path with its last character changed | `$BF00` | 256 |
 
 - Trap: the library runs with the table's RAM bank selected. A buffer the program passes in
   `r0` or `r1` lies in `$0400–$9EFF`, never in `$A000–$BFFF`.
@@ -190,28 +196,22 @@ library keeps the table's state there:
 - The library reads and writes through `read`, `write` and `seek`, which keep the caller's RAM
   bank.
 
-### Sizes, estimated
+### Sizes
 
 | Part | Bytes |
 |---|---|
-| The `db` entry, the function table, the bank's gate tail and IRQ entry | 200 |
-| open, close, info, goto, get, put, write | 650 |
-| create, append, flag | 450 |
-| pack | 250 |
-| ix find, first, last, next, prev | 600 |
-| ix insert, with a page split | 1000 |
-| ix delete | 500 |
-| ix create: build from the table, open, close, order | 400 |
-| the key from the record, with the `N` rewrite | 260 |
-| total | 4310 |
+| The library, `src/asm/db.s` | 4318 |
+| MSBASIC's float, `src/asm/fp.s`, call 58 | 2258 |
+| total, `$C000–$D9AF` | 6576 |
 
-ROM bank 5 has 16,384 bytes. The library leaves about 12,000 free. The jump table's call 57
-uses 3 of its 21 free bytes.
+ROM bank 5 has 16,384 bytes. About 9,700 are free.
 
 ## The program, DB.COM
 
 `DB.COM` is a stub that starts the program in ROM banks 6 and 7, as `ROMSHELL.COM` starts the
-shell. The program is asm. It calls the library through `db`.
+shell. The program is UXCBASIC, `src/bank6/DB.UXB`, compiled with `#ROMBANKS 6, 7`. It calls
+the library through `lib/DB.UXI` and the float through `lib/FLOAT.UXI`. ROM bank 8 is kept for
+its growth.
 
 ### The commands
 
@@ -227,8 +227,32 @@ shell. The program is asm. It calls the library through `db`.
 | Command files | `DO`, `IF`, `ELSE`, `ENDIF`, `DO WHILE`, `ENDDO`, `RETURN`, `CANCEL`, `QUIT` |
 | Settings | `SET TALK`, `SET DELETED` |
 
-`LIST`, `DISPLAY`, `COUNT`, `SUM`, `REPLACE`, `DELETE` and `RECALL` take a scope (`ALL`,
-`NEXT n`, `RECORD n`) and a `FOR` condition.
+`LIST`, `DISPLAY`, `COUNT`, `SUM`, `LOCATE`, `REPLACE`, `DELETE` and `RECALL` take a scope
+(`ALL`, `NEXT n`, `RECORD n`) and a `FOR` condition, in any order. With no scope, `FOR` means
+all the records. The scope of `DISPLAY`, `REPLACE`, `DELETE` and `RECALL` is the current
+record; that of `LIST`, `COUNT`, `SUM` and `LOCATE` is every record.
+
+- `COUNT scope TO name` prints `n records`. `SUM list scope TO names` sums at most 8 number
+  expressions, prints `n records summed`, then each sum on a line. `TO` stores the results in
+  memory variables.
+- `LOCATE scope` makes the first record that meets the condition current and prints
+  `Record n`, else `End of LOCATE`. `CONTINUE` looks on from the record after the current
+  one. With no `LOCATE` since the start or the last `USE`, `CONTINUE` prints
+  `No LOCATE active`.
+- `DELETE scope` and `RECALL scope` mark or clear each record and print `n records deleted`
+  or `n records recalled`.
+- `PACK` removes the deleted records, prints `n records left`, and makes record 1 current. A
+  failed `PACK` leaves no table in use.
+- `REPLACE scope field WITH expression, ... scope` sets at most 8 fields, left to right, in
+  each record, and prints `n records replaced`. The scope goes before the fields, after them,
+  or both. An N field takes a number at the field's decimals; a number longer than the field
+  is `Number out of range`. An L field takes a logical. A C or D field takes text, cut to the
+  field's length.
+- `APPEND BLANK` adds a blank record. `APPEND` prints `Record n`, then asks for each field by
+  name. An empty answer to the first field ends `APPEND`, and that record is not added. An
+  empty answer to another field leaves it blank. An N field takes a number expression; an L
+  field `T`, `Y`, `F` or `N`; a C or D field the answer, cut to its length. A wrong answer
+  prints its error, and the field is asked again. The last record added is current.
 
 ### The expressions
 
@@ -239,8 +263,9 @@ shell. The program is asm. It calls the library through `db`.
 - Numbers are MSBASIC's 5-byte float: a 32-bit mantissa, about 9 significant digits. A
   field's text becomes a number through `FIN`, and a number becomes text through `FOUT`.
 
-The float code is a copy of MSBASIC's `src/float.s` in banks 6 and 7, with its own zero page
-for FAC and ARG. The copy leaves out `LOG`, `SQR`, `FPWRT`, `EXP` and the polynomial routines.
+The float code is a copy of MSBASIC's `src/float.s` in ROM bank 5, `src/asm/fp.s`, behind call
+58, `fp`, with its own zero page for FAC and ARG. The copy leaves out `LOG`, `SQR`, `FPWRT`,
+`EXP` and the polynomial routines.
 
 - Trap: `float.s` reaches outside itself. `FIN` reads its text through `CHRGET`, and an
   overflow or a division by 0 jumps to `ERROR`. The copy brings its own of each.
@@ -253,25 +278,15 @@ for FAC and ARG. The copy leaves out `LOG`, `SQR`, `FPWRT`, `EXP` and the polyno
 | 64 memory variables, names and values | 1 RAM bank | 8192 |
 | the command line, the expression stack, the `DO` nesting, 16 deep | program RAM | 2048 |
 
-### Sizes, estimated
+### Sizes
 
-| Part | Bytes |
-|---|---|
-| The dot prompt and the command table | 2000 |
-| The expression evaluator | 5500 |
-| The float code, from MSBASIC's `float.s` | 1820 |
-| Memory variables | 600 |
-| The commands | 7000 |
-| Command files | 1500 |
-| `@ SAY`, `@ GET`, `READ` | 2500 |
-| total | 20920 |
-
-ROM banks 6 and 7 have 32,768 bytes. The program leaves about 11,800 free.
+ROM banks 6 to 8 have 49,152 bytes. Through A4c, bank 6 has 23 bytes free and bank 7 has
+11,793. The program spills from bank 6 to bank 7 by itself.
 
 ## The steps
 
 D1 to D6 are the library and D7 is its UXCBASIC face; A1 to A7 are the program. Each step
-asks before its asm is written.
+asks before its asm is written. D1 to D7, A1 to A3, and A4a to A4c are done.
 
 1. **D1. The reference in Python.** `tools/db.py` writes and reads `.DB` and `.IDX` files
    on the PC: create a table, add records, build an index, dump a file. It checks the files
@@ -295,10 +310,18 @@ asks before its asm is written.
 9. **A2. Expressions.** The evaluator, the float code, the functions, `?`, `STORE`, the memory
    variables.
 10. **A3. Scopes.** `FOR`, `NEXT`, `ALL`, `LOCATE`, `CONTINUE`, `COUNT`, `SUM`, `DISPLAY`.
+    - A3a. The scopes and `FOR`, on `LIST` and `DISPLAY`.
+    - A3b. `COUNT` and `SUM`.
+    - A3c. `LOCATE` and `CONTINUE`.
 11. **A4. Changes.** `CREATE`, `APPEND`, `REPLACE`, `DELETE`, `RECALL`, `PACK`, `EDIT`.
+    - A4a. `DELETE`, `RECALL`, `PACK`.
+    - A4b. `REPLACE`.
+    - A4c. `APPEND BLANK`, and `APPEND` with a prompt for each field.
+    - A4d. `CREATE`, with prompts for the fields.
+    - A4e. `EDIT`, with a prompt for each field of the current record.
 12. **A5. Indexes.** `INDEX ON`, `SET INDEX TO`, `FIND`, `REINDEX`, two work areas.
 13. **A6. Command files.** `DO`, `IF`, `ELSE`, `ENDIF`, `DO WHILE`, `ENDDO`, `RETURN`,
-    `CANCEL`, `ACCEPT`, `INPUT`, `WAIT`.
+    `CANCEL`, `ACCEPT`, `INPUT`, `WAIT`, `MODIFY COMMAND`.
 14. **A7. Screens.** `@ SAY`, `@ GET`, `READ`, `CLEAR`, and a help topic.
 
 ## Limitations
@@ -314,3 +337,10 @@ asks before its asm is written.
 - Whether MSBASIC gets statements for the `db` call.
 - Whether the system file table grows past 8 entries.
 - Whether `DB.COM` has a report command, as dBASE II's `REPORT`.
+
+## To do
+
+- A `COLOR` statement.
+- A second kind of `CONST`, kept like a `.MEM` file, in the memory-variable bank. That bank has
+  about 7K free.
+- Reading and writing the registry, `6502DOS.REG`.

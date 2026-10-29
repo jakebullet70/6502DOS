@@ -432,6 +432,10 @@ The functions:
   "HELLO", and RIGHT$("HELLO", 3) is "LLO". Both are reserved words.
 - STR.name is the same function as name: STR.MID$ is MID$. STR.UXI in the
   6502DOS library binds them in NAMESPACE STR.
+- STR.PADL(s, width) is s with spaces in front, width characters in all, and
+  STR.PADR(s, width) is s with spaces after it: STR.PADL("7", 3) is "  7". A
+  text of width characters or more comes back whole. Width and the length of s
+  are at most 82. Both are in STR.UXI.
 - INSTR(s, find, start) is the position of the first find in s at or after
   position start, a UBYTE. It is 0 when there is none, or when find is empty.
   Without start, the search starts at 1, and 0 is the same as 1.
@@ -2046,8 +2050,8 @@ FUNCTION PACK() AS UWORD
   WRITE_RECORD writes it to the table, and its keys to the open indexes. A
   key already in a unique index gives error 13 and writes nothing.
 - A deleted record stays in the table until PACK. GO and the moves still
-  reach it. DB.DELETED is 1 when the record the last GO or move reached is
-  deleted, else 0.
+  reach it. DB.DELETED is 1 when the current record is deleted, else 0. GO,
+  the moves, DELETE and RECALL set it.
 - GET, PUT, DELETE, RECALL and WRITE_RECORD with no record current give
   error 13.
 - PACK removes the deleted records, builds the open indexes again, and
@@ -2126,6 +2130,64 @@ DB.CLOSE_TABLE()
 
 The loop prints record 2, AMY, then record 1, ZOE.
 
+## The float library
+
+FLOAT.UXI, in lib/, works on numbers in MSBASIC's 5-byte float through the
+6502DOS call fp. Its names are in the namespace FP.
+
+- FLOAT.UXI needs DOS.UXI before it. See [[Including files]].
+- A value is FP.SIZE (5) bytes at an address. DIM a UBYTE array of FP.SIZE
+  and pass its AddrOf. See [[Pointers]].
+- A value holds about 9 significant digits.
+- Each routine sets DOS.ERROR: 0 when it succeeds, else 13 for text that is
+  not a number, an overflow, a division by 0, or a value past a LONG.
+
+```
+FUNCTION FROM_TEXT(TARGET AS UWORD, TEXT AS STRING) AS UBYTE
+FUNCTION TO_TEXT(SOURCE AS UWORD) AS STRING
+FUNCTION FIXED(SOURCE AS UWORD, DECIMALS AS UBYTE) AS STRING
+SUB ADD(TARGET AS UWORD, SOURCE AS UWORD)
+SUB SUBTRACT(TARGET AS UWORD, SOURCE AS UWORD)
+SUB MULTIPLY(TARGET AS UWORD, SOURCE AS UWORD)
+SUB DIVIDE(TARGET AS UWORD, SOURCE AS UWORD)
+FUNCTION COMPARE(FIRST AS UWORD, SECOND AS UWORD) AS BYTE
+SUB FLOOR(TARGET AS UWORD)
+SUB FROM_LONG(TARGET AS UWORD, VALUE AS LONG)
+FUNCTION TO_LONG(SOURCE AS UWORD) AS LONG
+```
+
+- FROM_TEXT reads the number in TEXT, after any spaces, into TARGET. It
+  returns the characters read, with the spaces, and stops at the first
+  character that is not part of the number. Text with no number gives 0 and
+  error 13.
+- TO_TEXT returns the value as text, at most 16 characters: 12.5, -3, 1E+10.
+  A value from 0 to 1 has no 0 before the point: .5.
+- FIXED returns the value with DECIMALS digits after the point, 0 to 9,
+  rounded: 0.67, -3.0, 1235. A value of 2^31 or more after the scaling, or
+  DECIMALS past 9, gives "" and error 13.
+- ADD, SUBTRACT, MULTIPLY and DIVIDE change TARGET: TARGET = TARGET op
+  SOURCE. A division by 0 gives error 13 and leaves TARGET as it was.
+- COMPARE returns -1 when FIRST is less than SECOND, 0 when equal, else 1.
+- FLOOR and TO_LONG round down: -2.5 gives -3. TO_LONG gives 0 and error 13
+  for a value past a LONG.
+- TO_TEXT and FIXED return DOS.CALL_TEXT. Copy the text before the next call
+  that returns it.
+- Trap: FROM_TEXT skips spaces inside a number, so "1 2" reads as 12.
+
+### Example
+
+```
+#INCLUDE "DOS.UXI"
+#INCLUDE "FLOAT.UXI"
+DIM PRICE(FP.SIZE) AS UBYTE, COUNT(FP.SIZE) AS UBYTE
+FP.FROM_TEXT(AddrOf(PRICE), "12.5")
+FP.FROM_LONG(AddrOf(COUNT), 3)
+FP.MULTIPLY(AddrOf(PRICE), AddrOf(COUNT))
+PRINT FP.TO_TEXT(AddrOf(PRICE)); " "; FP.FIXED(AddrOf(PRICE), 2)
+```
+
+This prints 37.5 37.50.
+
 # The compiler
 
 ## Compiling
@@ -2138,8 +2200,8 @@ python pyuxc/pyuxc.py HELLO.UXB -I ../lib
 ```
 
 - -I FOLDER adds an include folder. It may be given more than once. lib/ at the
-  repo root holds BANK.UXI, CONS.UXI, DB.UXI, DOS.UXI, GUI.UXI, HEAP.UXI,
-  INI.UXI, KEYS.UXI, PICKFILE.UXI, STR.UXI and VERA.UXI. See
+  repo root holds BANK.UXI, CONS.UXI, DB.UXI, DOS.UXI, FLOAT.UXI, GUI.UXI,
+  HEAP.UXI, INI.UXI, KEYS.UXI, PICKFILE.UXI, STR.UXI and VERA.UXI. See
   [[Including files]].
 - -o FOLDER is the folder of the PRG. The folder must exist. The default is
   the source's folder.
@@ -2212,7 +2274,8 @@ PRINT TWICE(21)
 
 The libraries in lib/ need these before them:
 
-- BANK.UXI, DB.UXI, HEAP.UXI and INI.UXI: DOS.UXI. See [[The DB library]].
+- BANK.UXI, DB.UXI, FLOAT.UXI, HEAP.UXI and INI.UXI: DOS.UXI. See
+  [[The DB library]], [[The float library]].
 - GUI.UXI: KEYS.UXI and VERA.UXI. See [[The GUI library]].
 - PICKFILE.UXI: KEYS.UXI, DOS.UXI, BANK.UXI, VERA.UXI and GUI.UXI.
 - CONS.UXI, DOS.UXI, KEYS.UXI, STR.UXI and VERA.UXI: none.

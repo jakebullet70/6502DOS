@@ -68,7 +68,9 @@ The UXCBASIC library is the folder `lib/`. Each file holds one namespace of the 
 | `lib/HEAP.UXI` | `HEAP` | the string heap calls and the system descriptors; include it after `DOS.UXI` |
 | `lib/KEYS.UXI` | `KEYS` | the characters and scan codes the console gives for keys, the modifier bits of `con_status`, and `BIND`s of `GETKEY`, `GETEXTKEY`, `WAITKEY` and `KEYMODS`: `KEYS.SCAN_UP`, `KEYS.MOD_CTRL` |
 | `lib/CONS.UXI` | `CONS` | the escape sequences the console obeys, as string constants with plain names (`CONS.CSI$`, `CONS.REVERSE$`, `CONS.RED$`, `CONS.ON_WHITE$`, `CONS.CLEAR_EOL$`); `BIND`s of `PRINT`, `INPUT`, `LINPUT`, `POS`, `NEWLINE` for `PRINT`, and `CLS$` for `CLEAR_SCREEN$`; `CLS`, `LOCATE`, `PRINTAT`, `PRINT_BOOL`, `SCREEN_ROWS`, `SCREEN_COLS` |
-| `lib/STR.UXI` | `STR` | a `BIND` of each string built-in; `INSTR_REV` |
+| `lib/STR.UXI` | `STR` | a `BIND` of each string built-in; `INSTR_REV`, `PADL`, `PADR` |
+| `lib/DB.UXI` | `DB` | tables and indexes through call 57, `db` (`docs/DB.PLAN.md`); include it after `DOS.UXI` |
+| `lib/FLOAT.UXI` | `FP` | MSBASIC's 5-byte float through call 58, `fp`: text, the four operations, compare, floor, LONGs; include it after `DOS.UXI` |
 | `lib/BANK.UXI` | `BANK` | the RAM bank calls: `ALLOC`, `FREE`, `FREE_COUNT`, `USE`, `CURRENT`, `GET_BYTE`, `PUT_BYTE`, `FAR_CALL`; include it after `DOS.UXI` |
 | `lib/INI.UXI` | `INI` | `READ_KEY$` and `WRITE_KEY` of the settings file `C:\6502DOS.INI`, text in `[NAME]` sections of `KEY=VALUE` lines; include it after `DOS.UXI` |
 | `lib/VERA.UXI` | `VERA` | direct reads and writes of the text screen in VERA, and a stack of saved screen boxes in VRAM; it runs from region 3 |
@@ -121,8 +123,10 @@ The UXCBASIC library is the folder `lib/`. Each file holds one namespace of the 
 | `$C000–$FFFF` ROM bank 0 | kernel core and the vectors. `$FFCF` and `$FFD2` jump to `con_in` and `con_out`, and `$FFF6–$FFF9` hold `MIST` (section 10) |
 | `$C000–$FFFF` ROM bank 1 | the FAT32 library, the kernel's file calls on it, and its glue to the SD driver |
 | `$C000–$FFFF` ROM bank 2 | MSBASIC, started by `MSBASIC.COM` |
-| `$C000–$FFFF` ROM banks 3 and 4 | the one UXCBASIC program in `src/bank3`, the shell `ROMSHELL`, started by its `.COM` stub |
-| `$C000–$FFFF` ROM banks 5 and up | not in the image yet |
+| `$C000–$FFFF` ROM banks 3 and 4 | the UXCBASIC program in `src/bank3`, the shell `ROMSHELL`, started by its `.COM` stub |
+| `$C000–$FFFF` ROM bank 5 | the DB library, call 57, and MSBASIC's float, call 58 |
+| `$C000–$FFFF` ROM banks 6 and 7 | the UXCBASIC program in `src/bank6`, `DB`, started by `DB.COM`; bank 8 is kept for its growth |
+| `$C000–$FFFF` ROM banks 8 and up | not in the image yet |
 
 VRAM:
 

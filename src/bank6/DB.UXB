@@ -1,0 +1,604 @@
+' DB.UXB -- DB, the dot prompt over the table library (docs/DB.PLAN.md). Reads a command at
+' the prompt ". " and runs it: USE, CREATE, LIST, DISPLAY, GO or GOTO, SKIP, LOCATE, CONTINUE, DISPLAY
+' STRUCTURE, ?, STORE, name = value, RELEASE, DISPLAY MEMORY, COUNT, SUM, APPEND, APPEND BLANK,
+' EDIT, REPLACE, DELETE, RECALL, PACK, INDEX ON, SET INDEX TO, FIND, REINDEX, SELECT PRIMARY,
+' SELECT SECONDARY and QUIT. A command word may be cut to its first 4 letters, as DISP STRU. LIST,
+' DISPLAY, LOCATE, COUNT, SUM, REPLACE, DELETE and RECALL take a scope: ALL, NEXT n, RECORD n,
+' FOR condition.
+'
+' An expression has numbers, text in " or ', the logicals .T. .F. .Y. .N., fields and memory
+' variables by name. P.name and S.name are a field of the PRIMARY or SECONDARY area's table.
+' A field hides a memory variable of its name. An L field is logical, true
+' for T or Y in either case. A C or D field is text.
+'
+' Runs from ROM banks 6 and 7: tools/build.py puts its code there and DB.COM starts it. Bank 8
+' is kept for its growth.
+#ORG $C000
+#DATA $0801
+#ROMBANKS 6, 7
+#INCLUDE "DOS.UXI"
+#INCLUDE "DB.UXI"
+#INCLUDE "FLOAT.UXI"
+#INCLUDE "STR.UXI"
+
+DIM COMMAND_LINE AS STRING * 128    ' the line typed at the prompt
+DIM REST AS STRING * 128            ' the line after the words read
+DIM TOKEN AS STRING * 43            ' the word NEXT_WORD read, in capitals; a key of 4 fields
+DIM TABLE_NAME AS STRING * 80       ' the path of the table in use
+DIM TABLE AS UBYTE                  ' the table's workspace, 0 for none
+DIM CURRENT AS UWORD                ' the current record; RECORD_COUNT + 1 past the last
+DIM BEFORE_FIRST AS UBYTE           ' 1 after SKIP has stopped at record 1 on its way back
+DIM RUNNING AS UBYTE
+DIM CURSOR AS UBYTE                 ' the character of REST an expression reads, from 1
+DIM FAILED AS UBYTE                 ' 1 once a command has printed an error
+DIM PART_LINE AS UBYTE              ' 1 while ? has printed part of a line
+DIM AREA AS UBYTE                   ' the work area in use: 0 PRIMARY, 1 SECONDARY
+DIM OTHER_NAME AS STRING * 80       ' TABLE_NAME of the other area
+DIM OTHER_TABLE AS UBYTE            ' TABLE of the other area
+DIM OTHER_CURRENT AS UWORD          ' CURRENT of the other area
+DIM OTHER_BEFORE AS UBYTE     ' BEFORE_FIRST of the other area
+
+' Sets TOKEN to the first word of REST, in capitals, and REST to what follows it.
+SUB NEXT_WORD()
+  DIM SPACE AS UBYTE
+  REST = TRIM$(REST)
+  SPACE = INSTR(REST, " ")
+  IF SPACE = 0
+    TOKEN = UCASE$(REST)
+    REST = ""
+  ELSE
+    TOKEN = UCASE$(LEFT$(REST, SPACE - 1))
+    REST = MID$(REST, SPACE + 1)
+  ENDIF
+  REST = TRIM$(REST)
+END SUB
+
+' 1 when TOKEN is FULL, or its first 4 letters or more.
+FUNCT IS(FULL AS STRING) AS UBYTE
+  IF LEN(TOKEN) < 4 AND LEN(TOKEN) < LEN(FULL) THEN RETURN 0
+  RETURN TOKEN = LEFT$(FULL, LEN(TOKEN))
+END FUNCT
+
+' NUMBER in decimal, right-aligned in WIDTH characters.
+FUNCT RIGHT_ALIGN(NUMBER AS UWORD, WIDTH AS UBYTE) AS STRING
+  RETURN STR.PADL(MID$(STR$(NUMBER), 2), WIDTH)
+END FUNCT
+
+' 1 when a table is in use, else prints so and gives 0.
+FUNCT IN_USE() AS UBYTE
+  IF TABLE <> 0 THEN RETURN 1
+  PRINT "No table in use"
+  RETURN 0
+END FUNCT
+
+' 1 when the place past the last record is current, else 0.
+FUNCT PAST_LAST() AS UBYTE
+  RETURN CURRENT > DB.RECORD_COUNT()
+END FUNCT
+
+' Makes RECORD current: a record of the table, or RECORD_COUNT + 1, past the last.
+SUB MOVE_TO(RECORD AS UWORD)
+  CURRENT = RECORD
+  BEFORE_FIRST = 0
+  IF PAST_LAST() = 0 THEN DB.GO(CURRENT)
+END SUB
+
+' Makes current RECORD, the record a move along the order gave, or the place past the last
+' when it is 0.
+SUB REACHED(RECORD AS UWORD)
+  CURRENT = RECORD
+  IF RECORD = 0 THEN CURRENT = DB.RECORD_COUNT() + 1
+  BEFORE_FIRST = 0
+END SUB
+
+' Makes the first record of the order current, or the place past the last when it has none.
+SUB TOP_OF_ORDER()
+  REACHED(DB.FIRST_RECORD())
+END SUB
+
+' Prints "Record n", the current record.
+SUB SHOW_RECORD()
+  PRINT "Record "; MID$(STR$(CURRENT), 2)
+END SUB
+
+' Prints MESSAGE on a line of its own and sets FAILED.
+SUB REPORT_ERROR(MESSAGE AS STRING)
+  IF PART_LINE THEN PRINT
+  PRINT MESSAGE
+  FAILED = 1
+END SUB
+
+' Prints the message of DOS.ERROR as REPORT_ERROR does.
+SUB FILE_ERROR()
+  REPORT_ERROR(DOS.ERRMSG(DOS.ERROR))
+END SUB
+
+' PATH in capitals, with EXTENSION added when it has no extension.
+FUNCT WITH_EXTENSION(PATH AS STRING, EXTENSION AS STRING) AS STRING
+  PATH = UCASE$(PATH)
+  IF INSTR(PATH, ".") = 0 THEN PATH = PATH + EXTENSION
+  RETURN PATH
+END FUNCT
+
+' Closes the table in use, and sets TABLE_NAME to PATH, with .DB added when it has no
+' extension.
+SUB NEW_TABLE(PATH AS STRING)
+  IF TABLE <> 0
+    DB.CLOSE_TABLE()
+    TABLE = 0
+  ENDIF
+  TABLE_NAME = WITH_EXTENSION(PATH, ".DB")
+END SUB
+
+SUB SYNTAX_ERROR()
+  REPORT_ERROR("Syntax error")
+END SUB
+
+SUB RECORD_ERROR()
+  REPORT_ERROR("Record out of range")
+END SUB
+
+' GO n, GOTO n, GO TOP or GO BOTTOM: makes that record current. TOP and BOTTOM are the first
+' and last of the order.
+SUB DO_GO()
+  DIM RECORD AS UWORD
+  IF IN_USE() = 0 THEN RETURN
+  NEXT_WORD()
+  IF IS("TOP")
+    TOP_OF_ORDER()
+  ELSEIF IS("BOTTOM")
+    REACHED(DB.LAST_RECORD())
+  ELSE
+    RECORD = VAL(TOKEN)
+    IF RECORD = 0 OR RECORD > DB.RECORD_COUNT()
+      RECORD_ERROR()
+      RETURN
+    ENDIF
+    MOVE_TO(RECORD)
+  ENDIF
+  SHOW_RECORD()
+END SUB
+
+' SKIP or SKIP n: moves n records along the order, 1 when n is left out, back when n is
+' negative. It stops past the last, or at the first with BEFORE_FIRST set.
+SUB DO_SKIP()
+  DIM STEP_SIZE AS WORD, RECORD AS UWORD
+  IF IN_USE() = 0 THEN RETURN
+  STEP_SIZE = 1
+  IF REST <> "" THEN STEP_SIZE = VAL(REST)
+  BEFORE_FIRST = 0
+  DO WHILE STEP_SIZE > 0 AND PAST_LAST() = 0
+    REACHED(DB.NEXT_RECORD())
+    STEP_SIZE = STEP_SIZE - 1
+  LOOP
+  DO WHILE STEP_SIZE < 0
+    ' Past the last, the place in the order is not the current record's.
+    IF PAST_LAST()
+      RECORD = DB.LAST_RECORD()
+    ELSE
+      RECORD = DB.PREVIOUS_RECORD()
+    ENDIF
+    IF RECORD = 0
+      TOP_OF_ORDER()
+      BEFORE_FIRST = 1
+      EXIT DO
+    ENDIF
+    REACHED(RECORD)
+    STEP_SIZE = STEP_SIZE + 1
+  LOOP
+  SHOW_RECORD()
+END SUB
+
+#INCLUDE "DB_EXPR.UXI"
+#INCLUDE "DB_FUNC.UXI"
+#INCLUDE "DB_MEM.UXI"
+
+' Makes the other work area the one in use: its table, path, current record and BEFORE_FIRST
+' change places with the area's, and DB.WORKSPACE follows.
+' Checklist: a new state of the area gets an OTHER_ copy, swapped here.
+SUB SWAP_AREA()
+  DIM KEPT AS UWORD, KEPT_NAME AS STRING * 80
+  KEPT_NAME = TABLE_NAME
+  TABLE_NAME = OTHER_NAME
+  OTHER_NAME = KEPT_NAME
+  KEPT = TABLE
+  TABLE = OTHER_TABLE
+  OTHER_TABLE = KEPT
+  KEPT = CURRENT
+  CURRENT = OTHER_CURRENT
+  OTHER_CURRENT = KEPT
+  KEPT = BEFORE_FIRST
+  BEFORE_FIRST = OTHER_BEFORE
+  OTHER_BEFORE = KEPT
+  AREA = 1 - AREA
+  DB.WORKSPACE = TABLE
+END SUB
+
+' Reads the name at CURSOR. A name with ( right after it is a function. One with no
+' arguments pushes its value, as READ_FUNCTION. One with arguments goes on the operator stack,
+' CURSOR moves past the (, and the result is 1. Else it pushes the field of the current
+' record: a number for an N field, a logical for an L field, else text. Past the last record
+' a field is blank. A name that is no field pushes the memory variable of that name.
+FUNCT READ_NAME() AS UBYTE
+  DIM START AS UBYTE, FIELD AS UBYTE, COUNT AS UBYTE, TEXT AS STRING * 255, KIND AS ENUM.DB.FIELD_KIND
+  DIM TRUTH AS UBYTE, ROUTINE AS ENUM.BUILT_IN, NAME AS STRING * 11, NUMBER AS UBYTE, OTHER AS UBYTE
+  ' 11 characters, so a longer name matches no field of 10.
+  NAME = NAME_AT()
+  IF CURRENT_CHAR() = 40
+    ROUTINE = FUNCTION_NUMBER(NAME)
+    IF ROUTINE = BUILT_IN.NONE
+      REPORT_ERROR("Unknown function")
+      RETURN 0
+    ENDIF
+    IF ROUTINE < BUILT_IN.TEXT_LENGTH
+      READ_FUNCTION(ROUTINE)
+      RETURN 0
+    ENDIF
+    PUSH_OPERATOR(ROUTINE)
+    IF FAILED THEN RETURN 0
+    CALL_BASE(OPERATOR_COUNT - 1) = VALUE_COUNT
+    CURSOR = CURSOR + 1
+    RETURN 1
+  ENDIF
+  FIELD = 0
+  OTHER = 0
+  IF (NAME = "P" OR NAME = "S") AND CURRENT_CHAR() = 46
+    ' P.name or S.name: a field of that area's table. Else P or S is a name, and . an operator.
+    NUMBER = NAME = "S"
+    START = CURSOR
+    CURSOR = CURSOR + 1
+    TEXT = NAME_AT()
+    IF NUMBER <> AREA
+      SWAP_AREA()
+      OTHER = 1
+    ENDIF
+    IF TABLE <> 0 THEN FIELD = DB.FIELD_NUMBER(TEXT)
+    IF FIELD = 0
+      CURSOR = START
+      IF OTHER THEN SWAP_AREA()
+      OTHER = 0
+    ENDIF
+  ENDIF
+  IF FIELD = 0 AND TABLE <> 0 THEN FIELD = DB.FIELD_NUMBER(NAME)
+  IF FIELD = 0
+    NUMBER = FIND_VARIABLE(LEFT$(NAME, 10))
+    IF NUMBER = VARIABLE_LIMIT
+      REPORT_ERROR("Variable not found")
+    ELSE
+      PUSH_VARIABLE(NUMBER)
+    ENDIF
+    RETURN 0
+  ENDIF
+  TEXT = ""
+  IF PAST_LAST() = 0 THEN TEXT = DB.GET(FIELD)
+  KIND = DB.FIELD_TYPE(FIELD)
+  IF KIND = DB.FIELD_KIND.NUMBER
+    ' An N field is right-aligned, so a blank one ends in a space. It is 0.
+    IF TEXT = "" OR RIGHT$(TEXT, 1) = " " THEN TEXT = "0"
+    ' PUSH_NUMBER moves CURSOR, so it is kept.
+    START = CURSOR
+    PUSH_NUMBER(TEXT)
+    CURSOR = START
+  ELSEIF KIND = DB.FIELD_KIND.LOGICAL
+    ' INSTR gives 0 for "", a blank field past the last record.
+    TRUTH = 0
+    IF INSTR("TtYy", LEFT$(TEXT, 1)) <> 0 THEN TRUTH = 1
+    PUSH_LOGICAL(TRUTH)
+  ELSE
+    IF TEXT = ""
+      FOR COUNT = 1 TO DB.FIELD_LENGTH(FIELD)
+        TEXT = TEXT + " "
+      NEXT
+    ENDIF
+    PUSH_TEXT(TEXT)
+  ENDIF
+  IF OTHER THEN SWAP_AREA()
+  RETURN 0
+END FUNCT
+
+' Reads an expression in REST at CURSOR into value 0 of the value stack: numbers, text,
+' logicals, fields and functions, with brackets and, first to last, a unary minus, * /, + -,
+' the compares = # < > <= >= $, .NOT., .AND., .OR.. Text takes + and the compares; $ is text
+' in text. It stops at the first character that cannot go on the expression. UXCBASIC has no
+' recursion, so the brackets, the function calls and the order of the operators are worked
+' with the two stacks.
+SUB EVALUATE()
+  DIM CODE AS UBYTE, NEW_PRIORITY AS UBYTE, OPERATOR AS UBYTE, LENGTH AS UBYTE
+  DIM DOTTED AS STRING * 20
+  OPERATOR_COUNT = 0
+  VALUE_COUNT = 0
+  TEXT_BUFFER = ""
+  DO
+    ' A value: any number of (, - and .NOT., then a number, a text, a logical, a field or a
+    ' function. A function's arguments add values with no operator between them.
+    IF VALUE_COUNT > STACK_SIZE
+      SYNTAX_ERROR()
+      RETURN
+    ENDIF
+    SKIP_SPACES()
+    CODE = CURRENT_CHAR()
+    IF CODE = 40 OR CODE = 45
+      IF CODE = 45 THEN CODE = OPERATION.NEGATE
+      PUSH_OPERATOR(CODE)
+      IF FAILED THEN RETURN
+      CURSOR = CURSOR + 1
+      CONTINUE
+    ENDIF
+    IF CODE = 46 AND IS_LETTER(CHAR_AT(CURSOR + 1)) <> 0
+      DOTTED = DOT_WORD()
+      CURSOR = CURSOR + LEN(DOTTED) + 2
+      IF DOTTED = "NOT"
+        PUSH_OPERATOR(OPERATION.LOGICAL_NOT)
+        IF FAILED THEN RETURN
+        CONTINUE
+      ENDIF
+      IF DOTTED = "T" OR DOTTED = "Y"
+        PUSH_LOGICAL(1)
+      ELSEIF DOTTED = "F" OR DOTTED = "N"
+        PUSH_LOGICAL(0)
+      ELSE
+        SYNTAX_ERROR()
+      ENDIF
+    ELSEIF CODE = 34 OR CODE = 39
+      READ_TEXT()
+    ELSEIF IS_LETTER(CODE)
+      ' A function with arguments opens like a (.
+      IF READ_NAME() THEN CONTINUE
+    ELSEIF IS_DIGIT(CODE) OR CODE = 46
+      PUSH_NUMBER(MID$(REST, CURSOR))
+    ELSE
+      SYNTAX_ERROR()
+    ENDIF
+    IF FAILED THEN RETURN
+    ' An operator: any number of ), then a binary operator or the end of the expression.
+    DO
+      SKIP_SPACES()
+      CODE = CURRENT_CHAR()
+      IF CODE <> 41 THEN EXIT DO
+      APPLY_TO_BRACKET()
+      IF FAILED THEN RETURN
+      IF OPERATOR_COUNT = 0
+        SYNTAX_ERROR()
+        RETURN
+      ENDIF
+      OPERATOR_COUNT = OPERATOR_COUNT - 1
+      OPERATOR = OPERATOR_STACK(OPERATOR_COUNT)
+      IF OPERATOR <> 40
+        APPLY_FUNCTION(OPERATOR, VALUE_COUNT - CALL_BASE(OPERATOR_COUNT))
+        IF FAILED THEN RETURN
+      ENDIF
+      CURSOR = CURSOR + 1
+    LOOP
+    ' A comma inside a function's brackets ends an argument. Else it ends the expression.
+    IF CODE = 44
+      APPLY_TO_BRACKET()
+      IF FAILED THEN RETURN
+      IF OPERATOR_COUNT > 0 AND OPERATOR_STACK(OPERATOR_COUNT - 1) <> 40
+        CURSOR = CURSOR + 1
+        CONTINUE
+      ENDIF
+    ENDIF
+    ' A character below 32 would read as one of the codes.
+    OPERATOR = CODE
+    IF CODE < 32 THEN OPERATOR = 0
+    LENGTH = 1
+    IF CODE = 60 OR CODE = 62
+      IF CHAR_AT(CURSOR + 1) = 61
+        OPERATOR = OPERATION.GREATER_EQUAL
+        IF CODE = 60 THEN OPERATOR = OPERATION.LESS_EQUAL
+        LENGTH = 2
+      ENDIF
+    ELSEIF CODE = 46
+      DOTTED = DOT_WORD()
+      OPERATOR = 0
+      IF DOTTED = "AND" THEN OPERATOR = OPERATION.LOGICAL_AND
+      IF DOTTED = "OR" THEN OPERATOR = OPERATION.LOGICAL_OR
+      LENGTH = LEN(DOTTED) + 2
+    ENDIF
+    ' A character that is no operator, ( and the end among them, has priority 0.
+    NEW_PRIORITY = PRIORITY(OPERATOR)
+    IF NEW_PRIORITY = 0 THEN EXIT DO
+    DO WHILE OPERATOR_COUNT > 0 AND PRIORITY(OPERATOR_STACK(OPERATOR_COUNT - 1)) >= NEW_PRIORITY
+      APPLY_OPERATOR()
+      IF FAILED THEN RETURN
+    LOOP
+    PUSH_OPERATOR(OPERATOR)
+    IF FAILED THEN RETURN
+    CURSOR = CURSOR + LENGTH
+  LOOP
+  ' The end: apply what is left. A ( or a function call still open is an error.
+  APPLY_TO_BRACKET()
+  IF FAILED THEN RETURN
+  IF OPERATOR_COUNT > 0 THEN SYNTAX_ERROR()
+END SUB
+
+' ? a, b: prints the values with a space between. ? alone prints an empty line.
+SUB DO_PRINT()
+  CURSOR = 1
+  SKIP_SPACES()
+  IF CURRENT_CHAR() = 0
+    PRINT
+    RETURN
+  ENDIF
+  DO
+    EVALUATE()
+    IF FAILED THEN RETURN
+    SHOW_VALUE()
+    PART_LINE = 1
+    SKIP_SPACES()
+    IF CURRENT_CHAR() = 0 THEN EXIT DO
+    IF CURRENT_CHAR() <> 44
+      SYNTAX_ERROR()
+      RETURN
+    ENDIF
+    CURSOR = CURSOR + 1
+    PRINT " ";
+  LOOP
+  PRINT
+  PART_LINE = 0
+END SUB
+
+' STORE expression TO name: puts the value in the memory variable name.
+SUB DO_STORE()
+  CURSOR = 1
+  EVALUATE()
+  IF FAILED THEN RETURN
+  SKIP_SPACES()
+  IF NAME_AT() <> "TO"
+    SYNTAX_ERROR()
+    RETURN
+  ENDIF
+  SKIP_SPACES()
+  ASSIGN(VARIABLE_NAME(), 0)
+END SUB
+
+#INCLUDE "DB_SCOPE.UXI"
+#INCLUDE "DB_CHANGE.UXI"
+#INCLUDE "DB_INDEX.UXI"
+
+' SELECT PRIMARY or SELECT SECONDARY: makes that work area the one in use. Each area keeps its
+' table, its indexes and its current record. A LOCATE ends.
+SUB DO_SELECT()
+  DIM WANTED AS UBYTE
+  NEXT_WORD()
+  WANTED = 2
+  IF IS("PRIMARY") THEN WANTED = 0
+  IF IS("SECONDARY") THEN WANTED = 1
+  IF WANTED = 2 OR REST <> ""
+    SYNTAX_ERROR()
+    RETURN
+  ENDIF
+  IF WANTED <> AREA THEN SWAP_AREA()
+  LOCATE_ACTIVE = 0
+END SUB
+
+' DISPLAY STRUCTURE: prints the table's path, its records and each field, then the record's
+' length, the delete flag included. DISPLAY MEMORY is SHOW_MEMORY, DISPLAY scope DO_LIST.
+SUB DO_DISPLAY()
+  DIM FIELD AS UBYTE, FIELDS AS UBYTE
+  CURSOR = 1
+  TOKEN = NAME_AT()
+  IF IS("MEMORY")
+    SHOW_MEMORY()
+    RETURN
+  ENDIF
+  IF IS("STRUCTURE") = 0
+    DO_LIST(SCOPE_KIND.CURRENT_RECORD)
+    RETURN
+  ENDIF
+  IF IN_USE() = 0 THEN RETURN
+  FIELDS = DB.FIELD_COUNT()
+  PRINT "Table   "; TABLE_NAME
+  PRINT "Records"; RIGHT_ALIGN(DB.RECORD_COUNT(), 6)
+  PRINT "Field Name       Type Length Dec"
+  FOR FIELD = 1 TO FIELDS
+    PRINT RIGHT_ALIGN(FIELD, 5); " "; STR.PADR(DB.FIELD_NAME(FIELD), 10); " ";
+    PRINT CHR$(DB.FIELD_TYPE(FIELD)); "    "; RIGHT_ALIGN(DB.FIELD_LENGTH(FIELD), 6);
+    IF DB.FIELD_TYPE(FIELD) = DB.FIELD_KIND.NUMBER THEN PRINT RIGHT_ALIGN(DB.FIELD_DECIMALS(FIELD), 4);
+    PRINT
+  NEXT
+  PRINT "Total                 "; RIGHT_ALIGN(DB.INFO(0, 8), 6)
+END SUB
+
+' The variables' bank. Without a free bank DB does not run.
+RUNNING = 0
+LOCATE_ACTIVE = 0
+CALLER_BANK = ContentsAt(DB.RAM_BANK)
+VARIABLE_BANK = DB.TAKE_BANK()
+IF VARIABLE_BANK = 0
+  FILE_ERROR()
+ELSE
+  ContentsAt(DB.RAM_BANK) = VARIABLE_BANK
+  CLEAR_VARIABLES()
+  RUNNING = 1
+ENDIF
+DO WHILE RUNNING
+  PRINT ". ";
+  DOS.CON_LINE(COMMAND_LINE)
+  FAILED = 0
+  PART_LINE = 0
+  REST = TRIM$(COMMAND_LINE)
+  // CUT_SPACES()
+  // REST = TRIM$(REST)
+  IF LEFT$(REST, 1) = "?"
+    ' ? needs no space after it, so it is not a word.
+    REST = MID$(REST, 2)
+    TOKEN = "?"
+  ELSE
+    NEXT_WORD()
+  ENDIF
+  IF TOKEN = "?"
+    DO_PRINT()
+  ELSEIF TOKEN = ""
+    ' an empty line
+  ELSEIF IS("USE")
+    DO_USE()
+    LOCATE_ACTIVE = 0
+  ELSEIF IS("INDEX")
+    DO_INDEX()
+  ELSEIF IS("SET")
+    DO_SET()
+  ELSEIF IS("SELECT")
+    DO_SELECT()
+  ELSEIF IS("FIND")
+    DO_FIND()
+  ELSEIF IS("REINDEX")
+    DO_REINDEX()
+  ELSEIF IS("LIST")
+    DO_LIST(SCOPE_KIND.ALL_RECORDS)
+  ELSEIF IS("GOTO") OR TOKEN = "GO"
+    DO_GO()
+  ELSEIF IS("SKIP")
+    DO_SKIP()
+  ELSEIF IS("DISPLAY")
+    DO_DISPLAY()
+  ELSEIF IS("STORE")
+    DO_STORE()
+  ELSEIF IS("RELEASE")
+    DO_RELEASE()
+  ELSEIF IS("LOCATE")
+    DO_LOCATE()
+  ELSEIF IS("CONTINUE")
+    DO_CONTINUE()
+  ELSEIF IS("COUNT")
+    DO_TOTAL(0)
+  ELSEIF IS("SUM")
+    DO_TOTAL(1)
+  ELSEIF IS("CREATE")
+    DO_CREATE()
+    LOCATE_ACTIVE = 0
+  ELSEIF IS("APPEND")
+    DO_APPEND()
+  ELSEIF IS("EDIT")
+    DO_EDIT()
+  ELSEIF IS("REPLACE")
+    DO_REPLACE()
+  ELSEIF IS("DELETE")
+    DO_MARK(1)
+  ELSEIF IS("RECALL")
+    DO_MARK(0)
+  ELSEIF IS("PACK")
+    DO_PACK()
+  ELSEIF IS("QUIT")
+    RUNNING = 0
+  ELSE
+    ' name = expression stores, as STORE does.
+    REST = TRIM$(COMMAND_LINE)
+    CURSOR = 1
+    TOKEN = VARIABLE_NAME()
+    SKIP_SPACES()
+    IF TOKEN <> "" AND CURRENT_CHAR() = 61
+      CURSOR = CURSOR + 1
+      EVALUATE()
+      IF FAILED = 0 THEN ASSIGN(TOKEN, 0)
+    ELSE
+      PRINT "Unknown command"
+    ENDIF
+  ENDIF
+LOOP
+
+// --- is this the end?
+IF TABLE <> 0 THEN DB.CLOSE_TABLE()
+SWAP_AREA()
+IF TABLE <> 0 THEN DB.CLOSE_TABLE()
+ContentsAt(DB.RAM_BANK) = CALLER_BANK

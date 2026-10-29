@@ -501,6 +501,9 @@ DB_FUNCTIONS = [
     (19, "ix_prev", "none",
      ("`r0` the record before the current one, the last when none is current, 0 before the "
       "first<br>`X` the delete flag"), True),
+    (20, "ix_place", "none",
+     "none; the place in the order's index is at the current record, as `ix_next` and "
+     "`ix_prev` take it", True),
 ]
 
 # The functions of call 58, fp: (Y, name, in, out, written). The name becomes FP_NAME in asm.

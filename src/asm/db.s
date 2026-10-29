@@ -136,6 +136,7 @@ db_table:
         .addr ix_last - 1       ; 17 ix_last
         .addr ix_next - 1       ; 18 ix_next
         .addr ix_prev - 1       ; 19 ix_prev
+        .addr ix_place - 1      ; 20 ix_place
         .assert * - db_table = 2 * DB_COUNT, error, "db_table needs a routine for each function"
 
 ; db_create: makes the table at path r0 with the X fields of the field table at r1, 16 bytes a
@@ -1251,7 +1252,7 @@ ix_left:
 ; ix_next: makes the record after the current one in the order current, or the first when none
 ; is. Returns r0 = it and X = its delete flag, or r0 = 0 past the last, where it stays. Changes
 ; r1.
-; Trap: the place in an index is the index's own. db_goto does not move it.
+; Trap: the place in an index is the index's own. db_goto does not move it; ix_place does.
 ix_next:
         jsr db_need
         bcs @done
@@ -1395,6 +1396,20 @@ ix_prev:
         jmp ix_entry
 @start:
         jmp ix_start
+@done:
+        rts
+
+; ix_place: puts the place in the order's index at the current record, for ix_next and ix_prev.
+; Does nothing in the record order. Changes r0 and r1.
+ix_place:
+        jsr db_current
+        bcs @done
+        ldy DB_ORDER
+        bmi @done               ; carry clear
+        jsr ix_make
+        jsr ix_aim
+        bcs @done
+        jmp ix_settle
 @done:
         rts
 

@@ -22,6 +22,7 @@ NAMESPACE DB
   CONST IX_CREATE AS UBYTE = 11, IX_OPEN AS UBYTE = 12, IX_CLOSE AS UBYTE = 13
   CONST IX_ORDER AS UBYTE = 14, IX_FIND AS UBYTE = 15, IX_FIRST AS UBYTE = 16
   CONST IX_LAST AS UBYTE = 17, IX_NEXT AS UBYTE = 18, IX_PREV AS UBYTE = 19
+  CONST IX_PLACE AS UBYTE = 20
   CONST RAM_BANK AS UWORD = $0000
 
   ' ORDER(RECORD_ORDER) walks the records in their order in the file. INDEX_CREATE and
@@ -202,11 +203,13 @@ NAMESPACE DB
     RETURN 0
   END FUNCT
 
-  ' Makes RECORD current. Sets DELETED.
+  ' Makes RECORD current, and the place in the order there, so NEXT_RECORD and
+  ' PREVIOUS_RECORD move from it. Sets DELETED.
   SUB GO(RECORD AS UWORD)
     DOS.R0 = RECORD
     CALL_DB(DB_GOTO)
     DELETED = DOS.REG_X = 42
+    IF DOS.ERROR = 0 THEN CALL_DB(IX_PLACE)
   END SUB
 
   ' The text of field N of the current record, its padding kept.
@@ -241,16 +244,18 @@ NAMESPACE DB
     CALL_DB(DB_WRITE)
   END SUB
 
-  ' Marks the current record deleted. WRITE_RECORD writes the mark.
+  ' Marks the current record deleted, and sets DELETED. WRITE_RECORD writes the mark.
   SUB DELETE()
     DOS.REG_X = 1
     CALL_DB(DB_FLAG)
+    DELETED = 1
   END SUB
 
-  ' Clears the current record's delete mark. WRITE_RECORD writes it.
+  ' Clears the current record's delete mark, and DELETED. WRITE_RECORD writes it.
   SUB RECALL()
     DOS.REG_X = 0
     CALL_DB(DB_FLAG)
+    DELETED = 0
   END SUB
 
   ' Removes the deleted records and rebuilds the open indexes. Returns the records left, with

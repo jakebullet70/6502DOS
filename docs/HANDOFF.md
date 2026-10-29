@@ -6,14 +6,22 @@ Resume here (2026-10-28): DB, item 11, A2c3 done: the compares, `$`, `.AND.`, `.
 `.NOT.` and the logical type in `DB.COM`, test `DBLOGIC` (item 11, A2c3, below). ENUM step done:
 `DB.FIELD_TYPE` returns `ENUM DB.FIELD_KIND`; `DB.COM`'s codes are ENUMs (below). A2c4a
 done: `RECNO()`, `EOF()`, `BOF()`, `DELETED()`, test `DBFUNC` (below). A2c4b done: calls
-with arguments, `LEN()`, `UPPER()` (below). Next: A2c4c, more functions, each small (the
-user: A2a was too long), then A2d, `STORE` and the memory variables, all in RAM. Decided 2026-10-28: `DB.COM` is UXCBASIC, not asm, built in low RAM
-first (the user), then compiled with `#ROMBANKS` into ROM banks 6 and 7 as
-`src/bank3/ROMSHELL.UXB` is; it calls the library through `DB.UXI`. A1's `DB.COM` is 4876
-bytes, about 4.5 KB of code against the 32 KB of the two banks. Owed to the doc batch:
-DB.PLAN's program section (asm to UXCBASIC, built in RAM first, the sizes, the float now in
-bank 5 behind call 58, not in banks 6 and 7), A1 and A2a done, bank 5's size table. Deferred: D6b's savings (proposed, below) and
-the doc batch owed for D2 to D6b. Ask before any asm.
+with arguments, `LEN()`, `UPPER()` (below). A2c4c done: `TRIM()`, `VAL()`, `INT()`
+(below). A2c4d done: `STR()`, `SUBSTR()` (below). A2c4e done: `DATE()`, `FILE()` (below).
+A2d done: `STORE`, `=`, `RELEASE`, `DISPLAY MEMORY`, test `DBMEM` (below). The user tested
+`DB.COM` by hand, 2026-10-29: fine. Size review 1 done: `DB.COM` 16147 to 15368 bytes, 779
+saved. The compares by their opposites (48), `SKIP` in UWORD, not LONG (168), `APPLY_FUNCTION`
+cuts the text argument once and pushes the result (481, a 255-byte local), `$` through `TEXT_OF`
+(82). Tried, worse: the slot loops by address, the blank field by `STR.PADR`. Tests `DBDOT`,
+`DBFUNC`, `DBLOGIC`, `DBEXPR`, `DBMEM` ok. The tool: a scratchpad script that hooks
+`sb_sub`/`sb_endsub` for each SUB's code bytes. Largest now: `APPLY_OPERATOR`, `EVALUATE`,
+`APPLY_FUNCTION`, `ASSIGN`, `READ_NAME`. Decided 2026-10-29 (the user): the program takes ROM
+banks 6 to 8, 48 KB; the ROM has 32 banks. `card/TEST` holds DBDOT's
+`CLUB.DB` and `EMPTY.DB`, so `build/SD.IMG` has them in `C:\TEST` beside `DB.COM`. Build 2311
+ms. The ROM move (2026-10-29, done; asm OK from the user): `src/bas/DB.UXB` moved to `src/bank6/DB.UXB` with `#ORG $C000`, `#DATA $0801`, `#ROMBANKS 6, 7`; `build.py` calls `build_rom_program(6)` after bank 5, and `build/bas/DB.COM` is the 9-byte stub. The ROM is 131072 bytes. Bank 6 15371 bytes (about 900 free); bank 7 holds only `T_FAR`; bank 8 kept for growth, not in the image. No RAM build of DB is left. Build 2488 ms, the new baseline. Tests: `DBDOT` ok 1.2 s, `DBEXPR` 1.2, `DBFUNC` 1.3, `DBLOGIC` 1.2, `DBMEM` 1.5, `DBTEXT` 1.2, `ROM3` 1.3, `SHBOOT` 1.7. Doc batch done (2026-10-29): UXC-HELP topic "The float library" after the DB library, `STR.PADL`/`PADR` under the string functions, `FLOAT.UXI` in the `-I` and include lists (`MKHELP.PY` 0.14 s, 47 topics); PLAN's lib rows for `DB.UXI`, `FLOAT.UXI`, `STR.UXI`'s pads, and the memory map's ROM banks 5, 6 and 7, 8 up; DB.PLAN's bank 5 sizes (db 4318, fp 2258, about 9,700 free), the workspace table from `db.s`'s layout, the `db_create` row's out, the program section (UXCBASIC, banks 6 to 8, the float in bank 5), the program's size, D1 to D7, A1, A2 done. `stub.s`, `bank.s`, `bank.cfg` already name banks 6 and 7: no change. No build, no test. Not committed. A3 is 3 steps: A3a scopes and `FOR` on `LIST` and `DISPLAY`, A3b `COUNT` and `SUM`, A3c `LOCATE` and `CONTINUE`. A3a done (2026-10-29): `READ_SCOPE(EVERY)` reads at most one of `ALL`, `NEXT n`, `RECORD n`, and `FOR condition`, in any order, into `SCOPE_NEXT`, `SCOPE_LAST`, `SCOPE_AFTER`, `CONDITION` (the cursor of the condition in `REST`, evaluated again for each record); `ENUM SCOPE_KIND` `CURRENT_RECORD`, `ALL_RECORDS`, `RANGE`. With no scope, `FOR` means all. `NEXT_IN_SCOPE()` makes the next record that meets the condition current; at the end `SCOPE_AFTER`, or with 0 the last record looked at. `ALL` ends past the last record, `NEXT n` at the last record looked at. `DO_LIST(EVERY)` serves `LIST` and `DISPLAY scope`; `DISPLAY` reads its first word with `NAME_AT`. `DO_GO`, `DO_SKIP` moved below `REPORT_ERROR`; new `RECORD_ERROR` shared by `GO` and `RECORD n`. Savings found on the way, applied: the first `READ_SCOPE` was 681 bytes, now 462 with `NEXT_IN_SCOPE`'s end check (157 in all); `VALUE_STACK(0)` for `ContentsAt(VALUE_AT(0))` in `NEXT_IN_SCOPE` and `SHOW_VALUE` (27). Bank 6 15965 bytes, 300 free (+594); the rest spills to bank 7 by itself. Tool: scratchpad `linecost.py FILE SUB`, the bytes of each line of one routine. Build 2443 ms, the new baseline. New test `DBSCOPE` (golden read by hand) ok 1.1 s; `DBDOT` 1.1, `DBFUNC` 1.2, `DBMEM` 1.3, `DBLOGIC` 1.1, `DBEXPR` 1.1, `DBTEXT` 1.1. Not committed. Docs owed: DB.PLAN step A3 split, UXC none. Decided 2026-10-29 (the user): no full suite until DB in ROM is done. Steps since the full suite: 4. A3b done (2026-10-29): `COUNT scope TO name` and `SUM list scope TO names` in one `DO_TOTAL(SUMMING)`. `SUM` reads each number expression once for its syntax and kind, keeps its start in `SUM_START`, at most `SUM_LIMIT` 8, and adds it up per record in `SUM_VALUES` through `SUM_AT(n)`; it prints `n records summed`, then each sum on a line. `COUNT` prints `n records`. Their scope is every record. `READ_SCOPE` reads from `CURSOR` now (`DO_LIST` sets it 1), and `TO` ends a scope with `TARGET` the character after it; `LIST ... TO` is a syntax error. `ASSIGN(NAME, ENDING)`: the character after the name must be `ENDING`, 0 the line's end or 44 a comma. A wrong `TO` list is found after the sums print. Savings applied: `SUM_AT` (71), exponent 0 for `FP.FROM_LONG(..., 0)` and a split `IF` (45); `DO_TOTAL` 695 bytes. Bank 6 298 free, bank 7 14828 free. Build 2634 ms, the new baseline. New test `DBTOTAL` (golden read by hand) ok 1.2 s; `DBSCOPE` 1.2, `DBMEM` 1.5, `DBDOT` 1.2, `DBFUNC` 1.3, `DBLOGIC` 1.2, `DBEXPR` 1.2, `DBTEXT` 1.2. Not committed. Docs owed: DB.PLAN step A3 split. Split (2026-10-29, the user): `src/bank6/DB_MEM.UXI` holds the memory variables: their globals, `SLOT_AT`, `FIND_VARIABLE`, `CLEAR_VARIABLES`, `DROP_VALUE`, `PUSH_VARIABLE`, `ASSIGN`, `DO_RELEASE`, `SHOW_MEMORY`. `DB.UXB` includes it after `COPY_BYTES` and `SHOW_VALUE` (moved up), before `READ_NAME`. `DO_STORE` stays in `DB.UXB`: it needs `EVALUATE`. An include is `.UXI`: `build.py` wants one `.UXB` in `src/bank6`, and an included file cannot include another. Bank 6 603 free, bank 7 14477 (the longest $FF runs; 46 bytes more in use than before, from the new bank split). Build 4405 ms with the DB compile, 1902 ms with none. `DBMEM` ok 1.6 s, `DBTOTAL` 1.3, `DBEXPR` 1.2. Not committed. Split 2 (2026-10-29, the user): `DB.UXB` 477 lines, then in its order `DB_EXPR.UXI` (the stack globals and `OPERATION`, `VALUE_KIND`; `CHAR_AT` to `PUSH_WHOLE`, `APPLY_TO_BRACKET` to `SHOW_VALUE`), `DB_FUNC.UXI` (`BUILT_IN`; `TWO_DIGITS` to `APPLY_FUNCTION`), `DB_MEM.UXI`, then `READ_NAME`, `EVALUATE`, `DO_PRINT`, `DO_STORE`, then `DB_SCOPE.UXI` (the scope and sum globals, `SCOPE_KIND`; `READ_SCOPE` to `DO_TOTAL`), then `DO_DISPLAY` and the main loop. Bank 6 603 free, bank 7 14477: no change. Build 2640 ms, the new baseline. `DBEXPR` ok 1.2 s, `DBFUNC` 1.4, `DBMEM` 1.4, `DBSCOPE` 1.3, `DBTOTAL` 1.3. Not committed. A3c done (2026-10-29), in `DB_SCOPE.UXI`: `LOCATE scope` makes the scope's first record that meets its `FOR` condition current and prints `Record n`, else `End of LOCATE`; its scope is every record. It keeps `REST`, `CONDITION`, `SCOPE_LAST` and `SCOPE_AFTER` in `LOCATE_LINE` (128 bytes of RAM), `LOCATE_CONDITION`, `LOCATE_LAST`, `LOCATE_AFTER`, and sets `LOCATE_ACTIVE`. `CONTINUE` puts them back and looks on from the record after the current one; with no `LOCATE` since the start or the last `USE` it prints `No LOCATE active`. `USE` in the main loop clears `LOCATE_ACTIVE`. `LOCATE ... TO` is a syntax error. New `READ_PLAIN_SCOPE(EVERY)`, shared by `DO_LIST` and `DO_LOCATE`: the table check, `READ_SCOPE` from character 1, and no `TO`. New `FIND_NEXT` prints the find. Sizes: `DO_CONTINUE` 96, `DO_LOCATE` 63, `READ_PLAIN_SCOPE` 57, `FIND_NEXT` 36. Bank 6 226 free (377 more in use), bank 7 14477. Build 2649 ms, the new baseline. New test `DBLOCATE` (golden read by hand) ok 1.3 s; `DBSCOPE` 1.4, `DBTOTAL` 1.2. Not committed. Docs owed: DB.PLAN step A3 split, `LOCATE` and `CONTINUE`. `sd/Utils/TDCODEMO.TXT` tracked (2026-10-29, the user): staged with `git add`, for the next commit. A4 is 5 steps (the user): A4a `DELETE`, `RECALL`, `PACK`; A4b `REPLACE field WITH value scope`; A4c `APPEND BLANK`, `APPEND` (a prompt for each field); A4d `CREATE` (prompts for the fields); A4e `EDIT` (a prompt for each field of the current record). A4a done (2026-10-29), in new `src/bank6/DB_CHANGE.UXI`, included after `DB_SCOPE.UXI`: `DO_MARK(MARKING)` serves `DELETE scope` and `RECALL scope`, whose scope is the current record; it marks or clears each record of the scope that meets its `FOR` condition, writes it, and prints `n records deleted` or `n records recalled`. `DO_PACK` prints `n records left` and makes record 1 current; a failed `PACK` prints the error, closes the table through `DO_USE` and clears `LOCATE_ACTIVE`. `lib/DB.UXI` `DELETE` and `RECALL` now set `DB.DELETED`. New `FILE_ERROR()` after `REPORT_ERROR` prints `DOS.ERRMSG(DOS.ERROR)` as `REPORT_ERROR` does; it replaces the start-up's `PRINT` too (21 bytes saved). Sizes: `DO_MARK` 173, `DO_PACK` 103, `FILE_ERROR` 39; lib `DELETE` 18, `RECALL` 18, `PACK` 30, `WRITE_RECORD` 8. Bank 6 58 free, bank 7 13953 (692 more in use). Build 2589 ms, the new baseline. New test `DBCHANGE` (golden read by hand) ok 1.4 s; `DBLIB` 1.4, `DBLOCATE` 1.2, `DBSCOPE` 1.3, `DBDOT` 1.2. Not committed. Docs owed: DB.PLAN step A3 split, `LOCATE` and `CONTINUE`, step A4 split, `DELETE`, `RECALL`, `PACK`; UXC-HELP's DB library `DELETE`, `RECALL` set `DELETED`. A4b done (2026-10-29), in `DB_CHANGE.UXI`: `DO_REPLACE` serves `REPLACE scope field WITH expression, ... scope`; the scope goes before the fields, after them, or both, and is the current record. It reads each pair once for its syntax and kind (at most `SUM_LIMIT`, starts in `SUM_START`, fields in `REPLACE_FIELD(8)`), then per record evaluates and `DB.PUT`s each left to right and writes the record; it prints `n records replaced`. An N field takes a number by `FP.FIXED` at the field's decimals, longer than the field is `Number out of range`; an L field a logical, `T` or `F`; a C or D field text, cut to its length. A record that fails part way is read again by `MOVE_TO(CURRENT)`. A name that is no field: `Field not found`. `READ_SCOPE` split: it sets the scope's start and calls new `MORE_SCOPE`, which reads on with the kind in `SCOPE_EVERY`; a word that is no scope word now ends the scope with `CURSOR` at it, in place of a syntax error. New `SCOPE_AT_END` (no `TO`, at the end of `REST`, else syntax error) serves `READ_PLAIN_SCOPE`, `DO_REPLACE` and, with no `TO`, `DO_TOTAL`. New `READ_LISTED(NUMBER, KIND)` reads one list expression for `SUM` and `REPLACE`. Savings applied: `READ_LISTED` (3), one `DB.PUT` for L and N fields (29). Sizes: `DO_REPLACE` 752, `MORE_SCOPE` 499, `READ_LISTED` 104, `SCOPE_AT_END` 40, `READ_SCOPE` 53; lib `PUT` 35, `FP.FIXED` 56, `FIELD_DECIMALS` 35. Subs total 15298 (923 more). Bank 6 94 free, bank 7 12645. Build 2614 ms, the new baseline. Trap: `tests.py --update` runs a fixed time, about 4.6 s; time a test without it. New test `DBREPLACE` (golden read by hand) ok 1.3 s; `DBTOTAL` 1.2, `DBSCOPE` 1.3, `DBLOCATE` 1.2, `DBCHANGE` 1.3, `DBDOT` 1.2. Not committed. Docs owed as after A4a, plus `REPLACE`. A4c done (2026-10-29), in `DB_CHANGE.UXI`: `DO_APPEND` serves `APPEND BLANK` (adds a blank record) and `APPEND`: for each new record it prints `Record n`, then asks for each field by its name, padded to 10, and `: `; it adds the record and goes on until the first field's answer is empty, and that record is not added. An empty answer to another field leaves it blank. A C or D field takes the answer as text, cut to its length; an N field a number expression (`READ_LISTED`, then `SCOPE_AT_END` with `TARGET` 0); an L field `T`, `Y`, `F` or `N` in either case, else `Type mismatch`. A wrong answer prints its error and asks the field again. The last record added is current; with none, the record current before. `APPEND word` is a syntax error. New `PUT_VALUE(FIELD)` puts value 0 of the value stack in a field, out of `DO_REPLACE`; `DO_APPEND` pushes text and logicals with `PUSH_TEXT` and `PUSH_LOGICAL` to share it. Savings applied: `SHOW_RECORD` for the record line, the value stack and `PUT_VALUE` for text and logicals, `READ_LISTED` for numbers (121; `DO_APPEND` 701 to 580). Sizes: `DO_APPEND` 580, `PUT_VALUE` 249, `DO_REPLACE` 513. Subs total 15923 (625 more). Bank 6 23 free, bank 7 11793. Tool: scratchpad `linecost2.py MAIN INCLUDE SUB`, `linecost.py` for a routine in an include. Build 2688 ms, the new baseline. New test `DBAPPEND` (golden read by hand) ok 1.3 s; `DBREPLACE` 1.3, `DBCHANGE` 1.4, `DBDOT` 1.2. Not committed. Docs owed as after A4b, plus `APPEND`. Steps since the full suite: 11 (no suite until A3 to A7 are done). Doc batch done (2026-10-29): DB.PLAN's commands section gets the scope rules and what `COUNT`, `SUM`, `LOCATE`, `CONTINUE`, `DELETE`, `RECALL`, `PACK`, `REPLACE`, `APPEND` do; the sizes through A4c; the A3 and A4 splits; A1 to A3, A4a to A4c done. UXC-HELP: GO, the moves, `DELETE` and `RECALL` set `DB.DELETED` (`MKHELP.PY` 0.16 s, 47 topics). No docs owed. A4d done (2026-10-29), in `DB_CHANGE.UXI`: `DO_CREATE` serves `CREATE path` (no path: syntax error). It prints `Name,type,length,decimals`, then asks `Field  n: ` for each field, one a line, as `NAME,C,20`, `BAL,N,8,2`, `MEMBER,L`, `JOINED,D`, spaces allowed, either case. A name is 1 to 10 letters, digits and `_`, from a letter; the type C, N, L or D; C a length of 1 to 255; N 1 to 10, then decimals, 0 when left out, at most the length less 2; L length 1, D 8. A wrong line gives `Syntax error`, `Number out of range` or `Duplicate field` and is asked again. An empty line ends the fields, at most 32; with none, no table is made and the table in use stays. Else the table in use closes and the new one, with `.DB` added when the path has no extension, is in use with no records; a file of that path is emptied. A failed create (a record past 1000 bytes gives `Invalid data`) leaves no table in use. `LOCATE_ACTIVE` is cleared. New: `NEW_TABLE` (closes the table in use, sets `TABLE_NAME`), shared by `DO_USE` and `DO_CREATE`; `DO_USE` moved after `FILE_ERROR` and uses it; `AFTER_COMMA`; `READ_FIELD(ENTRY)` writes the 16-byte entry of `FIELD_TABLE(512)` (512 bytes of RAM) itself, in `DB.DEFINE`'s layout, then checks the name against the earlier entries. Savings applied: the entry written in place of `DB.DEFINE` (317 plus the 81-byte call), `ENTRY` passed in place of the field number, `DB.FIELD_KIND` with `AND $DF` in place of `UCASE$`, `INSTR` and `MID$` (244 in all). Sizes: `READ_FIELD` 814, `DO_CREATE` 304, `NEW_TABLE` 70, `DO_USE` 57, `AFTER_COMMA` 31. Subs total 17124 (1201 more). Bank 6 54 free, bank 7 10313. Build 2699 ms, the new baseline. Trap: `tests.py` finds a test only by its `.OUT`; make an empty one before the first `--update`. New test `DBCREATE` (golden read by hand) ok 1.1 s; `DBAPPEND` 1.1, `DBCHANGE` 1.2, `DBDOT` 1.0. Not committed. Docs owed: DB.PLAN's `CREATE`, the sizes, A4d done. Steps since the full suite: 12. Next: A4e. A4e done (2026-10-29), in `DB_CHANGE.UXI`: `DO_EDIT` serves `EDIT` on the current record (`EDIT word`: syntax error; past the last record or no records: `Record out of range`). It prints `Record n`, then for each field its name, padded to 10, `: `, the field's text as `DB.GET` gives it, and ` ? `; an empty answer keeps the value, else the answer is read as `APPEND` reads it. Then it writes the record. APPEND's field loop moved out to new `ASK_FIELDS(EDITING)`, shared by both; EDITING 0 shows no value and an empty first answer gives 0. Sizes: `ASK_FIELDS` 454, `DO_APPEND` 189, `DO_EDIT` 83. Subs total 17270 (146 more). Bank 6 1 free, bank 7 10159. Build 2705 ms, the new baseline. New test `DBEDIT` (golden read by hand) ok 0.8 s; `DBAPPEND` 0.8, `DBDOT` 0.8. Not committed. Decided (the user): `MODIFY COMMAND name` goes in A6; it runs the editor of `EDITOR$`, else `EDIT.COM`, on name with `.PRG` added, and returns to the dot prompt with the table still in use. Not yet checked: whether DB.COM can run a program and go on after it. DB.PLAN's A6 line already names it. Docs owed: DB.PLAN's `CREATE`, `EDIT`, the sizes, A4 done. Steps since the full suite: 13. Next: A5. A5 is 4 steps (the user, 2026-10-29): A5a `INDEX ON`, `SET INDEX TO`, `USE path INDEX names`; A5b the moves follow the order (`GO TOP`, `GO BOTTOM`, `SKIP`, the scopes' walk); A5c `FIND`, `REINDEX` (in UXCBASIC: the path at `$B100` and the key fields in the slot's copy of page 0 at `$AA20`, no asm); A5d `SELECT PRIMARY`, `SELECT SECONDARY`, two work areas, and `P.name`, `S.name` for a field of the other area. A5a done (2026-10-29), in new `src/bank6/DB_INDEX.UXI`, included after `DB_CHANGE.UXI`: `INDEX ON key TO name [UNIQUE]` (key: 1 to 4 field names joined by `+`, spaces allowed) closes the open indexes, builds name with `.IDX` added, prints `n records indexed`; the new index is the only one open and the order. `SET INDEX TO a, b, c` closes the open indexes and opens the names, the first the order; `SET INDEX TO` alone leaves the record order. `USE path INDEX a, b` the same after the open; `USE path word` is a syntax error and leaves no table in use. Each makes the first record of the order current (`TOP_OF_ORDER`). A bad key field or a key not unique: `Invalid data`; the indexes stay closed. New: `WITH_EXTENSION(PATH, EXTENSION)`; `NEW_TABLE(PATH)` takes the path; `DO_USE` moved to `DB_INDEX.UXI`; `CLOSE_INDEXES` closes slots 0 to 2 and ignores error 6; `OPEN_INDEXES` relies on the slots filling from 0. `TOKEN` is 43 characters, a key of 4 fields. Savings applied: the index name passed straight to `DB.INDEX_OPEN` (10 bytes, 80 of RAM). Sizes: `DO_INDEX` 427, `OPEN_INDEXES` 222, `DO_USE` 205, `WITH_EXTENSION` 112, `DO_SET` 79, `NEW_TABLE` 69, `TOP_OF_ORDER` 49, `CLOSE_INDEXES` 26; lib `INDEX_CREATE` 350, `INDEX_OPEN` 46. Subs total 18820 (1550 more). Bank 6 44 free, bank 7 8225. Build 2809 ms, the new baseline. Trap: a test name that is taken overwrites its `.IN` and `.OUT`; check `ls tests/NAME.*` first. The DB.COM index test is `DBIXDOT`; `DBINDEX` is the lib's asm test (its `.IN` was overwritten and rebuilt from an old transcript, its golden written again and matched to that transcript's dumps). New test `DBIXDOT` (golden read by hand) ok 1.0 s; `DBINDEX` 1.2, `DBDOT` 0.8, `DBCREATE` 0.8. Not committed. Docs owed: DB.PLAN's `CREATE`, `EDIT`, the sizes, A4 done, the A5 split, `INDEX ON`, `SET INDEX TO`, `USE ... INDEX`. Steps since the full suite: 14. Next: A5b. A5b done (2026-10-29; asm OK from the user): the moves follow the order. New lib call 20 `ix_place` (`db.s`, 22 bytes and 2 in the table; `api.py` row): puts the place in the order's index at the current record, nothing in the record order. Lib `DB.GO` calls it after a good goto, so `NEXT_RECORD` and `PREVIOUS_RECORD` move from a record reached by number. New in `DB.UXB`: `PAST_LAST()`, `REACHED(RECORD)` (the record a move gave, 0 for past the last), `TOP_OF_ORDER` (moved from `DB_INDEX.UXI`). `GO TOP` and `GO BOTTOM` are the order's first and last; `GO n` stays by number. `SKIP n` steps `NEXT_RECORD` or `PREVIOUS_RECORD` n times in either order (one read a record; was one read in all), `LAST_RECORD` first when past the last; before the first it makes the first current and sets `BEFORE_FIRST`. The scope walk: `SCOPE_START` (0 the first of the order), `SCOPE_LEFT`, `SCOPE_BEGUN` replace `SCOPE_NEXT`, `SCOPE_LAST`, `SCOPE_AFTER`; `LOCATE_LEFT` replaces `LOCATE_LAST` and `LOCATE_AFTER`, kept by `FIND_NEXT`. Changed: `NEXT n` that runs off the end leaves the place past the last (`DBSCOPE`'s golden: `RECNO()` 5, was 4). `PACK` makes the first of the order current. Savings applied: `PAST_LAST` for 8 tests (111). Sizes: `MORE_SCOPE` 435, `DO_SKIP` 269, `NEXT_IN_SCOPE` 213, `DO_GO` 172, `REACHED` 52, `PAST_LAST` 28. Subs total 18695 (125 less). Bank 6 1032 free, bank 7 7248. Build 3182 ms with the asm, 2833 ms without, the new baseline. `DBIXDOT` gets the moves in name order, `LIST NEXT`, `LOCATE` and `CONTINUE`, `COUNT NEXT`, `PACK` (golden read by hand). `DB`'s golden holds the echoed `DB_COUNT` byte (21). Tests: `DBIXDOT` ok 1.4 s, `DBDOT` 1.1, `DBSCOPE` 1.1, `DBLOCATE` 1.1, `DBTOTAL` 1.2, `DBCHANGE` 1.4, `DBREPLACE` 1.2, `DBPACK` 1.4, `DBAPPEND` 1.1, `DBEDIT` 1.1, `DBFUNC` 1.2, `DBEXPR` 1.1, `DBCREATE` 1.1, `DBINDEX` 1.5, `DBIXEDIT` 4.2 (as before), `DB` 1.1. Not committed. Docs owed: as after A5a, plus the moves in the order, `ix_place` in DB.PLAN's table. Steps since the full suite: 15. Next: A5c. A5c done (2026-10-29), in `DB_INDEX.UXI`, no asm: `FIND key` makes current the first record of the order whose key starts with key (the rest of the line, matching `"` or `'` quotes taken off), silent; else `No find` and the place past the last. In the record order, or a key longer than the index's: `Invalid data`. `FIND` alone: syntax error. `REINDEX` closes each open slot in turn and calls `ix_create` with r0 = the slot's path in `IX_NAMES` ($B100), r1 = its key fields in `IX_SLOTS` ($AA20 + 11), X = its flags (read from the workspace bank); prints `n records indexed` for each; then slot 0 is the order and its first record current. A failed build prints its error and closes the indexes. Trap: `CONST IX_SLOTS`, `IX_NAMES` in `DB_INDEX.UXI` must match `db.s`. Savings applied: the quote test by `ContentsAt`, the slot's address once (126). Sizes: `DO_FIND` 229, `DO_REINDEX` 291. Subs total 19245 (550 more). Bank 6 891 free, bank 7 6712. Build 2808 ms, the new baseline. `DBIXDOT` gets `FIND` and `REINDEX` (golden read by hand) ok 1.3 s; no other test run. Not committed. Docs owed: as after A5b, plus `FIND`, `REINDEX`; DB.PLAN's To do: `COLOR`, a second kind of `CONST` like a `.MEM` file. Steps since the full suite: 16. Next: A5d. A5d done (2026-10-29), no asm: two work areas. `SELECT PRIMARY` and `SELECT SECONDARY` (4-letter cuts; another word or more after it: syntax error) make that area the one in use; each keeps its table, indexes, current record and `BEFORE_FIRST`; a `LOCATE` ends. New `AREA` (0 PRIMARY, 1 SECONDARY) and the other area's `OTHER_NAME`, `OTHER_TABLE`, `OTHER_CURRENT`, `OTHER_BEFORE` (a name past 16 characters, `OTHER_BEFORE_FIRST`, is `NAME TOO LONG`). `SWAP_AREA` swaps them with `TABLE_NAME`, `TABLE`, `CURRENT`, `BEFORE_FIRST` and sets `DB.WORKSPACE` to `TABLE`; checklist comment on it. `READ_NAME`: `P.name` or `S.name` is a field of that area's table, read through `SWAP_AREA` and back; when that area has no table or no such field, `P` or `S` is a name as before and `.` an operator, so `P.AND..T.` works with a variable `P`. `QUIT` closes both tables. Savings applied: the path swapped by string assigns through a local `KEPT_NAME` (80 bytes of RAM) in place of a byte-swap routine, the small ones swapped inline (116). Sizes: `SWAP_AREA` 146, `DO_SELECT` 119. Subs total 19757 (512 more). Bank 6 399 free, bank 7 6585. Build 2875 ms, the new baseline. New test `DBAREA` (golden read by hand) ok 0.9 s; no other test run. Not committed. Docs owed: as after A5c, plus `SELECT`, `P.name`, `S.name`, A5 done. Steps since the full suite: 17. Next: A6, or the overdue doc batch. Full suite done after A2d (the step count, below). Decided 2026-10-28: `DB.COM` is UXCBASIC, not asm, built in low RAM
+first (the user), then compiled with `#ROMBANKS` into ROM banks 6 to 8 as
+`src/bank3/ROMSHELL.UXB` is; it calls the library through `DB.UXI`. Deferred: D6b's savings
+(proposed, below). Ask before any asm.
 
 UXCBASIC built-ins `TRIM$`, `LTRIM$`, `RTRIM$` (2026-10-28), done, committed in b380b7b. Only the
 space, `$20`, is trimmed; of a literal the compiler folds a literal.
@@ -82,7 +90,7 @@ marked done:
 
 The DB decisions of 2026-10-28 are in `docs/DB.PLAN.md`: MSBASIC's float in DB.COM, trimmed of
 `LOG`, `SQR`, `FPWRT`, `EXP` and the polynomials, `N` fields of 1 to 10 characters, and the `N`
-rewrite in the key. `docs/DB.PLAN.md`, `tools/db.py` and the D2 to D4 work are not committed.
+rewrite in the key. The DB work through A2c4b is committed in f16cde7.
 
 The sprite, VRAM and graphics plan is not complete. It is under Next, at "sprite commands in
 namespace VERA". No asm is written for it. Each question waits on the user.
@@ -281,7 +289,7 @@ the beta 1 list).
       `font-8x16`, whose HANDOFF has the details. `main` stays 8x8 at 640x240. Build after the
       revert 6988 ms (4 programs recompiled for `VERA.UXI`, and the ROM), the new baseline.
       `VERABOX` ok 1.0 s, `GUISHADOW` ok 0.9 s.
-11. DB (2026-10-28): `docs/DB.PLAN.md`, not committed. The user takes it; the next session
+11. DB (2026-10-28): `docs/DB.PLAN.md`, committed in f16cde7 with the work through A2c4b. The user takes it; the next session
     starts its step D1, `tools/db.py`, the Python reference (no asm). A table
     and index library in ROM bank 5 behind one call, `db` 57 at `$03EB`, and `DB.COM`, a dot
     prompt in ROM banks 6 and 7, after dBASE II's design. The files are 6502DOS's own; no
@@ -316,8 +324,6 @@ the beta 1 list).
         (`api_table`), RAM +3 (call entry). Estimate was 200 for the entry, table and IRQ.
       - Build 14050 ms, every program recompiled (`DOS.UXI` gained `API_DB`), the new
         baseline. Tests: new `DB` (`tests/DB.S`) ok 1.3 s, `FAR` ok 1.2 s.
-      - Docs owed in the next batch: PLAN's memory map row for ROM bank 5, DB.PLAN's step D2
-        done.
     - D3 (2026-10-28): `db_open`, `db_close`, `db_goto`, `db_get` written in `db.s`.
       Workspace state: `DB_HANDLE` $A000, `DB_CURRENT` $A001 (0 none), `DB_WANT` $A003;
       header $A020; the current record `DB_RECORD` = $A231. `db_ptr`, 2 bytes of KERNELZP
@@ -337,7 +343,6 @@ the beta 1 list).
         (`DBREAD.S`, `.IN`, `.PY`: `db.make` tables, `WIDE.DB` of 1000-byte records so record
         100 starts past 64 KB, `NOTDB.DB`) ok 1.2 s; `DB` ok 1.2 s. Golden checked by hand
         against `tools/db.py dump`.
-      - Docs owed: DB.PLAN step D3 done.
     - D4 (2026-10-28): `db_create`, `db_put`, `db_append`, `db_write`, `db_flag` written in
       `db.s`. `db_pack` moved to its own step, D4b (the user, 2026-10-28): it needs the path
       in the workspace (256 bytes), a temporary file, delete and rename, and 2 handles; no
@@ -373,8 +378,6 @@ the beta 1 list).
         faults fail the test. `DBWRITE.PY`'s check pulls `NEW.DB` off the card with
         `mksd.read`, runs `db.read_table`, and compares the file with `db.py`'s bytes for the
         same table, the date left out; no other `.DB` file may exist.
-      - Docs owed: DB.PLAN steps D2 to D4 done, D4b for pack, and the create row's out (the
-        table is open). The hook is documented in `tools/tests.py`'s docstring only.
     - D4b (2026-10-28, "go asm"): `db_pack` written in `db.s`.
       - `create` and `open` copy the path to `DB_PATH` ($BE00, 256 bytes) with `db_keep`.
         `pack` builds `DB_TEMP` ($BF00): the path with its last character `$`, or `&` for a
@@ -403,7 +406,6 @@ the beta 1 list).
         ok 1.4 s, `DBREAD` ok 1.3 s.
       - Saving to propose: r0 = `DB_HEADER` is set inline 4 times (create, open, `db_header`,
         pack), and r0 r1 = the header and its length twice (create, pack).
-      - Docs owed: DB.PLAN step D4b done, the workspace's path rows; with D2 to D4's.
     - D5 (2026-10-28, "go d5 asm"): reading an index, done in `db.s`.
       - Workspace: `DB_ORDER` $A006 (a slot's offset, 0, 32 or 64, or $FF for the record
         order), `DB_SPOT` $A007 ($80 past the last, $40 before the first), `IX_TOP` $A008 (the
@@ -439,7 +441,6 @@ the beta 1 list).
       - `api.py`: functions 12 to 19 written, with their outs; call 57's text has the index
         errors. `API.md` regenerated.
       - Saving to propose: `ix_prev`'s pop loop and `ix_up` are alike.
-      - Docs owed: DB.PLAN D5 done; the workspace rows; with the earlier steps.
     - D6 is split in two (the user, 2026-10-28, "go"): D6a, `ix_create` and the insert with its
       split; D6b, the delete, `db_write`'s update of the open indexes, and `db_pack`'s rebuild.
     - D6a (2026-10-28): done in `db.s`.
@@ -473,7 +474,6 @@ the beta 1 list).
         `API.md` regenerated.
       - Speed: each insert reads the pages of the path and writes one; DBIXMAKE's 200
         inserts take most of its 3.7 s. BIG (600 records, 5 levels) was left out of the test.
-      - Docs owed: DB.PLAN D6a done; the workspace rows.
     - D6a savings (2026-10-28):
       - `ix_split` zeroes the left page with `sta abs,y` per half: about 24 to 10 cycles a
         byte, +4 bytes. Kept.
@@ -531,7 +531,6 @@ the beta 1 list).
         regenerated.
       - Savings to propose: `IX_ITEM - 2` set in `ix_key` 4 times and in `db_ptr` 3 times (8
         bytes each); the old-key make twice in `ix_update`; the slot loop's step 3 times.
-      - Docs owed: DB.PLAN D6 done, the workspace rows (`DB_OLD`, `IX_NAMES`), the sizes.
     - D7 (2026-10-28), done: `lib/DB.UXI`, namespace `DB`, include `DOS.UXI` first.
       - A table's workspace is its RAM bank: `OPEN_TABLE(PATH)` and `CREATE(PATH, TABLE,
         COUNT)` take a bank with `bank_alloc` and return it, 0 on an error (the bank freed,
@@ -566,7 +565,6 @@ the beta 1 list).
       - Help: UXC-HELP topic "The DB library" (Tables, Fields, Records, Indexes, Example),
         after "The GUI library"; `DB.UXI` in the `-I` lib list and the include list. Its
         example compiles (2868 bytes); not run. `MKHELP.PY` 0.15 s, 46 topics.
-      - Owed to the doc batch: PLAN.md's lib table row, DB.PLAN D7 done.
       - Harmless `-wuninit` reads: `ix_byte` compares with `IX_ITEM` before it is written;
         `IX_DIFF` is counted in `ix_build`; bank 0 code at `$C870` reads RAM bank 0 `$A809`.
       - A stray folder `C:\c\Users\...\scratchpad\dbm` was made by a wrong path; the removal
@@ -643,8 +641,6 @@ the beta 1 list).
       used cost about 970 bytes with their calls. No ROM change, no build.
       - Test `FPLIB` (new): `tests/FPLIB.UXB`, every routine and its errors. Golden read by
         hand. ok 0.8 s.
-      - Owed to the doc batch: a help topic for `FLOAT.UXI`, PLAN.md's lib table rows for
-        `DB.UXI` and `FLOAT.UXI`.
     - A2c is split: A2c1 numbers and `?`; A2c2 text, fields and `?` lists; A2c3 the compares,
       `$`, `.AND.`, `.OR.`, `.NOT.`; A2c4 the functions.
     - A2c1 (2026-10-28), done: `DB.UXB` includes `FLOAT.UXI`. `EVAL_NUMBER` is CMDSHELL's,
@@ -746,6 +742,107 @@ the beta 1 list).
     - With **Shorter string calls** (commit b380b7b), `DB.COM` is 11342 bytes, 538 fewer.
       `REST = TRIM$(REST)` is 9 bytes, from 31. `TOKEN = UCASE$(LEFT$(REST, SPACE - 1))` is
       32 bytes, from 61. Build 1777 ms, the new baseline. `DBTEXT` ok 1.3 s.
+    - Committed in f16cde7 (2026-10-28), the DB work through A2c4b.
+    - A2c4c (2026-10-29), done: `TRIM(text)` drops the trailing spaces; `VAL(text)` is the
+      number the text starts with, after any spaces, else 0 (an overflow too); `INT(number)`
+      cuts toward 0. `ENUM BUILT_IN` gains `TRIM_END`, `TEXT_VALUE`, `WHOLE_PART`.
+      `APPLY_FUNCTION` checks the argument's kind once (`INT` a number, the rest text). New
+      `FLIP_SIGN(value)`, shared with the unary minus. `INT` of a negative flips the sign,
+      runs `FP.FLOOR`, and flips it back. `TRIM` cuts only the top text, so `"a " + TRIM("  ")`
+      keeps the space of `"a "`. `VAL` passes the `MID$` to `FP.FROM_TEXT` (FIN stops at the
+      length byte).
+      - `DB.COM` 11862 bytes, 520 more. The first form was 11991: `INT` 283, `TRIM` 158,
+        `VAL` 155; one kind check, `FLIP_SIGN` and `RTRIM$` saved 129. Build 2162 ms, the new
+        baseline.
+      - `DBFUNC.IN` adds 7 lines: `TRIM`, `VAL`, `INT`, an all-space `TRIM` after a text, and a
+        wrong kind for each. Golden read by hand. `DBFUNC` ok 1.3 s (`--update` 4.5 s),
+        `DBEXPR` ok 1.3 s.
+      - `REPORT_DOS` had one caller; its `PRINT` moved into `DO_USE`. `DB.COM` 11855 bytes,
+        7 fewer. Build 2274 ms, the new baseline. `DBDOT` ok 1.3 s.
+      - `UXCBASIC.PLAN.md` gains **Cheaper `SUB` calls**: tail-call `JMP`, inline a one-caller
+        `SUB`, `INLINE SUB`. Not built.
+      - `lib/STR.UXI` gains `STR.PADL(TEXT$, WIDTH)` and `STR.PADR(TEXT$, WIDTH)`, in BASIC
+        through a shared `PAD_SPACES` (at most 80 spaces; a longer text comes back whole). The
+        user will replace them with `ASM` later; a library `FUNCTION` keeps the templates and
+        the full suite out of it. `DB.UXB` includes `STR.UXI`: `RIGHT_ALIGN` is
+        `STR.PADL(MID$(STR$(NUMBER), 2), WIDTH)`, and the structure list pads the field name
+        with `STR.PADR`. `DB.COM` 12101 bytes, 246 more. Build 2247 ms, the new baseline.
+        `DBDOT` ok 1.3 s, `DBTEXT` ok 1.2 s.
+      - The 246 bytes, from compiles of DB variants: the bodies of `PAD_SPACES`, `PADL` and
+        `PADR` are 262 bytes, and the call sites are 16 bytes shorter. `PADL` alone costs 191
+        bytes, and `PADR` adds 55. Each wrapper is about 57 bytes, and `PAD_SPACES` about 148.
+        The `ASM` rewrite targets the bodies.
+      - `PAD_SPACES` is an `ASM` block now: BASIC reads `LEN(TEXT$)`, and the block works out
+        the count, at most 80, and fills `SPACES$`. `DB.COM` 12019 bytes, 82 fewer;
+        `PAD_SPACES` is about 66 bytes. Build 2283 ms, the new baseline. `DBDOT` ok 1.3 s,
+        `DBTEXT` ok 1.2 s, `STRLIB` ok 1.2 s. No test covers a text past `WIDTH` or a pad past
+        80.
+      - `PAD_SPACES` is gone. `PADL` and `PADR` each copy `TEXT$` into a local `RESULT$ * 255`
+        and pad it in place with an `ASM` block: `PADR` appends spaces up to `WIDTH`, and `PADL`
+        moves the characters up from the last one down, then fills the front. The 80-space cap
+        is gone. `DB.COM` 11956 bytes, 63 fewer, 101 over the code before `PADL`. A scratch
+        test, deleted after, checked width 0, an empty text, a text of `WIDTH` or more, and
+        widths 200 and 255: all right, 1.2 s. `DBDOT`, `DBTEXT`, `STRLIB` ok 1.2 s.
+      - `RESULT$` is `* 82`: `WIDTH` and the length of `TEXT$` are at most 82, stated in the
+        contract with no clamp (the user: no clamps in 8-bit code). RAM: two 84-byte locals.
+        `DB.COM` 11956 bytes, the same. Build 2265 ms, the new baseline. `DBDOT` ok 1.3 s,
+        `DBTEXT` ok 1.3 s.
+    - A2c4d (2026-10-29), done: `STR(number[, length[, decimals]])`, 10 and 0 when left out,
+      is `STR.PADL(FP.FIXED(...))`; a longer result comes back whole, not as dBase's stars.
+      `SUBSTR(text, start[, count])` works in place on the top text, as `TRIM`; a start past
+      the end gives "". `ENUM BUILT_IN` gains `NUMBER_TEXT`, `PART_TEXT`; from `NUMBER_TEXT`
+      on a call takes up to 3 arguments, `SUBSTR` at least 2. New `SMALL_WHOLE(slot)` reads a
+      number argument 0 to 255 by the float's exponent and sign bytes, then `FP.TO_LONG`. A
+      length past 82 (`PADL`'s limit), decimals past 9, a start of 0, a value past a LONG
+      for `FIXED`: `Number out of range`, from new `OUT_OF_RANGE()`, which all 6 such
+      reports now call.
+      - `DB.COM` 12788 bytes, 832 more. The first form was 13006: the `STR` branch 392
+        (`FIXED` 109), `SUBSTR` 248. `OUT_OF_RANGE` and the byte range check saved 199, one
+        first-slot sum 19. Build 2194 ms, the new baseline.
+      - `DBFUNC.IN` adds 10 lines: the defaults, 2 decimals, a too-narrow length, rounding,
+        `SUBSTR` with and without a count, past the end, nested, count 0, and 6 errors. Golden
+        read by hand. `DBFUNC` ok 1.3 s (`--update` 4.5 s), `DBEXPR` ok 1.3 s.
+    - A2c4e (2026-10-29), done: `DATE()` is the RTC's date as text, `MM/DD/YY`; there is no
+      date type yet. It is a no-argument function, as `RECNO()`, through `DOS.GETDATE` and new
+      `TWO_DIGITS(n)`, `RIGHT$(STR$(n + 100), 2)`. `FILE(text)` is `.T.` when a file or folder
+      matches the path, wildcards too, through `DOS.EXISTS`. Trap: `EXISTS` gives 255 for true,
+      so the branch stores `EXISTS(...) AND 1`; a logical value is 0 or 1. `FILE("")` matches,
+      as `FINDFIRST("")` does. `ENUM BUILT_IN` gains `TODAY` after `IS_DELETED` and
+      `FILE_EXISTS` after `WHOLE_PART`; every later code moves up.
+      - `DB.COM` 13409 bytes, 621 more: `DATE()` 202, `FILE()` 300 (the first use of
+        `EXISTS` and `FINDFIRST`), the rest the names and branches. `TWO_DIGITS` by `CHR$` is
+        161 more. Build 2206 ms, the new baseline.
+      - `DBFUNC.IN` adds 4 lines: `DATE()`'s length and slashes, not the date, which changes;
+        `FILE` found, missing, wildcard; 2 errors. Golden read by hand. `DBFUNC` ok 1.2 s.
+    - A2d (2026-10-29), done: the memory variables, one step (the user). `STORE expr TO name`,
+      `name = expr`, `RELEASE name, ...`, `RELEASE ALL`, `DISPLAY MEMORY`, and a variable by
+      name in an expression. A field hides a variable of its name. Names are cut to 10
+      characters, as dBase III does: `ABCDEFGHIJKL` is `ABCDEFGHIJ`. No `SET TALK` echo yet.
+      - Where (the user): one RAM bank from `DB.TAKE_BANK`, selected at `$00` for the whole run;
+        the DB library and the DOS calls keep `$00`. Its first 64 × 16 bytes at `$A000` are the
+        slots: the kind, the name as a string block whose size byte is the kind (so
+        `StringAt(slot)` is the name), and at + 12 the value's address. The pool, `$A400` to
+        `$BFFF`, 7168 bytes, holds every value: a number or a logical in `FP.SIZE` bytes, a text
+        as a string block, length + 2. A reassign or a release drops the value; the values after
+        it move down and the slots that point past it follow. A text that does not fit releases
+        the variable and prints `Out of memory`. The 65th name prints `Too many variables`.
+        Without a free bank DB prints the DOS error and quits. On QUIT `$00` gets its old bank.
+      - `DISPLAY MEMORY` prints `NAME       C "text"` (name padded to 11, then C, N or L), then
+        `n variables, m bytes free`. `DO_DISPLAY` moved after `SHOW_VALUE`, now split out of
+        `DO_PRINT`. New: `NAME_AT`, `VARIABLE_NAME`, `COPY_BYTES`, `SLOT_AT`, `FIND_VARIABLE`
+        (`""` gives the first free slot), `CLEAR_VARIABLES`, `DROP_VALUE`, `PUSH_VARIABLE`,
+        `ASSIGN`, `DO_STORE`, `DO_RELEASE`, `SHOW_MEMORY`. `READ_NAME` reads through `NAME_AT`.
+      - `DB.COM` 16147 bytes, 2738 more against an estimate of 1.0 to 1.3 KB: the shared core
+        (`ASSIGN`, `DROP_VALUE`, `COPY_BYTES`, `FIND_VARIABLE`) about 1200, `DISPLAY MEMORY`
+        422, `RELEASE` 228, the read in `READ_NAME` 212, `STORE` 105, `=` 23, the bank's start
+        67, the dispatch, the `=` parse and `READ_NAME`'s change about 490. Tried: a temp in
+        `DROP_VALUE`'s loop, 11 less, kept; `<< 4` for `* 16`, 11 more; `PRINT n` pads with
+        spaces. Build 2328 ms, the new baseline.
+      - New test `DBMEM` (`.IN`, `.PY` as `DBFUNC.PY`): the kinds, reassign and compaction,
+        `DISPLAY MEMORY` byte counts, `RELEASE` lists, the 10-letter cut, a field hiding a
+        variable, `RELEASE ALL`, 10 errors, 64 variables then the 65th. `Out of memory` is not
+        tested: a line holds 128 characters. Golden read by hand. `DBMEM` ok 1.4 s, `DBFUNC`
+        1.2 s, `DBDOT` 1.2 s, `DBEXPR` 1.1 s, `DBLOGIC` 1.2 s, `DBTEXT` 1.1 s.
 
 ## State
 
@@ -1682,8 +1779,9 @@ the beta 1 list).
 - Build after 7c: 0.75 s with the shell compile, the new baseline.
 - Tests after 7c, one at a time: `SHFILES` ok 0.7 s, `SHELL` 0.5, `FILES` 0.4, `DIRS` 0.8,
   `DISK` 0.4.
-- Steps since the last full suite: 8, the suite skipped until FONT is done. It ran after the doc batch for `TREE` to `TAIL`,
-  2026-10-18: 43 tests, 1 failed (`TREE`, below), 27.4 s, the longest `CMDLETS` 1.7 s.
+- Steps since the last full suite: 1. It ran after A2d, 2026-10-29: 83 tests, 1 failed, 147.3 s,
+  the longest `GUIPICK` 4.4 s. `SHTAB`'s golden was stale: `TREE -?` prints TREE's help since
+  the help switch, not `Invalid switch`. Golden updated, read, `SHTAB` ok 2.0 s.
 - UXCBASIC: 174 tests, 0 failed, 43 s. `compare.py`: 566 MATCH, 5 RESULT, 31 NO GOLDEN of 602,
   1.7 s. The RESULTs are `STRLR`, `STRNS`, `EXERRCONSTSTR`, and the two below, all expected:
   `EXERRPOS` (`POS(2)`) now compiles, and `EXERRPOSVAR` says `POS NEEDS 0 TO 3`.

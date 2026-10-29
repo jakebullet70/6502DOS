@@ -1,0 +1,284 @@
+' DB_SCOPE.UXI -- the scopes of DB.UXB and the commands that take one: LIST, DISPLAY scope,
+' LOCATE, CONTINUE, COUNT and SUM. DB.UXB includes it after DO_STORE, before DB_CHANGE.UXI.
+
+DIM SCOPE_START AS UWORD            ' the record the scope starts at, 0 for the first of the order
+DIM SCOPE_LEFT AS UWORD             ' the records of the scope still to look at
+DIM SCOPE_BEGUN AS UBYTE            ' 1 once the scope has looked at a record
+DIM CONDITION AS UBYTE              ' the character of REST the FOR condition starts at, 0 for none
+DIM TARGET AS UBYTE                 ' the character of REST the names after TO start at, 0 for none
+CONST SUM_LIMIT AS UBYTE = 8
+DIM SUM_START(8) AS UBYTE           ' the character of REST each SUM expression starts at
+DIM SUM_VALUES(40) AS UBYTE         ' the sums of SUM, FP.SIZE bytes each
+' The LOCATE that CONTINUE goes on with. LOCATE_ACTIVE is 0 before the first LOCATE and after
+' USE.
+DIM LOCATE_LINE AS STRING * 128     ' its REST
+DIM LOCATE_CONDITION AS UBYTE       ' its CONDITION
+DIM LOCATE_LEFT AS UWORD            ' its SCOPE_LEFT
+DIM LOCATE_ACTIVE AS UBYTE
+ENUM SCOPE_KIND
+  CURRENT_RECORD, ALL_RECORDS, RANGE
+END ENUM
+DIM SCOPE_EVERY AS ENUM.SCOPE_KIND  ' the scope's kind so far
+
+' Reads a scope in REST from CURSOR: at most one of ALL, NEXT n and RECORD n, and a FOR
+' condition, in any order. With no ALL, NEXT or RECORD, the scope is every record when EVERY is
+' ALL_RECORDS or a FOR is given, else the current record. ALL and NEXT n follow the order. Once
+' done, ALL leaves the table past its last record, NEXT n at the scope's last record, or past
+' the last when the order ends first. A FOR condition is a logical expression. A TO ends the
+' scope, and TARGET is the character after it. Any other word ends it too, with CURSOR at the
+' word. Sets FAILED on an error.
+SUB READ_SCOPE(EVERY AS ENUM.SCOPE_KIND)
+  SCOPE_START = CURRENT
+  SCOPE_LEFT = 1
+  SCOPE_BEGUN = 0
+  CONDITION = 0
+  TARGET = 0
+  SCOPE_EVERY = EVERY
+  MORE_SCOPE()
+END SUB
+
+' Reads more of the scope that READ_SCOPE started, from CURSOR, as READ_SCOPE does.
+SUB MORE_SCOPE()
+  DIM NUMBER AS UWORD, START AS UBYTE
+  DO
+    SKIP_SPACES()
+    IF CURRENT_CHAR() = 0 THEN EXIT DO
+    START = CURSOR
+    TOKEN = NAME_AT()
+    SKIP_SPACES()
+    IF IS("FOR")
+      IF SCOPE_EVERY = SCOPE_KIND.CURRENT_RECORD THEN SCOPE_EVERY = SCOPE_KIND.ALL_RECORDS
+      CONDITION = CURSOR
+      EVALUATE()
+      IF FAILED THEN RETURN
+      IF VALUE_TYPE(0) <> VALUE_KIND.LOGICAL
+        TYPE_MISMATCH()
+        RETURN
+      ENDIF
+    ELSEIF IS("TO")
+      TARGET = CURSOR
+      EXIT DO
+    ELSEIF IS("ALL")
+      SCOPE_EVERY = SCOPE_KIND.ALL_RECORDS
+    ELSEIF IS("NEXT") OR IS("RECORD")
+      SCOPE_EVERY = SCOPE_KIND.RANGE
+      NUMBER = VAL(NAME_AT())
+      IF IS("NEXT")
+        SCOPE_LEFT = NUMBER
+      ELSE
+        IF NUMBER = 0 OR NUMBER > DB.RECORD_COUNT()
+          RECORD_ERROR()
+          RETURN
+        ENDIF
+        SCOPE_START = NUMBER
+      ENDIF
+    ELSE
+      CURSOR = START
+      EXIT DO
+    ENDIF
+  LOOP
+  IF SCOPE_EVERY = SCOPE_KIND.ALL_RECORDS
+    SCOPE_START = 0
+    SCOPE_LEFT = $FFFF
+  ENDIF
+END SUB
+
+' Makes the scope's next record that meets its FOR condition current and gives 1. At the
+' scope's end, or on an error, it gives 0, with the last record looked at current, or the place
+' past the last.
+FUNCT NEXT_IN_SCOPE() AS UBYTE
+  DO WHILE SCOPE_LEFT <> 0
+    IF SCOPE_BEGUN = 0
+      SCOPE_BEGUN = 1
+      IF SCOPE_START = 0
+        TOP_OF_ORDER()
+      ELSE
+        MOVE_TO(SCOPE_START)
+      ENDIF
+    ELSEIF PAST_LAST() = 0
+      REACHED(DB.NEXT_RECORD())
+    ENDIF
+    IF PAST_LAST() THEN RETURN 0
+    SCOPE_LEFT = SCOPE_LEFT - 1
+    IF CONDITION = 0 THEN RETURN 1
+    CURSOR = CONDITION
+    EVALUATE()
+    IF FAILED THEN RETURN 0
+    IF VALUE_STACK(0) THEN RETURN 1
+  LOOP
+  RETURN 0
+END FUNCT
+
+' 1 when the scope just read has no TO and runs to the end of REST. Else 0, and a syntax error
+' unless FAILED is set already.
+FUNCT SCOPE_AT_END() AS UBYTE
+  IF FAILED THEN RETURN 0
+  IF TARGET = 0 AND CURRENT_CHAR() = 0 THEN RETURN 1
+  SYNTAX_ERROR()
+  RETURN 0
+END FUNCT
+
+' Reads the scope of a command that takes no TO from the start of REST, as READ_SCOPE does.
+' Gives 1 once it is read; 0 with no table in use or after an error.
+FUNCT READ_PLAIN_SCOPE(EVERY AS ENUM.SCOPE_KIND) AS UBYTE
+  IF IN_USE() = 0 THEN RETURN 0
+  CURSOR = 1
+  READ_SCOPE(EVERY)
+  RETURN SCOPE_AT_END()
+END FUNCT
+
+' LIST scope and DISPLAY scope: print each record of the scope that meets its FOR condition:
+' its number, * when it is deleted, then its fields. LIST's scope is every record and
+' DISPLAY's the current one, EVERY as READ_SCOPE takes it.
+SUB DO_LIST(EVERY AS ENUM.SCOPE_KIND)
+  DIM FIELD AS UBYTE
+  IF READ_PLAIN_SCOPE(EVERY) = 0 THEN RETURN
+  DO WHILE NEXT_IN_SCOPE()
+    PRINT RIGHT_ALIGN(CURRENT, 5);
+    IF DB.DELETED
+      PRINT "*";
+    ELSE
+      PRINT " ";
+    ENDIF
+    FOR FIELD = 1 TO DB.FIELD_COUNT()
+      PRINT " "; DB.GET(FIELD);
+    NEXT
+    PRINT
+  LOOP
+END SUB
+
+' Makes the scope's next record that meets its FOR condition current and prints "Record n", or
+' prints "End of LOCATE" at the scope's end. Keeps what is left of the scope for CONTINUE.
+SUB FIND_NEXT()
+  DIM FOUND AS UBYTE
+  FOUND = NEXT_IN_SCOPE()
+  LOCATE_LEFT = SCOPE_LEFT
+  IF FOUND
+    SHOW_RECORD()
+  ELSEIF FAILED = 0
+    PRINT "End of LOCATE"
+  ENDIF
+END SUB
+
+' LOCATE scope: makes the first record of the scope that meets its FOR condition current. The
+' scope is every record. It is kept for CONTINUE.
+SUB DO_LOCATE()
+  IF READ_PLAIN_SCOPE(SCOPE_KIND.ALL_RECORDS) = 0 THEN RETURN
+  LOCATE_LINE = REST
+  LOCATE_CONDITION = CONDITION
+  LOCATE_ACTIVE = 1
+  FIND_NEXT()
+END SUB
+
+' CONTINUE: goes on with the last LOCATE from the record after the current one in the order.
+SUB DO_CONTINUE()
+  IF LOCATE_ACTIVE = 0
+    REPORT_ERROR("No LOCATE active")
+    RETURN
+  ENDIF
+  REST = LOCATE_LINE
+  CONDITION = LOCATE_CONDITION
+  SCOPE_LEFT = LOCATE_LEFT
+  SCOPE_BEGUN = 1
+  FIND_NEXT()
+END SUB
+
+' The address of sum NUMBER of SUM.
+FUNCT SUM_AT(NUMBER AS UBYTE) AS UWORD
+  RETURN AddrOf(SUM_VALUES) + NUMBER * FP.SIZE
+END FUNCT
+
+' Reads expression NUMBER of a list, from 0, at CURSOR: keeps where it starts in SUM_START and
+' checks that its value is of KIND. At most SUM_LIMIT are read. Gives 1 when a comma follows it,
+' and CURSOR moves past the comma. Sets FAILED on an error.
+FUNCT READ_LISTED(NUMBER AS UBYTE, KIND AS ENUM.VALUE_KIND) AS UBYTE
+  IF NUMBER = SUM_LIMIT
+    SYNTAX_ERROR()
+    RETURN 0
+  ENDIF
+  SKIP_SPACES()
+  SUM_START(NUMBER) = CURSOR
+  EVALUATE()
+  IF FAILED THEN RETURN 0
+  IF VALUE_TYPE(0) <> KIND
+    TYPE_MISMATCH()
+    RETURN 0
+  ENDIF
+  SKIP_SPACES()
+  IF CURRENT_CHAR() <> 44 THEN RETURN 0
+  CURSOR = CURSOR + 1
+  RETURN 1
+END FUNCT
+
+' COUNT scope TO name, and SUM list scope TO names, SUMMING 1. COUNT prints how many records of
+' the scope meet its FOR condition. SUM adds up each number expression of the list, at most
+' SUM_LIMIT, over those records, and prints the count, then each sum on a line. TO stores the
+' count, or the sums in order, in memory variables. The scope is every record.
+SUB DO_TOTAL(SUMMING AS UBYTE)
+  DIM TOTAL AS UWORD, NUMBER AS UBYTE, SUMS AS UBYTE, ENDING AS UBYTE, MORE AS UBYTE
+  IF IN_USE() = 0 THEN RETURN
+  CURSOR = 1
+  SUMS = 0
+  IF SUMMING
+    ' Each expression is read here once, for its syntax and its kind.
+    DO
+      MORE = READ_LISTED(SUMS, VALUE_KIND.NUMBER)
+      IF FAILED THEN RETURN
+      ' An exponent of 0 is the value 0.
+      ContentsAt(SUM_AT(SUMS)) = 0
+      SUMS = SUMS + 1
+      IF MORE = 0 THEN EXIT DO
+    LOOP
+  ENDIF
+  READ_SCOPE(SCOPE_KIND.ALL_RECORDS)
+  IF TARGET = 0
+    IF SCOPE_AT_END() = 0 THEN RETURN
+  ENDIF
+  IF FAILED THEN RETURN
+  TOTAL = 0
+  DO WHILE NEXT_IN_SCOPE()
+    TOTAL = TOTAL + 1
+    NUMBER = 0
+    DO WHILE NUMBER < SUMS
+      CURSOR = SUM_START(NUMBER)
+      EVALUATE()
+      IF FAILED THEN RETURN
+      FP.ADD(SUM_AT(NUMBER), VALUE_AT(0))
+      IF DOS.ERROR <> 0
+        OUT_OF_RANGE()
+        RETURN
+      ENDIF
+      NUMBER = NUMBER + 1
+    LOOP
+  LOOP
+  IF FAILED THEN RETURN
+  PRINT RIGHT_ALIGN(TOTAL, 6); " records";
+  IF SUMMING THEN PRINT " summed";
+  PRINT
+  NUMBER = 0
+  DO WHILE NUMBER < SUMS
+    PRINT FP.TO_TEXT(SUM_AT(NUMBER))
+    NUMBER = NUMBER + 1
+  LOOP
+  IF TARGET = 0 THEN RETURN
+  ' Each name but the last ends at a comma.
+  CURSOR = TARGET
+  NUMBER = 0
+  DO
+    IF SUMMING
+      COPY_BYTES(VALUE_AT(0), SUM_AT(NUMBER), FP.SIZE)
+      VALUE_TYPE(0) = VALUE_KIND.NUMBER
+    ELSE
+      VALUE_COUNT = 0
+      PUSH_WHOLE(TOTAL)
+    ENDIF
+    NUMBER = NUMBER + 1
+    ENDING = 44
+    IF NUMBER >= SUMS THEN ENDING = 0
+    ASSIGN(VARIABLE_NAME(), ENDING)
+    IF FAILED THEN RETURN
+    IF ENDING = 0 THEN RETURN
+    CURSOR = CURSOR + 1
+    SKIP_SPACES()
+  LOOP
+END SUB

@@ -36,4 +36,54 @@ NAMESPACE STR
     LOOP UNTIL POSITION = START
     RETURN LAST
   END FUNCTION
+
+  ' TEXT$ with spaces in front, WIDTH characters in all: right-aligned. A TEXT$ of WIDTH
+  ' characters or more comes back whole. WIDTH and the length of TEXT$ are at most 82.
+  FUNCTION PADL(TEXT$, WIDTH AS UBYTE) AS STRING
+    DIM RESULT$ * 82
+    RESULT$ = TEXT$
+    ' Moves the characters up by the pad from the last one down, then fills the front.
+    ASM
+        lda @RESULT$ + 1
+        cmp @WIDTH
+        bcs done
+        phx
+        ldx @WIDTH
+        stx @RESULT$ + 1
+        tay
+        beq fill
+move:   lda @RESULT$ + 1,y
+        sta @RESULT$ + 1,x
+        dex
+        dey
+        bne move
+fill:   lda #32
+spaces: sta @RESULT$ + 1,x
+        dex
+        bne spaces
+        plx
+done:
+    END ASM
+    RETURN RESULT$
+  END FUNCTION
+
+  ' TEXT$ with spaces after it, WIDTH characters in all: left-aligned. A TEXT$ of WIDTH
+  ' characters or more comes back whole. WIDTH and the length of TEXT$ are at most 82.
+  FUNCTION PADR(TEXT$, WIDTH AS UBYTE) AS STRING
+    DIM RESULT$ * 82
+    RESULT$ = TEXT$
+    ASM
+        ldy @RESULT$ + 1
+        cpy @WIDTH
+        bcs done
+        lda #32
+fill:   iny
+        sta @RESULT$ + 1,y
+        cpy @WIDTH
+        bne fill
+        sty @RESULT$ + 1
+done:
+    END ASM
+    RETURN RESULT$
+  END FUNCTION
 END NAMESPACE

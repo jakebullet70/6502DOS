@@ -209,6 +209,7 @@ Call 57, `db`, runs function Y. A buffer in `r0` or `r1` lies in `$0400-$9EFF`. 
 | 17 | `DB_IX_LAST` | none | `r0` the last record of the order, 0 when it has none<br>`X` the delete flag | yes |
 | 18 | `DB_IX_NEXT` | none | `r0` the record after the current one, the first when none is current, 0 past the last<br>`X` the delete flag | yes |
 | 19 | `DB_IX_PREV` | none | `r0` the record before the current one, the last when none is current, 0 before the first<br>`X` the delete flag | yes |
+| 20 | `DB_IX_PLACE` | none | none; the place in the order's index is at the current record, as `ix_next` and `ix_prev` take it | yes |
 
 ## The fp functions
 
