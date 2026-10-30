@@ -30,11 +30,19 @@ SUB DO_MARK(MARKING AS UBYTE)
   ENDIF
 END SUB
 
-' PACK: removes the deleted records and prints how many are left. The first record of the order
-' is then current. A failed PACK leaves no table in use.
-SUB DO_PACK()
+' PACK, ZAPPING 0: removes the deleted records and prints how many are left. The first record of
+' the order is then current. A failed PACK leaves no table in use. ZAP, ZAPPING 1, marks each
+' record deleted first.
+SUB DO_PACK(ZAPPING AS UBYTE)
   DIM RECORDS AS UWORD
   IF IN_USE() = 0 THEN RETURN
+  IF ZAPPING
+    FOR RECORDS = 1 TO DB.RECORD_COUNT()
+      DB.GO(RECORDS)
+      DB.DELETE()
+      DB.WRITE_RECORD()
+    NEXT
+  ENDIF
   RECORDS = DB.PACK()
   IF DOS.ERROR <> 0
     FILE_ERROR()
