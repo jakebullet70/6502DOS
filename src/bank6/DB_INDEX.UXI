@@ -90,13 +90,37 @@ END SUB
 
 ' SET INDEX TO names: closes the open indexes, then opens names, as OPEN_INDEXES. SET INDEX TO
 ' alone leaves the record order. SET PATH TO dirs: USE, the index names and DO look for a
-' name in dirs, apart by ;, as FIND_FILE. SET PATH TO alone clears dirs.
+' name in dirs, apart by ;, as FIND_FILE. SET PATH TO alone clears dirs. SET FILTER TO condition:
+' GO TOP, GO BOTTOM, SKIP, the scopes and COPY TO pass over the records that do not meet the
+' logical condition; the current record stays. SET FILTER TO alone clears it. USE and CREATE
+' clear it.
 SUB DO_SET()
   NEXT_WORD()
   IF TOKEN = "PATH"
     NEXT_WORD()
     IF TOKEN = "TO"
       SEARCH_PATH = REST
+      RETURN
+    ENDIF
+  ELSEIF IS("FILTER")
+    NEXT_WORD()
+    IF TOKEN = "TO"
+      IF IN_USE() = 0 THEN RETURN
+      IF REST <> ""
+        CURSOR = 1
+        EVALUATE()
+        IF FAILED THEN RETURN
+        IF VALUE_TYPE(0) <> VALUE_KIND.LOGICAL
+          TYPE_MISMATCH()
+          RETURN
+        ENDIF
+        SKIP_SPACES()
+        IF CURRENT_CHAR() <> 0
+          SYNTAX_ERROR()
+          RETURN
+        ENDIF
+      ENDIF
+      FILTER = REST
       RETURN
     ENDIF
   ELSEIF IS("INDEX")

@@ -85,7 +85,7 @@ END SUB
 
 ' Makes the scope's next record that meets its FOR condition current and gives 1. At the
 ' scope's end, or on an error, it gives 0, with the last record looked at current, or the place
-' past the last.
+' past the last. The records after the first meet FILTER; NEXT n counts only those.
 FUNCT NEXT_IN_SCOPE() AS UBYTE
   DO WHILE SCOPE_LEFT <> 0
     IF SCOPE_BEGUN = 0
@@ -96,9 +96,9 @@ FUNCT NEXT_IN_SCOPE() AS UBYTE
         MOVE_TO(SCOPE_START)
       ENDIF
     ELSEIF PAST_LAST() = 0
-      REACHED(DB.NEXT_RECORD())
+      REACH_FILTERED(DB.NEXT_RECORD())
     ENDIF
-    IF PAST_LAST() THEN RETURN 0
+    IF PAST_LAST() OR FAILED THEN RETURN 0
     SCOPE_LEFT = SCOPE_LEFT - 1
     IF CONDITION = 0 THEN RETURN 1
     CURSOR = CONDITION

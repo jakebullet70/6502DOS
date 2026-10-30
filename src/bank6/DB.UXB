@@ -1,7 +1,7 @@
 ' DB.UXB -- DB, the dot prompt over the table library (docs/DB.PLAN.md). Reads a command at
 ' the prompt ". " and runs it: USE, CREATE, LIST, DISPLAY, GO or GOTO, SKIP, LOCATE, CONTINUE, DISPLAY
 ' STRUCTURE, ?, STORE, name = value, RELEASE, DISPLAY MEMORY, COUNT, SUM, APPEND, APPEND BLANK,
-' EDIT, REPLACE, DELETE, RECALL, PACK, INDEX ON, SET INDEX TO, SET PATH TO, FIND, REINDEX, SELECT PRIMARY,
+' EDIT, REPLACE, DELETE, RECALL, PACK, INDEX ON, SET INDEX TO, SET PATH TO, SET FILTER TO, FIND, REINDEX, SELECT PRIMARY,
 ' SELECT SECONDARY, DO, RETURN, CANCEL, IF, ELSE, ENDIF, DO WHILE, ENDDO, ACCEPT, INPUT, WAIT,
 ' MODIFY COMMAND, @ ... SAY ... GET, READ, CLEAR, CLS, HELP, REG and QUIT. A command word may be cut to
 ' its first 4 letters, as DISP STRU. LIST, DISPLAY, LOCATE, COUNT, SUM, REPLACE, DELETE and
@@ -42,6 +42,8 @@ DIM OTHER_TABLE AS UBYTE            ' TABLE of the other area
 DIM OTHER_CURRENT AS UWORD          ' CURRENT of the other area
 DIM OTHER_BEFORE AS UBYTE     ' BEFORE_FIRST of the other area
 DIM SEARCH_PATH AS STRING * 80      ' the directories of SET PATH TO, apart by ;
+DIM FILTER AS STRING * 128          ' the condition of SET FILTER TO, "" for none
+DIM OTHER_FILTER AS STRING * 128    ' FILTER of the other area
 
 ' Sets TOKEN to the first word of REST, in capitals, and REST to what follows it.
 SUB NEXT_WORD()
@@ -96,9 +98,10 @@ SUB REACHED(RECORD AS UWORD)
   BEFORE_FIRST = 0
 END SUB
 
-' Makes the first record of the order current, or the place past the last when it has none.
+' Makes the first record of the order that meets FILTER current, or the place past the last
+' when it has none.
 SUB TOP_OF_ORDER()
-  REACHED(DB.FIRST_RECORD())
+  REACH_FILTERED(DB.FIRST_RECORD())
 END SUB
 
 ' Prints "Record n", the current record.
@@ -153,6 +156,7 @@ SUB NEW_TABLE(PATH AS STRING)
     TABLE = 0
   ENDIF
   TABLE_NAME = WITH_EXTENSION(PATH, ".DB")
+  FILTER = ""
 END SUB
 
 SUB SYNTAX_ERROR()
@@ -164,7 +168,7 @@ SUB RECORD_ERROR()
 END SUB
 
 ' GO n, GOTO n, GO TOP or GO BOTTOM: makes that record current. TOP and BOTTOM are the first
-' and last of the order.
+' and last of the order that meet FILTER; GO n does not check it.
 SUB DO_GO()
   DIM RECORD AS UWORD
   IF IN_USE() = 0 THEN RETURN
@@ -173,6 +177,9 @@ SUB DO_GO()
     TOP_OF_ORDER()
   ELSEIF IS("BOTTOM")
     REACHED(DB.LAST_RECORD())
+    DO WHILE IN_FILTER() = 0
+      REACHED(DB.PREVIOUS_RECORD())
+    LOOP
   ELSE
     RECORD = VAL(TOKEN)
     IF RECORD = 0 OR RECORD > DB.RECORD_COUNT()
@@ -184,8 +191,8 @@ SUB DO_GO()
   SHOW_RECORD()
 END SUB
 
-' SKIP or SKIP n: moves n records along the order, 1 when n is left out, back when n is
-' negative. It stops past the last, or at the first with BEFORE_FIRST set.
+' SKIP or SKIP n: moves n records that meet FILTER along the order, 1 when n is left out, back
+' when n is negative. It stops past the last, or at the first with BEFORE_FIRST set.
 SUB DO_SKIP()
   DIM STEP_SIZE AS WORD, RECORD AS UWORD
   IF IN_USE() = 0 THEN RETURN
@@ -193,7 +200,7 @@ SUB DO_SKIP()
   IF REST <> "" THEN STEP_SIZE = VAL(REST)
   BEFORE_FIRST = 0
   DO WHILE STEP_SIZE > 0 AND PAST_LAST() = 0
-    REACHED(DB.NEXT_RECORD())
+    REACH_FILTERED(DB.NEXT_RECORD())
     STEP_SIZE = STEP_SIZE - 1
   LOOP
   DO WHILE STEP_SIZE < 0
@@ -209,7 +216,7 @@ SUB DO_SKIP()
       EXIT DO
     ENDIF
     REACHED(RECORD)
-    STEP_SIZE = STEP_SIZE + 1
+    IF IN_FILTER() THEN STEP_SIZE = STEP_SIZE + 1
   LOOP
   SHOW_RECORD()
 END SUB
@@ -218,14 +225,42 @@ END SUB
 #INCLUDE "DB_FUNC.UXI"
 #INCLUDE "DB_MEM.UXI"
 
-' Makes the other work area the one in use: its table, path, current record and BEFORE_FIRST
-' change places with the area's, and DB.WORKSPACE follows.
+' 1 when the current record meets FILTER, when FILTER is "", or past the last. Else 0. REST and
+' CURSOR are kept. On an error it sets FAILED and gives 1.
+FUNCT IN_FILTER() AS UBYTE
+  DIM KEPT_REST AS STRING * 128, KEPT_CURSOR AS UBYTE, MEETS AS UBYTE
+  IF FILTER = "" OR PAST_LAST() THEN RETURN 1
+  KEPT_REST = REST
+  KEPT_CURSOR = CURSOR
+  REST = FILTER
+  CURSOR = 1
+  EVALUATE()
+  MEETS = FAILED OR VALUE_STACK(0)
+  REST = KEPT_REST
+  CURSOR = KEPT_CURSOR
+  RETURN MEETS
+END FUNCT
+
+' Makes current RECORD, as REACHED, then the first record from it along the order that meets
+' FILTER, or the place past the last.
+SUB REACH_FILTERED(RECORD AS UWORD)
+  REACHED(RECORD)
+  DO WHILE IN_FILTER() = 0
+    REACHED(DB.NEXT_RECORD())
+  LOOP
+END SUB
+
+' Makes the other work area the one in use: its table, path, current record, BEFORE_FIRST and
+' FILTER change places with the area's, and DB.WORKSPACE follows.
 ' Checklist: a new state of the area gets an OTHER_ copy, swapped here.
 SUB SWAP_AREA()
-  DIM KEPT AS UWORD, KEPT_NAME AS STRING * 80
+  DIM KEPT AS UWORD, KEPT_NAME AS STRING * 128
   KEPT_NAME = TABLE_NAME
   TABLE_NAME = OTHER_NAME
   OTHER_NAME = KEPT_NAME
+  KEPT_NAME = FILTER
+  FILTER = OTHER_FILTER
+  OTHER_FILTER = KEPT_NAME
   KEPT = TABLE
   TABLE = OTHER_TABLE
   OTHER_TABLE = KEPT
@@ -505,7 +540,7 @@ END SUB
 #INCLUDE "DB_SCREEN.UXI"
 
 ' SELECT PRIMARY or SELECT SECONDARY: makes that work area the one in use. Each area keeps its
-' table, its indexes and its current record. A LOCATE ends.
+' table, its indexes, its current record and its filter. A LOCATE ends.
 SUB DO_SELECT()
   DIM WANTED AS UBYTE
   NEXT_WORD()
@@ -559,6 +594,8 @@ SKIP_LOOP = 0
 LOOP_DEPTH = 0
 GET_COUNT = 0
 SEARCH_PATH = ""
+FILTER = ""
+OTHER_FILTER = ""
 CALLER_BANK = ContentsAt(DB.RAM_BANK)
 VARIABLE_BANK = DB.TAKE_BANK()
 IF VARIABLE_BANK = 0

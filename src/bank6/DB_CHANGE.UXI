@@ -346,7 +346,8 @@ SUB DO_CREATE()
 END SUB
 
 ' COPY TO path: makes the table path, with .DB added when it has no extension, with the fields
-' of the table in use, and copies to it the records that are not deleted, in the order. Prints
+' of the table in use, and copies to it the records that are not deleted and meet FILTER, in the
+' order. Prints
 ' "n records copied". The place past the last record is then current. A file path is emptied.
 ' A path that is TABLE_NAME of either area prints "Table in use".
 ' Trap: another path to the table in use, such as .\CLUB.DB for CLUB.DB, empties it.
@@ -394,7 +395,7 @@ SUB DO_COPY()
       IF CODE <> 0 THEN EXIT DO
       COPIED = COPIED + 1
     ENDIF
-    REACHED(DB.NEXT_RECORD())
+    REACH_FILTERED(DB.NEXT_RECORD())
   LOOP
   DB.WORKSPACE = TARGET
   DB.CLOSE_TABLE()
