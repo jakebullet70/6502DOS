@@ -344,3 +344,65 @@ SUB DO_CREATE()
   ENDIF
   MOVE_TO(1)
 END SUB
+
+' COPY TO path: makes the table path, with .DB added when it has no extension, with the fields
+' of the table in use, and copies to it the records that are not deleted, in the order. Prints
+' "n records copied". The place past the last record is then current. A file path is emptied.
+' A path that is TABLE_NAME of either area prints "Table in use".
+' Trap: another path to the table in use, such as .\CLUB.DB for CLUB.DB, empties it.
+SUB DO_COPY()
+  DIM PATH AS STRING * 80, TEXT AS STRING * 255, TARGET AS UBYTE, FIELDS AS UBYTE
+  DIM N AS UBYTE, RECORD AS UWORD, COPIED AS UWORD, CODE AS UBYTE
+  IF IN_USE() = 0 THEN RETURN
+  NEXT_WORD()
+  IF TOKEN <> "TO" OR REST = ""
+    SYNTAX_ERROR()
+    RETURN
+  ENDIF
+  PATH = WITH_EXTENSION(REST, ".DB")
+  IF PATH = TABLE_NAME OR PATH = OTHER_NAME
+    REPORT_ERROR("Table in use")
+    RETURN
+  ENDIF
+  FIELDS = DB.FIELD_COUNT()
+  FOR N = 1 TO FIELDS
+    TEXT = DB.FIELD_NAME(N)
+    DB.DEFINE(AddrOf(FIELD_TABLE), N, TEXT, CHR$(DB.FIELD_TYPE(N)), DB.FIELD_LENGTH(N), DB.FIELD_DECIMALS(N))
+  NEXT
+  TARGET = DB.CREATE(PATH, AddrOf(FIELD_TABLE), FIELDS)
+  IF TARGET = 0
+    FILE_ERROR()
+    RETURN
+  ENDIF
+  DB.WORKSPACE = TABLE
+  COPIED = 0
+  CODE = 0
+  TOP_OF_ORDER()
+  DO WHILE PAST_LAST() = 0
+    IF DB.DELETED = 0
+      DB.WORKSPACE = TARGET
+      RECORD = DB.APPEND()
+      FOR N = 1 TO FIELDS
+        DB.WORKSPACE = TABLE
+        TEXT = DB.GET(N)
+        DB.WORKSPACE = TARGET
+        DB.PUT(N, TEXT)
+      NEXT
+      DB.WRITE_RECORD()
+      CODE = DOS.ERROR
+      DB.WORKSPACE = TABLE
+      IF CODE <> 0 THEN EXIT DO
+      COPIED = COPIED + 1
+    ENDIF
+    REACHED(DB.NEXT_RECORD())
+  LOOP
+  DB.WORKSPACE = TARGET
+  DB.CLOSE_TABLE()
+  IF CODE <> 0 THEN DOS.ERROR = CODE
+  DB.WORKSPACE = TABLE
+  IF DOS.ERROR <> 0
+    FILE_ERROR()
+    RETURN
+  ENDIF
+  PRINT RIGHT_ALIGN(COPIED, 6); " records copied"
+END SUB
