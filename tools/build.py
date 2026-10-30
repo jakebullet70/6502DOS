@@ -21,8 +21,9 @@ includes, than the template table or than pyuxc. Each src/scom/NAME.UXB, a
 commandlet, compiles the same way to build/sys/NAME.SCOM, a long name on the card. Each
 src/dos/NAME.UXB, a DOS utility, compiles to
 build/sys/NAME.COM, and each src/dos/NAME.TXT and NAME.HLP is copied to build/sys, with
-build/sys/HELP.IDX, HELPBAS.IDX and HELPDB.IDX, the indexes of HELP.HLP, HELPBAS.HLP and
-HELPDB.HLP that HELP -R, HELPBAS -R and HELPDB -R write. Each
+build/sys/HELP.IDX and HELPBAS.IDX, the indexes of HELP.HLP and HELPBAS.HLP that HELP -R and
+HELPBAS -R write. card/sys/xbase/HELPXBASE.HLP is copied to build/sys/xbase, with HELPXBASE.IDX, the
+index that HELPXBASE -R writes. Each
 src/utils/FOLDER/NAME.UXB, a utility, compiles to build/sys/NAME.COM, and the files of
 src/utils/FOLDER are copied to build/source/xcbasic/FOLDER. Each test named in SHOWN_TESTS, tests/NAME.UXB,
 compiles to build/sys/NAME.COM as well. CMDSHELL.COM, ROMSHELL.COM and MSBASIC.COM are copied to build/sys.
@@ -157,8 +158,14 @@ def compile_scom():
         uxb.compile(source, os.path.join(SYS_OUT, name))
     for text in sorted(glob.glob(os.path.join(UTILITIES, "*.TXT")) + glob.glob(os.path.join(UTILITIES, "*.HLP"))):
         shutil.copyfile(text, os.path.join(SYS_OUT, os.path.basename(text).upper()))
-    for name in ("HELP", "HELPBAS", "HELPDB"):
+    for name in ("HELP", "HELPBAS"):
         write_help_index(os.path.join(UTILITIES, name + ".HLP"), os.path.join(SYS_OUT, name + ".IDX"))
+    card_xbase = os.path.join(CARD, "sys", "xbase")
+    write_help_index(os.path.join(card_xbase, "HELPXBASE.HLP"), os.path.join(card_xbase, "HELPXBASE.IDX"))
+    xbase = os.path.join(SYS_OUT, "xbase")
+    os.makedirs(xbase, exist_ok=True)
+    for name in ("HELPXBASE.HLP", "HELPXBASE.IDX"):
+        shutil.copyfile(os.path.join(card_xbase, name), os.path.join(xbase, name))
     return SYS_OUT
 
 
@@ -436,10 +443,10 @@ def main():
         shutil.copyfile(os.path.join(ROOT, name), os.path.join(BUILD, name))
     test_files = [os.path.join(TEST_SD_FOLDER, entry) for entry in os.listdir(TEST_SD_FOLDER)
                   if not entry.startswith(".")]
-    programs = compile_bas() + [bank3, database]
+    programs = compile_bas() + [bank3]
     shell = [p for p in programs if os.path.basename(p) in ("CMDSHELL.COM", "ROMSHELL.COM")]
     card_sources = [compile_scom(), compile_utils()]
-    for program in shell + [basic]:
+    for program in shell + [basic, database]:
         shutil.copy2(program, SYS_OUT)
     make_card(card_sources, [p for p in programs if p not in shell] + test_files)
     if release:

@@ -619,6 +619,21 @@ SUB DO_DISPLAY()
   PRINT "Total                 "; RIGHT_ALIGN(DB.INFO(0, 8), 6)
 END SUB
 
+' Clears the screen and prints xbase\splash.dot in the program's folder. Without the file it
+' does nothing.
+SUB SHOW_SPLASH()
+  DIM HANDLE AS UWORD, COUNT AS UWORD
+  HANDLE = DOS.OPEN_FILE(DOS.PROGRAM_FOLDER() + "xbase\splash.dot", DOS.ACCESS_READ)
+  IF DOS.ERROR THEN RETURN
+  PRINT "{CLS}";
+  DO
+    COUNT = DOS.READ_FILE(HANDLE, @READ_AHEAD, 255)
+    IF COUNT = 0 THEN EXIT DO
+    COUNT = DOS.WRITE_FILE(1, @READ_AHEAD, COUNT)
+  LOOP
+  DOS.CLOSE_FILE(HANDLE)
+END SUB
+
 ' The variables' bank. Without a free bank DB does not run.
 RUNNING = 0
 PUSH_DEPTH = 0
@@ -650,6 +665,8 @@ ELSE
   IF REST <> ""
     COMMAND_LINE = "DO " + REST
     DO_DO()
+  ELSE
+    SHOW_SPLASH()
   ENDIF
 ENDIF
 DO WHILE RUNNING
@@ -780,9 +797,10 @@ DO WHILE RUNNING
     DOS.EXEC("C:\sys\ROMSHELL.COM", " -" + REST)
     IF DOS.ERROR THEN FILE_ERROR()
   ELSEIF IS("HELP")
-    ' HELP [topic] runs C:\sys\HELPXBASE.COM. Trap: HELPDB reads the topic from P1$, not the tail.
+    ' HELP [topic] runs HELPXBASE.COM in the program's folder. Trap: HELPXBASE reads the topic from
+    ' P1$, not the tail.
     HEAP.SYS_STRINGS_SET(0, REST)
-    DOS.EXEC("C:\sys\HELPXBASE.COM", " " + REST)
+    DOS.EXEC(DOS.PROGRAM_FOLDER() + "HELPXBASE.COM", " " + REST)
     IF DOS.ERROR THEN FILE_ERROR()
   ELSEIF IS("SAVE")
     DO_SCREEN_FILE(0)

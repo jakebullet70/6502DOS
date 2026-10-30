@@ -12,7 +12,7 @@
 .include "api.inc"
 .include "far.inc"
 
-.export api_exec, api_exec_rest, api_exit, api_exitcode, api_keep, exec_break
+.export api_exec, api_exec_rest, api_exit, api_exitcode, api_keep, api_progpath, exec_break
 .import handles_inherit, handles_close, heap_exec, heap_exit, CHROUT, con_hide
 .import api_bank_alloc, api_bank_free, bank_exit
 .import jsrfar, bank0, lib_open, lib_read, lib_close
@@ -69,6 +69,7 @@ api_exec:
         jsr parent_copy
         bcs @full
         inc exec_depth
+        jsr path_copy           ; first: r0 may point at the old tail
         jsr tail_copy           ; r0 and r1 are the caller's up to here
         jsr handles_inherit
         jsr heap_exec
@@ -258,6 +259,18 @@ api_exitcode:
         clc
         rts
 
+; api_progpath: progpath, call 59. Copies PSP_PATH to r0.
+api_progpath:
+        ldy PSP_PATH
+@char:
+        lda PSP_PATH,y
+        sta (r0),y
+        dey
+        cpy #$FF
+        bne @char
+        clc
+        rts
+
 .segment "RODATA"
 
 break_text:
@@ -265,6 +278,24 @@ break_text:
 BREAK_TEXT_SIZE = * - break_text
 
 .segment "CODE"
+
+; path_copy: copies the path at r0 to PSP_PATH, cut to PATH_MAX characters. Changes A and Y.
+path_copy:
+        lda (r0)
+        cmp #PATH_MAX + 1
+        bcc @length
+        lda #PATH_MAX
+@length:
+        sta PSP_PATH
+        tay
+        beq @done
+@char:
+        lda (r0),y
+        sta PSP_PATH,y
+        dey
+        bne @char
+@done:
+        rts
 
 ; tail_copy: sets PSP_TOP to the whole program area and PSP_BREAK to BREAK_END, copies the
 ; command tail at r1 to COMMAND_TAIL, cut to TAIL_MAX characters, and puts CR after it. Changes A

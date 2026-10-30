@@ -455,6 +455,13 @@ CALLS = [
          out=[("A X r0-r2", "by function")],
          errors=[1, 13],
          written=True),
+    call(59, "progpath", None, ("Gives the path `exec` ran the program with, as the caller gave "
+          "it, cut to 83 characters. It holds a folder only when the caller's path did: a program "
+          "found in the current directory may have a bare name. A path that does not start at a "
+          "root is relative to the current directory at the program's start."),
+         in_=[("r0", "buffer, 84 bytes")],
+         out=[("r0", "buffer, filled with a length-prefixed path")],
+         written=True),
 ]
 
 # The functions of call 57, db: (Y, name, in, out, written). The name becomes DB_NAME in asm.

@@ -40,6 +40,7 @@ reset:
         jsr bank_init
         sty r2                  ; the number of banks, for post
         stz PSP_BREAK           ; BREAK_OFF for the monitor
+        stz PSP_PATH            ; the monitor has no path
         lda #$01                ; VSYNC
         sta VERA_IEN
         cli

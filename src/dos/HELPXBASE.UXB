@@ -1,43 +1,43 @@
 '=============================================================================================
-' -- HELPDB [topic | -R]
-' -- prints the help on the DB command topic from C:\sys\HELPDB.HLP. With no topic it
+' -- HELPXBASE [topic | -R]
+' -- prints the help on the DB command topic from C:\sys\xbase\HELPXBASE.HLP. With no topic it
 ' -- lists the topic names, a new line before a name that would pass column 79.
 ' -- A small letter in topic is the same as a capital.
-' -- HELPDB.HLP has the format of HELP.HLP: a line :NAME starts the topic NAME, in capitals.
+' -- HELPXBASE.HLP has the format of HELP.HLP: a line :NAME starts the topic NAME, in capitals.
 ' -- The lines after it, up to the next :NAME line, are its text. A line is 80 characters at
 ' -- most; the rest is cut.
-' -- C:\sys\HELPDB.IDX indexes HELPDB.HLP in the format of HELP.IDX: its first line is the
-' -- size of HELPDB.HLP after a space, and each line after it is a topic name, a space and the
+' -- C:\sys\xbase\HELPXBASE.IDX indexes HELPXBASE.HLP in the format of HELP.IDX: its first line is the
+' -- size of HELPXBASE.HLP after a space, and each line after it is a topic name, a space and the
 ' -- byte position of its :NAME line. Lines end with CR LF. tools/build.py writes the same file.
-' -- HELPDB finds a topic by the index and reads only its text. A missing index, or one whose
-' -- size is not the size of HELPDB.HLP, makes HELPDB read HELPDB.HLP from the start, as does
+' -- HELPXBASE finds a topic by the index and reads only its text. A missing index, or one whose
+' -- size is not the size of HELPXBASE.HLP, makes HELPXBASE read HELPXBASE.HLP from the start, as does
 ' -- a position that does not hold the topic's :NAME line.
-' -- -R, or -r, writes HELPDB.IDX anew from HELPDB.HLP and prints the count of topics.
-' -- -H or -? as the first parameter runs HELP HELPDB.
-' -- No help for topic prints No help for TOPIC and gives exit code 1. No HELPDB.HLP prints
-' -- File not found and gives exit code 2, and a HELPDB.IDX that cannot be written prints its
+' -- -R, or -r, writes HELPXBASE.IDX anew from HELPXBASE.HLP and prints the count of topics.
+' -- -H or -? as the first parameter runs HELP HELPXBASE.
+' -- No help for topic prints No help for TOPIC and gives exit code 1. No HELPXBASE.HLP prints
+' -- File not found and gives exit code 2, and a HELPXBASE.IDX that cannot be written prints its
 ' -- error message and gives exit code 2. Exit code 0 otherwise.
 ' --
 ' -- From a prompt:
-' --     HELPDB
-' --     HELPDB replace
-' --     HELPDB -R
+' --     HELPXBASE
+' --     HELPXBASE replace
+' --     HELPXBASE -R
 '=============================================================================================
 #INCLUDE "DOS.UXI"
 #INCLUDE "HEAP.UXI"
 #INCLUDE "HELPSW.UXI"
 CONST SLOT_P1 AS UBYTE = 0, BLOCK_SIZE AS UBYTE = 255, LF AS UBYTE = 10, CR AS UBYTE = 13
-CONST HELP_NAME$ = "C:\sys\HELPDB.HLP", INDEX_NAME$ = "C:\sys\HELPDB.IDX"
+DIM HELP_NAME AS STRING * 128, INDEX_NAME AS STRING * 128
 DIM TOPIC_TYPED AS STRING * 80, TOPIC AS STRING * 80, TEXT_LINE AS STRING * 80
 DIM HEADING AS STRING * 81
 DIM HELP_FILE AS UWORD, INDEX_FILE AS UWORD, POSITION AS UBYTE, CHARACTER AS UBYTE
 DIM FOUND AS UBYTE, COLUMN AS UBYTE, PLACE AS ULONG
 DIM BLOCK(BLOCK_SIZE) AS UBYTE
 
-' Opens HELPDB.HLP into HELP_FILE and puts its size in PLACE, or ends the program with File
+' Opens HELPXBASE.HLP into HELP_FILE and puts its size in PLACE, or ends the program with File
 ' not found.
 SUB OPEN_HELP()
-  HELP_FILE = OPEN(HELP_NAME$, O.READ)
+  HELP_FILE = OPEN(HELP_NAME, O.READ)
   IF HELP_FILE = NOFILE THEN
     PRINT "File not found"
     END 2
@@ -48,12 +48,12 @@ SUB OPEN_HELP()
   DOS.SEEK(HELP_FILE, 0, 0, 0)
 END SUB
 
-' Writes HELPDB.IDX from HELPDB.HLP, prints the count of topics, and ends the program.
+' Writes HELPXBASE.IDX from HELPXBASE.HLP, prints the count of topics, and ends the program.
 SUB WRITE_INDEX()
   DIM COUNT AS UWORD, SPOT AS UWORD, TOPICS AS UWORD, START AS ULONG
   DIM AT_LINE_START AS UBYTE, IN_HEADING AS UBYTE
   OPEN_HELP()
-  INDEX_FILE = DOS.CREATE_FILE(INDEX_NAME$, 0)
+  INDEX_FILE = DOS.CREATE_FILE(INDEX_NAME, 0)
   IF DOS.ERROR <> 0 THEN
     PRINT DOS.ERRMSG(DOS.ERROR)
     END 2
@@ -103,7 +103,9 @@ SUB LIST_NAME(NAME AS STRING)
   COLUMN = COLUMN + LEN(NAME)
 END SUB
 
-HELP_SWITCH("HELPDB")
+HELP_SWITCH("HELPXBASE")
+HELP_NAME = DOS.PROGRAM_FOLDER() + "xbase\HELPXBASE.HLP"
+INDEX_NAME = DOS.PROGRAM_FOLDER() + "xbase\HELPXBASE.IDX"
 TOPIC_TYPED = HEAP.SYS_STRINGS_GET(SLOT_P1)
 DO WHILE POSITION < LEN(TOPIC_TYPED)
   POSITION = POSITION + 1
@@ -114,7 +116,7 @@ LOOP
 IF TOPIC = "-R" THEN WRITE_INDEX()
 OPEN_HELP()
 ' The index: list the topics, or seek HELP_FILE to the topic's :NAME line and set FOUND.
-INDEX_FILE = OPEN(INDEX_NAME$, O.READ)
+INDEX_FILE = OPEN(INDEX_NAME, O.READ)
 IF INDEX_FILE <> NOFILE THEN
   LINPUT #INDEX_FILE, TEXT_LINE
   IF LVAL(TEXT_LINE) = PLACE THEN
