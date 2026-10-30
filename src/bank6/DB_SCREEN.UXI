@@ -338,13 +338,134 @@ SUB DO_BOX()
   DRAW_FROM(ROW, COLUMN, 0)
 END SUB
 
+' The bars that PICK_BAR picks from, 0 to BAR_COUNT - 1, at most BAR_LIMIT: each one's row,
+' column and width on the screen. @ ... PROMPT adds one.
+CONST BAR_LIMIT AS UBYTE = 16
+DIM BAR_COUNT AS UBYTE
+DIM BAR_ROW(16) AS UBYTE, BAR_COLUMN(16) AS UBYTE, BAR_WIDTH(16) AS UBYTE
+
+' VERA's address of data port 0, the port, and layer 1's vertical scroll. The console leaves
+' port 0 selected.
+DIM VERA_LOW AS UBYTE AT $9F20, VERA_MIDDLE AS UBYTE AT $9F21, VERA_HIGH AS UBYTE AT $9F22
+DIM VERA_DATA AS UBYTE AT $9F23, VERA_SCROLL_LOW AS UBYTE AT $9F39
+DIM VERA_SCROLL_HIGH AS UBYTE AT $9F3A
+
+' Points VERA's port 0, with no step, at byte SPOT of screen row ROW's cells: a cell is its
+' character, then its color. The screen map is at VRAM $10000, 256 bytes a row; its row of
+' screen row 0 follows the vertical scroll.
+SUB AIM_VERA(ROW AS UBYTE, SPOT AS UBYTE)
+  VERA_LOW = SPOT
+  VERA_MIDDLE = ((VERA_SCROLL_HIGH AND 1) * 32 + VERA_SCROLL_LOW / 8 + ROW) AND 63
+  VERA_HIGH = 1
+END SUB
+
+' Swaps the foreground and background of bar NUMBER's cells, to show it picked or not.
+SUB FLIP_BAR(NUMBER AS UBYTE)
+  DIM SPOT AS UBYTE, COLOR AS UBYTE
+  SPOT = BAR_WIDTH(NUMBER)
+  DO WHILE SPOT > 0
+    SPOT = SPOT - 1
+    AIM_VERA(BAR_ROW(NUMBER), (BAR_COLUMN(NUMBER) + SPOT) * 2 + 1)
+    COLOR = VERA_DATA
+    VERA_DATA = (COLOR << 4) OR (COLOR >> 4)
+  LOOP
+END SUB
+
+' Shows the bars picked one at a time, from bar 0, and returns the number of the one picked,
+' from 1, or 0 for Esc. Up and Left go to the bar before, Down and Right to the next, around
+' the ends. Enter picks the bar shown; a key picks the first bar whose first character it is,
+' in either case. Other keys do nothing. BAR_COUNT is at least 1.
+FUNCT PICK_BAR() AS UBYTE
+  DIM PICKED AS UBYTE, NUMBER AS UBYTE, LETTER AS UBYTE, PRESSED AS UWORD
+  PICKED = 0
+  CURSOR OFF
+  DO
+    FLIP_BAR(PICKED)
+    PRESSED = WAITKEY()
+    FLIP_BAR(PICKED)
+    SELECT CASE PRESSED
+      CASE KEYS.KEY_UP, KEYS.KEY_LEFT
+        IF PICKED = 0 THEN PICKED = BAR_COUNT
+        PICKED = PICKED - 1
+      CASE KEYS.KEY_DOWN, KEYS.KEY_RIGHT
+        PICKED = PICKED + 1
+        IF PICKED = BAR_COUNT THEN PICKED = 0
+      CASE KEYS.ENTER
+        EXIT DO
+      CASE KEYS.ESC
+        PICKED = 255
+        EXIT DO
+      CASE 33 TO 255
+        LETTER = PRESSED
+        IF LETTER - 97 < 26 THEN LETTER = LETTER - 32
+        FOR NUMBER = 0 TO BAR_COUNT - 1
+          AIM_VERA(BAR_ROW(NUMBER), BAR_COLUMN(NUMBER) * 2)
+          PRESSED = VERA_DATA
+          IF PRESSED - 97 < 26 THEN PRESSED = PRESSED - 32
+          IF PRESSED = LETTER
+            PICKED = NUMBER
+            EXIT DO
+          ENDIF
+        NEXT
+    END SELECT
+  LOOP
+  CURSOR ON
+  RETURN PICKED + 1
+END FUNCT
+
+' @ row, column PROMPT text, the rest of DO_AT's line from CURSOR: prints the text at ROW and
+' COLUMN and adds it as a bar for MENU TO.
+SUB ADD_PROMPT(ROW AS UBYTE, COLUMN AS UBYTE)
+  EVALUATE()
+  IF FAILED THEN RETURN
+  IF VALUE_TYPE(0) <> VALUE_KIND.TEXT
+    TYPE_MISMATCH()
+    RETURN
+  ENDIF
+  SKIP_SPACES()
+  IF CURRENT_CHAR() <> 0
+    SYNTAX_ERROR()
+    RETURN
+  ENDIF
+  POS(1) = ROW
+  POS(0) = COLUMN
+  PRINT TEXT_OF(0);
+  BAR_ROW(BAR_COUNT) = ROW
+  BAR_COLUMN(BAR_COUNT) = COLUMN
+  BAR_WIDTH(BAR_COUNT) = LEN(TEXT_OF(0))
+  BAR_COUNT = BAR_COUNT + 1
+END SUB
+
+' MENU TO name: shows the prompts of @ ... PROMPT picked one at a time, as PICK_BAR, and stores
+' the number of the one picked, from 1 in the order they were made, or 0 for Esc, in the
+' memory variable name. With no prompt it stores 0 and waits for no key. The prompts are then
+' dropped.
+SUB DO_MENU()
+  DIM NAME AS STRING * 10, PICKED AS UBYTE
+  NEXT_WORD()
+  CURSOR = 1
+  NAME = VARIABLE_NAME()
+  SKIP_SPACES()
+  IF TOKEN <> "TO" OR NAME = "" OR CURRENT_CHAR() <> 0
+    SYNTAX_ERROR()
+    RETURN
+  ENDIF
+  PICKED = 0
+  IF BAR_COUNT <> 0 THEN PICKED = PICK_BAR()
+  BAR_COUNT = 0
+  VALUE_COUNT = 0
+  PUSH_WHOLE(PICKED)
+  ASSIGN(NAME, 0)
+END SUB
+
 ' @ row, column [SAY expression] [GET name [PICTURE text]]: puts the cursor at row and column,
 ' from 0, and prints the value there with no line end. GET adds a pending GET for READ, shown
 ' at once: after the SAY's value and a space, or at row and column. With neither it blanks the
 ' row from column to its end. Row and column are 0 to 255; past the screen's rows or columns
 ' the console places the cursor. The line is checked whole before the cursor moves.
 ' @ row, column TO row, column [DOUBLE] draws a box from the first corner to the second, the
-' bottom right, as BOX does.
+' bottom right, as BOX does. @ row, column PROMPT text prints text there for MENU TO, as
+' ADD_PROMPT.
 SUB DO_AT()
   DIM ROW AS UBYTE, COLUMN AS UBYTE, SAYING AS UBYTE, GETTING AS UBYTE
   CURSOR = 1
@@ -360,6 +481,10 @@ SUB DO_AT()
     TOKEN = NAME_AT()
     IF TOKEN = "TO"
       DRAW_FROM(ROW, COLUMN, 1)
+      RETURN
+    ENDIF
+    IF TOKEN = "PROMPT"
+      ADD_PROMPT(ROW, COLUMN)
       RETURN
     ENDIF
     IF TOKEN = "SAY"
@@ -476,7 +601,8 @@ SUB DO_READ()
 END SUB
 
 ' CLEAR blanks the screen, puts the cursor at row 0, column 0, and drops the pending GETs; CLEAR
-' GETS only drops them. CLS blanks the screen and keeps them. DROPPING is 1 for CLEAR.
+' GETS only drops them. CLS blanks the screen and keeps them. Both drop the prompts of MENU TO.
+' DROPPING is 1 for CLEAR.
 SUB DO_CLEAR(DROPPING AS UBYTE)
   NEXT_WORD()
   IF DROPPING AND IS("GETS") AND REST = ""
@@ -488,5 +614,6 @@ SUB DO_CLEAR(DROPPING AS UBYTE)
     RETURN
   ENDIF
   IF DROPPING THEN GET_COUNT = 0
+  BAR_COUNT = 0
   PRINT "{CLS}";
 END SUB
