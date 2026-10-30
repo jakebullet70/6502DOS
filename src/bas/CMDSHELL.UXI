@@ -4,7 +4,7 @@
 
 ' A script, NAME.CMD, runs one line at a time in the same language. STARTUP.CMD in the root of
 ' the boot drive, C:, runs when the shell starts. The tail -N skips it, and -S asks [Y,N]? before
-' each of its lines and the lines of the scripts it runs.
+' each of its lines and the lines of the scripts it runs. The tail -C line runs the line and ends.
 
 ' The line, as CON_LINE fills it: its size leaves room for the CR.
 DIM LINE_TEXT AS STRING * 128
@@ -75,7 +75,7 @@ DIM SCRIPT_PATH AS STRING * 128
 DIM SCRIPT_LOW AS UWORD, SCRIPT_HIGH AS UWORD, SCRIPT_LINE AS UWORD
 DIM SCRIPT_ACTIVE AS UBYTE, IN_SCRIPT AS UBYTE, RESUMING AS UBYTE
 ' STEPPING is set from the tail -S until the prompt. SWITCH_CHAR is the tail's letter.
-DIM STEPPING AS UBYTE, SWITCH_CHAR AS UBYTE
+DIM STEPPING AS UBYTE, SWITCH_CHAR AS UBYTE, TAIL_INDEX AS UBYTE
 DIM BUFFER_COUNT AS UBYTE, BUFFER_INDEX AS UBYTE, SCRIPT_HANDLE AS UWORD
 ' The shell runs in DOS.STOP.CATCH. STOPPED is set when Ctrl+C was pressed during a line, or ended
 ' the program the line ran. After a script line, it asks whether to end the script.
@@ -1954,9 +1954,16 @@ END SUB
 DOS.STOP_KEY(DOS.STOP.CATCH)
 RUNNING = 1
 PROGRAM_PATH = "C:\STARTUP.CMD"
-' The command tail, at $0780 after its length: " -N" skips STARTUP.CMD, " -S" steps it.
-IF ContentsAt($0780) = 3 AND ContentsAt($0782) = 45 THEN SWITCH_CHAR = ContentsAt($0783) AND 223
-IF SWITCH_CHAR <> 78 AND IS_FILE()
+' The command tail, at $0780 after its length: " -N" skips STARTUP.CMD, " -S" steps it, and
+' " -C line" runs the line, and the script it starts, then ends the shell.
+IF ContentsAt($0780) >= 3 AND ContentsAt($0782) = 45 THEN SWITCH_CHAR = ContentsAt($0783) AND 223
+IF SWITCH_CHAR = 67
+  ' The tail is a length byte and the text, as a string's.
+  FOR TAIL_INDEX = 0 TO ContentsAt($0780)
+    ContentsAt(@LINE_TEXT + 1 + TAIL_INDEX) = ContentsAt($0780 + TAIL_INDEX)
+  NEXT
+  LINE_TEXT = MID$(LINE_TEXT, 5)
+ELSEIF SWITCH_CHAR <> 78 AND IS_FILE()
   START_SCRIPT()
   IF SWITCH_CHAR = 83 THEN STEPPING = 1
 ENDIF
@@ -1982,7 +1989,7 @@ DO WHILE RUNNING
     IF STEPPING AND SKIP_DEPTH = 0 AND LINE_TEXT <> ""
       IF ASK_YES(LINE_TEXT + " [Y,N]?") = 0 THEN LINE_TEXT = ""
     ENDIF
-  ELSE
+  ELSEIF SWITCH_CHAR <> 67
     STEPPING = 0
     SKIP_DEPTH = 0
     FLOW_BASE = 0
@@ -2025,4 +2032,5 @@ DO WHILE RUNNING
     ENDIF
   ENDIF
   STOPPED = 0
+  IF SWITCH_CHAR = 67 THEN RUNNING = SCRIPT_ACTIVE OR CALLED
 LOOP
