@@ -1,5 +1,5 @@
-' DB_SCREEN.UXI -- the screen commands of DB.UXB: @ ... SAY ... GET, READ, CLEAR and CLS. DB.UXB
-' includes it after DB_DO.UXI.
+' DB_SCREEN.UXI -- the screen commands of DB.UXB: @ ... SAY ... GET, @ ... TO, BOX, READ, CLEAR
+' and CLS. DB.UXB includes it after DB_DO.UXI.
 
 ' The pending GETs, 0 to GET_COUNT - 1, at most GET_LIMIT. GET n has its place, the field it
 ' edits or 0 for a memory variable, the variable's number, and its value's VALUE_KIND. At
@@ -215,17 +215,119 @@ SUB READ_GET()
   GET_END = GET_END + SIZE
 END SUB
 
-' @ row, column [SAY expression] [GET name [PICTURE text]]: puts the cursor at row and column,
-' from 0, and prints the value there with no line end. GET adds a pending GET for READ, shown
-' at once: after the SAY's value and a space, or at row and column. With neither it blanks the
-' row from column to its end. Row and column are 0 to 255; past the screen's rows or columns
-' the console places the cursor. The line is checked whole before the cursor moves.
-SUB DO_AT()
-  DIM ROW AS UBYTE, COLUMN AS UBYTE, SAYING AS UBYTE, GETTING AS UBYTE
-  CURSOR = 1
+' The line styles of BOX: CP437's single and double lines.
+' Checklist: ENUM LINES, PICK_LINES, SPAN and BOX are GUI.UXI's, copied; change both.
+ENUM LINES
+  SINGLE, DOUBLE
+END ENUM
+' The characters of the current style, set by PICK_LINES.
+DIM LINE_ACROSS AS UBYTE, LINE_DOWN AS UBYTE, LINE_TOP_LEFT AS UBYTE, LINE_TOP_RIGHT AS UBYTE
+DIM LINE_LOW_LEFT AS UBYTE, LINE_LOW_RIGHT AS UBYTE
+' Where SPAN prints its next row, and the row's length.
+DIM SPAN_ROW AS UBYTE, SPAN_COLUMN AS UBYTE, SPAN_LENGTH AS UBYTE
+
+' Sets the LINE_ characters to STYLE's.
+SUB PICK_LINES(STYLE AS ENUM.LINES)
+  LINE_ACROSS = 196
+  LINE_DOWN = 179
+  LINE_TOP_LEFT = 218
+  LINE_TOP_RIGHT = 191
+  LINE_LOW_LEFT = 192
+  LINE_LOW_RIGHT = 217
+  IF STYLE = LINES.DOUBLE THEN
+    LINE_ACROSS = 205
+    LINE_DOWN = 186
+    LINE_TOP_LEFT = 201
+    LINE_TOP_RIGHT = 187
+    LINE_LOW_LEFT = 200
+    LINE_LOW_RIGHT = 188
+  ENDIF
+END SUB
+
+' Prints OPENING, SPAN_LENGTH - 2 of FILLER, then CLOSING, at SPAN_ROW and SPAN_COLUMN, and
+' moves SPAN_ROW down a row.
+SUB SPAN(OPENING AS UBYTE, FILLER AS UBYTE, CLOSING AS UBYTE)
+  POS(1) = SPAN_ROW
+  POS(0) = SPAN_COLUMN
+  SPAN_ROW = SPAN_ROW + 1
+  PRINT CHR$(OPENING);
+  REPEAT SPAN_LENGTH - 2
+    PRINT CHR$(FILLER);
+  END REPEAT
+  PRINT CHR$(CLOSING);
+END SUB
+
+' Draws a box of STYLE's lines, WIDTH columns by HEIGHT rows, its top left corner at ROW and
+' COLUMN, counted from 0. The inside is cleared to spaces. WIDTH and HEIGHT are at least 2.
+' The box takes the current console color.
+' Trap: a box that ends in the screen's last column moves the cursor to the next line, and on
+' the last row that scrolls the screen.
+SUB BOX(ROW AS UBYTE, COLUMN AS UBYTE, WIDTH AS UBYTE, HEIGHT AS UBYTE, STYLE AS ENUM.LINES)
+  PICK_LINES(STYLE)
+  SPAN_ROW = ROW
+  SPAN_COLUMN = COLUMN
+  SPAN_LENGTH = WIDTH
+  SPAN(LINE_TOP_LEFT, LINE_ACROSS, LINE_TOP_RIGHT)
+  REPEAT HEIGHT - 2
+    SPAN(LINE_DOWN, 32, LINE_DOWN)
+  END REPEAT
+  SPAN(LINE_LOW_LEFT, LINE_ACROSS, LINE_LOW_RIGHT)
+END SUB
+
+' Returns the expression at CURSOR as a whole number 0 to 255. FAILED is 1 after an error.
+FUNCT SMALL_AT() AS UBYTE
   EVALUATE()
+  IF FAILED THEN RETURN 0
+  RETURN SMALL_WHOLE(0)
+END FUNCT
+
+' Returns the expression after a comma at CURSOR as a whole number 0 to 255. FAILED is 1 after
+' an error.
+FUNCT COMMA_SMALL() AS UBYTE
+  SKIP_SPACES()
+  IF CURRENT_CHAR() <> 44
+    SYNTAX_ERROR()
+    RETURN 0
+  ENDIF
+  CURSOR = CURSOR + 1
+  RETURN SMALL_AT()
+END FUNCT
+
+' Reads two numbers at CURSOR, a comma between them, then nothing or DOUBLE, and draws the box
+' at ROW and COLUMN. With CORNER 1 the numbers are the bottom right corner's row and column;
+' with 0 they are the width and the height. The line is checked whole before the box is drawn.
+' The width and height come out at least 2: no check is made.
+SUB DRAW_FROM(ROW AS UBYTE, COLUMN AS UBYTE, CORNER AS UBYTE)
+  DIM FIRST AS UBYTE, SECOND AS UBYTE, STYLE AS ENUM.LINES
+  FIRST = SMALL_AT()
   IF FAILED THEN RETURN
-  ROW = SMALL_WHOLE(0)
+  SECOND = COMMA_SMALL()
+  IF FAILED THEN RETURN
+  STYLE = LINES.SINGLE
+  SKIP_SPACES()
+  IF CURRENT_CHAR() <> 0
+    IF NAME_AT() = "DOUBLE" THEN STYLE = LINES.DOUBLE
+    SKIP_SPACES()
+    IF STYLE = LINES.SINGLE OR CURRENT_CHAR() <> 0
+      SYNTAX_ERROR()
+      RETURN
+    ENDIF
+  ENDIF
+  IF CORNER
+    BOX(ROW, COLUMN, SECOND - COLUMN + 1, FIRST - ROW + 1, STYLE)
+  ELSE
+    BOX(ROW, COLUMN, FIRST, SECOND, STYLE)
+  ENDIF
+END SUB
+
+' BOX row, column, width, height [DOUBLE]: draws a box of single lines, or double, its top left
+' corner at row and column, from 0. Width and height are at least 2.
+SUB DO_BOX()
+  DIM ROW AS UBYTE, COLUMN AS UBYTE
+  CURSOR = 1
+  ROW = SMALL_AT()
+  IF FAILED THEN RETURN
+  COLUMN = COMMA_SMALL()
   IF FAILED THEN RETURN
   SKIP_SPACES()
   IF CURRENT_CHAR() <> 44
@@ -233,9 +335,22 @@ SUB DO_AT()
     RETURN
   ENDIF
   CURSOR = CURSOR + 1
-  EVALUATE()
+  DRAW_FROM(ROW, COLUMN, 0)
+END SUB
+
+' @ row, column [SAY expression] [GET name [PICTURE text]]: puts the cursor at row and column,
+' from 0, and prints the value there with no line end. GET adds a pending GET for READ, shown
+' at once: after the SAY's value and a space, or at row and column. With neither it blanks the
+' row from column to its end. Row and column are 0 to 255; past the screen's rows or columns
+' the console places the cursor. The line is checked whole before the cursor moves.
+' @ row, column TO row, column [DOUBLE] draws a box from the first corner to the second, the
+' bottom right, as BOX does.
+SUB DO_AT()
+  DIM ROW AS UBYTE, COLUMN AS UBYTE, SAYING AS UBYTE, GETTING AS UBYTE
+  CURSOR = 1
+  ROW = SMALL_AT()
   IF FAILED THEN RETURN
-  COLUMN = SMALL_WHOLE(0)
+  COLUMN = COMMA_SMALL()
   IF FAILED THEN RETURN
   SKIP_SPACES()
   ' SAYING is the SAY expression's start in REST, 0 for none.
@@ -243,6 +358,10 @@ SUB DO_AT()
   GETTING = 0
   IF CURRENT_CHAR() <> 0
     TOKEN = NAME_AT()
+    IF TOKEN = "TO"
+      DRAW_FROM(ROW, COLUMN, 1)
+      RETURN
+    ENDIF
     IF TOKEN = "SAY"
       SAYING = CURSOR
       EVALUATE()
