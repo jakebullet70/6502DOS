@@ -1,0 +1,382 @@
+:ABS
+ABS(n)
+  Returns n without its sign.
+  PRINT ABS(-3)
+:AND
+a AND b
+  Bitwise AND of two numbers from -32768 to 32767. True is -1, false 0.
+  IF A>0 AND B>0 THEN PRINT "BOTH"
+  PRINT 12 AND 10
+:ASC
+ASC(a$)
+  Returns the code of the first character of a$.
+  PRINT ASC("A")
+:ATN
+ATN(n)
+  Returns the arctangent of n, in radians.
+:BIN$
+BIN$(n)
+  Returns n in binary: 8 digits below 256, else 16. n is -65535 to 65535;
+  a negative n is taken mod 65536.
+  PRINT BIN$(5)
+:CHR$
+CHR$(code)
+  Returns the character of code, 0 to 255.
+  PRINT CHR$(65)
+:CLEAR
+CLEAR
+  Clears all variables, arrays and strings, and closes the open files.
+:CLOSE
+CLOSE lf
+  Closes logical file lf. A file that is not open is ignored. If it was the
+  input or output, the console takes over.
+  CLOSE 1
+:CLS
+CLS
+  Clears the screen and puts the cursor at the top left.
+:CMD
+CMD lf
+  Sends the output of PRINT to logical file lf instead of the screen.
+  PRINT# lf ends it.
+  CMD 1: LIST
+:COLOR
+COLOR fg[,bg]
+  Sets the text color and the background, 0 to 15 each. Without bg the
+  background stays.
+  COLOR 1,6
+:CONT
+CONT
+  Goes on with the program after STOP, END or a break.
+:CONTINUE
+CONTINUE
+  Starts the next pass of the innermost FOR or DO loop.
+  10 FOR I=1 TO 5: IF I=3 THEN CONTINUE
+  20 PRINT I: NEXT
+:COS
+COS(n)
+  Returns the cosine of n, n in radians.
+:DATA
+DATA value[,value...]
+  Holds numbers and strings for READ.
+  DATA 1,2,"THREE"
+:DEEK
+DEEK(addr)
+  Returns the 16-bit word at addr, low byte first, 0 to 65535.
+  PRINT DEEK(2)
+:DEF
+DEF FN name(x) = expression                         (Program only)
+  Defines a function of one number.
+  10 DEF FN SQ(X) = X*X
+  20 PRINT FN SQ(4)
+:DIM
+DIM name(size[,size...])[,...]
+  Makes arrays. Each index runs from 0 to size. An array used without DIM
+  has 0 to 10.
+  DIM A(20), N$(5,5)
+:DO
+DO ... LOOP
+  Repeats the lines between DO and LOOP. EXIT leaves the loop. CONTINUE
+  starts the next pass.
+  10 DO
+  20 INPUT A
+  30 IF A=0 THEN EXIT
+  40 PRINT A*2
+  50 LOOP
+:DOKE
+DOKE addr,n
+  Stores n as a 16-bit word at addr, low byte first. n is -65535 to 65535;
+  a negative n is taken mod 65536.
+:ELSE
+ELSE
+  Starts the part of a block IF that runs when the condition is false.
+  ELSE IF c THEN chains blocks; each block needs its own END IF.
+  See IF.
+:END
+END
+  Ends the program. END IF ends a block IF.
+:EXIT
+EXIT [DO]
+  Leaves a DO loop and goes on after its LOOP.
+:EXP
+EXP(n)
+  Returns e to the power n.
+:FILES
+FILES ["pattern"]
+  Lists the names that match pattern, each with its size or <DIR>, then
+  their count. * and ? are wildcards. A directory's name lists the names in
+  it; no pattern lists the current directory.
+  FILES "*.BAS"
+:FN
+FN name(x)
+  Calls a function that DEF FN made. See DEF.
+:FOR
+FOR var = first TO last [STEP n] ... NEXT [var]
+  Runs the lines between FOR and NEXT once for each value of var.
+  STEP sets the change after each pass; it is 1 without STEP.
+  FOR I=10 TO 1 STEP -1: PRINT I: NEXT
+:FRE
+FRE(0)
+  Returns the free bytes of memory. Over 32767 it is negative; add 65536.
+:GET
+GET var[,var...]                                    (Program only)
+GET# lf,var[,var...]
+  Reads one character from the input, or from logical file lf.
+  10 GET K$
+:GO
+GO TO line
+  The same as GOTO.
+:GOSUB
+GOSUB line or label
+  Runs the subroutine at line or label. RETURN comes back after GOSUB.
+  GOSUB 1000
+:GOTO
+GOTO line or label
+  Goes on at line or label.
+  GOTO 100
+  GOTO MAIN
+:HELP
+HELP [topic]                                        (Direct only)
+  Prints the help on topic, or the topic names, from C:\sys\HELPBAS.HLP.
+  The shell command HELPBAS does the same.
+  HELP PRINT
+:HEX$
+HEX$(n)
+  Returns n in hex: 2 digits below 256, else 4. n is -65535 to 65535;
+  a negative n is taken mod 65536.
+  PRINT HEX$(255)
+:IF
+IF c THEN statements
+IF c THEN line
+IF c THEN ... [ELSE ...] END IF
+  Runs the statements, or goes to line, when c is true (not 0).
+  A line that ends with THEN starts a block IF, which ends at END IF.
+  10 IF A=1 THEN
+  20   PRINT "ONE"
+  30 ELSE
+  40   PRINT "OTHER"
+  50 END IF
+:INPUT
+INPUT ["prompt";] var[,var...]                      (Program only)
+  Reads values that the user types, separated by commas.
+  10 INPUT "NAME";N$
+:INPUT#
+INPUT# lf,var[,var...]
+  Reads values from logical file lf.
+  INPUT# 1,A$
+:INSTR
+INSTR([start,] a$, b$)
+  Returns the position of b$ in a$ from start on, or 0.
+  PRINT INSTR("HELLO","L")
+:INT
+INT(n)
+  Returns the largest whole number not above n.
+  PRINT INT(-2.5)
+:KILL
+KILL "name"
+  Deletes the file. Close it first.
+  KILL "OLD.BAS"
+:LABELS
+name:
+  A name and a colon at the start of a line make a label. GOTO, GOSUB,
+  RUN, RESTORE and ON take the label in place of a line number.
+  10 GOSUB SHOW: END
+  20 SHOW: PRINT "HI": RETURN
+:LCASE$
+LCASE$(a$)
+  Returns a$ with the letters A to Z made small.
+:LEFT$
+LEFT$(a$,n)
+  Returns the first n characters of a$.
+  PRINT LEFT$("HELLO",2)
+:LEN
+LEN(a$)
+  Returns the number of characters in a$.
+:LIST
+LIST [first][-[last]]
+  Lists the program, or the lines from first to last.
+  LIST 100-200
+:LOAD
+LOAD "name"
+  Deletes the program, then reads the program text of the file, as if typed.
+  In a program, RUN follows. A missing file keeps the program.
+  LOAD "HELLO.BAS"
+:LOCATE
+LOCATE x,y
+  Moves the cursor to column x, row y. 0,0 is the top left.
+  LOCATE 10,5: PRINT "HERE"
+:LOG
+LOG(n)
+  Returns the natural logarithm of n.
+:LOOP
+LOOP
+  Ends a DO loop. See DO.
+:MID$
+MID$(a$,start[,n])
+  Returns n characters of a$ from start on, or all of the rest.
+  PRINT MID$("HELLO",2,3)
+:MOD
+a MOD b
+  Returns the remainder of a / b, with the sign of a. Both are rounded to
+  whole numbers first.
+  PRINT 7 MOD 3
+:NAME
+NAME "old" AS "new"
+  Renames a file or a directory, or moves a file to another directory of the
+  same drive. A new name that exists gives ?FILE EXISTS ERROR.
+  NAME "OLD.BAS" AS "NEW.BAS"
+:NEW
+NEW
+  Deletes the program and its variables.
+:NEXT
+NEXT [var[,var...]]
+  Ends a FOR loop. See FOR.
+:NOT
+NOT n
+  Bitwise NOT of a number from -32768 to 32767. NOT 0 is -1.
+:ON
+ON n GOTO line[,line...]
+ON n GOSUB line[,line...]
+  Goes to the nth line of the list. Labels work as well.
+  ON K GOTO 100,200,300
+:OPEN
+OPEN lf,"name"[,mode]
+  Opens a file as logical file lf, 1 to 255. Mode 0 reads, 1 writes,
+  2 appends. Writing makes the file or empties it.
+  OPEN 1,"DATA.TXT",1
+:OR
+a OR b
+  Bitwise OR of two numbers from -32768 to 32767. True is -1, false 0.
+:PAUSE
+PAUSE n
+  Waits n+1 jiffies, 1/60 s each. PAUSE 60 waits about a second.
+:PEEK
+PEEK(addr)
+  Returns the byte at addr.
+:PI
+PI
+  The number pi, 3.14159265.
+:POKE
+POKE addr,n
+  Stores the byte n at addr.
+:POS
+POS(n)
+  POS(0) returns the cursor's column. POS(1) returns its row.
+:PRINT
+PRINT [items]
+  Prints numbers and strings. A ; joins items, a , moves to the next zone
+  of 14 columns. A ; or , at the end keeps the cursor on the line.
+  PRINT "A=";A
+:PRINT#
+PRINT# lf[,items]
+  Prints to logical file lf.
+  PRINT# 1,"LINE"
+:QUIT
+QUIT [n]
+  Ends BASIC and returns to the shell, with exit code n, 0 to 255, or 0.
+:READ
+READ var[,var...]
+  Reads the next values from the DATA lines.
+:REM
+REM text
+  A comment. The rest of the line is skipped.
+:RESTORE
+RESTORE [line or label]
+  Makes READ start again at the first DATA, or at line or label.
+:RETURN
+RETURN
+  Returns from GOSUB.
+:RIGHT$
+RIGHT$(a$,n)
+  Returns the last n characters of a$.
+:RND
+RND(n)
+  RND(1) returns a random number from 0 to below 1. A negative n starts a
+  new series.
+  PRINT INT(RND(1)*6)+1
+:RPT$
+RPT$(a$,n)
+RPT$(code,n)
+  Returns a$, or CHR$(code), n times, n 0 to 255.
+  PRINT RPT$("-",40)
+:RUN
+RUN [line or label]
+  Clears the variables and runs the program, from the start or from line.
+:SAVE
+SAVE "name"
+  Writes the program to the file as LIST shows it, with no space before a
+  line number. A file of that name is replaced. Ends a program.
+  SAVE "HELLO.BAS"
+:SCREEN
+SCREEN mode
+  Does nothing. The screen stays 80 by 30 text.
+:SGN
+SGN(n)
+  Returns 1 for a positive n, -1 for a negative n, 0 for 0.
+:SHL
+SHL(a,n)
+  Shifts the 16 bits of a left n places. The result is -32768 to 32767.
+  PRINT SHL(1,4)
+:SHR
+SHR(a,n)
+  Shifts the 16 bits of a right n places. Zeros come in at the top.
+:SIN
+SIN(n)
+  Returns the sine of n, n in radians.
+:SQR
+SQR(n)
+  Returns the square root of n.
+:ST
+ST
+  The status of the last file read. 64 means the end of the file.
+  IF ST AND 64 THEN CLOSE 1
+:STEP
+STEP n
+  Sets the change of a FOR loop. See FOR.
+:STOP
+STOP
+  Stops the program with BREAK IN line. CONT goes on.
+:STR$
+STR$(n)
+  Returns n as a string.
+:SYS
+SYS addr
+  Calls machine code at addr. RTS returns to BASIC.
+:TAB
+TAB(n)
+  In PRINT, moves to column n.
+  PRINT TAB(10);"X"
+:TAN
+TAN(n)
+  Returns the tangent of n, n in radians.
+:TEXTAT
+TEXTAT x,y,a$[,color]
+TEXTAT x,y,code[,color]
+  Prints a$, or CHR$(code), at column x, row y, in color if given. The
+  cursor stays where it was.
+  TEXTAT 0,0,"SCORE",14
+:THEN
+THEN
+  Follows the condition of IF. See IF.
+:TO
+TO
+  Sets the last value of a FOR loop. See FOR.
+:UCASE$
+UCASE$(a$)
+  Returns a$ with the letters a to z made capital.
+:VAL
+VAL(a$)
+  Returns the number in a$, or 0.
+  PRINT VAL("12")+1
+:VPEEK
+VPEEK(bank,addr)
+  Returns the byte at addr in video memory bank, 0 or 1.
+:VPOKE
+VPOKE bank,addr,n
+  Stores the byte n at addr in video memory bank, 0 or 1.
+:WAIT
+WAIT addr,and[,xor]
+  Waits until (PEEK(addr) XOR xor) AND and is not 0.
+:XOR
+XOR(a,b)
+  Bitwise XOR of the 16 bits of a and b. The result is -32768 to 32767.
+  PRINT XOR(12,10)

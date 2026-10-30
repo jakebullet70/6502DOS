@@ -477,7 +477,7 @@ L4192:
         sta     GORESTART+1
         sty     GORESTART+2
   .ifdef DOS6502
-        jmp     DOS_BOOT		; MSBASIC NAME.BAS loads NAME.BAS
+        jmp     DOS_BOOT		; BASIC NAME.BAS loads NAME.BAS
   .else
         jmp     (GORESTART+1)
   .endif

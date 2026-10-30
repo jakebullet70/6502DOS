@@ -1,5 +1,5 @@
 ; 6502DOS target: BASIC in ROM bank 2 of the 6502DOS ROM, $C000-$FFFF.
-; MSBASIC.COM at $0801 selects bank 2 and calls $C000. Console and files go
+; BASIC.COM at $0801 selects bank 2 and calls $C000. Console and files go
 ; through the 6502DOS API (6502dos_extra.s): the console is handle 0 for
 ; input and handle 1 for output. 65C02 opcodes are allowed.
 ; The zero page and the RAM data are in 6502dos_zp.s.
@@ -35,7 +35,7 @@ CONFIG_PAUSE := 1 ; PAUSE jiffies statement, like SLEEP on the X16 (pause.s)
 CONFIG_SCREEN := 1 ; CLS and LOCATE by ANSI codes, COLOR by con_colour (textat.s)
 CONFIG_VERA := 1 ; VPEEK function and VPOKE statement (vera.s)
 CONFIG_QUIT := 1 ; QUIT [n] statement, back to the shell with exit code n (6502dos_extra.s)
-CONFIG_HELP := 1 ; HELP [topic] statement, direct mode only, from C:\DOS\HELPBAS.HLP (6502dos_extra.s)
+CONFIG_HELP := 1 ; HELP [topic] statement, direct mode only, from basic\HELPBAS.HLP in BASIC.COM's folder (6502dos_extra.s)
 CONFIG_POS_LINE := 1 ; POS(1) gives the cursor row from con_cursor
 CONFIG_PEEK_SAVE_LINNUM := 1 ; PEEK keeps LINNUM, so POKE A,PEEK(B) works
 CONFIG_NAME_NOCRUNCH := 1 ; no keyword search inside a name: BORDER is not B,OR,DER
@@ -51,11 +51,11 @@ SPACE_FOR_GOSUB  := $33
 WIDTH            := 80 ; the console is 80x30
 WIDTH2           := 70 ; last comma tab stop, as BASIC derives it for width 80
 
-; memory layout, page $08: MSBASIC.COM, the RAM data, INPUTBUFFER.
+; memory layout, page $08: BASIC.COM, the RAM data, INPUTBUFFER.
 ; Trap: INPUTBUFFER must not cross a page (INPUTBUFFERX,x), and no program
 ; text or string may share its page: flow1.s and string.s test #>INPUTBUFFER
 ; for direct mode.
-DOS_STUB         := PROGRAM ; MSBASIC.COM, at most 15 bytes
+DOS_STUB         := PROGRAM ; BASIC.COM, at most 15 bytes
 DOS_DATA         := $0810 ; the RAM data of 6502dos_zp.s
 INPUTBUFFER      := $0860 ; 5 bytes in front, LINE_MAX+1 bytes, CR included
 LINE_MAX         := 80 ; longest typed line, one screen row

@@ -143,6 +143,8 @@ DOS_R0NAME:
 K_OPEN:
         sta     DOS_MODE
         jsr     DOS_R0NAME
+; The same with the name at r0, and A and DOS_MODE already set to the mode.
+K_OPEN_R0:
         cmp     #1
         beq     @create
         lsr     a			; 0: access 0, read; 2: access 1, write
@@ -290,7 +292,7 @@ COLOR:
 .ifdef CONFIG_QUIT
 ; ----------------------------------------------------------------------------
 ; "QUIT" STATEMENT: QUIT [N]. ENDS BASIC AND RETURNS TO THE PROGRAM THAT RAN
-; MSBASIC.COM, WITH THE EXIT CODE N, 0-255, OR 0. exit closes BASIC's files.
+; BASIC.COM, WITH THE EXIT CODE N, 0-255, OR 0. exit closes BASIC's files.
 ; ----------------------------------------------------------------------------
 QUIT:
         beq     @zero			; no N
@@ -305,14 +307,16 @@ QUIT:
 .ifdef CONFIG_HELP
 ; ----------------------------------------------------------------------------
 ; "HELP" STATEMENT: HELP [TOPIC], DIRECT MODE ONLY; ?SYNTAX ERROR IN A
-; PROGRAM. PRINTS THE TOPIC'S TEXT FROM C:\DOS\HELPBAS.HLP, OR WITH NO TOPIC
-; THE TOPIC NAMES, A NEW LINE BEFORE A NAME THAT WOULD PASS COLUMN 79.
+; PROGRAM. PRINTS THE TOPIC'S TEXT FROM basic\HELPBAS.HLP IN THE FOLDER OF
+; BASIC.COM, OR WITH NO TOPIC THE TOPIC NAMES, A NEW LINE BEFORE A NAME THAT
+; WOULD PASS COLUMN 79.
 ; THE FILE IS HELP.HLP'S FORMAT: A LINE :NAME STARTS THE TOPIC NAME, CR LF
 ; LINE ENDS. A TOKEN IN THE TOPIC IS SPELLED OUT AND "(" IS DROPPED, SO
 ; HELP PRINT AND HELP TAB( FIND PRINT AND TAB.
 ; ----------------------------------------------------------------------------
-; Trap: the topic and the name buffers share HIO_NAME with the path, which
-; K_OPEN needs only while it opens.
+; Trap: the path goes in DOS_BUF and on over FILES_COUNT, 87 bytes that hold
+; progpath's 84. The folder of BASIC.COM may have up to 69 characters.
+.assert FILES_COUNT+4-DOS_BUF = 1+69+HELP_TAIL_END-HELP_TAIL, error, "HELP's path does not fit"
 HELP_TOPIC	:= HIO_NAME+20		; the topic, CR at its end
 HELP_NAME	:= HIO_NAME+40		; a :NAME line, CR at its end
 HELP_MAX	= 19			; longest topic and name
@@ -361,14 +365,37 @@ HELP:
         lda     #CR
         sta     HELP_TOPIC,x
         stx     HELP_FOUND
-        ldx     #HELP_PATH_END-HELP_PATH-1
-@path:
-        lda     HELP_PATH,x
-        sta     HIO_NAMELEN,x
-        dex
-        bpl     @path
-        lda     #0			; read
-        jsr     K_OPEN
+        jsr     DOS_GIVEBACK		; DOS_BUF takes the path
+        lda     #<DOS_BUF
+        sta     r0
+        lda     #>DOS_BUF
+        sta     r0+1
+        jsr     API_PROGPATH
+        ldy     DOS_BUF
+@cut:
+        beq     @folder			; Y = the folder's length
+        lda     DOS_BUF,y
+        cmp     #'\'
+        beq     @folder
+        cmp     #'/'
+        beq     @folder
+        cmp     #':'
+        beq     @folder
+        dey
+        bra     @cut
+@folder:
+        ldx     #0
+@tail:
+        lda     HELP_TAIL,x
+        iny
+        sta     DOS_BUF,y
+        inx
+        cpx     #HELP_TAIL_END-HELP_TAIL
+        bne     @tail
+        sty     DOS_BUF
+        stz     DOS_MODE		; read
+        lda     #0
+        jsr     K_OPEN_R0
         bcc     @opened
         ldx     #HIO_ERR_NOTFOUND
         jmp     HIO_ERROR
@@ -471,15 +498,15 @@ HELP_PUT:
 HELP_RTS:
         rts
 
-HELP_PATH:
-        .byte   HELP_PATH_END-HELP_PATH-1, "C:\DOS\HELPBAS.HLP"
-HELP_PATH_END:
+HELP_TAIL:
+        .byte   "basic\HELPBAS.HLP"
+HELP_TAIL_END:
 HELP_NONE:
         .byte   "NO HELP FOR ",0
 .endif
 
 ; ----------------------------------------------------------------------------
-; The end of the cold start. MSBASIC NAME.BAS loads NAME.BAS, the first word
+; The end of the cold start. BASIC NAME.BAS loads NAME.BAS, the first word
 ; of the command tail, as DOS_LOAD does, and runs it. Without a name the OK
 ; prompt follows.
 ; ----------------------------------------------------------------------------

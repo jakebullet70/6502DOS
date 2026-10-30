@@ -1,4 +1,4 @@
-; MSBASIC.COM, the start of the 6502dos target: clears the screen, selects ROM
+; BASIC.COM, the start of the 6502dos target: clears the screen, selects ROM
 ; bank 2 and jumps to BASIC's cold start at $C000. tools/build.py of the
 ; 6502DOS repo assembles it to run at $0801 and puts the load address $0801 in
 ; front. Trap: at most 15 bytes, DOS_STUB in defines_6502dos.s; the RAM data

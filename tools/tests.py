@@ -219,7 +219,7 @@ def basic_tests(names, update):
         source = open(os.path.join(BASIC_TESTS, name + ".bas"), encoding="latin-1").read()
         shutil.copyfile(SD_IMAGE, RUN_IMAGE)
         took = time.time()
-        got = boot(SHELL_ROM, None, "MSBASIC\n" + source + "QUIT\n",
+        got = boot(SHELL_ROM, None, "BASIC\n" + source + "QUIT\n",
                    done=lambda output: BASIC_END in output)
         took = time.time() - took
         quit = BASIC_END in got

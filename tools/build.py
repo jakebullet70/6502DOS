@@ -6,7 +6,7 @@ Runs tools/genapi.py, assembles every src/asm/*.s and build/gen/*.s with ca65, l
 with src/asm/rom.cfg into build/6502DOS.ROM, ROM banks 0, 1 and 5, and copies LICENSE and NOTICE
 beside it. MSBASIC's 6502dos target, MSBASIC/src/msbasic.s with MSBASIC/src/6502dos.cfg, is
 ROM bank 2, appended to the image; its labels are build/MSBASIC.LBL. MSBASIC/src/6502dos_com.s
-assembles to build/bas/MSBASIC.COM, which starts it. ROM banks 3 and 4, appended next, are the
+assembles to build/bas/BASIC.COM, which starts it. ROM banks 3 and 4, appended next, are the
 one src/bank3/NAME.UXB, which sets #ORG $C000 and #ROMBANKS 3, 4, compiled and linked with
 src/bank3/bank.s and bank.cfg; src/bank3/stub.s assembles to build/bas/NAME.COM, which starts
 it. Bank 5, the table library, follows bank 4. ROM banks 6, 7 and 8 are src/bank6/XBASE.UXB, with
@@ -21,12 +21,12 @@ includes, than the template table or than pyuxc. Each src/scom/NAME.UXB, a
 commandlet, compiles the same way to build/sys/NAME.SCOM, a long name on the card. Each
 src/dos/NAME.UXB, a DOS utility, compiles to
 build/sys/NAME.COM, and each src/dos/NAME.TXT and NAME.HLP is copied to build/sys, with
-build/sys/HELP.IDX and HELPBAS.IDX, the indexes of HELP.HLP and HELPBAS.HLP that HELP -R and
-HELPBAS -R write. card/sys/xbase/HELPXBASE.HLP is copied to build/sys/xbase, with HELPXBASE.IDX, the
-index that HELPXBASE -R writes. Each
+build/sys/HELP.IDX, the index of HELP.HLP that HELP -R writes. card/sys/xbase/HELPXBASE.HLP is copied
+to build/sys/xbase, with HELPXBASE.IDX, the index that HELPXBASE -R writes, and
+card/sys/basic/HELPBAS.HLP to build/sys/basic, with HELPBAS.IDX, the index that HELPBAS -R writes. Each
 src/utils/FOLDER/NAME.UXB, a utility, compiles to build/sys/NAME.COM, and the files of
 src/utils/FOLDER are copied to build/source/xcbasic/FOLDER. Each test named in SHOWN_TESTS, tests/NAME.UXB,
-compiles to build/sys/NAME.COM as well. CMDSHELL.COM, ROMSHELL.COM and MSBASIC.COM are copied to build/sys.
+compiles to build/sys/NAME.COM as well. CMDSHELL.COM, ROMSHELL.COM and BASIC.COM are copied to build/sys.
 
 Then tools/mksd.py makes the SD card image build/SD.IMG from the folder card, the folder build/sys,
 which is the card's folder sys, the folder build/source, which is the card's folder source, the
@@ -158,14 +158,14 @@ def compile_scom():
         uxb.compile(source, os.path.join(SYS_OUT, name))
     for text in sorted(glob.glob(os.path.join(UTILITIES, "*.TXT")) + glob.glob(os.path.join(UTILITIES, "*.HLP"))):
         shutil.copyfile(text, os.path.join(SYS_OUT, os.path.basename(text).upper()))
-    for name in ("HELP", "HELPBAS"):
-        write_help_index(os.path.join(UTILITIES, name + ".HLP"), os.path.join(SYS_OUT, name + ".IDX"))
-    card_xbase = os.path.join(CARD, "sys", "xbase")
-    write_help_index(os.path.join(card_xbase, "HELPXBASE.HLP"), os.path.join(card_xbase, "HELPXBASE.IDX"))
-    xbase = os.path.join(SYS_OUT, "xbase")
-    os.makedirs(xbase, exist_ok=True)
-    for name in ("HELPXBASE.HLP", "HELPXBASE.IDX"):
-        shutil.copyfile(os.path.join(card_xbase, name), os.path.join(xbase, name))
+    write_help_index(os.path.join(UTILITIES, "HELP.HLP"), os.path.join(SYS_OUT, "HELP.IDX"))
+    for folder, name in (("xbase", "HELPXBASE"), ("basic", "HELPBAS")):
+        card_folder = os.path.join(CARD, "sys", folder)
+        write_help_index(os.path.join(card_folder, name + ".HLP"), os.path.join(card_folder, name + ".IDX"))
+        out_folder = os.path.join(SYS_OUT, folder)
+        os.makedirs(out_folder, exist_ok=True)
+        for extension in (".HLP", ".IDX"):
+            shutil.copyfile(os.path.join(card_folder, name + extension), os.path.join(out_folder, name + extension))
     return SYS_OUT
 
 
@@ -203,7 +203,7 @@ def compile_utils():
 
 def build_basic():
     """Append MSBASIC's 6502dos target to build/6502DOS.ROM as ROM bank 2, and assemble
-    build/bas/MSBASIC.COM. Return the COM path."""
+    build/bas/BASIC.COM. Return the COM path."""
     obj = os.path.join(OBJ, "msbasic.o")
     image = os.path.join(BUILD, "MSBASIC.BIN")
     run([CA65, "-D", "DOS6502", "-I", MSBASIC_SRC, "-I", ASM, "-I", GEN, "-o", obj,
@@ -224,7 +224,7 @@ def build_basic():
     run([CA65, "-I", ASM, "-I", GEN, "-o", obj, os.path.join(MSBASIC_SRC, "6502dos_com.s")])
     run([LD65, "-C", config, "-o", stub, obj])
     os.makedirs(BAS_OUT, exist_ok=True)
-    program = os.path.join(BAS_OUT, "MSBASIC.COM")
+    program = os.path.join(BAS_OUT, "BASIC.COM")
     with open(program, "wb") as out:
         out.write(PROGRAM_START.to_bytes(2, "little") + open(stub, "rb").read())
     return program

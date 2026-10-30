@@ -76,7 +76,7 @@ INLIN_PTR:
         ldx     #<(INPUTBUFFER-1)
         ldy     #>(INPUTBUFFER-1)
         rts
-; Logical file 0 is the file of LOAD or MSBASIC NAME.BAS (DOS_LOAD). Its lines
+; Logical file 0 is the file of LOAD or BASIC NAME.BAS (DOS_LOAD). Its lines
 ; end with no CRDO: CURDVC is not 0 while one is read. When it is all read, it
 ; is closed, the console takes over, and the OK prompt or the line RUN follows
 ; (DOS_LOADRUN).

@@ -1,12 +1,12 @@
 '=============================================================================================
 ' -- HELPBAS [topic | -R]
-' -- prints the help on the MSBASIC keyword topic from C:\sys\HELPBAS.HLP. With no topic it
+' -- prints the help on the MSBASIC keyword topic from C:\sys\basic\HELPBAS.HLP. With no topic it
 ' -- lists the topic names, a new line before a name that would pass column 79.
 ' -- A small letter in topic is the same as a capital.
 ' -- HELPBAS.HLP has the format of HELP.HLP: a line :NAME starts the topic NAME, in capitals.
 ' -- The lines after it, up to the next :NAME line, are its text. A line is 80 characters at
 ' -- most; the rest is cut. The file has CR LF line ends, for MSBASIC's HELP.
-' -- C:\sys\HELPBAS.IDX indexes HELPBAS.HLP in the format of HELP.IDX: its first line is the
+' -- C:\sys\basic\HELPBAS.IDX indexes HELPBAS.HLP in the format of HELP.IDX: its first line is the
 ' -- size of HELPBAS.HLP after a space, and each line after it is a topic name, a space and the
 ' -- byte position of its :NAME line. Lines end with CR LF. tools/build.py writes the same file.
 ' -- HELPBAS finds a topic by the index and reads only its text. A missing index, or one whose
@@ -27,7 +27,7 @@
 #INCLUDE "HEAP.UXI"
 #INCLUDE "HELPSW.UXI"
 CONST SLOT_P1 AS UBYTE = 0, BLOCK_SIZE AS UBYTE = 255, LF AS UBYTE = 10, CR AS UBYTE = 13
-CONST HELP_NAME$ = "C:\sys\HELPBAS.HLP", INDEX_NAME$ = "C:\sys\HELPBAS.IDX"
+DIM HELP_NAME AS STRING * 128, INDEX_NAME AS STRING * 128
 DIM TOPIC_TYPED AS STRING * 80, TOPIC AS STRING * 80, TEXT_LINE AS STRING * 80
 DIM HEADING AS STRING * 81
 DIM HELP_FILE AS UWORD, INDEX_FILE AS UWORD, POSITION AS UBYTE, CHARACTER AS UBYTE
@@ -37,7 +37,7 @@ DIM BLOCK(BLOCK_SIZE) AS UBYTE
 ' Opens HELPBAS.HLP into HELP_FILE and puts its size in PLACE, or ends the program with File
 ' not found.
 SUB OPEN_HELP()
-  HELP_FILE = OPEN(HELP_NAME$, O.READ)
+  HELP_FILE = OPEN(HELP_NAME, O.READ)
   IF HELP_FILE = NOFILE THEN
     PRINT "File not found"
     END 2
@@ -53,7 +53,7 @@ SUB WRITE_INDEX()
   DIM COUNT AS UWORD, SPOT AS UWORD, TOPICS AS UWORD, START AS ULONG
   DIM AT_LINE_START AS UBYTE, IN_HEADING AS UBYTE
   OPEN_HELP()
-  INDEX_FILE = DOS.CREATE_FILE(INDEX_NAME$, 0)
+  INDEX_FILE = DOS.CREATE_FILE(INDEX_NAME, 0)
   IF DOS.ERROR <> 0 THEN
     PRINT DOS.ERRMSG(DOS.ERROR)
     END 2
@@ -104,6 +104,8 @@ SUB LIST_NAME(NAME AS STRING)
 END SUB
 
 HELP_SWITCH("HELPBAS")
+HELP_NAME = DOS.PROGRAM_FOLDER() + "basic\HELPBAS.HLP"
+INDEX_NAME = DOS.PROGRAM_FOLDER() + "basic\HELPBAS.IDX"
 TOPIC_TYPED = HEAP.SYS_STRINGS_GET(SLOT_P1)
 DO WHILE POSITION < LEN(TOPIC_TYPED)
   POSITION = POSITION + 1
@@ -114,7 +116,7 @@ LOOP
 IF TOPIC = "-R" THEN WRITE_INDEX()
 OPEN_HELP()
 ' The index: list the topics, or seek HELP_FILE to the topic's :NAME line and set FOUND.
-INDEX_FILE = OPEN(INDEX_NAME$, O.READ)
+INDEX_FILE = OPEN(INDEX_NAME, O.READ)
 IF INDEX_FILE <> NOFILE THEN
   LINPUT #INDEX_FILE, TEXT_LINE
   IF LVAL(TEXT_LINE) = PLACE THEN

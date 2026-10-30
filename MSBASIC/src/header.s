@@ -8,7 +8,7 @@
 
 		.segment "HEADER"
 .ifdef DOS6502
-; MSBASIC.COM calls $C000
+; BASIC.COM calls $C000
         jmp     COLD_START
 .endif
 .ifdef W65C816SXB
