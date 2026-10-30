@@ -93,7 +93,8 @@ END SUB
 ' name in dirs, apart by ;, as FIND_FILE. SET PATH TO alone clears dirs. SET FILTER TO condition:
 ' GO TOP, GO BOTTOM, SKIP, the scopes and COPY TO pass over the records that do not meet the
 ' logical condition; the current record stays. SET FILTER TO alone clears it. USE and CREATE
-' clear it.
+' clear it. SET REVERSE ON: what prints after shows in reverse video. SET REVERSE OFF: the
+' default colors again.
 SUB DO_SET()
   NEXT_WORD()
   IF TOKEN = "PATH"
@@ -129,6 +130,15 @@ SUB DO_SET()
       IF IN_USE() = 0 THEN RETURN
       CLOSE_INDEXES()
       OPEN_INDEXES()
+      RETURN
+    ENDIF
+  ELSEIF IS("REVERSE")
+    NEXT_WORD()
+    IF TOKEN = "ON"
+      PRINT "{REVERSE}";
+      RETURN
+    ELSEIF TOKEN = "OFF"
+      PRINT "{NORMAL}";
       RETURN
     ENDIF
   ENDIF
