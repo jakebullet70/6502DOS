@@ -1,0 +1,234 @@
+'=============================================================================================
+' -- XT
+' -- a file manager after XTree: the tree of folders at the left, the files of the chosen folder
+' -- at the right, and two rows of commands that change while Ctrl or Alt is held.
+' -- Row 0 holds the folder's path, the counts and the clock. Rows 28 and 29 hold the commands.
+' -- The registry key THEME names the theme: THEME = DARK reads C:\sys\themes\DARK.GTH. A missing
+' -- key or file gives the built-in DARK colors.
+' --     Up, Down, PgUp, PgDn  move through the tree
+' --     Enter                 logs and expands the folder, or collapses it
+' --     +                     logs and expands the folder
+' --     -, Left               collapses the folder
+' --     Tab, Right            moves to the folder's files, and logs a folder that is not logged
+' --   In the file window:
+' --     Up, Down, PgUp, PgDn  move through the files
+' --     Tab, Enter, Left      move back to the tree
+' --   Anywhere:
+' --     F1   runs HELP XT
+' --     Q    ends the program; a dialog asks first
+' -- -H or -? as the first parameter runs HELP XT.
+' -- Exit codes:
+' --   0  the program ended by Q.
+' --   1  the error message of too few free RAM banks.
+' --
+' -- From a prompt:
+' --     XT
+'=============================================================================================
+#INCLUDE "DOS.UXI"
+#INCLUDE "BANK.UXI"
+#INCLUDE "KEYS.UXI"
+#INCLUDE "CONS.UXI"
+#INCLUDE "VERA.UXI"
+#INCLUDE "GUI.UXI"
+#INCLUDE "HELPSW.UXI"
+
+CONST TITLE_ROW AS UBYTE = 0, PANE_TOP AS UBYTE = 1, PANE_ROWS AS UBYTE = 27
+CONST MENU_ROW AS UBYTE = 28, SECOND_MENU_ROW AS UBYTE = 29
+CONST SCREEN_COLUMNS AS UBYTE = 80, DIVIDER_COLUMN AS UBYTE = 27
+' The title's path starts at PATH_COLUMN, the counts end before COUNTS_END, and the clock starts
+' at CLOCK_COLUMN. The widest counts, 24 characters, start at column 45.
+CONST PATH_COLUMN AS UBYTE = 1, PATH_WIDTH AS UBYTE = 44
+CONST COUNTS_END AS UBYTE = 69, CLOCK_COLUMN AS UBYTE = 71
+' The column of the second row's Q command, plain and with Alt, and of its Tab command.
+CONST QUIT_COLUMN AS UBYTE = 75, QUIT_HERE_COLUMN AS UBYTE = 70, TAB_COLUMN AS UBYTE = 58
+' A VSYNC comes 60 times a second.
+CONST TICKS_A_SECOND AS UWORD = 60
+' The code of the vertical line in CP437.
+CONST LINE_DOWN AS UBYTE = 179
+' Marks the start and end of a menu's hot characters.
+CONST HOT_MARK AS UBYTE = 126
+
+' Which commands the menu shows.
+ENUM MENU_STATE
+  PLAIN, WITH_CTRL, WITH_ALT
+END ENUM
+
+' The pane that takes the keys.
+ENUM PANE
+  TREE, FILES
+END ENUM
+
+DIM NAMES_BANK AS UBYTE, EXTRAS_BANK AS UBYTE, INDEX_BANK AS UBYTE, FOCUS AS UBYTE
+DIM START_COLOR AS UBYTE, TITLE_COLOR AS UBYTE, MENU_COLOR AS UBYTE, HOT_COLOR AS UBYTE
+DIM SHOWN_MENU AS UBYTE, WANTED_MENU AS UBYTE
+DIM PRESSED AS UWORD, CLOCK_TICK AS UWORD, ELAPSED AS UWORD
+DIM FILE_COUNT AS UWORD, TAG_COUNT AS UWORD, EXEC_ERROR AS UBYTE, HELP_EXIT AS UBYTE
+DIM THEME_PATH AS STRING * 255, FOLDER_PATH AS STRING * 255
+DIM COUNTS_TEXT AS STRING * 24, CLOCK_TEXT AS STRING * 8
+
+' N in decimal, with no space before it.
+FUNCT DIGITS$(N AS ULONG)
+  RETURN MID$(STR$(N), 2)
+END FUNCT
+
+' N as two digits, with a 0 before one digit.
+FUNCT TWO_DIGITS$(N AS UBYTE)
+  IF N < 10 THEN RETURN "0" + DIGITS$(N)
+  RETURN DIGITS$(N)
+END FUNCT
+
+' Returns the theme's color for ROLE_NUMBER.
+FUNCT COLOR_OF(ROLE_NUMBER AS UBYTE) AS UBYTE
+  RETURN ContentsAt(@GUI.COLORS$ + 2 + ROLE_NUMBER)
+END FUNCT
+
+' Takes a run of COUNT RAM banks and returns its first bank. Too few free banks print the error
+' message and end the program with exit code 1.
+FUNCT TAKE_BANKS(COUNT AS UBYTE) AS UBYTE
+  DIM FIRST AS UBYTE
+  FIRST = BANK.ALLOC(COUNT)
+  IF FIRST = 0 THEN
+    PRINT DOS.ERRMSG(DOS.ERROR)
+    END 1
+  END IF
+  RETURN FIRST
+END FUNCT
+
+' Writes the time at the title's right, and starts the next second's wait.
+SUB DRAW_CLOCK()
+  CLOCK_TICK = DOS.TICKS()
+  DOS.GETTIME()
+  CLOCK_TEXT = TWO_DIGITS$(DOS.HOURS) + ":" + TWO_DIGITS$(DOS.MINUTES) + ":" + TWO_DIGITS$(DOS.SECONDS)
+  VERA.PRINTAT(TITLE_ROW, CLOCK_COLUMN, CLOCK_TEXT, TITLE_COLOR)
+END SUB
+
+' Writes row 0: the path, the end of it when it is too long, the counts and the clock.
+SUB DRAW_TITLE()
+  VERA.FILL(TITLE_ROW, 0, SCREEN_COLUMNS, 1, ASC(" "), TITLE_COLOR)
+  IF LEN(FOLDER_PATH) > PATH_WIDTH THEN
+    VERA.PRINTAT(TITLE_ROW, PATH_COLUMN, RIGHT$(FOLDER_PATH, PATH_WIDTH), TITLE_COLOR)
+  ELSE
+    VERA.PRINTAT(TITLE_ROW, PATH_COLUMN, FOLDER_PATH, TITLE_COLOR)
+  END IF
+  COUNTS_TEXT = DIGITS$(FILE_COUNT) + " Files " + DIGITS$(TAG_COUNT) + " Tagged"
+  VERA.PRINTAT(TITLE_ROW, COUNTS_END - LEN(COUNTS_TEXT), COUNTS_TEXT, TITLE_COLOR)
+  DRAW_CLOCK()
+END SUB
+
+' Clears the panes, and draws the line between the tree and the file window.
+SUB DRAW_FRAME()
+  VERA.FILL(PANE_TOP, 0, SCREEN_COLUMNS, PANE_ROWS, ASC(" "), COLOR_OF(GUI.ROLE.PAGE))
+  VERA.FILL(PANE_TOP, DIVIDER_COLUMN, 1, PANE_ROWS, LINE_DOWN, COLOR_OF(GUI.ROLE.FRAME))
+END SUB
+
+' Writes TEXT$ from ROW and COLUMN in the menu's colors. Each HOT_MARK switches between the MENU
+' color and the HOT_KEY color, and takes no cell.
+SUB MENU_TEXT(ROW AS UBYTE, COLUMN AS UBYTE, TEXT$ AS CONST)
+  DIM PLACE AS UWORD, PAST_END AS UWORD, CHARACTER AS UBYTE, COLOR AS UBYTE
+  COLOR = MENU_COLOR
+  PLACE = @TEXT$ + 2
+  PAST_END = PLACE + ContentsAt(@TEXT$ + 1)
+  DO WHILE PLACE <> PAST_END
+    CHARACTER = ContentsAt(PLACE)
+    IF CHARACTER = HOT_MARK THEN
+      COLOR = COLOR XOR MENU_COLOR XOR HOT_COLOR
+    ELSE
+      VERA.PUT_CELL(ROW, COLUMN, CHARACTER, COLOR)
+      COLUMN = COLUMN + 1
+    END IF
+    PLACE = PLACE + 1
+  LOOP
+END SUB
+
+' Writes rows 28 and 29 for SHOWN_MENU. Each row's text fits, so neither row scrolls the screen.
+SUB DRAW_MENU()
+  VERA.FILL(MENU_ROW, 0, SCREEN_COLUMNS, 2, ASC(" "), MENU_COLOR)
+  SELECT CASE SHOWN_MENU
+    CASE MENU_STATE.WITH_CTRL
+      MENU_TEXT(MENU_ROW, 0, "~CTRL:~ ~T~ag  ~U~ntag  ~F~ind")
+      MENU_TEXT(SECOND_MENU_ROW, QUIT_COLUMN, "~Q~uit")
+    CASE MENU_STATE.WITH_ALT
+      MENU_TEXT(MENU_ROW, 0, "~ALT:~  ~F3~ Relog  ~P~rune  ~R~elease  ~J~ump  ~T~ag branch  ~U~ntag all  ~F10~ Config")
+      MENU_TEXT(SECOND_MENU_ROW, QUIT_HERE_COLUMN, "~Q~uit-here")
+    CASE ELSE
+      IF FOCUS = PANE.TREE THEN
+        MENU_TEXT(MENU_ROW, 0, "~MENU:~ ~Enter~ Log  ~M~kdir  ~R~ename  ~D~elete  ~S~howall  ~B~ranch  ~G~lobal  ~F1~ Help  ~A~bout")
+        MENU_TEXT(SECOND_MENU_ROW, TAB_COLUMN, "~Tab~ Files")
+      ELSE
+        MENU_TEXT(MENU_ROW, 0, "~MENU:~ ~T~ag  ~U~ntag  ~V~iew  ~E~dit  ~C~opy  ~M~ove  ~F~ilespec  ~R~ename  ~D~elete")
+        MENU_TEXT(SECOND_MENU_ROW, TAB_COLUMN, "~Tab~ Folders")
+      END IF
+      MENU_TEXT(SECOND_MENU_ROW, 0, "Hold ~Ctrl~ or ~Alt~ for more commands")
+      MENU_TEXT(SECOND_MENU_ROW, QUIT_COLUMN, "~Q~uit")
+  END SELECT
+END SUB
+
+#INCLUDE "XTFILE.UXI"
+#INCLUDE "XTTREE.UXI"
+
+' Draws the whole screen. Nothing on it is kept: a child program can leave it in any state.
+SUB DRAW_ALL()
+  DRAW_TITLE()
+  DRAW_FRAME()
+  DRAW_TREE()
+  DRAW_FILES()
+  DRAW_MENU()
+END SUB
+
+' Runs HELP XT, draws the screen again, and shows why when HELP did not run or had no topic.
+SUB RUN_HELP()
+  DOS.EXEC("C:\sys\HELP.COM", "XT")
+  EXEC_ERROR = DOS.ERROR
+  HELP_EXIT = 0
+  IF EXEC_ERROR = 0 THEN HELP_EXIT = DOS.EXITCODE()
+  DRAW_ALL()
+  IF EXEC_ERROR <> 0 THEN
+    GUI.MSGBOX("Help", DOS.ERRMSG(EXEC_ERROR))
+  ELSEIF HELP_EXIT <> 0 THEN
+    GUI.MSGBOX("Help", "No help for XT")
+  END IF
+END SUB
+
+HELP_SWITCH("XT")
+DOS.STOP_KEY(DOS.STOP.OFF)
+START_COLOR = DOS.GET_COLOR()
+NAMES_BANK = TAKE_BANKS(1)
+EXTRAS_BANK = TAKE_BANKS(1)
+INDEX_BANK = TAKE_BANKS(2)
+ARENA_BANK = TAKE_BANKS(1)
+ARENA_PLACE = ARENA_START
+THEME_PATH = "C:\sys\themes\" + DOS.REG_GET("THEME", "DARK") + ".GTH"
+GUI.THEME_FILE(THEME_PATH)
+TITLE_COLOR = COLOR_OF(GUI.ROLE.STATUS)
+MENU_COLOR = COLOR_OF(GUI.ROLE.MENU)
+HOT_COLOR = (MENU_COLOR AND $F0) OR (COLOR_OF(GUI.ROLE.HOT_KEY) AND 15)
+START_TREE()
+DRAW_ALL()
+DO
+  PRESSED = GETEXTKEY()
+  WANTED_MENU = MENU_STATE.PLAIN
+  IF (KEYMODS() AND KEYS.MOD_CTRL) <> 0 THEN WANTED_MENU = MENU_STATE.WITH_CTRL
+  IF (KEYMODS() AND KEYS.MOD_ALT) <> 0 THEN WANTED_MENU = MENU_STATE.WITH_ALT
+  IF WANTED_MENU <> SHOWN_MENU THEN
+    SHOWN_MENU = WANTED_MENU
+    DRAW_MENU()
+  END IF
+  ' ELAPSED is a UWORD, so the count's wrap at 65535 gives the right difference.
+  ELAPSED = DOS.TICKS() - CLOCK_TICK
+  IF ELAPSED >= TICKS_A_SECOND THEN DRAW_CLOCK()
+  SELECT CASE PRESSED
+    CASE KEYS.KEY_F1
+      RUN_HELP()
+    CASE ASC("Q"), ASC("q")
+      IF GUI.YESNO("Quit", "Quit XT?") <> 0 THEN EXIT DO
+    CASE ELSE
+      IF FOCUS = PANE.TREE THEN
+        TREE_KEY(PRESSED)
+      ELSE
+        FILES_KEY(PRESSED)
+      END IF
+  END SELECT
+LOOP
+DOS.SET_COLOR(START_COLOR)
+PRINT CONS.CLEAR_SCREEN$;
+END 0
