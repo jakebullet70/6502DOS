@@ -1,0 +1,171 @@
+'=============================================================================================
+' -- HELPDB [topic | -R]
+' -- prints the help on the DB command topic from C:\DOS\HELPDB.HLP. With no topic it
+' -- lists the topic names, a new line before a name that would pass column 79.
+' -- A small letter in topic is the same as a capital.
+' -- HELPDB.HLP has the format of HELP.HLP: a line :NAME starts the topic NAME, in capitals.
+' -- The lines after it, up to the next :NAME line, are its text. A line is 80 characters at
+' -- most; the rest is cut.
+' -- C:\DOS\HELPDB.IDX indexes HELPDB.HLP in the format of HELP.IDX: its first line is the
+' -- size of HELPDB.HLP after a space, and each line after it is a topic name, a space and the
+' -- byte position of its :NAME line. Lines end with CR LF. tools/build.py writes the same file.
+' -- HELPDB finds a topic by the index and reads only its text. A missing index, or one whose
+' -- size is not the size of HELPDB.HLP, makes HELPDB read HELPDB.HLP from the start, as does
+' -- a position that does not hold the topic's :NAME line.
+' -- -R, or -r, writes HELPDB.IDX anew from HELPDB.HLP and prints the count of topics.
+' -- -H or -? as the first parameter runs HELP HELPDB.
+' -- No help for topic prints No help for TOPIC and gives exit code 1. No HELPDB.HLP prints
+' -- File not found and gives exit code 2, and a HELPDB.IDX that cannot be written prints its
+' -- error message and gives exit code 2. Exit code 0 otherwise.
+' --
+' -- From a prompt:
+' --     HELPDB
+' --     HELPDB replace
+' --     HELPDB -R
+'=============================================================================================
+#INCLUDE "DOS.UXI"
+#INCLUDE "HEAP.UXI"
+#INCLUDE "HELPSW.UXI"
+CONST SLOT_P1 AS UBYTE = 0, BLOCK_SIZE AS UBYTE = 255, LF AS UBYTE = 10, CR AS UBYTE = 13
+CONST HELP_NAME$ = "C:\DOS\HELPDB.HLP", INDEX_NAME$ = "C:\DOS\HELPDB.IDX"
+DIM TOPIC_TYPED AS STRING * 80, TOPIC AS STRING * 80, TEXT_LINE AS STRING * 80
+DIM HEADING AS STRING * 81
+DIM HELP_FILE AS UWORD, INDEX_FILE AS UWORD, POSITION AS UBYTE, CHARACTER AS UBYTE
+DIM FOUND AS UBYTE, COLUMN AS UBYTE, PLACE AS ULONG
+DIM BLOCK(BLOCK_SIZE) AS UBYTE
+
+' Opens HELPDB.HLP into HELP_FILE and puts its size in PLACE, or ends the program with File
+' not found.
+SUB OPEN_HELP()
+  HELP_FILE = OPEN(HELP_NAME$, O.READ)
+  IF HELP_FILE = NOFILE THEN
+    PRINT "File not found"
+    END 2
+  END IF
+  DOS.SEEK(HELP_FILE, 2, 0, 0)
+  ContentsAtW(@PLACE) = DOS.POSITION_LOW
+  ContentsAtW(@PLACE + 2) = DOS.POSITION_HIGH
+  DOS.SEEK(HELP_FILE, 0, 0, 0)
+END SUB
+
+' Writes HELPDB.IDX from HELPDB.HLP, prints the count of topics, and ends the program.
+SUB WRITE_INDEX()
+  DIM COUNT AS UWORD, SPOT AS UWORD, TOPICS AS UWORD, START AS ULONG
+  DIM AT_LINE_START AS UBYTE, IN_HEADING AS UBYTE
+  OPEN_HELP()
+  INDEX_FILE = DOS.CREATE_FILE(INDEX_NAME$, 0)
+  IF DOS.ERROR <> 0 THEN
+    PRINT DOS.ERRMSG(DOS.ERROR)
+    END 2
+  END IF
+  PRINT #INDEX_FILE, STR$(PLACE)
+  PLACE = 0
+  TOPICS = 0
+  IN_HEADING = 0
+  AT_LINE_START = 1
+  DO
+    COUNT = READ(HELP_FILE, @BLOCK, BLOCK_SIZE)
+    SPOT = 0
+    DO WHILE SPOT < COUNT
+      CHARACTER = BLOCK(SPOT)
+      SPOT = SPOT + 1
+      IF IN_HEADING = 1 THEN
+        IF CHARACTER = LF OR CHARACTER = CR THEN
+          PRINT #INDEX_FILE, HEADING; STR$(START)
+          TOPICS = TOPICS + 1
+          IN_HEADING = 0
+        ELSE
+          HEADING = HEADING + CHR$(CHARACTER)
+        END IF
+      ELSEIF AT_LINE_START = 1 AND CHARACTER = ASC(":") THEN
+        IN_HEADING = 1
+        HEADING = ""
+        START = PLACE
+      END IF
+      AT_LINE_START = CHARACTER = LF
+      PLACE = PLACE + 1
+    LOOP
+  LOOP UNTIL COUNT < BLOCK_SIZE
+  CLOSE INDEX_FILE
+  CLOSE HELP_FILE
+  PRINT MID$(STR$(TOPICS), 2); " topics"
+  END 0
+END SUB
+
+' Prints NAME, a topic name and a space, on the list, after a new line when it would pass
+' column 79.
+SUB LIST_NAME(NAME AS STRING)
+  IF COLUMN + LEN(NAME) > 79 THEN
+    PRINT
+    COLUMN = 0
+  END IF
+  PRINT NAME;
+  COLUMN = COLUMN + LEN(NAME)
+END SUB
+
+HELP_SWITCH("HELPDB")
+TOPIC_TYPED = HEAP.SYS_STRINGS_GET(SLOT_P1)
+DO WHILE POSITION < LEN(TOPIC_TYPED)
+  POSITION = POSITION + 1
+  CHARACTER = ASC(MID$(TOPIC_TYPED, POSITION, 1))
+  IF CHARACTER >= ASC("a") AND CHARACTER <= ASC("z") THEN CHARACTER = CHARACTER - 32
+  TOPIC = TOPIC + CHR$(CHARACTER)
+LOOP
+IF TOPIC = "-R" THEN WRITE_INDEX()
+OPEN_HELP()
+' The index: list the topics, or seek HELP_FILE to the topic's :NAME line and set FOUND.
+INDEX_FILE = OPEN(INDEX_NAME$, O.READ)
+IF INDEX_FILE <> NOFILE THEN
+  LINPUT #INDEX_FILE, TEXT_LINE
+  IF LVAL(TEXT_LINE) = PLACE THEN
+    HEADING = TOPIC + " "
+    DO WHILE NOT EOF(INDEX_FILE)
+      LINPUT #INDEX_FILE, TEXT_LINE
+      IF TOPIC = "" THEN
+        LIST_NAME(LEFT$(TEXT_LINE, INSTR(TEXT_LINE, " ")))
+      ELSEIF LEFT$(TEXT_LINE, LEN(HEADING)) = HEADING THEN
+        PLACE = LVAL(MID$(TEXT_LINE, LEN(HEADING) + 1))
+        FOUND = 1
+        EXIT DO
+      END IF
+    LOOP
+    IF TOPIC = "" THEN
+      PRINT
+      END 0
+    END IF
+    IF FOUND = 0 THEN
+      PRINT "No help for "; TOPIC
+      END 1
+    END IF
+    DOS.SEEK(HELP_FILE, 0, PLACE AND $FFFF, PLACE >> 16)
+    LINPUT #HELP_FILE, TEXT_LINE
+    IF TEXT_LINE <> ":" + TOPIC THEN
+      FOUND = 0
+      CLOSE HELP_FILE
+      OPEN_HELP()
+    END IF
+  END IF
+  CLOSE INDEX_FILE
+END IF
+' The text: with FOUND = 1 HELP_FILE is past the :NAME line, else read from the start.
+DO WHILE NOT EOF(HELP_FILE)
+  LINPUT #HELP_FILE, TEXT_LINE
+  IF ASC(TEXT_LINE) = ASC(":") THEN
+    IF TOPIC = "" THEN
+      LIST_NAME(MID$(TEXT_LINE, 2) + " ")
+    ELSE
+      IF FOUND = 1 THEN EXIT DO
+      IF MID$(TEXT_LINE, 2) = TOPIC THEN FOUND = 1
+    END IF
+  ELSEIF FOUND = 1 THEN
+    PRINT TEXT_LINE
+  END IF
+LOOP
+CLOSE HELP_FILE
+IF TOPIC = "" THEN
+  PRINT
+  END 0
+END IF
+IF FOUND = 1 THEN END 0
+PRINT "No help for "; TOPIC
+END 1

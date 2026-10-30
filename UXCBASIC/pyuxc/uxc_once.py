@@ -49,7 +49,8 @@ def start(tpl_folder):
     g.lk_strs_n = 0
     g.lk_strs_record = 0
     g.rb_on = 0
-    g.rb_bank = [0, 0]
+    g.rb_bank = [0, 0, 0]
+    g.rb_count = 0
     g.rb_name = ""
     g.rg_slot = 0
     g.rg_slot_outer = 0
@@ -93,15 +94,17 @@ def finish():
     uxc_link.lk_link()
     uxc_link.lk_write()
     if g.rb_on != 0:
-        uxc_rombank.rb_second()
+        uxc_rombank.rb_others()
     # The emulator's echo shows the file's bytes too, so start a fresh line.
     put("")
     put(g.ui_obj + " " + str(g.lk_size) + " BYTES")
     g.ui_line = "OK," + g.ui_obj + "," + str(g.lk_size)
     if g.rb_on != 0:
-        put("ROM BANK " + str(g.rb_bank[0]) + " " + str(g.rb_used_first) + " BYTES, ROM BANK " +
-            str(g.rb_bank[1]) + " " + str(g.rb_used) + " BYTES")
-        g.ui_line = g.ui_line + ",SECOND " + g.rb_obj + " " + str(g.rb_size_second)
+        put(", ".join("ROM BANK " + str(g.rb_bank[b]) + " " + str(g.rb_used_banks[b]) + " BYTES"
+                      for b in range(g.rb_count)))
+        g.ui_line = g.ui_line + ",SECOND " + g.rb_objs[1] + " " + str(g.rb_sizes[1])
+        if g.rb_count == 3:
+            g.ui_line = g.ui_line + ",THIRD " + g.rb_objs[2] + " " + str(g.rb_sizes[2])
     if g.rg_on != 0:
         for k in range(1, g.rg_count + 1):
             slot = str(g.rg_slots[k - 1])

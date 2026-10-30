@@ -249,14 +249,14 @@ sft_find:
         asl
         asl
         asl
-        asl
-        asl                     ; SFT_SIZE 32; carry clear
+        asl                     ; SFT_SIZE 16; carry clear
         tay
         bra bank0
 @bad:
         lda #ERR_BAD_HANDLE
         rts
-        .assert SFT_SIZE = 32, error, "sft_find multiplies by 32"
+        .assert SFT_SIZE = 16, error, "sft_find and api_open multiply and divide by 16"
+        .assert SFT_STATE + SFT_CONTEXT <= SFT_SIZE, error, "the SFT state fits in an entry"
 
 ; to_upper: returns A in upper case when it is a letter.
 to_upper:
@@ -404,7 +404,6 @@ open_common:
         ply
         jsr bank_restore
         tya
-        lsr
         lsr
         lsr
         lsr

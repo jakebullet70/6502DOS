@@ -335,7 +335,6 @@ asks before its asm is written. D1 to D7, A1 to A3, and A4a to A4c are done.
 ## Still to decide
 
 - Whether MSBASIC gets statements for the `db` call.
-- Whether the system file table grows past 8 entries.
 - Whether `DB.COM` has a report command, as dBASE II's `REPORT`.
 
 ## To do
@@ -343,4 +342,12 @@ asks before its asm is written. D1 to D7, A1 to A3, and A4a to A4c are done.
 - A `COLOR` statement.
 - A second kind of `CONST`, kept like a `.MEM` file, in the memory-variable bank. That bank has
   about 7K free.
-- Reading and writing the registry, `6502DOS.REG`.
+- Reading and writing the registry, `6502DOS.REG`, through `DOS.REG_GET` and `DOS.REG_SET`.
+- More open files. A table or an index takes an SFT entry and a FAT32 context, and a child
+  run by `exec` needs one of each for its own program file and one for each file it opens.
+  - The SFT has 8 entries of 32 bytes in RAM bank 0, `$A000-$A0FF`, and entry 0 is `CON`. An
+    entry uses 14 bytes, so `SFT_SIZE` 16 gives 16 entries in the same page.
+  - The FAT32 library has 8 contexts of 32 bytes, `FAT32_CONTEXTS`; it refuses more than fit
+    in 256 bytes. More needs a change to the library's context indexing.
+  - With neither change, `MODIFY COMMAND` can close both areas' tables and indexes before the
+    editor runs and open them again after it.

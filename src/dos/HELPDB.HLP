@@ -1,0 +1,519 @@
+:?
+? [expression [, expression ...]]
+  Prints the values with a space between them, then ends the line. ? alone
+  prints an empty line. A logical prints as .T. or .F..
+  ? NAME, AGE * 2
+:@
+@ row, column [SAY expression] [GET name [PICTURE text]]
+  Puts the cursor at row and column and prints the SAY value there with no
+  line end. Row and column count from 0, and are 0 to 255. With neither SAY
+  nor GET it blanks the row from column to its end. The line is checked
+  whole before the cursor moves.
+  GET adds a pending GET for READ and shows it at once: after the SAY value
+  and a space, or at row and column. name is a field of the current record,
+  else a memory variable that exists. A GET on a field past the last record
+  gives Record out of range.
+  The width of a GET is the PICTURE's length, else the field's length, the
+  text variable's length, 10 or more for a number variable, 1 for a
+  logical. A number is right-aligned, and a value is cut to the width. A GET
+  must fit on its row.
+  At most 32 GETs are pending. Each takes twice its width plus 4 bytes of a
+  2048-byte pool. Past either limit @ gives Too many GETs.
+  HELPDB PICTURE gives the PICTURE characters, HELPDB READ the editing.
+  @ 2, 0 SAY "Name" GET NAME PICTURE "!XXXXXXXXX"
+:ACCEPT
+ACCEPT [prompt] TO name
+  Prints prompt, a text, then stores the line typed as text in the memory
+  variable name. name is made when it is new.
+  ACCEPT "Name? " TO WHO
+:APPEND
+APPEND [BLANK]
+  APPEND adds records. For each it prints "Record n" and asks for each field
+  by name. A C or D field takes the answer cut to its length, an N field a
+  number expression, an L field T, Y, F or N. A wrong answer prints its
+  error and is asked again. An empty answer leaves the field blank.
+  An empty answer to the first field ends APPEND, and that record is not
+  added.
+  APPEND BLANK adds one blank record.
+  The last record added is current.
+:BOF
+BOF()
+  .T. when SKIP with a negative count has stopped at the first record of
+  the order, and in a table with no records. Else .F.. With no table in use
+  it is .F..
+:CANCEL
+CANCEL
+  Ends every command file running. DB goes back to the dot prompt. At the
+  prompt CANCEL does nothing.
+:CHANGING
+APPEND  EDIT  REPLACE  DELETE  RECALL  PACK
+  The commands that add and change records. A change to a record is written
+  to the table at once. DELETE only marks a record; PACK removes the marked
+  records.
+  HELPDB name gives each command.
+:CLEAR
+CLEAR [GETS]
+  CLEAR blanks the screen, puts the cursor at row 0, column 0, and drops the
+  pending GETs. CLEAR GETS only drops the pending GETs.
+:CLS
+CLS
+  Blanks the screen as CLEAR does, and keeps the pending GETs.
+:CONTINUE
+CONTINUE
+  Goes on with the last LOCATE, from the record after the current one in the
+  order, over what is left of the LOCATE's scope. Prints "Record n", or "End
+  of LOCATE" at the scope's end. Without a LOCATE it gives No LOCATE active.
+  USE, CREATE and SELECT end the LOCATE.
+:COUNT
+COUNT [scope] [TO name]
+  Prints how many records of the scope meet its FOR condition, as "n
+  records". The scope is every record when left out. TO stores the count in
+  the memory variable name.
+  COUNT FOR AGE > 30 TO OLDER
+:CREATE
+CREATE path
+  Makes a new table, path with .DB added when it has no extension. A file of
+  that path is emptied.
+  CREATE asks for the fields, one a line, as name,type,length,decimals. An
+  empty line ends the fields. A table has at most 32 fields. A wrong line
+  prints its error and is asked again.
+  A name is 1 to 10 letters, digits and _, starting with a letter. Two
+  fields of one name give Duplicate field.
+  C is text, length 1 to 255. N is a number, length 1 to 10, then the
+  decimals, 0 when left out. With decimals the length is at least decimals
+  plus 2. L is a logical, typed as name,L. D is a date as text, typed as
+  name,D, length 8.
+  The new table is in use, with no records. With no fields no table is made.
+  When the table cannot be made, no table is in use.
+  CREATE PEOPLE
+  NAME,C,20
+  AGE,N,3
+  PAID,L
+:DATE
+DATE()
+  The date of the clock, as text MM/DD/YY.
+:DB
+DB
+  DB is a database at a dot prompt, after dBASE II. DB.COM starts it, and
+  reads no arguments. QUIT ends it.
+  DB prints the prompt ". " and runs each line typed. A command word may be
+  cut to its first 4 letters or more, as DISP STRU for DISPLAY STRUCTURE.
+  Small letters are the same as capitals.
+  A table is a .DB file, an index a .IDX file, a command file a .PRG file.
+  An error prints its message and stops the command. A command on a table
+  with none in use gives No table in use. A line whose first word is no
+  command gives Unknown command, unless it is name = value.
+  DB keeps its memory variables in a RAM bank of their own. Without a free
+  bank DB prints the error and ends.
+  HELPDB alone lists the topics. HELPDB name prints a topic. The groups:
+  TABLES, MOVING, SHOWING, CHANGING, INDEXES, VARIABLES, SCREENS, PROGRAMS,
+  FUNCTIONS, OPERATORS, SCOPE, PICTURE, KEYS, EXPRESSIONS.
+  . USE PEOPLE
+  . LIST FOR AGE > 30
+:DELETE
+DELETE [scope]
+  Marks each record of the scope that meets its FOR condition deleted, and
+  prints "n records deleted". The scope is the current record when left
+  out. LIST shows a deleted record with *. RECALL clears the mark, and PACK
+  removes the deleted records.
+  DELETE FOR AGE < 18
+:DELETED
+DELETED()
+  .T. when the current record is marked deleted. Else .F.. Past the last
+  record and with no table in use it is .F..
+:DISPLAY
+DISPLAY [scope] | DISPLAY STRUCTURE | DISPLAY MEMORY
+  DISPLAY scope prints each record of the scope that meets its FOR
+  condition, as LIST does. The scope is the current record when left out.
+  DISPLAY STRUCTURE prints the table's path, its record count, and each
+  field's number, name, type, length, and decimals for an N field. Total is
+  the record's length, the delete flag included.
+  DISPLAY MEMORY prints each memory variable: its name, its kind C, N or L,
+  and its value, a text in quotes. Then it prints the count of variables
+  and the bytes free.
+  DISP STRU
+:DO
+DO file | DO WHILE condition
+  DO file runs the command file, with .PRG added when it has no extension.
+  Its lines run as if typed at the prompt. The end of the file, or RETURN,
+  goes back to the caller. Command files nest 8 deep.
+  DO WHILE runs the lines up to its ENDDO while condition is true. ENDDO
+  goes back to the DO WHILE. When condition is false, the lines up to its
+  ENDDO are skipped. At most 8 DO WHILEs run at once, over all the files.
+  condition is a logical; any other value gives Type mismatch.
+  At the prompt DO WHILE gives Only in a command file.
+  More than 8 files or loops gives Too many DO levels.
+  N = 1
+  DO WHILE N <= 3
+    ? N
+    N = N + 1
+  ENDDO
+:EDIT
+EDIT
+  Prints "Record n", then each field of the current record by name with its
+  value, and asks for a new value after ?. An empty answer keeps the value.
+  A C or D field takes the answer cut to its length, an N field a number
+  expression, an L field T, Y, F or N. A wrong answer prints its error and
+  is asked again. Then the record is written.
+  EDIT takes no record number; GO to the record first. Past the last record
+  EDIT gives Record out of range.
+:ELSE
+ELSE
+  Starts the lines of an IF that run when its condition is false. HELPDB IF
+  gives IF.
+:ENDDO
+ENDDO
+  Ends the lines of a DO WHILE, and goes back to the innermost DO WHILE
+  running. Without one it does nothing. HELPDB DO gives DO WHILE.
+:ENDIF
+ENDIF
+  Ends the lines of an IF. HELPDB IF gives IF.
+:EOF
+EOF()
+  .T. when the place past the last record is current, as after LIST, SKIP
+  past the last record, or a FIND with no match. Else .F.. With no table in
+  use it is .F..
+:EXPRESSIONS
+12  -3.5  .5  "text"  'text'  .T. .F. .Y. .N.  field  name  P.name  S.name
+  A value is a number, a text or a logical.
+  A number is typed in decimal. A text is in " or '. .T. and .Y. are true,
+  .F. and .N. false.
+  A field name gives the field of the current record: an N field a number,
+  0 when blank; an L field a logical, true for T or Y in either case; a C
+  or D field text, with its padding spaces. Past the last record a field is
+  blank.
+  P.name and S.name give a field of the PRIMARY or SECONDARY area's table.
+  Any other name is a memory variable. A field hides a memory variable of
+  its name. Names are the same in small letters and capitals.
+  The texts of one expression hold at most 254 characters, else Text too
+  long. At most 16 operators and brackets wait at once, else Syntax error.
+  Values of two kinds in one operation give Type mismatch. A name that is
+  neither a field nor a variable gives Variable not found.
+  HELPDB OPERATORS gives the operators, HELPDB FUNCTIONS the functions.
+:FILE
+FILE(path)
+  .T. when a file or folder matches path, a text. Else .F..
+  ? FILE("PEOPLE.DB")
+:FIND
+FIND key
+  Makes current the first record of the order whose index key starts with
+  key. key is the rest of the line, with the quotes around it taken off.
+  With no match it prints "No find", and the place past the last record is
+  current.
+  FIND needs an index as the order. In the record order, or with a key
+  longer than the index's key, it gives Invalid data.
+  An N field enters the index key rewritten so that it sorts as a number.
+  FIND compares key as typed.
+  FIND Smith
+:FUNCTIONS
+RECNO EOF BOF DELETED DATE LEN UPPER TRIM VAL INT FILE STR SUBSTR
+  A function name is typed whole, with its ( right after it, no space
+  between. An unknown name gives Unknown function. A wrong number of
+  arguments gives Syntax error, and an argument of the wrong kind Type
+  mismatch. A count or a place argument is 0 to 255, else Number out of
+  range.
+  HELPDB name gives each function, without the brackets.
+:GET
+GET name [PICTURE text]
+  Part of @. HELPDB @ gives @ ... GET.
+:GO
+GO n | GO TOP | GO BOTTOM
+  GO n makes record n current. n is the record's number in the file, 1 to
+  the record count, else Record out of range. GO TOP makes the first record
+  of the order current, GO BOTTOM the last. GO prints "Record n".
+  GO TOP
+:GOTO
+GOTO n | GOTO TOP | GOTO BOTTOM
+  The same as GO. HELPDB GO gives GO.
+:IF
+IF condition
+  In a command file, when condition is false, the lines up to this IF's
+  ELSE or ENDIF are skipped. When it is true the lines run, and an ELSE
+  skips the lines up to its ENDIF. IFs nest. An IF has at most one ELSE.
+  condition is a logical; any other value gives Type mismatch.
+  At the prompt IF gives Only in a command file, and ELSE and ENDIF do
+  nothing.
+  IF AGE > 30
+    ? "Older"
+  ELSE
+    ? "Younger"
+  ENDIF
+:INDEX
+INDEX ON key TO name [UNIQUE]
+  Builds the index name, with .IDX added when it has no extension. key is 1
+  to 4 field names joined by +. With UNIQUE the index refuses two records
+  with one key. UNIQUE is typed whole.
+  The open indexes close first. The new index is the only one open, and the
+  order. INDEX prints "n records indexed", and the first record of the
+  order is current.
+  INDEX ON LAST + FIRST TO NAMES
+:INDEXES
+INDEX  SET INDEX  USE ... INDEX  FIND  REINDEX
+  An index orders the records of a table by a key of 1 to 4 fields. The
+  order is the first index USE or SET INDEX TO opens, or the index INDEX ON
+  builds. With no index open it is the record order. A work area has at
+  most 3 open indexes.
+  GO TOP, GO BOTTOM, SKIP, FIND and the scopes ALL and NEXT follow the
+  order. GO n and RECORD n take the record's number in the file.
+  HELPDB name gives each of INDEX, SET, USE, FIND and REINDEX.
+:INPUT
+INPUT [prompt] TO name
+  Prints prompt, a text, then stores the value of the expression typed in
+  the memory variable name: a number, a text in quotes, or a logical. name
+  is made when it is new.
+  INPUT "Age? " TO AGE
+:INT
+INT(number)
+  number cut to a whole number toward 0. INT(-2.7) is -2.
+:KEYS
+READ's keys
+  A typed character types over the one at the cursor when the PICTURE's
+  character in that place takes it. Else it is ignored.
+  Left, Right, Home and End move the cursor. The cursor skips the
+  PICTURE's fixed characters.
+  Backspace moves left and puts a space. Delete puts a space at the cursor.
+  Enter, Tab and Down go to the next GET. At the last GET they end READ and
+  store the GETs.
+  Up goes to the GET before.
+  PgDn and Ctrl+W end READ and store the GETs.
+  Esc ends READ and stores none.
+:LEN
+LEN(text)
+  The number of characters of text. A C field counts its padding spaces.
+  ? LEN(TRIM(NAME))
+:LIST
+LIST [scope]
+  Prints each record of the scope that meets its FOR condition: its number,
+  * when it is marked deleted, then its fields, a space before each. The
+  scope is every record when left out, and leaves the place past the last
+  record current.
+  LIST FOR AGE > 30
+:LOCATE
+LOCATE [scope]
+  Makes current the first record of the scope that meets its FOR condition,
+  and prints "Record n". At the scope's end it prints "End of LOCATE". The
+  scope is every record when left out. CONTINUE finds the next record.
+  LOCATE FOR CITY = "Boston"
+:MODIFY
+MODIFY COMMAND file
+  Runs C:\DOS\EDIT.COM on file, with .PRG added when it has no extension.
+  The tables, indexes and command files stay open. Each takes one of the
+  files the editor can open.
+  MODIFY COMMAND REPORT
+:MOVING
+GO  GOTO  SKIP  LOCATE  CONTINUE  FIND
+  The commands that change the current record. Past the last record is a
+  place of its own: EOF() is .T. there, and RECNO() is the record count
+  plus 1.
+  HELPDB name gives each command.
+:OPERATORS
++ - * / ( ) = # < > <= >= $ .NOT. .AND. .OR.
+  + - * / work on numbers. + joins two texts. A - before a value changes
+  its sign.
+  = # < > <= >= compare two numbers or two texts and give a logical. # is
+  not equal. Two texts compare over the length of the right one: "ABC" =
+  "AB" is .T., "AB" = "ABC" .F.. Logicals do not compare.
+  a $ b is .T. when the text a is in the text b.
+  .NOT. .AND. .OR. work on logicals.
+  The order, first to last: - before a value, * /, + -, the compares,
+  .NOT., .AND., .OR.. Brackets go first.
+  A division by 0 gives Division by zero. A number too large gives Number
+  out of range.
+  ? "SMI" $ NAME .AND. AGE >= 21
+:PACK
+PACK
+  Removes the deleted records and prints "n records left". The first record
+  of the order is then current. A PACK that fails prints its error and
+  leaves no table in use.
+:PICTURE
+PICTURE text
+  The mask of a GET. Each character of text is one place of the GET:
+  9 takes a digit.
+  # takes a digit, a space, + - or a point.
+  A takes a letter.
+  L takes T, F, Y or N, made a capital.
+  X takes any character.
+  ! takes any character, a letter made a capital.
+  Any other character is fixed: it shows in its place, and the cursor skips
+  it. With no PICTURE the mask is all # for a number, L for a logical, else
+  all X.
+  @ 5, 0 GET PHONE PICTURE "(999) 999-9999"
+:PROGRAMS
+DO IF ELSE ENDIF DO WHILE ENDDO RETURN CANCEL ACCEPT INPUT WAIT MODIFY
+  A command file is a text file with the extension .PRG, under 64 KB. DO
+  runs it, and MODIFY COMMAND edits it. Its lines run as if typed at the
+  prompt.
+  A line ends in LF, and a CR is dropped. A line is cut at 128 characters.
+  A DO WHILE line, its line end included, is under 256 bytes.
+  An error in a command file prints "Line n: " and the line, and ends every
+  command file.
+  HELPDB name gives each command.
+:QUIT
+QUIT
+  Ends every command file, closes the tables of both work areas, and ends
+  DB.
+:READ
+READ
+  Edits the pending GETs in turn, from the first. HELPDB KEYS gives the
+  keys. READ with no GETs does nothing.
+  READ stores each GET in its field or variable, first to last: a text as
+  it is, a number read as a number expression, 0 when blank, a logical true
+  for T or Y. A field takes the value as REPLACE does, and the record is
+  written.
+  A wrong value prints its error. The GETs after it are not stored, and no
+  field of the record changes.
+  Then the GETs are dropped, and the cursor goes to column 0 of the row
+  after the last GET's row.
+:RECALL
+RECALL [scope]
+  Clears the deleted mark of each record of the scope that meets its FOR
+  condition, and prints "n records recalled". The scope is the current
+  record when left out.
+  RECALL ALL
+:RECNO
+RECNO()
+  The number of the current record. Past the last record it is the record
+  count plus 1. With no table in use it is 0.
+:REINDEX
+REINDEX
+  Builds each open index again from the table, and prints "n records
+  indexed" for each. The first index is then the order, and the first
+  record of the order is current. A build that fails prints its error and
+  closes the indexes.
+:RELEASE
+RELEASE name [, name ...] | RELEASE ALL
+  Drops the memory variables named. RELEASE ALL drops them all. A name with
+  no variable gives Variable not found.
+  RELEASE WHO, AGE
+:REPLACE
+REPLACE [scope] field WITH value [, field WITH value ...] [scope]
+  Sets each field to its value, left to right, in each record of the scope
+  that meets its FOR condition, and prints "n records replaced". The scope
+  goes before the fields, after them, or both. It is the current record
+  when left out. At most 8 fields.
+  An N field takes a number at the field's decimals. A number longer than
+  the field gives Number out of range. An L field takes a logical, a C or D
+  field text cut to the field's length. A value of another kind gives Type
+  mismatch, and a name that is no field Field not found.
+  A record that fails part way is left unchanged.
+  REPLACE ALL PRICE WITH PRICE * 1.1
+:RETURN
+RETURN
+  Ends the innermost command file, and its caller goes on. At the prompt
+  RETURN does nothing.
+:SAY
+SAY expression
+  Part of @. HELPDB @ gives @ ... SAY.
+:SCOPE
+ALL | NEXT n | RECORD n  [FOR condition]
+  A scope picks the records a command works on. It has at most one of ALL,
+  NEXT n and RECORD n, and a FOR condition, in any order.
+  ALL is every record, in the order. NEXT n is n records along the order,
+  from the current one. RECORD n is record n alone. FOR keeps the records
+  where condition, a logical, is true.
+  FOR with none of ALL, NEXT and RECORD is every record.
+  With no scope, LIST, LOCATE, COUNT and SUM take every record, and
+  DISPLAY, REPLACE, DELETE and RECALL the current record.
+  After ALL the place past the last record is current. After NEXT n the
+  scope's last record is, or the place past the last when the order ends
+  first.
+  RECORD n with n not a record gives Record out of range.
+  A field named ALL, NEXT, RECORD, FOR or TO is read as the scope word.
+  LIST NEXT 10 FOR PAID
+:SCREENS
+@  SAY  GET  PICTURE  READ  CLEAR  CLS
+  @ ... SAY prints at a place on the screen. @ ... GET adds a pending GET,
+  and READ edits the pending GETs. CLEAR blanks the screen and drops the
+  GETs.
+  HELPDB name gives each, and HELPDB KEYS gives READ's keys.
+:SELECT
+SELECT PRIMARY | SELECT SECONDARY
+  Makes that work area the one in use. Each area keeps its table, its
+  indexes and its current record. SELECT ends the LOCATE.
+  P.name and S.name give a field of the PRIMARY or SECONDARY table from
+  either area.
+  SELECT SECONDARY
+:SET
+SET INDEX TO [name [, name ...]]
+  Closes the open indexes, then opens each name, with .IDX added when it has
+  no extension. The first is the order, and the first record of the order
+  is current. SET INDEX TO alone leaves the record order. An index that
+  fails to open prints its error, and the names after it are not opened.
+  SET takes only INDEX.
+  SET INDEX TO NAMES, CITIES
+:SHOWING
+LIST  DISPLAY  ?  COUNT  SUM
+  The commands that print records and values.
+  HELPDB name gives each command.
+:SKIP
+SKIP [n]
+  Moves n records along the order, 1 when n is left out, back when n is
+  negative. It stops past the last record, or at the first record with
+  BOF() .T.. SKIP prints "Record n".
+  SKIP -2
+:STORE
+STORE expression TO name | name = expression
+  Puts the value in the memory variable name, made when it is new. A name
+  is letters, digits and _, starting with a letter; a longer one is cut to
+  10 characters.
+  At most 64 variables, else Too many variables. The values share 7168
+  bytes, else Out of memory, and a text that does not fit releases name.
+  name = expression with a space after name runs the command when name is
+  a command word or its first 4 letters or more. STORE has no such limit.
+  STORE "Smith" TO WHO
+:STR
+STR(number [, length [, decimals]])
+  number as text, at decimals places, right-aligned in length characters.
+  length is 10 and decimals 0 when left out. A number longer than length
+  comes back whole. length is at most 82 and decimals at most 9, else
+  Number out of range.
+  ? STR(PRICE, 8, 2)
+:SUBSTR
+SUBSTR(text, start [, count])
+  count characters of text from start, the first character 1. With no
+  count it is the rest of text. start is 1 to 255; 0 gives Number out of
+  range.
+  ? SUBSTR(NAME, 1, 3)
+:SUM
+SUM expression [, expression ...] [scope] [TO name [, name ...]]
+  Adds up each number expression over the records of the scope that meet
+  its FOR condition. Prints "n records summed", then each sum on a line.
+  At most 8 expressions. The scope is every record when left out. TO stores
+  the sums in order, one name for each.
+  SUM PRICE, PRICE * QTY FOR PAID TO TOTAL, VALUE
+:TABLES
+USE  CREATE  DISPLAY STRUCTURE  SELECT
+  A table is a .DB file of records, each of the same fields. A field is C
+  text, N a number, L a logical or D a date as text.
+  DB has two work areas, PRIMARY and SECONDARY, each with a table of its
+  own. A command works on the area in use.
+  HELPDB name gives each of USE, CREATE, DISPLAY and SELECT.
+:TRIM
+TRIM(text)
+  text without its trailing spaces.
+  ? TRIM(FIRST) + " " + LAST
+:UPPER
+UPPER(text)
+  text in capitals.
+:USE
+USE [path [INDEX name [, name ...]]]
+  Closes the table in use in the work area, then opens path, with .DB added
+  when it has no extension, and each index name, with .IDX added. The first
+  index is the order, and the first record of the order is current. An
+  index that fails to open prints its error, and the names after it are
+  not opened. USE alone only closes the table. USE ends the LOCATE.
+  USE PEOPLE INDEX NAMES
+:VAL
+VAL(text)
+  The number text starts with, 0 when it starts with none.
+:VARIABLES
+STORE  name = value  RELEASE  DISPLAY MEMORY  ACCEPT  INPUT  WAIT
+  A memory variable holds a number, a text or a logical. It is made when a
+  value is first stored in it. COUNT TO and SUM TO store in variables too.
+  A variable keeps its value until RELEASE or QUIT.
+  HELPDB name gives each of STORE, RELEASE, DISPLAY, ACCEPT, INPUT and
+  WAIT.
+:WAIT
+WAIT [TO name]
+  Prints WAITING and waits for a key. TO stores the key in the memory
+  variable name as a text of 1 character, or "" for an extended key.

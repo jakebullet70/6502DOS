@@ -486,6 +486,15 @@ HELPBAS [topic | -R]            (Command line only)
   Examples:
     HELPBAS PRINT
     HELPBAS str$
+:HELPDB
+HELPDB [topic | -R]             (Command line only)
+  Prints the help on the DB command topic, from C:\DOS\HELPDB.HLP.
+  With no topic it lists the topics. Small letters are the same as capitals.
+  HELPDB -R remakes the topic index, C:\DOS\HELPDB.IDX, after HELPDB.HLP
+  is edited. Without a good index HELPDB still works, more slowly.
+  Examples:
+    HELPDB
+    HELPDB replace
 :HDIR
 HDIR [d:][path] [-1..-9] [-l] [-n -e -d -s] [-t] [-a] [-c] (Command line only)
   Lists the directories and files of path, or of the current directory,

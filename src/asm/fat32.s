@@ -88,9 +88,10 @@ eof             .byte    ; =$ff: EOF has been reached
 
 CONTEXT_SIZE = 32
 
-.if CONTEXT_SIZE * FAT32_CONTEXTS > 256
-.error "Too many FAT32_CONTEXTS to fit into 256 bytes!"
+.if CONTEXT_SIZE * FAT32_CONTEXTS > 512
+.error "Too many FAT32_CONTEXTS to fit into 512 bytes!"
 .endif
+.assert <FAT32_CONTEXT_RAM = 0, error, "context_ptr takes the contexts on a page boundary"
 
 .if .sizeof(context) > CONTEXT_SIZE
 .error "struct context too big!"
@@ -179,8 +180,6 @@ volume_for_context:  .res FAT32_CONTEXTS
 ; Volumes
 volume_idx:          .byte 0       ; Index of current filesystem
 cur_volume:          .tag fs       ; Current file descriptor state
-
-contexts:            .res CONTEXT_SIZE * FAT32_CONTEXTS
 
 volumes:             .res FS_SIZE * FAT32_VOLUMES
 
@@ -1371,6 +1370,12 @@ fat32_init:
 	ldx fat32_bufptr + 1
 	cpx #>_fat32_bss_end
 	bne @1
+	.assert CONTEXT_SIZE * FAT32_CONTEXTS = 512, error, "fat32_init clears 2 pages of contexts"
+	tax			; A = 0 from the loop above
+@3:	stz FAT32_CONTEXT_RAM, x
+	stz FAT32_CONTEXT_RAM + 256, x
+	inx
+	bne @3
 
 	; Make sure sector_lba is non-zero
 	; (was overwritten by sdcard_init)
@@ -1559,41 +1564,24 @@ fat32_set_context:
 	; Put zero page variables in current context
 	set16 cur_context + context::bufptr, fat32_bufptr
 
-	.assert CONTEXT_SIZE = 32, error
 	; Copy current context back
-	lda context_idx   ; X=A*32
-	asl
-	asl
-	asl
-	asl
-	asl
-	tax
-
-	ldy #0
+	lda context_idx
+	jsr context_ptr
+	ldy #(.sizeof(context)) - 1
 @1:	lda cur_context, y
-	sta contexts, x
-	inx
-	iny
-	cpy #(.sizeof(context))
-	bne @1
+	sta (krn_ptr1), y
+	dey
+	bpl @1
 
 	; Copy new context to current
 	pla              ; Get new context idx
-	sta context_idx  ; X=A*32
-	asl
-	asl
-	asl
-	asl
-	asl
-	tax
-
-	ldy #0
-@2:	lda contexts, x
+	sta context_idx
+	jsr context_ptr
+	ldy #(.sizeof(context)) - 1
+@2:	lda (krn_ptr1), y
 	sta cur_context, y
-	inx
-	iny
-	cpy #(.sizeof(context))
-	bne @2
+	dey
+	bpl @2
 
 	; Restore zero page variables from current context
 	set16 fat32_bufptr, cur_context + context::bufptr
@@ -1620,6 +1608,20 @@ fat32_set_context:
 @error2:
 	pla
 @error:	clc
+	rts
+
+; context_ptr: points krn_ptr1 at context A, 0 to FAT32_CONTEXTS - 1. Changes A.
+context_ptr:
+	.assert CONTEXT_SIZE = 32 && FAT32_CONTEXTS <= 16, error, "context_ptr multiplies by 32 into 2 pages"
+	asl
+	asl
+	asl
+	asl
+	asl              ; carry: the second page
+	sta krn_ptr1
+	lda #>FAT32_CONTEXT_RAM
+	adc #0
+	sta krn_ptr1 + 1
 	rts
 
 ;-----------------------------------------------------------------------------

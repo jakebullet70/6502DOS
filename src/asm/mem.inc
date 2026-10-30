@@ -72,8 +72,8 @@ VARBANK_BLOCKS = HEAP_SYSTEM + 2 * SYSTEM_STRINGS
 
 ; RAM bank 0
 SFT           = $A000           ; the system file table: SFT_COUNT entries of SFT_SIZE bytes
-SFT_COUNT     = 8
-SFT_SIZE      = 32
+SFT_COUNT     = 16
+SFT_SIZE      = 16
 SFT_REFS      = 0               ; the number of handles that refer to the entry, 0 when free
 SFT_ACCESS    = 1               ; 0 read, 1 write, 2 read and write
 SFT_DRIVER    = 2               ; the address of the driver header, 2 bytes
@@ -88,6 +88,7 @@ FAT32_RAM     = $A100           ; $A100-$A7FF: the FAT32 library's variables, FA
 FAT32_BUFFER  = $A900           ; $A900-$AAFF: the FAT32 library's sector buffer, FATBUFRAM
 RENAME_PATH   = $AB00           ; $AB00-$ABFF: api_rename's new path
 BANK_OWNER    = $AC00           ; $AC00-$ACFF: the owner of each RAM bank (banks.s)
+FAT32_CONTEXT_RAM = $AD00       ; $AD00-$AEFF: the FAT32 library's contexts, 32 bytes each
 BANK_SYSTEM   = $FF             ; BANK_OWNER: a kernel bank, or a bank the machine lacks
 BANK_FIRST    = $80             ; BANK_OWNER: the first bank of a run
 BANK_KEPT     = $FE             ; BANK_OWNER: a bank of a program that ended with keep

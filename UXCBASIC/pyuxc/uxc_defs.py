@@ -5,9 +5,10 @@ K_ORG = 0x0801
 K_TOP = 0x9F00
 
 # #ROMBANKS: each bank's file ends at K.FAR.END, where the ROM's IRQ entry starts, with T_FAR's
-# 23 bytes at K.FAR.
+# 43 bytes at K.FAR. K.FAR.ENTRY is the bytes between T_FAR's entries, one a bank.
 K_FAR_END = 0xFFA0
-K_FAR = 0xFF89
+K_FAR = 0xFF75
+K_FAR_ENTRY = 7
 
 # Token types, in TK.T.
 K_TT_EOL = 0

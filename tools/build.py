@@ -9,7 +9,8 @@ ROM bank 2, appended to the image; its labels are build/MSBASIC.LBL. MSBASIC/src
 assembles to build/bas/MSBASIC.COM, which starts it. ROM banks 3 and 4, appended next, are the
 one src/bank3/NAME.UXB, which sets #ORG $C000 and #ROMBANKS 3, 4, compiled and linked with
 src/bank3/bank.s and bank.cfg; src/bank3/stub.s assembles to build/bas/NAME.COM, which starts
-it. Bank 5, the table library, follows bank 4. ca65 and ld65 come from tools/cc65/bin only. Includes are found in src/asm and build/gen. The map is
+it. Bank 5, the table library, follows bank 4. ROM banks 6, 7 and 8 are src/bank6/DB.UXB, with
+#ROMBANKS 6, 7, 8, built the same way to build/bas/DB.COM. ca65 and ld65 come from tools/cc65/bin only. Includes are found in src/asm and build/gen. The map is
 build/6502DOS.MAP, the label file build/6502DOS.LBL, and each listing build/obj/NAME.LST.
 build/TEST.ROM is the same image with boot_shell cleared: it boots to the monitor, not the shell.
 
@@ -20,8 +21,8 @@ includes, than the template table or than pyuxc. Each src/scom/NAME.UXB, a
 commandlet, compiles the same way to build/DOS/NAME.SCOM, a long name on the card. Each
 src/dos/NAME.UXB, a DOS utility, compiles to
 build/DOS/NAME.COM, and each src/dos/NAME.TXT and NAME.HLP is copied to build/DOS, with
-build/DOS/HELP.IDX and build/DOS/HELPBAS.IDX, the indexes of HELP.HLP and HELPBAS.HLP that
-HELP -R and HELPBAS -R write. Each
+build/DOS/HELP.IDX, HELPBAS.IDX and HELPDB.IDX, the indexes of HELP.HLP, HELPBAS.HLP and
+HELPDB.HLP that HELP -R, HELPBAS -R and HELPDB -R write. Each
 src/utils/FOLDER/NAME.UXB, a utility, compiles to build/UTILS/NAME.COM, and the files of
 src/utils/FOLDER are copied to build/UTILS/SRC/FOLDER. Each test named in SHOWN_TESTS, tests/NAME.UXB,
 compiles to build/UTILS/NAME.COM as well.
@@ -153,7 +154,7 @@ def compile_scom():
         uxb.compile(source, os.path.join(SCOM_OUT, name))
     for text in sorted(glob.glob(os.path.join(UTILITIES, "*.TXT")) + glob.glob(os.path.join(UTILITIES, "*.HLP"))):
         shutil.copyfile(text, os.path.join(SCOM_OUT, os.path.basename(text).upper()))
-    for name in ("HELP", "HELPBAS"):
+    for name in ("HELP", "HELPBAS", "HELPDB"):
         write_help_index(os.path.join(UTILITIES, name + ".HLP"), os.path.join(SCOM_OUT, name + ".IDX"))
     return SCOM_OUT
 
@@ -217,24 +218,26 @@ def build_basic():
     return program
 
 
-def build_rom_program(first):
-    """Append ROM banks first and first + 1 to build/6502DOS.ROM: the one src/bankF/NAME.UXB,
-    F the first bank, which sets #ORG $C000 and #ROMBANKS first, first + 1, compiled to
-    build/bankF/BANKn.BIN for each bank n, each assembled with src/bank3/bank.s, which holds it
-    at $C000 and adds the IRQ entry and the vectors. The second bank's file is empty when the
-    program fits the first. Assemble src/bank3/stub.s to build/bas/NAME.COM, which starts it.
-    Return the COM path."""
+def build_rom_program(first, count=2):
+    """Append ROM banks first to first + count - 1, count 2 or 3, to build/6502DOS.ROM: the one
+    src/bankF/NAME.UXB, F the first bank, which sets #ORG $C000 and #ROMBANKS with those banks,
+    compiled to build/bankF/BANKn.BIN for each bank n, each assembled with src/bank3/bank.s,
+    which holds it at $C000 and adds the IRQ entry and the vectors. A later bank's file is empty
+    when the program fits the banks before it. Assemble src/bank3/stub.s to build/bas/NAME.COM,
+    which starts it. Return the COM path."""
     folder = os.path.join(ROOT, "src", "bank%d" % first)
     out = os.path.join(BUILD, "bank%d" % first)
     sources = glob.glob(os.path.join(folder, "*.UXB"))
     if len(sources) != 1:
         sys.exit("build: src/bank%d must hold one .UXB file" % first)
     os.makedirs(out, exist_ok=True)
-    second = os.path.join(out, "BANK%d.BIN" % (first + 1))
-    uxb.compile(sources[0], os.path.join(out, "BANK%d.BIN" % first), second)
-    if not os.path.exists(second):
-        open(second, "wb").close()
-    for bank in (first, first + 1):
+    banks = range(first, first + count)
+    later = [os.path.join(out, "BANK%d.BIN" % bank) for bank in banks[1:]]
+    uxb.compile(sources[0], os.path.join(out, "BANK%d.BIN" % first), *later)
+    for path in later:
+        if not os.path.exists(path):
+            open(path, "wb").close()
+    for bank in banks:
         obj = os.path.join(OBJ, "bank%d.o" % bank)
         image = os.path.join(out, "BANK%d.ROM" % bank)
         run([CA65, "-D", "BANK=%d" % bank, "-I", ASM, "-I", GEN, "--bin-include-dir", out,
@@ -422,7 +425,7 @@ def main():
     bank3 = build_rom_program(3)
     with open(ROM, "ab") as out:
         out.write(image[2 * BANK_SIZE:])
-    database = build_rom_program(6)
+    database = build_rom_program(6, 3)
     make_test_rom()
     for name in ("LICENSE", "NOTICE"):
         shutil.copyfile(os.path.join(ROOT, name), os.path.join(BUILD, name))

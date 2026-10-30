@@ -1,0 +1,332 @@
+' DB_DO.UXI -- the command files of DB.UXB: DO, RETURN, CANCEL, IF, ELSE, ENDIF, DO WHILE,
+' ENDDO, ACCEPT, INPUT, WAIT and MODIFY COMMAND. DB.UXB includes it after DB_INDEX.UXI. A command file is under 64 KB.
+
+CONST DO_LIMIT AS UBYTE = 8
+DIM DO_DEPTH AS UBYTE               ' the command files running, 0 at the prompt
+DIM DO_FILE AS UBYTE                ' the innermost file's handle
+DIM DO_LINE AS UWORD                ' the number of the line the innermost file last read
+DIM CALLER_FILE(8) AS UBYTE         ' DO_FILE of each caller, the outermost first
+DIM CALLER_LINE(8) AS UWORD         ' DO_LINE of each caller
+' The bytes of the innermost file read and not yet run. A DO seeks its caller back past them.
+DIM READ_AHEAD(255) AS UBYTE
+DIM AHEAD_COUNT AS UBYTE
+DIM AHEAD_INDEX AS UBYTE
+DIM LINE_BYTES AS UBYTE            ' the bytes of the line READ_DO_LINE read, with its CR and LF
+' The IFs open in the lines being skipped, 0 when lines run. An IF has at most one ELSE.
+DIM SKIP_DEPTH AS UBYTE
+DIM SKIP_LOOP AS UBYTE             ' 1 while SKIP_DEPTH counts DO WHILEs, not IFs
+' The DO WHILEs running, the outermost first, DO_LIMIT in all.
+DIM LOOP_DEPTH AS UBYTE
+DIM LOOP_SPOT(8) AS UWORD           ' where its line starts in its file
+DIM LOOP_LINE(8) AS UWORD           ' its line number
+DIM CALLER_LOOPS(8) AS UBYTE        ' LOOP_DEPTH of each caller
+
+' RETURN: ends the innermost command file, and its caller goes on. At the prompt it does
+' nothing.
+SUB END_DO()
+  IF DO_DEPTH = 0 THEN RETURN
+  DOS.REG_X = DO_FILE
+  SYS DOS.API_CLOSE
+  DO_DEPTH = DO_DEPTH - 1
+  DO_FILE = CALLER_FILE(DO_DEPTH)
+  DO_LINE = CALLER_LINE(DO_DEPTH)
+  LOOP_DEPTH = CALLER_LOOPS(DO_DEPTH)
+  SKIP_DEPTH = 0
+  SKIP_LOOP = 0
+  AHEAD_COUNT = 0
+  AHEAD_INDEX = 0
+END SUB
+
+' CANCEL: ends every command file.
+SUB CANCEL_DO()
+  DO WHILE DO_DEPTH > 0
+    END_DO()
+  LOOP
+END SUB
+
+' Copies the next line of the innermost command file into COMMAND_LINE and counts it in DO_LINE.
+' A line ends in LF; a CR is dropped. A line is cut at 128 characters; a DO WHILE line is under
+' 256 bytes. Returns 1, or 0 at the
+' end of the file, which ends the file as RETURN does. A read error is reported, and ends every
+' file.
+FUNCT READ_DO_LINE() AS UBYTE
+  DIM CODE AS UBYTE, LENGTH AS UBYTE
+  LENGTH = 0
+  CODE = 0
+  LINE_BYTES = 0
+  DO
+    IF AHEAD_INDEX = AHEAD_COUNT
+      AHEAD_INDEX = 0
+      DOS.REG_X = DO_FILE
+      DOS.R0 = @READ_AHEAD
+      DOS.R1 = 255
+      SYS DOS.API_READ
+      DOS.READ_ERR_STATUS()
+      IF DOS.ERROR
+        FILE_ERROR()
+        CANCEL_DO()
+        RETURN 0
+      ENDIF
+      AHEAD_COUNT = DOS.R1
+      IF AHEAD_COUNT = 0
+        ' The last line has no LF when bytes were read.
+        IF CODE <> 0 THEN EXIT DO
+        END_DO()
+        RETURN 0
+      ENDIF
+    ENDIF
+    CODE = READ_AHEAD(AHEAD_INDEX)
+    AHEAD_INDEX = AHEAD_INDEX + 1
+    LINE_BYTES = LINE_BYTES + 1
+    IF CODE = 10 THEN EXIT DO
+    IF CODE <> 13 AND LENGTH < 128
+      ContentsAt(@COMMAND_LINE + 2 + LENGTH) = CODE
+      LENGTH = LENGTH + 1
+    ENDIF
+  LOOP
+  ContentsAt(@COMMAND_LINE + 1) = LENGTH
+  DO_LINE = DO_LINE + 1
+  RETURN 1
+END FUNCT
+
+' DO name: runs the command file name, with .PRG added when it has no extension. Its lines run
+' as if typed at the prompt. The file stays open while it runs. Files nest DO_LIMIT deep.
+SUB DO_DO()
+  DIM HANDLE AS UBYTE, BACK AS UWORD
+  IF REST = ""
+    SYNTAX_ERROR()
+    RETURN
+  ENDIF
+  NEXT_WORD()
+  IF IS("WHILE")
+    DO_WHILE()
+    RETURN
+  ENDIF
+  REST = TRIM$(MID$(TRIM$(COMMAND_LINE), 3))
+  IF DO_DEPTH = DO_LIMIT
+    REPORT_ERROR("Too many DO levels")
+    RETURN
+  ENDIF
+  REST = WITH_EXTENSION(REST, ".PRG")
+  DOS.R0 = @REST + 1
+  DOS.REG_A = DOS.ACCESS_READ
+  SYS DOS.API_OPEN
+  DOS.READ_ERR_STATUS()
+  IF DOS.ERROR
+    FILE_ERROR()
+    RETURN
+  ENDIF
+  HANDLE = DOS.REG_X
+  ' At the prompt the read-ahead is empty, and the caller's copy unused.
+  BACK = AHEAD_COUNT - AHEAD_INDEX
+  IF BACK <> 0
+    DOS.REG_X = DO_FILE
+    DOS.REG_A = 1
+    DOS.R0 = 0 - BACK
+    DOS.R1 = $FFFF
+    SYS DOS.API_SEEK
+  ENDIF
+  AHEAD_COUNT = 0
+  AHEAD_INDEX = 0
+  CALLER_FILE(DO_DEPTH) = DO_FILE
+  CALLER_LINE(DO_DEPTH) = DO_LINE
+  CALLER_LOOPS(DO_DEPTH) = LOOP_DEPTH
+  DO_DEPTH = DO_DEPTH + 1
+  DO_FILE = HANDLE
+  DO_LINE = 0
+END SUB
+
+' IF condition: when the condition is false, the lines up to the ELSE or ENDIF of this IF are
+' skipped. An ELSE run skips up to its ENDIF; an ENDIF run does nothing. At the prompt IF is an
+' error, and ELSE does nothing.
+SUB DO_IF()
+  IF DO_DEPTH = 0
+    REPORT_ERROR("Only in a command file")
+  ELSEIF TEST_CONDITION() = 0
+    SKIP_DEPTH = 1
+  ENDIF
+END SUB
+
+' The logical in REST: 1 when true or after an error, 0 when false.
+FUNCT TEST_CONDITION() AS UBYTE
+  CURSOR = 1
+  EVALUATE()
+  IF FAILED THEN RETURN 1
+  IF CURRENT_CHAR() <> 0
+    SYNTAX_ERROR()
+    RETURN 1
+  ENDIF
+  IF VALUE_TYPE(0) <> VALUE_KIND.LOGICAL
+    TYPE_MISMATCH()
+    RETURN 1
+  ENDIF
+  RETURN VALUE_STACK(0) <> 0
+END FUNCT
+
+' DO WHILE condition: when the condition is true, the lines up to its ENDDO run, and ENDDO goes
+' back to the DO WHILE. When false, they are skipped. At the prompt DO WHILE is an error.
+SUB DO_WHILE()
+  IF DO_DEPTH = 0
+    REPORT_ERROR("Only in a command file")
+    RETURN
+  ENDIF
+  IF TEST_CONDITION() = 0
+    SKIP_DEPTH = 1
+    SKIP_LOOP = 1
+    RETURN
+  ENDIF
+  IF FAILED THEN RETURN
+  IF LOOP_DEPTH = DO_LIMIT
+    REPORT_ERROR("Too many DO levels")
+    RETURN
+  ENDIF
+  ' The position API_SEEK gives is past the read-ahead.
+  DOS.REG_X = DO_FILE
+  DOS.REG_A = 1
+  DOS.R0 = 0
+  DOS.R1 = 0
+  SYS DOS.API_SEEK
+  LOOP_SPOT(LOOP_DEPTH) = DOS.R0 - AHEAD_COUNT + AHEAD_INDEX - LINE_BYTES
+  LOOP_LINE(LOOP_DEPTH) = DO_LINE
+  LOOP_DEPTH = LOOP_DEPTH + 1
+END SUB
+
+' ENDDO: goes back to the DO WHILE of the innermost loop running. Without one it does nothing.
+SUB END_LOOP()
+  IF LOOP_DEPTH = 0 THEN RETURN
+  LOOP_DEPTH = LOOP_DEPTH - 1
+  DOS.REG_X = DO_FILE
+  DOS.REG_A = 0
+  DOS.R0 = LOOP_SPOT(LOOP_DEPTH)
+  DOS.R1 = 0
+  SYS DOS.API_SEEK
+  AHEAD_COUNT = 0
+  AHEAD_INDEX = 0
+  DO_LINE = LOOP_LINE(LOOP_DEPTH) - 1
+END SUB
+
+' Takes the line in TOKEN that SKIP_DEPTH skips: only IF, ELSE and ENDIF count, or with
+' SKIP_LOOP only DO WHILE and ENDDO.
+SUB SKIP_LINE()
+  IF SKIP_LOOP
+    IF TOKEN = "DO"
+      NEXT_WORD()
+      IF IS("WHILE") THEN SKIP_DEPTH = SKIP_DEPTH + 1
+    ELSEIF IS("ENDDO")
+      SKIP_DEPTH = SKIP_DEPTH - 1
+      IF SKIP_DEPTH = 0 THEN SKIP_LOOP = 0
+    ENDIF
+  ELSEIF TOKEN = "IF"
+    SKIP_DEPTH = SKIP_DEPTH + 1
+  ELSEIF IS("ENDIF")
+    SKIP_DEPTH = SKIP_DEPTH - 1
+  ELSEIF TOKEN = "ELSE" AND SKIP_DEPTH = 1
+    SKIP_DEPTH = 0
+  ENDIF
+END SUB
+
+' Reads [prompt] TO name in REST, for ACCEPT and INPUT. Prints the prompt, a text, and returns
+' the name; "" after an error.
+FUNCT PROMPT_TO() AS STRING
+  DIM START AS UBYTE, NAME AS STRING * 10
+  CURSOR = 1
+  SKIP_SPACES()
+  START = CURSOR
+  IF NAME_AT() <> "TO"
+    CURSOR = START
+    EVALUATE()
+    IF FAILED THEN RETURN ""
+    IF VALUE_TYPE(0) <> VALUE_KIND.TEXT
+      TYPE_MISMATCH()
+      RETURN ""
+    ENDIF
+    SKIP_SPACES()
+    IF NAME_AT() <> "TO"
+      SYNTAX_ERROR()
+      RETURN ""
+    ENDIF
+    SHOW_VALUE()
+  ENDIF
+  SKIP_SPACES()
+  NAME = VARIABLE_NAME()
+  SKIP_SPACES()
+  IF NAME = "" OR CURRENT_CHAR() <> 0
+    SYNTAX_ERROR()
+    RETURN ""
+  ENDIF
+  RETURN NAME
+END FUNCT
+
+' Stores TEXT in the memory variable NAME.
+SUB STORE_TEXT(NAME AS STRING, TEXT AS STRING)
+  VALUE_COUNT = 0
+  TEXT_BUFFER = ""
+  PUSH_TEXT(TEXT)
+  CURSOR = LEN(REST) + 1
+  ASSIGN(NAME, 0)
+END SUB
+
+' ACCEPT [prompt] TO name: stores the line typed as a text. INPUT [prompt] TO name, EVALUATED
+' 1: stores the value of the expression typed. The prompt is a text.
+SUB DO_ACCEPT(EVALUATED AS UBYTE)
+  DIM NAME AS STRING * 10
+  NAME = PROMPT_TO()
+  IF FAILED THEN RETURN
+  DOS.CON_LINE(REST)
+  IF EVALUATED
+    CURSOR = 1
+    EVALUATE()
+    IF FAILED = 0 THEN ASSIGN(NAME, 0)
+  ELSE
+    STORE_TEXT(NAME, REST)
+  ENDIF
+END SUB
+
+' WAIT [TO name]: prints WAITING and waits for a key. TO stores the key as a text of 1
+' character, or "" for an extended key.
+SUB DO_WAIT()
+  DIM NAME AS STRING * 10, PRESSED AS UWORD, KEY AS UBYTE
+  NAME = ""
+  IF REST <> ""
+    NEXT_WORD()
+    CURSOR = 1
+    NAME = VARIABLE_NAME()
+    SKIP_SPACES()
+    IF TOKEN <> "TO" OR NAME = "" OR CURRENT_CHAR() <> 0
+      SYNTAX_ERROR()
+      RETURN
+    ENDIF
+  ENDIF
+  PRINT "WAITING ";
+  PRESSED = WAITKEY()
+  PRINT
+  IF NAME = "" THEN RETURN
+  IF PRESSED < 256
+    KEY = PRESSED
+    STORE_TEXT(NAME, CHR$(KEY))
+  ELSE
+    STORE_TEXT(NAME, "")
+  ENDIF
+END SUB
+
+' MODIFY COMMAND name: runs C:\DOS\EDIT.COM on name, with .PRG added when it has no extension.
+' The tables, indexes and command files stay open, and each takes one of the files the
+' editor could open.
+SUB DO_MODIFY()
+  NEXT_WORD()
+  IF IS("COMMAND") = 0 OR REST = ""
+    SYNTAX_ERROR()
+    RETURN
+  ENDIF
+  NEXT_WORD()
+  IF REST <> ""
+    SYNTAX_ERROR()
+    RETURN
+  ENDIF
+  ' Trap: EDIT reads its file name from P1$ and P2$, which the shell sets, not from the tail.
+  TOKEN = WITH_EXTENSION(TOKEN, ".PRG")
+  HEAP.SYS_STRINGS_SET(0, TOKEN)
+  HEAP.SYS_STRINGS_SET(1, "")
+  DOS.EXEC("C:\DOS\EDIT.COM", " " + TOKEN)
+  IF DOS.ERROR THEN FILE_ERROR()
+END SUB

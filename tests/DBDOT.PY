@@ -14,7 +14,8 @@ FOLDER = os.path.join(ROOT, "build", "tests", "DBDOT")
 PROGRAM = os.path.join(ROOT, "build", "bas", "DB.COM")
 
 
-def card(image):
+def card(image, files=None):
+    """Writes the card; files maps more paths, from the root, to their bytes."""
     shutil.rmtree(FOLDER, ignore_errors=True)
     os.makedirs(FOLDER)
     club = db.Table([("NAME", "C", 10), ("AGE", "N", 3), ("BAL", "N", 7, 2), ("MEMBER", "L", 1),
@@ -25,4 +26,9 @@ def card(image):
     club.append(["KAI", 19, 1000, True, datetime.date(2026, 1, 15)])
     club.write(os.path.join(FOLDER, "CLUB.DB"))
     db.Table([("NAME", "C", 10)]).write(os.path.join(FOLDER, "EMPTY.DB"))
+    for name, data in (files or {}).items():
+        path = os.path.join(FOLDER, name)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as out:
+            out.write(data)
     mksd.make(FOLDER, image, date=datetime.date(2026, 10, 13), extra=[PROGRAM])

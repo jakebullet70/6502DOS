@@ -1,7 +1,7 @@
-; ROM bank BANK, one of a UXCBASIC program's two banks: the program's file that tools/build.py
+; ROM bank BANK, one of a UXCBASIC program's banks: the program's file that tools/build.py
 ; compiles to BANKn.BIN, at $C000, then the IRQ entry and the vectors that every bank holds.
-; tools/build.py assembles it once a bank: -D BANK=3 and 4 for build/bank3, 6 and 7 for
-; build/bank6. The second bank's file is empty when the program fits the first.
+; tools/build.py assembles it once a bank: -D BANK=3 and 4 for build/bank3, 6, 7 and 8 for
+; build/bank6. A later bank's file is empty when the program fits the banks before it.
 ; Trap: the program's file ends at $FFA0 at most; ld65 stops the link when it does not.
 
 .setcpu "65C02"

@@ -2,24 +2,26 @@
 ' the prompt ". " and runs it: USE, CREATE, LIST, DISPLAY, GO or GOTO, SKIP, LOCATE, CONTINUE, DISPLAY
 ' STRUCTURE, ?, STORE, name = value, RELEASE, DISPLAY MEMORY, COUNT, SUM, APPEND, APPEND BLANK,
 ' EDIT, REPLACE, DELETE, RECALL, PACK, INDEX ON, SET INDEX TO, FIND, REINDEX, SELECT PRIMARY,
-' SELECT SECONDARY and QUIT. A command word may be cut to its first 4 letters, as DISP STRU. LIST,
-' DISPLAY, LOCATE, COUNT, SUM, REPLACE, DELETE and RECALL take a scope: ALL, NEXT n, RECORD n,
-' FOR condition.
+' SELECT SECONDARY, DO, RETURN, CANCEL, IF, ELSE, ENDIF, DO WHILE, ENDDO, ACCEPT, INPUT, WAIT,
+' MODIFY COMMAND, @ ... SAY ... GET, READ, CLEAR, CLS and QUIT. A command word may be cut to
+' its first 4 letters, as DISP STRU. LIST, DISPLAY, LOCATE, COUNT, SUM, REPLACE, DELETE and
+' RECALL take a scope: ALL, NEXT n, RECORD n, FOR condition.
 '
 ' An expression has numbers, text in " or ', the logicals .T. .F. .Y. .N., fields and memory
 ' variables by name. P.name and S.name are a field of the PRIMARY or SECONDARY area's table.
 ' A field hides a memory variable of its name. An L field is logical, true
 ' for T or Y in either case. A C or D field is text.
 '
-' Runs from ROM banks 6 and 7: tools/build.py puts its code there and DB.COM starts it. Bank 8
-' is kept for its growth.
+' Runs from ROM banks 6, 7 and 8: tools/build.py puts its code there and DB.COM starts it.
 #ORG $C000
 #DATA $0801
-#ROMBANKS 6, 7
+#ROMBANKS 6, 7, 8
 #INCLUDE "DOS.UXI"
 #INCLUDE "DB.UXI"
+#INCLUDE "HEAP.UXI"
 #INCLUDE "FLOAT.UXI"
 #INCLUDE "STR.UXI"
+#INCLUDE "KEYS.UXI"
 
 DIM COMMAND_LINE AS STRING * 128    ' the line typed at the prompt
 DIM REST AS STRING * 128            ' the line after the words read
@@ -455,6 +457,8 @@ END SUB
 #INCLUDE "DB_SCOPE.UXI"
 #INCLUDE "DB_CHANGE.UXI"
 #INCLUDE "DB_INDEX.UXI"
+#INCLUDE "DB_DO.UXI"
+#INCLUDE "DB_SCREEN.UXI"
 
 ' SELECT PRIMARY or SELECT SECONDARY: makes that work area the one in use. Each area keeps its
 ' table, its indexes and its current record. A LOCATE ends.
@@ -503,6 +507,13 @@ END SUB
 ' The variables' bank. Without a free bank DB does not run.
 RUNNING = 0
 LOCATE_ACTIVE = 0
+DO_DEPTH = 0
+AHEAD_COUNT = 0
+AHEAD_INDEX = 0
+SKIP_DEPTH = 0
+SKIP_LOOP = 0
+LOOP_DEPTH = 0
+GET_COUNT = 0
 CALLER_BANK = ContentsAt(DB.RAM_BANK)
 VARIABLE_BANK = DB.TAKE_BANK()
 IF VARIABLE_BANK = 0
@@ -513,21 +524,27 @@ ELSE
   RUNNING = 1
 ENDIF
 DO WHILE RUNNING
-  PRINT ". ";
-  DOS.CON_LINE(COMMAND_LINE)
+  IF DO_DEPTH = 0
+    PRINT ". ";
+    DOS.CON_LINE(COMMAND_LINE)
+  ELSEIF READ_DO_LINE() = 0
+    CONTINUE
+  ENDIF
   FAILED = 0
   PART_LINE = 0
   REST = TRIM$(COMMAND_LINE)
   // CUT_SPACES()
   // REST = TRIM$(REST)
-  IF LEFT$(REST, 1) = "?"
-    ' ? needs no space after it, so it is not a word.
+  IF LEFT$(REST, 1) = "?" OR LEFT$(REST, 1) = "@"
+    ' ? and @ need no space after them, so they are not words.
+    TOKEN = LEFT$(REST, 1)
     REST = MID$(REST, 2)
-    TOKEN = "?"
   ELSE
     NEXT_WORD()
   ENDIF
-  IF TOKEN = "?"
+  IF SKIP_DEPTH <> 0
+    SKIP_LINE()
+  ELSEIF TOKEN = "?"
     DO_PRINT()
   ELSEIF TOKEN = ""
     ' an empty line
@@ -579,6 +596,36 @@ DO WHILE RUNNING
     DO_MARK(0)
   ELSEIF IS("PACK")
     DO_PACK()
+  ELSEIF TOKEN = "DO"
+    DO_DO()
+  ELSEIF IS("RETURN")
+    END_DO()
+  ELSEIF IS("CANCEL")
+    CANCEL_DO()
+  ELSEIF TOKEN = "IF"
+    DO_IF()
+  ELSEIF TOKEN = "ELSE"
+    IF DO_DEPTH THEN SKIP_DEPTH = 1
+  ELSEIF IS("ENDIF")
+    ' the end of an IF that ran
+  ELSEIF IS("ENDDO")
+    END_LOOP()
+  ELSEIF IS("ACCEPT")
+    DO_ACCEPT(0)
+  ELSEIF IS("INPUT")
+    DO_ACCEPT(1)
+  ELSEIF IS("WAIT")
+    DO_WAIT()
+  ELSEIF IS("MODIFY")
+    DO_MODIFY()
+  ELSEIF TOKEN = "@"
+    DO_AT()
+  ELSEIF IS("READ")
+    DO_READ()
+  ELSEIF IS("CLEAR")
+    DO_CLEAR(1)
+  ELSEIF TOKEN = "CLS"
+    DO_CLEAR(0)
   ELSEIF IS("QUIT")
     RUNNING = 0
   ELSE
@@ -592,12 +639,18 @@ DO WHILE RUNNING
       EVALUATE()
       IF FAILED = 0 THEN ASSIGN(TOKEN, 0)
     ELSE
-      PRINT "Unknown command"
+      REPORT_ERROR("Unknown command")
     ENDIF
+  ENDIF
+  ' An error in a command file shows its line, and ends every file.
+  IF FAILED AND DO_DEPTH > 0
+    PRINT "Line "; RIGHT_ALIGN(DO_LINE, 1); ": "; COMMAND_LINE
+    CANCEL_DO()
   ENDIF
 LOOP
 
 // --- is this the end?
+CANCEL_DO()
 IF TABLE <> 0 THEN DB.CLOSE_TABLE()
 SWAP_AREA()
 IF TABLE <> 0 THEN DB.CLOSE_TABLE()

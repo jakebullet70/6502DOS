@@ -177,27 +177,37 @@ done    plx
         #endtpl
         .endblock
 
-; #ROMBANKS: T_FAR's word, the address of the SUB it calls.
+; #ROMBANKS: T_FAR's 3 bytes: the address of the SUB it calls, then A on the way back.
 R_FARVEC .block
-        #data 2, 0
+        #data 3, 0
         .endblock
 
-; #ROMBANKS: the call into the other ROM bank. pyuxc places it at K_FAR in both banks, so that
-; its 23 bytes end at $FFA0, where the IRQ entry starts. S0 is the other bank. A T_FARCALL
-; enters with the SUB's address in A/Y. Keeps X; returns A, Y and C, and N and Z from A.
-; Trap: a write to ROM_BANK goes on at the next address in the other bank, so both copies must
+; #ROMBANKS: the call into another ROM bank of the program. pyuxc places it at K_FAR in each
+; bank, so that its 43 bytes end at $FFA0, where the IRQ entry starts. S0, S1 and S2 are the
+; program's banks. A T_FARCALL enters with the SUB's address in A/Y: at +0 to call into bank S0,
+; +7 into S1, +14 into S2. The caller's bank is read from ROM_BANK and selected again after the
+; call. Keeps X; returns A, Y and C, and N and Z from A.
+; Trap: a write to ROM_BANK goes on at the next address in the other bank, so every copy must
 ; lie at one address with one layout.
 T_FAR   .block
         #tpl
-        #rec sta, R_FARVEC
         #rec sty, R_FARVEC, 1
-        #lo lda, S0
-        sta $01                 ; ROM_BANK: the other bank's copy goes on at the jsr
-        #self jsr, jump
+        #lo ldy, S0
+        bra common
+        #rec sty, R_FARVEC, 1
+        #lo ldy, S1
+        bra common
+        #rec sty, R_FARVEC, 1
+        #lo ldy, S2
+common  #rec sta, R_FARVEC
+        lda $01
         pha
-        #lo lda, S0             ; seen from the bank called, the caller's bank
-        sta $01
+        sty $01                 ; ROM_BANK: the called bank's copy goes on at the jsr
+        #self jsr, jump
+        #rec sta, R_FARVEC, 2
         pla
+        sta $01                 ; the caller's copy goes on at the lda
+        #rec lda, R_FARVEC, 2
         rts
 jump    #recind R_FARVEC
         #endtpl

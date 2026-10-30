@@ -1,7 +1,7 @@
 ; The FAT32 library's registers, structures and error numbers.
 ;
 ; Ported from x16-rom, fat32/regs.inc, github.com/X16Community/x16-rom, master fbe32a6.
-; Changed: mem.inc replaces io.inc, and ram_bank is RAM_BANK. FAT32_CONTEXTS is 8, one for each
+; Changed: mem.inc replaces io.inc, and ram_bank is RAM_BANK. FAT32_CONTEXTS is 16, one for each
 ; SFT entry; FAT32_VOLUMES is 1, drive C:.
 ;
 ; fat32/README.md gives the licence: Copyright 2020 Frank van den Hoef, Michael Steil,
@@ -58,7 +58,7 @@ mtime_seconds .byte
 
 ; Maximum number of open files
 ; Optionally, fat32_alloc_context / fat32_free_context can be used to manage contexts
-FAT32_CONTEXTS = 8
+FAT32_CONTEXTS = 16
 
 ; Maximum number of partitions
 FAT32_VOLUMES = 1

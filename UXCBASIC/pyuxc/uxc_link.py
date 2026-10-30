@@ -122,7 +122,7 @@ def lk_link():
         uxc_sym.sy_set()
     uxc_code.sp_copy()
     if g.rb_on != 0:
-        uxc_rombank.rb_end(1)
+        uxc_rombank.rb_end()
     # The variables, all 0, in the file or after the strings at #DATA's address.
     g.lk_var = g.lk_org + g.cb_n
     if g.lk_apart != 0:

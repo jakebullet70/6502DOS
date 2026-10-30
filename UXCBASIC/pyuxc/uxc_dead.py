@@ -28,7 +28,7 @@ A SUB kept has K_SY_LIVE set before the link step.
                     address: g.lk_raw is 1.
     #DATA address   the variables, then the array space, start at the address, outside the
                     file, and the startup clears both: g.lk_apart is 1, g.lk_data the address.
-    #ROMBANKS a, b [, name]  the program runs from ROM banks a and b (uxc_rombank).
+    #ROMBANKS a, b [, c] [, name]  the program runs from ROM banks a, b and c (uxc_rombank).
 Each is allowed once. The first pass reads them, so they hold for the whole source wherever
 they stand.
 
@@ -330,9 +330,9 @@ def dd_place_scan():
 
 
 def dd_rombanks_scan():
-    """DD.ROMBANKS.SCAN. #ROMBANKS first, second, with the token at ROMBANKS: g.rb_on is 1, and
-    g.rb_bank holds the two ROM banks (uxc_rombank). A third field, a SUB's name, is
-    g.rb_name."""
+    """DD.ROMBANKS.SCAN. #ROMBANKS first, second [, third] [, name], with the token at ROMBANKS:
+    g.rb_on is 1, g.rb_count 2 or 3, and g.rb_bank holds the ROM banks (uxc_rombank); with two,
+    g.rb_bank[2] is the first. name, a SUB's name, is g.rb_name."""
     if g.rb_on != 0:
         er_stop("#ROMBANKS TWICE")
     for g.dd_i in range(2):
@@ -347,15 +347,32 @@ def dd_rombanks_scan():
     if g.rb_bank[0] == g.rb_bank[1]:
         er_syntax()
     g.rb_on = 1
+    g.rb_count = 2
+    g.rb_bank[2] = g.rb_bank[0]
     uxc_lex.lx_next()
     if g.tk_t == K_TT_OP and g.tk_k == 44:
         uxc_lex.lx_next()
-        if g.tk_t != K_TT_NAME:
-            er_syntax()
-        g.rb_name = g.tk_s
-        uxc_lex.lx_next()
+        if g.tk_t == K_TT_NUM:
+            if g.tk_v > 255 or g.tk_v == g.rb_bank[0] or g.tk_v == g.rb_bank[1]:
+                er_syntax()
+            g.rb_bank[2] = g.tk_v
+            g.rb_count = 3
+            uxc_lex.lx_next()
+            if g.tk_t == K_TT_OP and g.tk_k == 44:
+                uxc_lex.lx_next()
+                dd_rombanks_name()
+        else:
+            dd_rombanks_name()
     if g.tk_t != K_TT_EOL:
         er_syntax()
+
+
+def dd_rombanks_name():
+    """DD.ROMBANKS.NAME. The name of #ROMBANKS, at the token: g.rb_name."""
+    if g.tk_t != K_TT_NAME:
+        er_syntax()
+    g.rb_name = g.tk_s
+    uxc_lex.lx_next()
 
 
 def dd_keep_name():

@@ -1,0 +1,373 @@
+' DB_SCREEN.UXI -- the screen commands of DB.UXB: @ ... SAY ... GET, READ, CLEAR and CLS. DB.UXB
+' includes it after DB_DO.UXI.
+
+' The pending GETs, 0 to GET_COUNT - 1, at most GET_LIMIT. GET n has its place, the field it
+' edits or 0 for a memory variable, the variable's number, and its value's VALUE_KIND. At
+' GET_AT(n) in GET_POOL are its mask then its text, two string blocks of the same width; the
+' next GET's pair starts at GET_END. The text is the value as typed so far.
+CONST GET_LIMIT AS UBYTE = 32
+CONST GET_POOL_SIZE AS UWORD = 2048
+DIM GET_COUNT AS UBYTE, GET_END AS UWORD
+DIM GET_ROW(32) AS UBYTE, GET_COLUMN(32) AS UBYTE, GET_FIELD(32) AS UBYTE
+DIM GET_VARIABLE(32) AS UBYTE, GET_KIND(32) AS UBYTE, GET_AT(32) AS UWORD
+DIM GET_POOL(2048) AS UBYTE
+
+' 1 when the mask character MASK_CHAR takes a typed character: 9 and # a digit, A a letter, L
+' a logical, X and ! any character. Any other character of a mask is fixed.
+FUNCT TAKES(MASK_CHAR AS UBYTE) AS UBYTE
+  RETURN INSTR("9#ALX!", CHR$(MASK_CHAR)) <> 0
+END FUNCT
+
+' The character KEY gives in a place of mask character MASK_CHAR, or 0 when that place does not
+' take it. # takes a space, a sign and a point beside the digits. L takes T, F, Y or N and !
+' any character, each made upper case.
+FUNCT TYPED_CHAR(MASK_CHAR AS UBYTE, KEY AS UBYTE) AS UBYTE
+  DIM LOWER AS UBYTE
+  ' A letter OR 32 is its lower case, 97 to 122.
+  LOWER = KEY OR 32
+  IF MASK_CHAR = 57 AND IS_DIGIT(KEY) THEN RETURN KEY
+  IF MASK_CHAR = 35 AND (IS_DIGIT(KEY) <> 0 OR INSTR(" +-.", CHR$(KEY)) <> 0) THEN RETURN KEY
+  IF MASK_CHAR = 65 AND IS_LETTER(KEY) THEN RETURN KEY
+  IF MASK_CHAR = 76 AND INSTR("tfyn", CHR$(LOWER)) <> 0 THEN RETURN LOWER - 32
+  IF MASK_CHAR = 33 AND LOWER - 97 < 26 THEN RETURN LOWER - 32
+  IF MASK_CHAR = 33 OR MASK_CHAR = 88 THEN RETURN KEY
+  RETURN 0
+END FUNCT
+
+' Prints GET NUMBER's text at its place.
+SUB DRAW_GET(NUMBER AS UBYTE)
+  DIM TEXT_AT AS UWORD
+  POS(1) = GET_ROW(NUMBER)
+  POS(0) = GET_COLUMN(NUMBER)
+  TEXT_AT = GET_AT(NUMBER)
+  TEXT_AT = TEXT_AT + ContentsAt(TEXT_AT) + 2
+  PRINT StringAt(TEXT_AT);
+END SUB
+
+' Edits GET NUMBER's text in place, after GUI.INPUT2's masked field: a typed character types
+' over the one at the cursor when its mask character takes it, Delete puts a space, Backspace
+' moves left and puts a space. Left, Right, Home and End move, and the cursor skips the mask's
+' fixed characters. Enter, Tab, Esc, Ctrl+W and every extended key but those four end the edit,
+' and the key is returned as WAITKEY() gives it.
+FUNCT EDIT_GET(NUMBER AS UBYTE) AS UWORD
+  DIM SPOT AS UBYTE, WIDTH AS UBYTE, BACKWARD AS UBYTE, MASK_CHAR AS UBYTE, TYPED AS UBYTE
+  DIM MASK_AT AS UWORD, TEXT_AT AS UWORD, PRESSED AS UWORD
+  MASK_AT = GET_AT(NUMBER) + 2
+  WIDTH = ContentsAt(MASK_AT - 2)
+  TEXT_AT = MASK_AT + WIDTH + 2
+  SPOT = 0
+  BACKWARD = 0
+  DO
+    ' The cursor moves off the mask's fixed characters: back after Left or Backspace while
+    ' there is a place to type before it, else forward. BACKWARD is 1 after Left and 2 after
+    ' Backspace, and 2 still set below puts a space at the cursor.
+    DO WHILE SPOT < WIDTH
+      MASK_CHAR = ContentsAt(MASK_AT + SPOT)
+      IF TAKES(MASK_CHAR) THEN EXIT DO
+      IF BACKWARD > 0 AND SPOT > 0
+        SPOT = SPOT - 1
+      ELSE
+        BACKWARD = 0
+        SPOT = SPOT + 1
+      ENDIF
+    LOOP
+    DRAW_GET(NUMBER)
+    POS(0) = GET_COLUMN(NUMBER) + SPOT
+    PRESSED = KEYS.KEY_DELETE
+    IF BACKWARD < 2 THEN PRESSED = WAITKEY()
+    BACKWARD = 0
+    IF PRESSED = KEYS.BACKSPACE AND SPOT > 0
+      SPOT = SPOT - 1
+      BACKWARD = 2
+      CONTINUE
+    ENDIF
+    SELECT CASE PRESSED
+      CASE KEYS.KEY_LEFT
+        IF SPOT > 0 THEN SPOT = SPOT - 1
+        BACKWARD = 1
+      CASE KEYS.KEY_RIGHT
+        IF SPOT < WIDTH THEN SPOT = SPOT + 1
+      CASE KEYS.KEY_HOME
+        SPOT = 0
+      CASE KEYS.KEY_END
+        SPOT = WIDTH
+      CASE KEYS.KEY_DELETE, 32 TO 255
+        IF SPOT = WIDTH THEN CONTINUE
+        TYPED = 32
+        IF PRESSED < 256
+          TYPED = TYPED_CHAR(MASK_CHAR, PRESSED)
+          IF TYPED = 0 THEN CONTINUE
+        ENDIF
+        ContentsAt(TEXT_AT + SPOT) = TYPED
+        IF PRESSED < 256 THEN SPOT = SPOT + 1
+      CASE ELSE
+        IF PRESSED > 255 OR PRESSED = KEYS.ENTER OR PRESSED = KEYS.TAB OR PRESSED = KEYS.ESC OR PRESSED = 23 THEN RETURN PRESSED
+    END SELECT
+  LOOP
+END FUNCT
+
+' Reads GET name [PICTURE text] at CURSOR into the next GET's pair in GET_POOL, and its field,
+' variable and kind; GET_COUNT is not changed. name is a field of the current record, or else a
+' memory variable. The width is the picture's length, else the field's length, a text
+' variable's length, 10 or more for a number variable, 1 for a logical. With no picture the
+' mask is all # for a number, L for a logical, else all X. A number is right-aligned in the
+' text, other values left-aligned; a value is cut to the width. The mask's fixed characters
+' replace the value's characters in their places. A GET must fit on its row.
+SUB READ_GET()
+  DIM NAME AS STRING * 10, TEXT AS STRING * 255, MASK AS STRING * 255
+  DIM FIELD AS UBYTE, NUMBER AS UBYTE, KIND AS ENUM.VALUE_KIND, FIELD_KIND AS ENUM.DB.FIELD_KIND
+  DIM WIDTH AS UBYTE, SPOT AS UBYTE, SHIFT AS UBYTE, MASK_CHAR AS UBYTE, CHARACTER AS UBYTE
+  DIM AT AS UWORD, SIZE AS UWORD
+  IF GET_COUNT = 0 THEN GET_END = 0
+  SKIP_SPACES()
+  NAME = VARIABLE_NAME()
+  IF NAME = ""
+    SYNTAX_ERROR()
+    RETURN
+  ENDIF
+  FIELD = 0
+  IF TABLE <> 0 THEN FIELD = DB.FIELD_NUMBER(NAME)
+  IF FIELD <> 0
+    IF PAST_LAST()
+      RECORD_ERROR()
+      RETURN
+    ENDIF
+    TEXT = DB.GET(FIELD)
+    WIDTH = DB.FIELD_LENGTH(FIELD)
+    FIELD_KIND = DB.FIELD_TYPE(FIELD)
+    KIND = VALUE_KIND.TEXT
+    IF FIELD_KIND = DB.FIELD_KIND.NUMBER THEN KIND = VALUE_KIND.NUMBER
+    IF FIELD_KIND = DB.FIELD_KIND.LOGICAL THEN KIND = VALUE_KIND.LOGICAL
+  ELSE
+    NUMBER = FIND_VARIABLE(NAME)
+    IF NUMBER = VARIABLE_LIMIT
+      REPORT_ERROR("Variable not found")
+      RETURN
+    ENDIF
+    VALUE_COUNT = 0
+    TEXT_BUFFER = ""
+    PUSH_VARIABLE(NUMBER)
+    KIND = VALUE_TYPE(0)
+    IF KIND = VALUE_KIND.TEXT
+      TEXT = TEXT_OF(0)
+    ELSEIF KIND = VALUE_KIND.LOGICAL
+      TEXT = MID$("FT", VALUE_STACK(0) + 1, 1)
+    ELSE
+      TEXT = FP.TO_TEXT(VALUE_AT(0))
+    ENDIF
+    WIDTH = LEN(TEXT)
+    IF KIND = VALUE_KIND.NUMBER AND WIDTH < 10 THEN WIDTH = 10
+  ENDIF
+  IF KIND = VALUE_KIND.NUMBER THEN TEXT = TRIM$(TEXT)
+  MASK = ""
+  SKIP_SPACES()
+  IF CURRENT_CHAR() <> 0
+    TOKEN = NAME_AT()
+    IF IS("PICTURE") = 0
+      SYNTAX_ERROR()
+      RETURN
+    ENDIF
+    EVALUATE()
+    IF FAILED THEN RETURN
+    IF VALUE_TYPE(0) <> VALUE_KIND.TEXT
+      TYPE_MISMATCH()
+      RETURN
+    ENDIF
+    MASK = TEXT_OF(0)
+    WIDTH = LEN(MASK)
+    SKIP_SPACES()
+    IF CURRENT_CHAR() <> 0
+      SYNTAX_ERROR()
+      RETURN
+    ENDIF
+  ENDIF
+  SIZE = WIDTH
+  SIZE = SIZE * 2 + 4
+  IF GET_COUNT = GET_LIMIT OR GET_END + SIZE > GET_POOL_SIZE
+    REPORT_ERROR("Too many GETs")
+    RETURN
+  ENDIF
+  AT = AddrOf(GET_POOL) + GET_END
+  GET_AT(GET_COUNT) = AT
+  GET_FIELD(GET_COUNT) = FIELD
+  GET_VARIABLE(GET_COUNT) = NUMBER
+  GET_KIND(GET_COUNT) = KIND
+  ' Each block's size and length are the width.
+  ContentsAt(AT) = WIDTH
+  ContentsAt(AT + 1) = WIDTH
+  ContentsAt(AT + WIDTH + 2) = WIDTH
+  ContentsAt(AT + WIDTH + 3) = WIDTH
+  SHIFT = 0
+  IF KIND = VALUE_KIND.NUMBER AND LEN(TEXT) < WIDTH THEN SHIFT = WIDTH - LEN(TEXT)
+  MASK_CHAR = 88
+  IF KIND = VALUE_KIND.NUMBER THEN MASK_CHAR = 35
+  IF KIND = VALUE_KIND.LOGICAL THEN MASK_CHAR = 76
+  SPOT = 0
+  DO WHILE SPOT < WIDTH
+    SPOT = SPOT + 1
+    IF MASK <> "" THEN MASK_CHAR = ContentsAt(@MASK + 1 + SPOT)
+    CHARACTER = 32
+    IF SPOT > SHIFT AND SPOT - SHIFT <= LEN(TEXT) THEN CHARACTER = ContentsAt(@TEXT + 1 + SPOT - SHIFT)
+    IF TAKES(MASK_CHAR) = 0 THEN CHARACTER = MASK_CHAR
+    ContentsAt(AT + 1 + SPOT) = MASK_CHAR
+    ContentsAt(AT + WIDTH + 3 + SPOT) = CHARACTER
+  LOOP
+  GET_END = GET_END + SIZE
+END SUB
+
+' @ row, column [SAY expression] [GET name [PICTURE text]]: puts the cursor at row and column,
+' from 0, and prints the value there with no line end. GET adds a pending GET for READ, shown
+' at once: after the SAY's value and a space, or at row and column. With neither it blanks the
+' row from column to its end. Row and column are 0 to 255; past the screen's rows or columns
+' the console places the cursor. The line is checked whole before the cursor moves.
+SUB DO_AT()
+  DIM ROW AS UBYTE, COLUMN AS UBYTE, SAYING AS UBYTE, GETTING AS UBYTE
+  CURSOR = 1
+  EVALUATE()
+  IF FAILED THEN RETURN
+  ROW = SMALL_WHOLE(0)
+  IF FAILED THEN RETURN
+  SKIP_SPACES()
+  IF CURRENT_CHAR() <> 44
+    SYNTAX_ERROR()
+    RETURN
+  ENDIF
+  CURSOR = CURSOR + 1
+  EVALUATE()
+  IF FAILED THEN RETURN
+  COLUMN = SMALL_WHOLE(0)
+  IF FAILED THEN RETURN
+  SKIP_SPACES()
+  ' SAYING is the SAY expression's start in REST, 0 for none.
+  SAYING = 0
+  GETTING = 0
+  IF CURRENT_CHAR() <> 0
+    TOKEN = NAME_AT()
+    IF TOKEN = "SAY"
+      SAYING = CURSOR
+      EVALUATE()
+      IF FAILED THEN RETURN
+      SKIP_SPACES()
+      TOKEN = ""
+      IF CURRENT_CHAR() <> 0 THEN TOKEN = NAME_AT()
+    ENDIF
+    IF TOKEN = "GET"
+      GETTING = 1
+      READ_GET()
+      IF FAILED THEN RETURN
+    ELSEIF TOKEN <> ""
+      SYNTAX_ERROR()
+      RETURN
+    ENDIF
+  ENDIF
+  POS(1) = ROW
+  POS(0) = COLUMN
+  IF SAYING <> 0
+    CURSOR = SAYING
+    EVALUATE()
+    SHOW_VALUE()
+    IF GETTING THEN PRINT " ";
+  ELSEIF GETTING = 0
+    PRINT "{CLEAR EOL}";
+  ENDIF
+  IF GETTING
+    GET_ROW(GET_COUNT) = POS(1)
+    GET_COLUMN(GET_COUNT) = POS(0)
+    DRAW_GET(GET_COUNT)
+    GET_COUNT = GET_COUNT + 1
+  ENDIF
+END SUB
+
+' Puts the text of each GET in its field or variable, first to last: a text as it is, a number
+' read as a number expression, a blank one 0, a logical true for T or Y. A field takes it as
+' REPLACE does, and a record with a GET's field is written. A wrong value prints its error
+' and the GETs after it are not stored; the record is then read again.
+SUB STORE_GETS()
+  DIM NUMBER AS UBYTE, FIELD AS UBYTE, WRITING AS UBYTE, KIND AS ENUM.VALUE_KIND
+  DIM NAME AS STRING * 10, TEXT_AT AS UWORD
+  WRITING = 0
+  NUMBER = 0
+  TARGET = 0
+  DO WHILE NUMBER < GET_COUNT
+    TEXT_AT = GET_AT(NUMBER)
+    TEXT_AT = TEXT_AT + ContentsAt(TEXT_AT) + 2
+    KIND = GET_KIND(NUMBER)
+    VALUE_COUNT = 0
+    TEXT_BUFFER = ""
+    IF KIND = VALUE_KIND.LOGICAL
+      PUSH_LOGICAL(INSTR("TY", LEFT$(StringAt(TEXT_AT), 1)) <> 0)
+    ELSEIF KIND = VALUE_KIND.NUMBER
+      REST = TRIM$(StringAt(TEXT_AT))
+      IF REST = "" THEN REST = "0"
+      CURSOR = 1
+      IF READ_LISTED(0, VALUE_KIND.NUMBER) THEN SYNTAX_ERROR()
+      SCOPE_AT_END()
+    ELSE
+      PUSH_TEXT(StringAt(TEXT_AT))
+    ENDIF
+    IF FAILED THEN EXIT DO
+    FIELD = GET_FIELD(NUMBER)
+    IF FIELD <> 0
+      PUT_VALUE(FIELD)
+      WRITING = 1
+    ELSE
+      REST = ""
+      CURSOR = 1
+      NAME = StringAt(SLOT_AT(GET_VARIABLE(NUMBER)))
+      ASSIGN(NAME, 0)
+    ENDIF
+    IF FAILED THEN EXIT DO
+    NUMBER = NUMBER + 1
+  LOOP
+  IF WRITING = 0 THEN RETURN
+  IF FAILED
+    MOVE_TO(CURRENT)
+    RETURN
+  ENDIF
+  DB.WRITE_RECORD()
+  IF DOS.ERROR <> 0 THEN FILE_ERROR()
+END SUB
+
+' READ: edits the pending GETs in turn, from the first, with EDIT_GET. Enter, Tab and Down go to
+' the next GET, Up to the one before. Enter, Tab or Down at the last GET, PgDn and Ctrl+W end
+' READ and store the GETs with STORE_GETS; Esc ends it and stores none. Then the GETs are
+' dropped, and the cursor goes to column 0 of the row after the last GET's row.
+SUB DO_READ()
+  DIM NUMBER AS UBYTE, PRESSED AS UWORD
+  IF REST <> ""
+    SYNTAX_ERROR()
+    RETURN
+  ENDIF
+  IF GET_COUNT = 0 THEN RETURN
+  NUMBER = 0
+  DO WHILE NUMBER < GET_COUNT
+    PRESSED = EDIT_GET(NUMBER)
+    IF PRESSED = KEYS.ESC OR PRESSED = KEYS.KEY_PGDN OR PRESSED = 23 THEN EXIT DO
+    IF PRESSED = KEYS.KEY_UP
+      IF NUMBER > 0 THEN NUMBER = NUMBER - 1
+    ELSEIF PRESSED = KEYS.ENTER OR PRESSED = KEYS.TAB OR PRESSED = KEYS.KEY_DOWN
+      NUMBER = NUMBER + 1
+    ENDIF
+  LOOP
+  POS(1) = GET_ROW(GET_COUNT - 1)
+  POS(0) = 0
+  PRINT
+  IF PRESSED <> KEYS.ESC THEN STORE_GETS()
+  GET_COUNT = 0
+END SUB
+
+' CLEAR blanks the screen, puts the cursor at row 0, column 0, and drops the pending GETs; CLEAR
+' GETS only drops them. CLS blanks the screen and keeps them. DROPPING is 1 for CLEAR.
+SUB DO_CLEAR(DROPPING AS UBYTE)
+  NEXT_WORD()
+  IF DROPPING AND IS("GETS") AND REST = ""
+    GET_COUNT = 0
+    RETURN
+  ENDIF
+  IF TOKEN <> ""
+    SYNTAX_ERROR()
+    RETURN
+  ENDIF
+  IF DROPPING THEN GET_COUNT = 0
+  PRINT "{CLS}";
+END SUB
