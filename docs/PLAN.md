@@ -1127,7 +1127,7 @@ Short names:
 - The utilities lie in the card's folder `\sys`, each with its source in
   `\source\xcbasic\FOLDER`. The build compiles each `src/utils/FOLDER/NAME.UXB` to
   `build/sys/NAME.COM`, and copies each `src/utils/FOLDER` to `build/source/xcbasic/FOLDER`.
-  `sd/startup.cmd` puts `C:\sys` in `PATH$`.
+  `card/startup.cmd` puts `C:\sys` in `PATH$`.
 - The card's folders: `sys`, with `sys/temp`, `sys/basic`, `sys/xbase` and `sys/edit`; `source`,
   with `source/basic`, `source/xcbasic` and `source/xbase`; `apps`; `games`. `sys` holds the
   programs, the fonts and the themes, and its subfolders hold data.
@@ -1319,18 +1319,17 @@ Folders:
   sector 2048, and FAT32. A name that is 8.3 goes in as its 8.3 name in capitals. Any other
   name, up to 255 characters, goes in as a long name as typed, with an 8.3 alias `BASE~N.EXT`.
   `build.py` makes `build/SD.IMG`, 4 MB with 1 sector per cluster: 6016 clusters, 3008 KB.
-- The card holds the folder `sd`, the build outputs, and the folder `card`, which wins a name
-  they share. The `src/bas` programs but `CMDSHELL.COM`, and the entries of `tests/sd`, go in
+- The card holds the folder `card` and the build outputs. `card` wins a name they share. The `src/bas` programs but `CMDSHELL.COM`, and the entries of `tests/sd`, go in
   the folder `\TEST`. `build/SD.SUM` lists each path and its SHA-1.
 - Before it writes the card, `build.py` copies into `card` each file and folder that the X16
   added to `build/SD.IMG` or changed since `SD.SUM`, and deletes from `card` each one the X16
-  deleted. `card` is gitignored. A build file deleted on the X16 comes back at the next build.
+  deleted. `card` is tracked in git. A build file deleted on the X16 comes back at the next build.
 - `build.py --release` builds as above, then empties `build/release` and fills it with `SD.IMG`,
   `6502DOS.ROM`, `LICENSE`, `NOTICE`, the files of `tools/release`, and x16emu with the DLLs it
   loads in the folder `x16emu`. `tools/release` holds `RUN.BAT`, which starts x16emu with the
   ROM and the card, and the licences of x16emu, SDL2, zlib and winpthreads. That `SD.IMG` is
-  4 MB and holds the folder `sd` less the names in `RELEASE_SKIP`, `CMDSHELL.COM`,
-  `ROMSHELL.COM`, `MSBASIC.COM`, `DOS` and `UTILS`. It has no `\TEST` and nothing from `card`.
+  4 MB and holds the folder `card` less the names in `RELEASE_SKIP`, `CMDSHELL.COM`,
+  `ROMSHELL.COM`, `MSBASIC.COM`, `DOS` and `UTILS`. `RELEASE_SKIP` holds `TEST` and `WIDE.TXT`.
   Then it zips `build/release` to `release/6502DOS-VERSION-win.zip`, under the folder
   `6502DOS`. VERSION comes from `VERSION` and `VERSION_LABEL` in `tools/api.py`, as in
   `0.1.0-beta1`. The folder `release` is tracked.

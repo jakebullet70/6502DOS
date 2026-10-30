@@ -80,8 +80,8 @@ Building needs Windows, Python 3.13 and x16emu R49. ca65, ld65 and 64tass are in
 | `RUNCARD.BAT` | Starts x16emu in a window on `build/6502DOS.ROM`, with the card `build/SD.IMG` as `C:` |
 | `RUNHOST.BAT` | Starts x16emu in a window on `build/6502DOS.ROM`, with the folder `build/card` as `C:`. The next build deletes files saved there |
 
-`build/SD.IMG` also holds the test programs in `\TEST`, and the folder `card`: the files the X16
-saved on the card, which each build copies back.
+`build/SD.IMG` holds the folder `card`, the build outputs, and the test programs in `\TEST`. Each
+build copies back into `card` the files the X16 saved on `build/SD.IMG`.
 
 ## The repository
 
@@ -91,7 +91,7 @@ saved on the card, which each build copies back.
 | `src/bas`, `src/bank3` | The shell, and small programs the tests run |
 | `src/dos`, `src/scom`, `src/utils` | The utilities, the commandlets, the programs in `C:\sys` |
 | `lib` | The UXCBASIC library the programs include |
-| `sd` | The files copied to the card |
+| `card` | The files copied to the card, and those the X16 saved on `build/SD.IMG` |
 | `tests` | Test programs, their keys and their expected output |
 | `tools` | The build, the tests, the card writer `mksd.py`, the checker `fatcheck.py` |
 | `UXCBASIC` | The UXCBASIC compiler, pyuxc, its templates and its tests |
