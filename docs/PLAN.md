@@ -125,7 +125,7 @@ The UXCBASIC library is the folder `lib/`. Each file holds one namespace of the 
 | `$C000–$FFFF` ROM bank 2 | MSBASIC, started by `MSBASIC.COM` |
 | `$C000–$FFFF` ROM banks 3 and 4 | the UXCBASIC program in `src/bank3`, the shell `ROMSHELL`, started by its `.COM` stub |
 | `$C000–$FFFF` ROM bank 5 | the DB library, call 57, and MSBASIC's float, call 58 |
-| `$C000–$FFFF` ROM banks 6 to 8 | the UXCBASIC program in `src/bank6`, `DB`, started by `DB.COM` |
+| `$C000–$FFFF` ROM banks 6 to 8 | the UXCBASIC program in `src/bank6`, `DB`, started by `XBASE.COM` |
 | `$C000–$FFFF` ROM banks 9 and up | not in the image yet |
 
 The ROM image holds banks 0 to 8: 9 banks, 147456 bytes.
@@ -512,6 +512,10 @@ Drivers follow MS-DOS 2.0's device drivers.
   - While the kernel is busy, an IRQ only sets a flag. It never calls the file API.
   - The tick counter runs on VSYNC.
 
+### The host file system
+
+`src/asm/hostfs.inc` serves the disk calls from a folder of the PC when x16emu runs with HostFS, as with `-fsroot`. `host_probe` selects it at boot: `LISTEN` at `$FFB1` clears carry when x16emu traps it, and bank 1 holds an `RTS` there. Real hardware, `-sdcard` and `-nohostfs` use the FAT32 library. `tools/tests.py --host` runs tests this way.
+
 ## 7. Programs
 
 - A `.COM` file loads at `$0801`, as an MS-DOS `.COM` file loads at offset `100h`. A relocatable
@@ -602,9 +606,9 @@ KERNAL entries:
 - The shell is one UXCBASIC program, `src/bas/CMDSHELL.UXI`. `ROMSHELL` runs it from ROM banks
   3 and 4. `CMDSHELL.COM`, on the boot drive, is the same shell built to run from RAM.
   `SHELL=` in `CONFIG.SYS` names another.
-- After the banner the ROM runs `C:\ROMSHELL.COM`, a 9-byte stub that starts the shell in ROM
+- After the banner the ROM runs `C:\sys\ROMSHELL.COM`, a 9-byte stub that starts the shell in ROM
   bank 3, with an empty tail, and runs it again each time it ends. When `exec` fails, as with
-  no `C:\ROMSHELL.COM`, the ROM prints `Cannot run C:\ROMSHELL.COM: ` and the error's message
+  no `C:\sys\ROMSHELL.COM`, the ROM prints `Cannot run C:\sys\ROMSHELL.COM: ` and the error's message
   from `errmsg`, then goes to the monitor.
 - It calls the API through `DOS.UXI` (section 2).
 - Its language is a small BASIC, not MS-DOS's command language.
@@ -917,7 +921,7 @@ Short names:
   `DATE`, `TIME`, `UPTIME`, `WHERE`, `MEM`. There is no `FORMAT` and no `MOUNT`.
 - `HELP` is a DOS utility, `HELP.COM`, not a commandlet.
 - Both lie in the card's folder `\DOS`. `PATH$` is empty at boot, so the shell finds them only
-  after `PATH$ = "C:\DOS"`.
+  after `PATH$ = "C:\sys"`.
 - The build compiles each `src/scom/NAME.UXB` to `build/DOS/NAME.SCOM`, and each
   `src/dos/NAME.UXB` to `build/DOS/NAME.COM`. It copies each `src/dos/NAME.TXT` to `build/DOS`.
 - `src/scom/SCOM.UXI` is included by each commandlet, after `DOS.UXI` and `HEAP.UXI`. It gives
@@ -968,7 +972,7 @@ Short names:
     The count times 21 over 1250 is worked in two parts, so the product stays in 32 bits.
   - Trap: x16emu's RTC runs on the host's clock. A test reads the time back only straight
     after it sets it.
-- `HELP [topic]` prints the help on a topic from `C:\DOS\HELP.HLP`. `HELP` alone lists the
+- `HELP [topic]` prints the help on a topic from `C:\sys\HELP.HLP`. `HELP` alone lists the
   topics on one line.
   - The topic is taken in capitals: `HELP dir` is `HELP DIR`.
   - In `HELP.HLP` a line `:NAME`, in capitals, starts a topic. Its text runs to the next line
@@ -997,7 +1001,7 @@ Short names:
     prints its error message and gives exit code 2. The exit code is 0 otherwise.
 - `TED name` is a DOS utility, `TED.COM`, for the command line. It edits a text file on the full
   screen: 29 rows of text and a status row. The keys are in the header of `src/dos/TED.UXB`
-  and in `C:\DOS\TED.HLP`, which F1 shows.
+  and in `C:\sys\TED.HLP`, which F1 shows.
   - The text takes the RAM from the program's end to `$96FF`, and the clipboard `$9700` to
     `$9EFF`, 2048 bytes.
   - A save writes `TED.$$$` in the file's directory, then gives it the file's name.
@@ -1067,8 +1071,8 @@ Short names:
     other character. A `]` first in the set is one of its characters.
   - `*` after any of these matches it 0 or more times. A `*` first in the pattern is a `*`.
   - `\` before a character that is not a letter or a digit takes that character as it is:
-    `\.`, `\*`, `\[`, `\\`. Any other character matches itself, so `C:\DOS` matches
-    `C:\DOS`.
+    `\.`, `\*`, `\[`, `\\`. Any other character matches itself, so `C:\sys` matches
+    `C:\sys`.
   - `-i` takes the pattern and each line in capitals. `-n` writes the line number and a
     colon before each line. `-v` writes the lines that do not match. `-c` writes only the
     number of lines it would write. Switches may share one `-`: `-in`.
@@ -1110,20 +1114,23 @@ Short names:
     found, a copy into itself and `Insufficient disk space` give 4. A read or write error
     prints its error message and gives 5.
 - `HELPBAS [topic]` is a DOS utility, `HELPBAS.COM`. It prints the help on an MSBASIC keyword
-  from `C:\DOS\HELPBAS.HLP`, and with no topic lists the topics.
+  from `C:\sys\HELPBAS.HLP`, and with no topic lists the topics.
   - `HELPBAS.HLP` has the format of `HELP.HLP`, with CR LF line ends. MSBASIC's `HELP [topic]`
     reads the same file.
   - No help for the topic gives exit code 1, and no `HELPBAS.HLP` exit code 2.
-- `HELPDB [topic]` is a DOS utility, `HELPDB.COM`, from `src/dos/HELPDB.UXB`. It prints the
-  help on a DB command from `C:\DOS\HELPDB.HLP`, and with no topic lists the topics. DB's
+- `HELPDB [topic]` is a DOS utility, `HELPXBASE.COM`, from `src/dos/HELPXBASE.UXB`. It prints the
+  help on a DB command from `C:\sys\HELPDB.HLP`, and with no topic lists the topics. DB's
   `HELP [topic]` runs it.
   - `HELPDB.HLP` has the format of `HELP.HLP`, with LF line ends. `HELPDB -R` writes its
     index, `HELPDB.IDX`.
   - No help for the topic gives exit code 1, and no `HELPDB.HLP` exit code 2.
-- The utilities lie in the card's folder `\UTILS`, each with its source in `\UTILS\SRC\FOLDER`.
-  The build compiles each `src/utils/FOLDER/NAME.UXB` to `build/UTILS/NAME.COM`, and copies
-  each `src/utils/FOLDER` to `build/UTILS/SRC/FOLDER`. `sd/startup.cmd` puts `C:\UTILS` in
-  `PATH$`.
+- The utilities lie in the card's folder `\sys`, each with its source in
+  `\source\xcbasic\FOLDER`. The build compiles each `src/utils/FOLDER/NAME.UXB` to
+  `build/sys/NAME.COM`, and copies each `src/utils/FOLDER` to `build/source/xcbasic/FOLDER`.
+  `sd/startup.cmd` puts `C:\sys` in `PATH$`.
+- The card's folders: `sys`, with `sys/temp`, `sys/basic`, `sys/xbase` and `sys/edit`; `source`,
+  with `source/basic`, `source/xcbasic` and `source/xbase`; `apps`; `games`. `sys` holds the
+  programs, the fonts and the themes, and its subfolders hold data.
 - `HDIR [d:][path] [-1..-9] [-l] [-n] [-e] [-d] [-s] [-t] [-a] [-c]` is a utility,
   `HDIR.COM`, for the command line. It lists a directory as a grid in colors, after HotDIR
   (`github.com/jakebullet70/HotDir`, Unlicense).
@@ -1142,7 +1149,7 @@ Short names:
 - `HELPED [name]` is a utility, `HELPED.COM`, for the command line. It edits a text file of up
   to 2047 bytes in a form of GUI Forms, `lib/GUI.UXI`.
   - The form holds the field File, 12 characters in capitals; the list Folder, with `Current`,
-    `C:\UTILS` and `C:\DOS`; the check box Backup; the radio buttons Theme, with Dark, Light and
+    `C:\sys`; the check box Backup; the radio buttons Theme, with Dark, Light and
     Gray; the memo Text, 64 columns by 12 rows; and the buttons Load, Save and Quit, pressed by
     Alt+L, Alt+S and Alt+Q.
   - The name starts as `name`, or `README.TXT`, in the current directory. That file loads at
@@ -1185,7 +1192,7 @@ Short names:
     string heap, and a map of the banks.
   - The status line gives how each demo ended and what it returned. The exit code is 0.
 - `WHERE name [SILENT]` prints the path of the program the shell runs for `name`:
-  `C:\DOS\HEAD.COM`. It is for the command line and scripts.
+  `C:\sys\HEAD.COM`. It is for the command line and scripts.
   - The look-up is the shell's. A name with an extension is looked for as typed, any other
     as `NAME.SCOM`, then `NAME.COM`, then `NAME.CMD`. A name with a directory is looked for
     there only, any other in the current directory, then in each directory of `PATH$`.
@@ -1284,7 +1291,7 @@ Folders:
 | `lib/` | the UXCBASIC library (section 2, `DOS.UXI`) |
 | `src/scom/` | the commandlets and `SCOM.UXI` |
 | `src/dos/` | the DOS utilities and their text files |
-| `src/utils/` | the utilities, a folder each, for the card's `\UTILS` |
+| `src/utils/` | the utilities, a folder each, for the card's `\sys` |
 | `tools/` | `api.py`, the generator, `build.py`, `tests.py` |
 | `tools/cc65/` | `ca65.exe`, `ld65.exe` and the cc65 licence |
 | `tests/` | test programs and their expected output |
@@ -1470,7 +1477,7 @@ Each step boots and shows something, and each has a test.
        7i4 `WHERE`, 7i5 `HELP`, 7i6 `DATE`, `TIME` and `UPTIME` on the clock calls. `MEM`
        comes with step 10. The DOS utilities `VIEW`, `TREE`, `MORE`, `HEAD`, `TAIL`,
        `GREP`, `XCOPY`, `HELPBAS` and `HELPDB`, and the utility `HDIR`, follow, one a part.
-8. `SYSINIT.COM` with `CONFIG.SYS` and `DEVICE=`. Until then the ROM runs `C:\ROMSHELL.COM`
+8. `SYSINIT.COM` with `CONFIG.SYS` and `DEVICE=`. Until then the ROM runs `C:\sys\ROMSHELL.COM`
    itself (section 8).
 9. Layer 1 moves to UXCBASIC, one part at a time, as the compiler features land. The parts that
    need nothing new (section 2) are written as `.UXI` libraries first and tested on 6502DOS.
@@ -1527,6 +1534,13 @@ The UXCBASIC compiler is pyuxc, in Python, and programs are compiled on the PC a
 SD card image. The GPC BASIC compiler is frozen. The compiler runs on 6502DOS only once UXCBASIC
 is self-hosted. UXCEDIT is GPC BASIC, and the GPC runtime needs the stock KERNAL, so it does not
 run on 6502DOS.
+
+## To do
+
+- Refactor every help: `HELP`, `HELPBAS`, `HELPDB`, `TED.HLP`, `HELPED`, and the `HELP` statement
+  of MSBASIC.
+- MSBASIC's `HELP` statement fails: `MSBASIC/src/6502dos_extra.s` opens
+  `C:\DOS\HELPBAS.HLP`, and the card has no `C:\DOS`. `HELPBAS.HLP` is in `C:\sys`.
 
 ## 13. Still to decide
 

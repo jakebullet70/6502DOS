@@ -13,8 +13,8 @@ No code comes from MS-DOS. MS-DOS 2.0 is x86 code, so only its design carries ov
 This is beta 1. The API in `docs/API.md` is frozen, save the parts that `docs/PLAN.md` section
 13 marks unstable. `SYSINIT` and `CONFIG.SYS` are not built yet. EDIT is a beta.
 
-6502DOS runs on x16emu R49. It reads files from the SD card only; the emulator's host file
-system does not work with it.
+6502DOS runs on x16emu R49. It reads files from the SD card, or from a folder of the PC through
+the emulator's host file system.
 
 ## Running it
 
@@ -30,7 +30,15 @@ x16emu\x16emu.exe -rom 6502DOS.ROM -sdcard SD.IMG -rtc -nohostfs
 Arguments to `RUN.BAT` pass on to x16emu, as in `RUN -scale 2`. Files saved on the X16 stay
 in `SD.IMG`.
 
-The ROM prints its banner and runs `C:\ROMSHELL.COM`, the shell, from ROM banks 3 and 4. The
+To run from a folder of the PC in place of the card, as `C:`:
+
+```
+x16emu\x16emu.exe -rom 6502DOS.ROM -fsroot FOLDER -rtc
+```
+
+Files saved on the X16 are then files in the folder. A path holds at most 72 characters and no comma. A file has only the read-only and directory attributes. `DISKFREE` gives fixed numbers, and `CHKDSK` gives `Drive not ready`.
+
+The ROM prints its banner and runs `C:\sys\ROMSHELL.COM`, the shell, from ROM banks 3 and 4. The
 shell runs `C:\startup.cmd`, then shows the prompt `C:\>`. `HELP` lists the help topics, and
 `HELP SHELL` tells about the shell's statements.
 
@@ -49,13 +57,14 @@ C:\>LIST README.TXT | MORE
 
 | Path | Holds |
 |---|---|
-| `C:\ROMSHELL.COM` | Starts the shell in ROM |
-| `C:\CMDSHELL.COM` | The same shell, built to run from RAM |
-| `C:\MSBASIC.COM` | Starts Microsoft BASIC for the 6502, in ROM bank 2 |
 | `C:\startup.cmd` | The start-up script |
-| `C:\DOS` | `EDIT`, `TED`, `VIEW`, `MORE`, `HEAD`, `TAIL`, `GREP`, `TREE`, `XCOPY`, `HELP`, `HELPBAS`, `HELPDB`, and the commandlets `DATE`, `TIME`, `UPTIME`, `MEM`, `DISKFREE`, `DISKINFO`, `WHERE`, `EXIST` |
-| `C:\Utils` | `HDIR`, `HELPED`, `THEMED`, `GUIDEMO`, three color themes, and the sources in `SRC` |
-| `C:\Programming\basic` | MSBASIC sample programs |
+| `C:\sys` | `ROMSHELL.COM`, which starts the shell in ROM; `CMDSHELL.COM`, the same shell built to run from RAM; `MSBASIC.COM`, which starts Microsoft BASIC in ROM bank 2; `HDIR`, `HELPED`, `GUIDEMO`; `EDIT`, `TED`, `VIEW`, `MORE`, `HEAD`, `TAIL`, `GREP`, `TREE`, `XCOPY`, `HELP`, `HELPBAS`, `HELPDB`, and the commandlets `DATE`, `TIME`, `UPTIME`, `MEM`, `DISKFREE`, `DISKINFO`, `WHERE`, `EXIST` |
+| `C:\sys\themes` | The fonts and color themes; `THEMED`, `FONTEDIT` |
+| `C:\sys\temp`, `basic`, `xbase`, `edit` | Data of the system and its programs |
+| `C:\source\basic` | MSBASIC sample programs |
+| `C:\source\xcbasic` | The sources of the utilities |
+| `C:\source\xbase` | xBASE programs |
+| `C:\apps`, `C:\games` | Empty, for your programs |
 
 ## Building
 
@@ -68,7 +77,8 @@ Building needs Windows, Python 3.13 and x16emu R49. ca65, ld65 and 64tass are in
 | `python tools/tests.py` | Runs every test, headless, in x16emu |
 | `python tools/tests.py NAME` | Runs the test `NAME` |
 | `BUILD.BAT` | Runs `build.py` |
-| `RUN.BAT` | Starts x16emu in a window on `build/6502DOS.ROM` and `build/SD.IMG` |
+| `RUNCARD.BAT` | Starts x16emu in a window on `build/6502DOS.ROM`, with the card `build/SD.IMG` as `C:` |
+| `RUNHOST.BAT` | Starts x16emu in a window on `build/6502DOS.ROM`, with the folder `build/card` as `C:`. The next build deletes files saved there |
 
 `build/SD.IMG` also holds the test programs in `\TEST`, and the folder `card`: the files the X16
 saved on the card, which each build copies back.
@@ -79,7 +89,7 @@ saved on the card, which each build copies back.
 |---|---|
 | `src/asm` | The ROM's asm: the boot, the console, the drivers, FAT32, the API, the monitor |
 | `src/bas`, `src/bank3` | The shell, and small programs the tests run |
-| `src/dos`, `src/scom`, `src/utils` | The utilities, the commandlets, the programs of `C:\Utils` |
+| `src/dos`, `src/scom`, `src/utils` | The utilities, the commandlets, the programs in `C:\sys` |
 | `lib` | The UXCBASIC library the programs include |
 | `sd` | The files copied to the card |
 | `tests` | Test programs, their keys and their expected output |

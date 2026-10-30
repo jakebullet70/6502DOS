@@ -1782,7 +1782,7 @@ To do, not designed yet:
      - A `JSR` through the bank trampoline stays as it is.
   2. **A `SUB` with one caller is inlined.** The body replaces the `JSR`, and the `RTS` is
      left out. It saves 4 bytes and 12 cycles a `SUB`, more when the arguments are constants.
-     `REPORT_DOS` in `src/bas/DB.UXB`, inlined by hand on 2026-10-29, saved 7 bytes.
+     `REPORT_DOS` in `src/bas/XBASE.UXB`, inlined by hand on 2026-10-29, saved 7 bytes.
      - A `RETURN` inside the body becomes a `JMP` to the end of the body.
      - A `SUB` that calls itself, a `SUB` entered by register, and a `SUB` taken by address
        are not inlined.

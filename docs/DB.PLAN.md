@@ -19,7 +19,7 @@ estimates until the step is built.
 | A write to the table updates its open indexes | the same |
 | Two work areas, PRIMARY and SECONDARY | the same |
 | 64 memory variables, numbers in BCD | 64 memory variables, numbers in MSBASIC's 5-byte float |
-| The dot prompt and `.PRG` command files | the same, in the program `DB.COM` |
+| The dot prompt and `.PRG` command files | the same, in the program `XBASE.COM` |
 | Overlays swapped from the disk | none: the code is in ROM banks |
 
 ## The table file
@@ -207,10 +207,10 @@ library keeps the table's state there:
 
 ROM bank 5 has 16,384 bytes. `$D9C8–$FF9F`, 9,688 bytes, are free.
 
-## The program, DB.COM
+## The program, XBASE.COM
 
-`DB.COM` is a stub that starts the program in ROM banks 6 to 8, as `ROMSHELL.COM` starts the
-shell. The program is UXCBASIC, `src/bank6/DB.UXB` and the files it includes: `DB_EXPR.UXI`,
+`XBASE.COM` is a stub that starts the program in ROM banks 6 to 8, as `ROMSHELL.COM` starts the
+shell. The program is UXCBASIC, `src/bank6/XBASE.UXB` and the files it includes: `DB_EXPR.UXI`,
 `DB_FUNC.UXI`, `DB_MEM.UXI`, `DB_SCOPE.UXI`, `DB_CHANGE.UXI`, `DB_INDEX.UXI`, `DB_DO.UXI` and
 `DB_SCREEN.UXI`. It is compiled with `#ROMBANKS 6, 7, 8`. It calls the library through
 `lib/DB.UXI` and the float through `lib/FLOAT.UXI`.
@@ -386,7 +386,7 @@ the order.
   again. The prompt is a text expression, else `Type mismatch`.
 - `WAIT [TO name]` prints `WAITING ` and waits for a key. `TO` stores the key as a text of 1
   character, `""` for an extended key.
-- `MODIFY COMMAND name` runs `C:\DOS\EDIT.COM` on `name`, with `.PRG` added when it has no
+- `MODIFY COMMAND name` runs `C:\sys\EDIT.COM` on `name`, with `.PRG` added when it has no
   extension, then gives the dot prompt. The tables, indexes and command files stay open, and
   each takes one of the files the editor could open.
 
@@ -486,11 +486,11 @@ MENU TO CHOICE
 
 #### Other programs
 
-- `HELP [topic]` runs `C:\DOS\HELPDB.COM`, which prints the topic from `C:\DOS\HELPDB.HLP`,
+- `HELP [topic]` runs `C:\sys\HELPXBASE.COM`, which prints the topic from `C:\sys\HELPDB.HLP`,
   or with no topic lists the topics.
-- `!`, `RUN` and `SHELL` alone run `C:\ROMSHELL.COM -N`, a shell that skips `STARTUP.CMD`. Its
+- `!`, `RUN` and `SHELL` alone run `C:\sys\ROMSHELL.COM -N`, a shell that skips `STARTUP.CMD`. Its
   `END` comes back to DB, with the tables and records kept. With a command line after them,
-  they run `C:\ROMSHELL.COM -C line`: the shell runs the line, and the script it starts, then
+  they run `C:\sys\ROMSHELL.COM -C line`: the shell runs the line, and the script it starts, then
   ends. `!` needs a space after it. `! DIR` lists files.
 
 ### The expressions
@@ -554,7 +554,7 @@ written. Every step below is done.
    the index.
 7. **D7. `lib/DB.UXI`.** A `SUB` or `FUNCTION` for each function, a test program in
    UXCBASIC, and a help topic.
-8. **A1. The prompt.** `DB.COM`, the stub, the dot prompt, `USE`, `LIST` with no expression,
+8. **A1. The prompt.** `XBASE.COM`, the stub, the dot prompt, `USE`, `LIST` with no expression,
    `GO`, `SKIP`, `DISPLAY STRUCTURE`, `QUIT`.
 9. **A2. Expressions.** The evaluator, the float code, the functions, `?`, `STORE`, the memory
    variables.
@@ -586,10 +586,10 @@ written. Every step below is done.
     - A7b. `@ row, column GET`, `READ`, `PICTURE`, `CLEAR GETS`. The program takes ROM bank 8:
       `#ROMBANKS` takes a third bank.
     - A7c. The help topic.
-15. **B1. `HELPDB.COM`.** `src/dos/HELPDB.UXB` and `src/dos/HELPDB.HLP`, the DB help as its own
+15. **B1. `HELPXBASE.COM`.** `src/dos/HELPXBASE.UXB` and `src/dos/HELPDB.HLP`, the DB help as its own
     program, as `HELPBAS`.
 16. **`DB name`** runs a command file.
-17. **B2. `HELP [topic]`** at the dot prompt runs `HELPDB.COM`.
+17. **B2. `HELP [topic]`** at the dot prompt runs `HELPXBASE.COM`.
 18. **C2. `REG`**, the statement and the function.
 19. **C3. `SET PATH TO`.**
 20. **C4. `!`, `RUN`, `SHELL`** run the shell.
@@ -619,7 +619,7 @@ written. Every step below is done.
 ## Still to decide
 
 - Whether MSBASIC gets statements for the `db` call.
-- Whether `DB.COM` has a report command, as dBASE II's `REPORT`.
+- Whether `XBASE.COM` has a report command, as dBASE II's `REPORT`.
 
 ## To do
 
