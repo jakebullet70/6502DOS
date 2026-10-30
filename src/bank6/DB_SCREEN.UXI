@@ -1,5 +1,6 @@
 ' DB_SCREEN.UXI -- the screen commands of DB.UXB: @ ... SAY ... GET, @ ... TO, BOX, READ, CLEAR,
-' CLS, @ ... PROMPT and MENU TO, and the MENU() function. DB.UXB includes it after DB_DO.UXI.
+' CLS, @ ... PROMPT, MENU TO, SAVE SCREEN TO and RESTORE SCREEN FROM, and the MENU() function.
+' DB.UXB includes it after DB_DO.UXI.
 
 ' The pending GETs, 0 to GET_COUNT - 1, at most GET_LIMIT. GET n has its place, the field it
 ' edits or 0 for a memory variable, the variable's number, and its value's VALUE_KIND. At
@@ -663,4 +664,62 @@ SUB DO_CLEAR(DROPPING AS UBYTE)
   IF DROPPING THEN GET_COUNT = 0
   BAR_COUNT = 0
   PRINT "{CLS}";
+END SUB
+
+' One screen row's 80 cells, for SAVE SCREEN and RESTORE SCREEN.
+DIM SCREEN_ROW(160) AS UBYTE
+
+' SAVE SCREEN TO path, with RESTORING 0, and RESTORE SCREEN FROM path, with RESTORING 1; REST
+' is the words after SAVE or RESTORE. The file is the 80 by 60 screen's cells, each its
+' character then its color, 160 bytes a row, with no header. The path gets .SCR when it has no
+' extension. A short file restores the rows it holds.
+SUB DO_SCREEN_FILE(RESTORING AS UBYTE)
+  DIM HANDLE AS UWORD, ROW AS UBYTE, SPOT AS UBYTE, COUNT AS UBYTE, FAULT AS UBYTE
+  DIM LINK AS STRING * 4
+  LINK = "TO"
+  IF RESTORING THEN LINK = "FROM"
+  NEXT_WORD()
+  IF IS("SCREEN") = 0 THEN REST = ""
+  NEXT_WORD()
+  IF TOKEN <> LINK OR REST = ""
+    SYNTAX_ERROR()
+    RETURN
+  ENDIF
+  REST = WITH_EXTENSION(REST, ".SCR")
+  IF RESTORING
+    HANDLE = DOS.OPEN_FILE(REST, DOS.ACCESS_READ)
+  ELSE
+    HANDLE = DOS.CREATE_FILE(REST, 0)
+  ENDIF
+  IF DOS.ERROR
+    FILE_ERROR()
+    RETURN
+  ENDIF
+  ROW = 0
+  DO WHILE ROW < 60
+    AIM_VERA(ROW, 0)
+    ' A step of 1 after each byte.
+    VERA_HIGH = $11
+    SPOT = 0
+    IF RESTORING
+      COUNT = DOS.READ_FILE(HANDLE, AddrOf(SCREEN_ROW), 160)
+      DO WHILE SPOT < COUNT
+        VERA_DATA = SCREEN_ROW(SPOT)
+        SPOT = SPOT + 1
+      LOOP
+      IF COUNT < 160 THEN ROW = 59
+    ELSE
+      DO WHILE SPOT < 160
+        SCREEN_ROW(SPOT) = VERA_DATA
+        SPOT = SPOT + 1
+      LOOP
+      COUNT = DOS.WRITE_FILE(HANDLE, AddrOf(SCREEN_ROW), 160)
+    ENDIF
+    FAULT = DOS.ERROR
+    IF FAULT THEN ROW = 59
+    ROW = ROW + 1
+  LOOP
+  DOS.CLOSE_FILE(HANDLE)
+  IF FAULT THEN DOS.ERROR = FAULT
+  IF DOS.ERROR THEN FILE_ERROR()
 END SUB
