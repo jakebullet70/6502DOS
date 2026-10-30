@@ -1,0 +1,181 @@
+' ZIPFILE.UXI: the ZIP records, CRC-32 and the end record search, for ZIP and UNZIP.
+' Include DOS.UXI first.
+CONST SLOT_P1 AS UBYTE = 0, SLOT_P9 AS UBYTE = 8
+CONST FROM_START AS UBYTE = 0, FROM_POSITION AS UBYTE = 1, FROM_END AS UBYTE = 2
+CONST BUFFER_SIZE AS UWORD = 512
+' The end record: its signature PK 5 6, then these offsets.
+CONST END_SIZE AS UBYTE = 22, END_DISK AS UBYTE = 4, END_ENTRIES AS UBYTE = 10
+CONST END_DIRECTORY AS UBYTE = 16
+' The end record follows the last entry, with a comment of up to 65535 bytes after it, so it
+' starts in the last 65557 bytes.
+CONST END_SEARCH AS ULONG = 65557
+' A central directory entry: its signature PK 1 2, then these offsets, then the name, the
+' extra field and the comment.
+CONST ENTRY_SIZE AS UBYTE = 46, ENTRY_FLAGS AS UBYTE = 8, ENTRY_METHOD AS UBYTE = 10
+CONST ENTRY_TIME AS UBYTE = 12, ENTRY_DATE AS UBYTE = 14, ENTRY_CRC AS UBYTE = 16
+CONST ENTRY_PACKED AS UBYTE = 20, ENTRY_LENGTH AS UBYTE = 24, NAME_SIZE_AT AS UBYTE = 28
+CONST EXTRA_SIZE_AT AS UBYTE = 30, COMMENT_SIZE_AT AS UBYTE = 32, ENTRY_LOCAL AS UBYTE = 42
+' A local header: its signature PK 3 4, then these offsets, then the name, the extra field
+' and the data.
+CONST LOCAL_SIZE AS UBYTE = 30, LOCAL_NAME_SIZE AS UBYTE = 26, LOCAL_EXTRA_SIZE AS UBYTE = 28
+CONST SIGNATURE_P AS UBYTE = $50, SIGNATURE_K AS UBYTE = $4B
+CONST FLAG_ENCRYPTED AS UBYTE = 1, METHOD_STORED AS UBYTE = 0, METHOD_DEFLATED AS UBYTE = 8
+
+DIM ARCHIVE AS UWORD
+DIM BUFFER(BUFFER_SIZE) AS UBYTE, RECORD(ENTRY_SIZE) AS UBYTE, HEADER(LOCAL_SIZE) AS UBYTE
+DIM ARCHIVE_SIZE AS ULONG, END_AT AS ULONG, SEARCH_FLOOR AS ULONG, BLOCK_AT AS ULONG
+DIM BLOCK_TOP AS ULONG, BLOCK_COUNT AS UWORD, INDEX AS UWORD
+DIM ENTRIES AS UWORD, DIRECTORY_AT AS ULONG
+
+' CRC-32, reflected, polynomial $EDB88320. CRC_TABLES fills the tables once; then CRC =
+' $FFFFFFFF, CRC_ADD for each block, and CRC XOR $FFFFFFFF is the value.
+DIM CRC AS ULONG AT $50
+DIM CRC_DATA AS UWORD AT $54, CRC_COUNT AS UWORD AT $56, CRC_BITS AS UBYTE AT $58
+DIM CRC_TABLE0(256) AS UBYTE, CRC_TABLE1(256) AS UBYTE
+DIM CRC_TABLE2(256) AS UBYTE, CRC_TABLE3(256) AS UBYTE
+
+SUB FAIL(MESSAGE AS STRING, CODE AS UBYTE)
+  PRINT MESSAGE
+  END CODE
+END SUB
+
+' Fills CRC_TABLE0 to CRC_TABLE3 with the bytes, low first, of the CRC of each byte value.
+' Uses CRC.
+SUB CRC_TABLES()
+  ASM
+      ldy #0
+  entry:
+      sty @CRC
+      stz @CRC + 1
+      stz @CRC + 2
+      stz @CRC + 3
+      lda #8
+      sta @CRC_BITS
+  shift:
+      lsr @CRC + 3
+      ror @CRC + 2
+      ror @CRC + 1
+      ror @CRC
+      bcc kept
+      lda @CRC + 3
+      eor #$ED
+      sta @CRC + 3
+      lda @CRC + 2
+      eor #$B8
+      sta @CRC + 2
+      lda @CRC + 1
+      eor #$83
+      sta @CRC + 1
+      lda @CRC
+      eor #$20
+      sta @CRC
+  kept:
+      dec @CRC_BITS
+      bne shift
+      lda @CRC
+      sta @CRC_TABLE0,y
+      lda @CRC + 1
+      sta @CRC_TABLE1,y
+      lda @CRC + 2
+      sta @CRC_TABLE2,y
+      lda @CRC + 3
+      sta @CRC_TABLE3,y
+      iny
+      bne entry
+  END ASM
+END SUB
+
+' Adds the CRC_COUNT bytes at CRC_DATA to CRC. Leaves CRC_COUNT 0 and CRC_DATA changed.
+' The loop counts the low byte down and the high byte once per wrap, so a count whose low byte
+' is not 0 starts with the high byte one up.
+SUB CRC_ADD()
+  ASM
+      phx
+      ldy #0
+      lda @CRC_COUNT
+      ora @CRC_COUNT + 1
+      beq done
+      lda @CRC_COUNT
+      beq next
+      inc @CRC_COUNT + 1
+  next:
+      lda (@CRC_DATA),y
+      eor @CRC
+      tax
+      lda @CRC + 1
+      eor @CRC_TABLE0,x
+      sta @CRC
+      lda @CRC + 2
+      eor @CRC_TABLE1,x
+      sta @CRC + 1
+      lda @CRC + 3
+      eor @CRC_TABLE2,x
+      sta @CRC + 2
+      lda @CRC_TABLE3,x
+      sta @CRC + 3
+      iny
+      bne counted
+      inc @CRC_DATA + 1
+  counted:
+      dec @CRC_COUNT
+      bne next
+      dec @CRC_COUNT + 1
+      bne next
+  done:
+      plx
+  END ASM
+END SUB
+
+' N in decimal, without the leading space of STR$.
+FUNCT DECIMAL(N AS ULONG) AS STRING
+  RETURN MID$(STR$(N), 2)
+END FUNCT
+
+' Moves the archive's position to AT, from its start.
+SUB SEEK_TO(AT AS ULONG)
+  DOS.SEEK(ARCHIVE, FROM_START, AT AND $FFFF, AT >> 16)
+END SUB
+
+' Finds the end record of the open ARCHIVE and reads it into RECORD. Sets ARCHIVE_SIZE,
+' ENTRIES and DIRECTORY_AT. No end record ends the program with Not a ZIP archive, a ZIP64 or
+' split archive with ZIP64 and split archives are not supported, each exit code 2.
+SUB READ_END()
+  DOS.SEEK(ARCHIVE, FROM_END, 0, 0)
+  ContentsAtW(@ARCHIVE_SIZE) = DOS.POSITION_LOW
+  ContentsAtW(@ARCHIVE_SIZE + 2) = DOS.POSITION_HIGH
+  ' BLOCK_TOP is one past the last byte of the next block. A block keeps the first 3 bytes of
+  ' the block after it, so a signature across the two is found.
+  IF ARCHIVE_SIZE < END_SIZE THEN FAIL("Not a ZIP archive", 2)
+  SEARCH_FLOOR = 0
+  IF ARCHIVE_SIZE > END_SEARCH THEN SEARCH_FLOOR = ARCHIVE_SIZE - END_SEARCH
+  BLOCK_TOP = ARCHIVE_SIZE - END_SIZE + 4
+  END_AT = $FFFFFFFF
+  DO
+    BLOCK_AT = SEARCH_FLOOR
+    IF BLOCK_TOP - SEARCH_FLOOR > BUFFER_SIZE THEN BLOCK_AT = BLOCK_TOP - BUFFER_SIZE
+    BLOCK_COUNT = BLOCK_TOP - BLOCK_AT
+    SEEK_TO(BLOCK_AT)
+    IF DOS.READ_FILE(ARCHIVE, @BUFFER, BLOCK_COUNT) <> BLOCK_COUNT THEN EXIT DO
+    INDEX = BLOCK_COUNT - 3
+    DO WHILE INDEX > 0
+      INDEX = INDEX - 1
+      IF BUFFER(INDEX) = SIGNATURE_P AND BUFFER(INDEX + 1) = SIGNATURE_K THEN
+        IF BUFFER(INDEX + 2) = 5 AND BUFFER(INDEX + 3) = 6 THEN
+          END_AT = BLOCK_AT + INDEX
+          EXIT DO
+        END IF
+      END IF
+    LOOP
+    IF END_AT <> $FFFFFFFF OR BLOCK_AT = SEARCH_FLOOR THEN EXIT DO
+    BLOCK_TOP = BLOCK_AT + 3
+  LOOP
+  IF END_AT = $FFFFFFFF THEN FAIL("Not a ZIP archive", 2)
+  SEEK_TO(END_AT)
+  IF DOS.READ_FILE(ARCHIVE, @RECORD, END_SIZE) <> END_SIZE THEN FAIL("Not a ZIP archive", 2)
+  ENTRIES = ContentsAtW(@RECORD + END_ENTRIES)
+  ContentsAtW(@DIRECTORY_AT) = ContentsAtW(@RECORD + END_DIRECTORY)
+  ContentsAtW(@DIRECTORY_AT + 2) = ContentsAtW(@RECORD + END_DIRECTORY + 2)
+  IF ContentsAtW(@RECORD + END_DISK) <> 0 OR ENTRIES = $FFFF OR DIRECTORY_AT = $FFFFFFFF THEN
+    FAIL("ZIP64 and split archives are not supported", 2)
+  END IF
+END SUB

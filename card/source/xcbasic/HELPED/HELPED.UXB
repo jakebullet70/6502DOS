@@ -1,0 +1,125 @@
+'=============================================================================================
+' -- HELPED [name]
+' -- edits a text file of up to 2047 bytes, such as a help page, in a GUI form. The sample
+' -- utility of GUI Forms: it takes every kind of control.
+' -- The form holds the file's name and folder, a check box for a backup, the theme, the text,
+' -- and the buttons Load, Save and Quit. The name starts as the parameter, or README.TXT, and
+' -- that file is loaded at the start.
+' -- Load reads the file the name and folder give. Save writes the text there, LF at each
+' -- line's end. With Backup checked, Save first renames the old file to the same name with
+' -- the extension .BAK. A file cut at 2047 bytes is not saved. Quit or Esc ends the program
+' -- without saving. The theme takes effect when the form is drawn again, after a button.
+' -- The status line, the screen's last row, tells what Load and Save did.
+' -- -H or -? as the first parameter runs HELP HELPED.
+' -- Exit code 0.
+' --
+' -- From a prompt:
+' --     HELPED HDIR.TXT
+'=============================================================================================
+#INCLUDE "DOS.UXI"
+#INCLUDE "HEAP.UXI"
+#INCLUDE "KEYS.UXI"
+#INCLUDE "CONS.UXI"
+#INCLUDE "VERA.UXI"
+#INCLUDE "GUI.UXI"
+#INCLUDE "HELPSW.UXI"
+
+CONST BTN_LOAD AS UBYTE = 1, BTN_SAVE AS UBYTE = 2, BTN_QUIT AS UBYTE = 3
+' The memo's size. The button row is the form's row below the "Text" section.
+CONST TEXT_WIDTH AS UBYTE = 64, TEXT_HEIGHT AS UBYTE = 12
+CONST FORM_WIDTH AS UBYTE = 76, BUTTON_ROW AS UBYTE = TEXT_HEIGHT + 7
+
+DIM FILE_NAME AS STRING * 12, PATH AS STRING * 40, BACKUP_PATH AS STRING * 40
+DIM MESSAGE AS STRING * 64
+DIM FOLDER AS UBYTE, BACKUP AS UBYTE, THEME_CHOICE AS ENUM.GUI.THEMES, SHOWN_THEME AS UBYTE
+DIM FORM AS UBYTE, EVENT AS UBYTE, CUT AS UBYTE, DOT AS UBYTE
+DIM START_COLOR AS UBYTE
+
+' Puts the file's path in PATH, from FOLDER and FILE_NAME.
+SUB MAKE_PATH()
+  SELECT CASE FOLDER
+    CASE 0
+      PATH = FILE_NAME
+    CASE ELSE
+      PATH = "C:\sys\" + FILE_NAME
+  END SELECT
+END SUB
+
+' Loads PATH into the memo, and puts what happened in MESSAGE.
+SUB LOAD_TEXT()
+  CUT = GUI.MEMO_LOAD(PATH)
+  SELECT CASE CUT
+    CASE 0
+      MESSAGE = "Loaded " + PATH
+    CASE GUI.MEMO_MISSING
+      MESSAGE = "New file " + PATH
+    CASE ELSE
+      MESSAGE = "Cut at 2047 bytes: " + PATH
+  END SELECT
+END SUB
+
+' Saves the memo to PATH, after the backup, and puts what happened in MESSAGE.
+SUB SAVE_TEXT()
+  IF CUT = GUI.MEMO_CUT THEN
+    MESSAGE = "Not saved: the text was cut"
+    RETURN
+  ENDIF
+  IF BACKUP <> 0 AND DOS.EXISTS(PATH) <> 0 THEN
+    DOT = INSTR(PATH, ".", 3)
+    BACKUP_PATH = PATH
+    IF DOT <> 0 THEN BACKUP_PATH = LEFT$(PATH, DOT - 1)
+    BACKUP_PATH = BACKUP_PATH + ".BAK"
+    DOS.DELETE(BACKUP_PATH)
+    DOS.RENAME(PATH, BACKUP_PATH)
+  ENDIF
+  MESSAGE = "Saved " + PATH
+  IF GUI.MEMO_SAVE(PATH) <> 0 THEN MESSAGE = "Cannot write " + PATH
+END SUB
+
+' Makes the form in FORM.
+SUB MAKE_FORM()
+  FORM = GUI.CREATEFORM("Help Editor", GUI.CENTER, GUI.CENTER, FORM_WIDTH, BUTTON_ROW + 2, GUI.FRAMED)
+  GUI.STARTSECTION(FORM, "Page", GUI.FRAMED + GUI.TWO_COL)
+  GUI.SAYGET(GUI.AUTO, GUI.AUTO, "File", FILE_NAME, 12, "", GUI.UPPER)
+  GUI.CBO(GUI.AUTO, GUI.AUTO, "Folder", "Current|C:\sys", @FOLDER, 10)
+  GUI.CHECK(GUI.AUTO, GUI.AUTO, "Backup", @BACKUP)
+  GUI.RADIO(GUI.AUTO, GUI.AUTO, "Theme", "Dark|Light|Gray", @THEME_CHOICE)
+  GUI.STARTSECTION(FORM, "Contents", GUI.FRAMED)
+  GUI.MEMO(GUI.AUTO, GUI.AUTO, "Text", TEXT_WIDTH, TEXT_HEIGHT)
+  GUI.ENDSECTION()
+  GUI.BUTTON(BUTTON_ROW, 3, "&Load", BTN_LOAD)
+  GUI.BUTTON(BUTTON_ROW, 14, "&Save", BTN_SAVE)
+  GUI.BUTTON(BUTTON_ROW, 25, "&Quit", BTN_QUIT)
+END SUB
+
+START_COLOR = DOS.GET_COLOR()
+HELP_SWITCH("HELPED")
+FILE_NAME = UCASE$(HEAP.SYS_STRINGS_GET(0))
+IF FILE_NAME = "" THEN FILE_NAME = "README.TXT"
+MAKE_PATH()
+LOAD_TEXT()
+' The screen is cleared whenever the theme changes, the first time too.
+SHOWN_THEME = 255
+DO
+  IF THEME_CHOICE <> SHOWN_THEME THEN
+    SHOWN_THEME = THEME_CHOICE
+    GUI.THEME(THEME_CHOICE)
+    GUI.USE_COLOR(GUI.ROLE.PAGE)
+    PRINT CONS.CLEAR_SCREEN$;
+  ENDIF
+  MAKE_FORM()
+  GUI.STATUS_LINE(MESSAGE)
+  EVENT = GUI.SHOW(FORM)
+  GUI.FREE(FORM)
+  MAKE_PATH()
+  SELECT CASE EVENT
+    CASE BTN_LOAD
+      LOAD_TEXT()
+    CASE BTN_SAVE
+      SAVE_TEXT()
+    CASE BTN_QUIT, GUI.EV_CANCEL
+      EXIT DO
+  END SELECT
+LOOP
+DOS.SET_COLOR(START_COLOR)
+PRINT CONS.CLEAR_SCREEN$;

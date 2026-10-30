@@ -1,0 +1,23 @@
+ TED - The Tiny Editor                                                 Keys
+
+ Arrows               Move the cursor
+ Home  End            Go to the start or the end of the line
+ PgUp  PgDn           Move 29 lines
+ Enter                Split the line
+ Tab                  Put in a tab
+ Backspace            Take out the selection, or the character before it
+ Del                  Take out the selection, or the character under the cursor
+
+ Shift+Arrows         Select
+ Shift+Home  End      Select to the start or the end of the line
+ Shift+PgUp  PgDn     Select 29 lines
+ ^C                   Copy the selection, or the line
+ ^X                   Cut the selection, or the line
+ ^V                   Paste
+
+ ^S                   Save
+ ^Q                   Quit
+ F1  ^G               This help
+ Shift+F1             DOS help on the word at the cursor
+
+ Press a key to go back to the text.

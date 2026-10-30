@@ -14,7 +14,7 @@ Every test runs with the SD card image build/tests/SD.IMG, which tools/mksd.py m
 tests/sd at the start: 256 MB, 2 sectors per cluster, 259079 clusters, the files dated
 2026-10-13. Its root also holds build/bas/NAME.COM, from tools/build.py, tests/com/NAME.S
 assembled to NAME.COM: the load address $0801, then the code from $0801, and tests/com/NAME.UXB and
-tests/NAME.UXB compiled to NAME.COM. Its folder sys is build/sys, the commandlets and utilities
+tests/NAME.UXB compiled to NAME.COM. Its folder sys is card/sys, the commandlets and utilities
 from tools/build.py. Each test gets a new copy of the image.
 tests/NAME.PY, when it exists, defines card(image), which then changes the copy or writes a card
 of its own in its place. It may also define check(image), which reads the card after the run and
@@ -85,7 +85,7 @@ RESERVE = 4096
 CC65 = os.path.join(ROOT, "tools", "cc65", "bin")
 COM_FOLDER = os.path.join(TESTS, "com")
 BAS_OUT = os.path.join(ROOT, "build", "bas")
-SYS_OUT = os.path.join(ROOT, "build", "sys")
+SYS_OUT = os.path.join(ROOT, "card", "sys")
 PROGRAM_START = 0x1000
 COM_START = 0x0801
 BYTES_PER_LINE = 24             # "E 1000 " and 24 bytes fit the monitor's 79 characters

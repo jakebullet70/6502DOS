@@ -1,0 +1,2 @@
+PRINT "LASTEND"
+END

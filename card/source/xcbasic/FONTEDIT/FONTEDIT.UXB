@@ -1,0 +1,677 @@
+'=============================================================================================
+' -- FONTEDIT [file]
+' -- edits an 8x8 font: 256 glyphs of 8 bytes, 2048 bytes, each byte one row of a glyph, top
+' -- row first, bit 7 the left pixel. That is the file FONT loads.
+' -- The name takes the extension .F08 when it has none. The file is loaded at the start when
+' -- it exists; otherwise the font starts as the console's font, and the name as the parameter,
+' -- or UNTITLED.F08. A file of another size prints Invalid font file and gives exit code 1.
+' -- The file dialogs are PICKFILE's.
+' -- The left of the screen is the glyph's grid, each pixel 2 by 2 cells, with its row bytes in
+' -- hex. The right is the map of the 256 glyphs, drawn in the console's font.
+' --     Arrows        move in the grid, or pick a glyph in the map
+' --     Space         turn the grid's pixel on or off
+' --     Tab           switch between the grid and the map; Enter in the map goes to the grid
+' --     PgUp, PgDn    the glyph before or after
+' --     a character   in the map, picks its glyph
+' --     I, H, V       in the grid, invert the glyph, mirror it left to right, flip it top to
+' --                   bottom
+' --     C             in the grid, clear the glyph
+' --     Ctrl+arrows   roll the glyph a pixel; the pixels that leave one side come in the other
+' --     Ctrl+C        copy the glyph
+' --     Ctrl+V        paste the copied glyph
+' --     U             in the grid, undo the last change to a glyph; U again redoes it
+' --     R             in the grid, the glyph as the file holds it, or as the console's font
+' --                   held it when there is no file
+' --     F2            save under the file's name; when UNTITLED, as F4
+' --     F3            open a font from the file dialog; asks first when the font is not saved
+' --     F4            save under a name from the file dialog; asks before it writes over a
+' --                   file
+' --     F5            live: the console's font follows the edits; on at the start when the
+' --                   command line names a file that exists
+' --     F6            import glyphs from a font file in the file dialog: a field takes the
+' --                   first and last glyphs in hex, and where the first goes, the first's own
+' --                   place when blank. 41-5A 61 puts the file's A to Z at a to z. Glyphs past
+' --                   $FF are left out. The undo is lost.
+' --     F7            export the font as ca65 source, the layout of the ROM's font.s, to a file
+' --                   in the file dialog; .S when the name has no extension
+' --     Esc          end the program; asks first when the font is not saved: Yes saves, No
+' --                   does not, Esc stays
+' -- The console's font at the start goes back at the end. Exit code 0.
+' --
+' -- From a prompt:
+' --     FONTEDIT \sys\themes\GUI.F08
+'=============================================================================================
+#INCLUDE "DOS.UXI"
+#INCLUDE "HEAP.UXI"
+#INCLUDE "KEYS.UXI"
+#INCLUDE "CONS.UXI"
+#INCLUDE "BANK.UXI"
+#INCLUDE "VERA.UXI"
+#INCLUDE "GUI.UXI"
+#INCLUDE "PICKFILE.UXI"
+
+CONST FONT_SIZE AS UWORD = 2048
+' The grid's frame, 18 by 18 cells. Pixel row R, column C is the 2 by 2 cells from
+' GRID_ROW + 2 * R, GRID_COLUMN + 2 * C. Row R's byte is at BYTES_COLUMN on the pixel's first row.
+CONST GRID_TOP AS UBYTE = 2, GRID_LEFT AS UBYTE = 2
+CONST GRID_ROW AS UBYTE = GRID_TOP + 1, GRID_COLUMN AS UBYTE = GRID_LEFT + 1
+CONST BYTES_COLUMN AS UBYTE = 22, INFO_ROW AS UBYTE = 21
+' The map's frame, 38 by 20 cells. Glyph N is at MAP_ROW + N / 16, MAP_COLUMN + 2 * (N AND 15).
+CONST MAP_TOP AS UBYTE = 1, MAP_LEFT AS UBYTE = 40
+CONST MAP_ROW AS UBYTE = MAP_TOP + 3, MAP_COLUMN AS UBYTE = MAP_LEFT + 5
+CONST KEYS_ROW AS UBYTE = 24
+' A pixel's colors, the background times 16 on a space: off, on, and both under the cursor.
+CONST PIXEL_OFF AS UBYTE = $B0, PIXEL_ON AS UBYTE = $10
+CONST CURSOR_OFF AS UBYTE = $20, CURSOR_ON AS UBYTE = $A0
+CONST DIGITS$ = "0123456789ABCDEF"
+CONST KEY_F2 AS UWORD = (KEYS.SCAN_F1 + 1) * 256, KEY_F3 AS UWORD = (KEYS.SCAN_F1 + 2) * 256
+CONST KEY_F4 AS UWORD = (KEYS.SCAN_F1 + 3) * 256, KEY_F5 AS UWORD = (KEYS.SCAN_F1 + 4) * 256
+CONST KEY_F6 AS UWORD = (KEYS.SCAN_F1 + 5) * 256, KEY_F7 AS UWORD = (KEYS.SCAN_F1 + 6) * 256
+' The export's lines after the first, and the glyph block in it: a code line, then 8 row lines
+' of 17 bytes, whose 8 bits start at byte 7.
+CONST SOURCE_HEAD$ = !"\r\n.export font\r\n\r\n.segment \"RODATA\"\r\n\r\nfont:"
+CONST BLOCK_HEAD$ = !"; $00\r\n", BLOCK_ROW$ = !".byte %00000000\r\n"
+CONST BLOCK_SIZE AS UBYTE = 143, ROW_SIZE AS UBYTE = 17
+' LOAD_FONT's code for a file not FONT_SIZE bytes long.
+CONST INVALID_FONT AS UBYTE = 255
+CONST CTRL_C AS UBYTE = 3, CTRL_V AS UBYTE = 22
+' The changes EDIT_GLYPH makes.
+CONST EDIT_INVERT AS UBYTE = 0, EDIT_MIRROR AS UBYTE = 1, EDIT_FLIP AS UBYTE = 2
+CONST EDIT_CLEAR AS UBYTE = 3, EDIT_PASTE AS UBYTE = 4, EDIT_UP AS UBYTE = 5
+CONST EDIT_DOWN AS UBYTE = 6, EDIT_LEFT AS UBYTE = 7, EDIT_RIGHT AS UBYTE = 8
+
+' PICKED gets the file dialog's path. NAMED is 0 while FILE_NAME is UNTITLED.F08.
+DIM FILE_NAME AS STRING * 80, PICKED AS STRING * 80, MESSAGE AS STRING * 64
+DIM TEXT AS STRING * 64
+' F6's field: first-last, then where to, in hex. A glyph block of the export.
+DIM RANGE AS STRING * 8, BLOCK_TEXT AS STRING * 143
+' The font being edited, and the console's font at the start.
+DIM FONT(FONT_SIZE) AS UBYTE, START_FONT(FONT_SIZE) AS UBYTE
+' The copied glyph, and the glyph UNDO_GLYPH as it was before the last change.
+DIM CLIPBOARD(8) AS UBYTE, UNDO(8) AS UBYTE
+DIM PRESSED AS UWORD, HANDLE AS UWORD, GLYPH_AT AS UWORD, INDEX AS UWORD, COUNT AS UWORD
+DIM GLYPH AS UBYTE, OLD_GLYPH AS UBYTE, MAP_CODE AS UBYTE, PIXEL_ROW AS UBYTE, PIXEL_COLUMN AS UBYTE
+DIM IN_MAP AS UBYTE, LIVE AS UBYTE, CHANGED AS UBYTE, NAMED AS UBYTE, START_COLOR AS UBYTE
+DIM UNDO_GLYPH AS UBYTE, HAS_UNDO AS UBYTE
+DIM ROW AS UBYTE, COLUMN AS UBYTE, COLOR AS UBYTE, VALUE AS UBYTE
+
+' Returns the theme's color for WHICH, a member of GUI.ROLE.
+FUNCTION ROLE_COLOR(WHICH AS UBYTE) AS UBYTE
+  RETURN ContentsAt(@GUI.COLORS$ + 2 + WHICH)
+END FUNCTION
+
+' Puts VALUE in TEXT as 2 hex digits.
+SUB HEX_OF(VALUE AS UBYTE)
+  TEXT = MID$(DIGITS$, VALUE / 16 + 1, 1) + MID$(DIGITS$, (VALUE AND 15) + 1, 1)
+END SUB
+
+' Points VERA's data port 0 at byte OFFSET of the console's font, VRAM $1F000, to step 1 a byte.
+SUB FONT_PORT(OFFSET AS UWORD)
+  VERA.ADDRESS_LOW = OFFSET AND 255
+  VERA.ADDRESS_MIDDLE = $F0 + (OFFSET >> 8)
+  VERA.ADDRESS_HIGH = $11
+END SUB
+
+' Copies COUNT bytes from SOURCE into the console's font from byte OFFSET.
+SUB SEND(SOURCE AS UWORD, OFFSET AS UWORD, COUNT AS UWORD)
+  DIM AT AS UWORD
+  FONT_PORT(OFFSET)
+  FOR AT = SOURCE TO SOURCE + COUNT - 1
+    VERA.DATA0 = ContentsAt(AT)
+  NEXT
+END SUB
+
+' Sets GLYPH_AT to the index of GLYPH's first byte in FONT.
+SUB FIND_GLYPH()
+  GLYPH_AT = GLYPH
+  GLYPH_AT = GLYPH_AT * 8
+END SUB
+
+' Draws the pixel at ROW and COLUMN of the grid, marked when the cursor is on it in the grid.
+SUB DRAW_PIXEL()
+  IF (FONT(GLYPH_AT + ROW) AND (128 >> COLUMN)) <> 0 THEN
+    COLOR = PIXEL_ON
+    IF IN_MAP = 0 AND ROW = PIXEL_ROW AND COLUMN = PIXEL_COLUMN THEN COLOR = CURSOR_ON
+  ELSE
+    COLOR = PIXEL_OFF
+    IF IN_MAP = 0 AND ROW = PIXEL_ROW AND COLUMN = PIXEL_COLUMN THEN COLOR = CURSOR_OFF
+  ENDIF
+  VERA.FILL(GRID_ROW + ROW * 2, GRID_COLUMN + COLUMN * 2, 2, 2, 32, COLOR)
+END SUB
+
+' Draws the grid's row ROW and its byte in hex.
+SUB DRAW_ROW()
+  FOR COLUMN = 0 TO 7
+    DRAW_PIXEL()
+  NEXT
+  HEX_OF(FONT(GLYPH_AT + ROW))
+  VERA.PRINTAT(GRID_ROW + ROW * 2, BYTES_COLUMN, TEXT, ROLE_COLOR(GUI.ROLE.TEXT))
+END SUB
+
+' Draws the glyph: the grid, its row bytes, and its code in hex, in decimal and as itself.
+SUB DRAW_GLYPH()
+  FIND_GLYPH()
+  FOR ROW = 0 TO 7
+    DRAW_ROW()
+  NEXT
+  HEX_OF(GLYPH)
+  TEXT = "Glyph $" + TEXT + LEFT$(STR$(GLYPH) + "    ", 5)
+  VERA.PRINTAT(INFO_ROW, GRID_LEFT, TEXT, ROLE_COLOR(GUI.ROLE.TEXT))
+  VERA.PUT_CELL(INFO_ROW, GRID_LEFT + 14, GLYPH, ROLE_COLOR(GUI.ROLE.FIELD))
+END SUB
+
+' Draws glyph CODE in the map, marked when it is the glyph.
+SUB DRAW_MAP_CELL(CODE AS UBYTE)
+  COLOR = ROLE_COLOR(GUI.ROLE.TEXT)
+  IF CODE = GLYPH THEN
+    COLOR = ROLE_COLOR(GUI.ROLE.BUTTON)
+    IF IN_MAP <> 0 THEN COLOR = ROLE_COLOR(GUI.ROLE.FIELD_FOCUS)
+  ENDIF
+  VERA.PUT_CELL(MAP_ROW + CODE / 16, MAP_COLUMN + (CODE AND 15) * 2, CODE, COLOR)
+END SUB
+
+' Draws the frames' titles, the focused one in the FIELD_FOCUS color.
+SUB DRAW_TITLES()
+  COLOR = ROLE_COLOR(GUI.ROLE.TITLE)
+  IF IN_MAP = 0 THEN COLOR = ROLE_COLOR(GUI.ROLE.FIELD_FOCUS)
+  VERA.PRINTAT(GRID_TOP, GRID_LEFT + 2, " Glyph ", COLOR)
+  COLOR = ROLE_COLOR(GUI.ROLE.TITLE)
+  IF IN_MAP <> 0 THEN COLOR = ROLE_COLOR(GUI.ROLE.FIELD_FOCUS)
+  VERA.PRINTAT(MAP_TOP, MAP_LEFT + 2, " Font ", COLOR)
+END SUB
+
+' Draws the status line: the file's name, the live option and MESSAGE.
+SUB DRAW_STATUS()
+  TEXT = " " + FILE_NAME
+  IF LIVE <> 0 THEN TEXT = TEXT + "  Live"
+  IF CHANGED <> 0 THEN TEXT = TEXT + "  Changed"
+  GUI.STATUS_LINE(TEXT + "  " + MESSAGE)
+END SUB
+
+' Clears the screen in the PAGE color and draws it all.
+SUB DRAW_ALL()
+  GUI.USE_COLOR(GUI.ROLE.PAGE)
+  PRINT CONS.CLEAR_SCREEN$;
+  GUI.USE_COLOR(GUI.ROLE.FRAME)
+  GUI.BOX(GRID_TOP, GRID_LEFT, 18, 18)
+  GUI.BOX(MAP_TOP, MAP_LEFT, 38, 20)
+  COLOR = ROLE_COLOR(GUI.ROLE.TEXT)
+  FOR ROW = 0 TO 15
+    VERA.PUT_CELL(MAP_ROW - 1, MAP_COLUMN + ROW * 2, ASC(MID$(DIGITS$, ROW + 1, 1)), COLOR)
+    VERA.PUT_CELL(MAP_ROW + ROW, MAP_COLUMN - 3, ASC(MID$(DIGITS$, ROW + 1, 1)), COLOR)
+  NEXT
+  FOR MAP_CODE = 0 TO 255
+    DRAW_MAP_CELL(MAP_CODE)
+  NEXT
+  VERA.PRINTAT(KEYS_ROW, 2, "Arrows    move          Space  pixel     Tab  grid or map     PgUp PgDn glyph", COLOR)
+  VERA.PRINTAT(KEYS_ROW + 1, 2, "F2  save  F3  open  F4  save as  F5  live font  F6  import  F7  export", COLOR)
+  VERA.PRINTAT(KEYS_ROW + 2, 2, "I H V     invert mirror flip       C  clear    Ctrl+arrows roll", COLOR)
+  VERA.PRINTAT(KEYS_ROW + 3, 2, "Ctrl+C    copy   Ctrl+V  paste     U  undo     R  revert", COLOR)
+  VERA.PRINTAT(KEYS_ROW + 4, 2, "In the map, a character picks its glyph. Esc quits.", COLOR)
+  DRAW_TITLES()
+  DRAW_GLYPH()
+  DRAW_STATUS()
+END SUB
+
+' Makes CODE the glyph, drawing the map's old and new marks.
+SUB PICK(CODE AS UBYTE)
+  OLD_GLYPH = GLYPH
+  GLYPH = CODE
+  DRAW_MAP_CELL(OLD_GLYPH)
+  DRAW_MAP_CELL(GLYPH)
+  DRAW_GLYPH()
+END SUB
+
+' Sends the glyph to the console's font when live.
+SUB SEND_GLYPH()
+  IF LIVE <> 0 THEN SEND(@FONT + GLYPH_AT, GLYPH_AT, 8)
+END SUB
+
+' Keeps the glyph in UNDO before a change, and marks the font changed.
+SUB START_EDIT()
+  FOR ROW = 0 TO 7
+    UNDO(ROW) = FONT(GLYPH_AT + ROW)
+  NEXT
+  UNDO_GLYPH = GLYPH
+  HAS_UNDO = 1
+  CHANGED = 1
+END SUB
+
+' Turns the grid's pixel at the cursor on or off.
+SUB TOGGLE()
+  START_EDIT()
+  INDEX = GLYPH_AT + PIXEL_ROW
+  FONT(INDEX) = FONT(INDEX) XOR (128 >> PIXEL_COLUMN)
+  SEND_GLYPH()
+  ROW = PIXEL_ROW
+  DRAW_ROW()
+END SUB
+
+' Makes CHANGE, an EDIT_ constant, to the glyph.
+SUB EDIT_GLYPH(CHANGE AS UBYTE)
+  START_EDIT()
+  FOR ROW = 0 TO 7
+    VALUE = UNDO(ROW)
+    SELECT CASE CHANGE
+      CASE EDIT_INVERT
+        VALUE = VALUE XOR 255
+      CASE EDIT_MIRROR
+        VALUE = 0
+        FOR COLUMN = 0 TO 7
+          IF (UNDO(ROW) AND (1 << COLUMN)) <> 0 THEN VALUE = VALUE OR (128 >> COLUMN)
+        NEXT
+      CASE EDIT_FLIP
+        VALUE = UNDO(7 - ROW)
+      CASE EDIT_CLEAR
+        VALUE = 0
+      CASE EDIT_PASTE
+        VALUE = CLIPBOARD(ROW)
+      CASE EDIT_UP
+        VALUE = UNDO((ROW + 1) AND 7)
+      CASE EDIT_DOWN
+        VALUE = UNDO((ROW - 1) AND 7)
+      CASE EDIT_LEFT
+        VALUE = (VALUE << 1) OR (VALUE >> 7)
+      CASE EDIT_RIGHT
+        VALUE = (VALUE >> 1) OR (VALUE << 7)
+    END SELECT
+    FONT(GLYPH_AT + ROW) = VALUE
+  NEXT
+  SEND_GLYPH()
+  DRAW_GLYPH()
+END SUB
+
+' Swaps glyph UNDO_GLYPH with UNDO, so a second undo redoes the change, and picks it.
+SUB UNDO_EDIT()
+  IF HAS_UNDO = 0 THEN
+    MESSAGE = "Nothing to undo"
+    RETURN
+  ENDIF
+  INDEX = UNDO_GLYPH
+  INDEX = INDEX * 8
+  FOR ROW = 0 TO 7
+    VALUE = FONT(INDEX + ROW)
+    FONT(INDEX + ROW) = UNDO(ROW)
+    UNDO(ROW) = VALUE
+  NEXT
+  CHANGED = 1
+  PICK(UNDO_GLYPH)
+  SEND_GLYPH()
+  MESSAGE = "Undone"
+END SUB
+
+' Sets the glyph to its 8 bytes in FILE_NAME, or in the console's font at the start when the font
+' is UNTITLED or the file does not open.
+SUB REVERT()
+  START_EDIT()
+  HANDLE = NOFILE
+  IF NAMED <> 0 THEN HANDLE = DOS.OPEN_FILE(FILE_NAME, DOS.ACCESS_READ)
+  IF HANDLE = NOFILE THEN
+    FOR ROW = 0 TO 7
+      FONT(GLYPH_AT + ROW) = START_FONT(GLYPH_AT + ROW)
+    NEXT
+  ELSE
+    DOS.SEEK(HANDLE, 0, GLYPH_AT, 0)
+    COUNT = DOS.READ_FILE(HANDLE, @FONT + GLYPH_AT, 8)
+    DOS.CLOSE_FILE(HANDLE)
+  ENDIF
+  SEND_GLYPH()
+  DRAW_GLYPH()
+  MESSAGE = "Reverted"
+END SUB
+
+' Moves the grid's cursor to NEW_ROW and NEW_COLUMN, each 0 to 7.
+SUB MOVE_CURSOR(NEW_ROW AS UBYTE, NEW_COLUMN AS UBYTE)
+  ROW = PIXEL_ROW
+  COLUMN = PIXEL_COLUMN
+  PIXEL_ROW = NEW_ROW AND 7
+  PIXEL_COLUMN = NEW_COLUMN AND 7
+  DRAW_PIXEL()
+  ROW = PIXEL_ROW
+  COLUMN = PIXEL_COLUMN
+  DRAW_PIXEL()
+END SUB
+
+' Adds EXTENSION$ to PICKED when the name after its last \ has no extension.
+SUB ADD_EXTENSION(EXTENSION$ AS CONST)
+  DIM SPOT AS UBYTE
+  FOR SPOT = LEN(PICKED) TO 1 STEP -1
+    VALUE = ContentsAt(@PICKED + 1 + SPOT)
+    IF VALUE = ASC(".") THEN RETURN
+    IF VALUE = ASC("\") THEN EXIT FOR
+  NEXT
+  PICKED = PICKED + EXTENSION$
+END SUB
+
+' Opens file PICKED in HANDLE to read a font. Returns 0 when it is open, DOS's error code when
+' it does not open, or INVALID_FONT, the file closed, when it is not FONT_SIZE bytes long.
+FUNCTION CHECK_FONT() AS UBYTE
+  HANDLE = DOS.OPEN_FILE(PICKED, DOS.ACCESS_READ)
+  IF HANDLE = NOFILE THEN RETURN DOS.ERROR
+  DOS.SEEK(HANDLE, 2, 0, 0)
+  IF DOS.POSITION_LOW <> FONT_SIZE OR DOS.POSITION_HIGH <> 0 THEN
+    DOS.CLOSE_FILE(HANDLE)
+    RETURN INVALID_FONT
+  ENDIF
+  RETURN 0
+END FUNCTION
+
+' Loads the font in file PICKED into FONT. Returns CHECK_FONT's code; FONT is kept when it is
+' not 0.
+FUNCTION LOAD_FONT() AS UBYTE
+  VALUE = CHECK_FONT()
+  IF VALUE <> 0 THEN RETURN VALUE
+  DOS.SEEK(HANDLE, 0, 0, 0)
+  COUNT = DOS.READ_FILE(HANDLE, @FONT, FONT_SIZE)
+  DOS.CLOSE_FILE(HANDLE)
+  RETURN 0
+END FUNCTION
+
+' Shows in a dialog titled TITLE$ why file PICKED did not load: CODE, CHECK_FONT's code.
+SUB SHOW_LOAD_ERROR(TITLE$ AS CONST, CODE AS UBYTE)
+  IF CODE = INVALID_FONT THEN
+    GUI.MSGBOX(TITLE$, "Invalid font file", PICKED)
+  ELSE
+    GUI.MSGBOX(TITLE$, DOS.ERRMSG(CODE), PICKED)
+  ENDIF
+END SUB
+
+' Returns the value of the 2 hex digits at SPOT in RANGE, or 256 when they are not hex digits.
+FUNCTION HEX_AT(SPOT AS UBYTE) AS UWORD
+  DIM HIGH AS UBYTE, LOW AS UBYTE
+  HIGH = INSTR(DIGITS$, MID$(RANGE, SPOT, 1))
+  LOW = INSTR(DIGITS$, MID$(RANGE, SPOT + 1, 1))
+  IF HIGH = 0 OR LOW = 0 THEN RETURN 256
+  RETURN (HIGH - 1) * 16 + LOW - 1
+END FUNCTION
+
+' Copies the glyphs RANGE names from a font file asked in the file dialog into the font.
+SUB IMPORT_GLYPHS()
+  DIM FIRST AS UWORD, LAST AS UWORD, TARGET AS UWORD
+  IF GUI.PICKFILE("Import", "*.F08", PICKED) = 0 THEN RETURN
+  ADD_EXTENSION(".F08")
+  IF GUI.INPUTBOX("Import", "Glyphs first-last, then where to, in hex", RANGE, 8, "XX-XX XX") <> 1 THEN RETURN
+  RANGE = UCASE$(RANGE)
+  FIRST = HEX_AT(1)
+  LAST = HEX_AT(4)
+  TARGET = FIRST
+  IF MID$(RANGE, 7, 2) <> "  " THEN TARGET = HEX_AT(7)
+  IF FIRST > LAST OR LAST > 255 OR TARGET > 255 THEN
+    GUI.MSGBOX("Import", "Invalid range", RANGE)
+    RETURN
+  ENDIF
+  VALUE = CHECK_FONT()
+  IF VALUE <> 0 THEN
+    SHOW_LOAD_ERROR("Import", VALUE)
+    RETURN
+  ENDIF
+  COUNT = LAST - FIRST + 1
+  IF TARGET + COUNT > 256 THEN COUNT = 256 - TARGET
+  DOS.SEEK(HANDLE, 0, FIRST * 8, 0)
+  COUNT = DOS.READ_FILE(HANDLE, @FONT + TARGET * 8, COUNT * 8)
+  DOS.CLOSE_FILE(HANDLE)
+  IF LIVE <> 0 AND COUNT <> 0 THEN SEND(@FONT + TARGET * 8, TARGET * 8, COUNT)
+  CHANGED = 1
+  HAS_UNDO = 0
+  MESSAGE = "Imported" + STR$(COUNT / 8) + " glyphs"
+END SUB
+
+' Writes the font as ca65 source to a file asked in the file dialog. A file that exists is
+' replaced only after Yes.
+SUB EXPORT_SOURCE()
+  DIM AT AS UWORD, BIT AS UBYTE
+  IF GUI.PICKFILE("Export", "*.S", PICKED) = 0 THEN RETURN
+  ADD_EXTENSION(".S")
+  IF DOS.EXISTS(PICKED) <> 0 THEN
+    IF GUI.YESNO("Export", PICKED, "exists. Replace it?") = 0 THEN RETURN
+  ENDIF
+  HANDLE = OPEN(PICKED, O.WRITE)
+  IF HANDLE = NOFILE THEN
+    GUI.MSGBOX("Export", "Cannot write", PICKED)
+    RETURN
+  ENDIF
+  PRINT #HANDLE, "; "; FILE_NAME; ": 256 glyphs of 8 by 8 pixels, 8 bytes each, from character 0 up."
+  PRINT #HANDLE, SOURCE_HEAD$
+  BLOCK_TEXT = BLOCK_HEAD$
+  FOR ROW = 0 TO 7
+    BLOCK_TEXT = BLOCK_TEXT + BLOCK_ROW$
+  NEXT
+  INDEX = 0
+  FOR MAP_CODE = 0 TO 255
+    HEX_OF(MAP_CODE)
+    ContentsAt(@BLOCK_TEXT + 5) = ContentsAt(@TEXT + 2)
+    ContentsAt(@BLOCK_TEXT + 6) = ContentsAt(@TEXT + 3)
+    ' Row 0's bits: after the string's 2 bytes of size and length, the code line, and .byte %.
+    AT = @BLOCK_TEXT + 16
+    FOR ROW = 0 TO 7
+      VALUE = FONT(INDEX)
+      INDEX = INDEX + 1
+      FOR BIT = 0 TO 7
+        ContentsAt(AT + BIT) = ASC("0") + (VALUE >> 7)
+        VALUE = VALUE << 1
+      NEXT
+      AT = AT + ROW_SIZE
+    NEXT
+    WRITE HANDLE, @BLOCK_TEXT + 2, BLOCK_SIZE
+  NEXT
+  CLOSE HANDLE
+  MESSAGE = "Exported"
+END SUB
+
+' Writes the font to PICKED, which becomes FILE_NAME, and puts Saved in MESSAGE, or shows why
+' not.
+SUB SAVE_FONT()
+  HANDLE = OPEN(PICKED, O.WRITE)
+  IF HANDLE = NOFILE THEN
+    GUI.MSGBOX("Save", "Cannot write", PICKED)
+    RETURN
+  ENDIF
+  WRITE HANDLE, @FONT, FONT_SIZE
+  CLOSE HANDLE
+  FILE_NAME = PICKED
+  NAMED = 1
+  CHANGED = 0
+  MESSAGE = "Saved"
+END SUB
+
+' Asks the file's name in the file dialog, and saves the font under it. A file that exists is
+' replaced only after Yes.
+SUB SAVE_AS()
+  IF GUI.PICKFILE("Save As", "*.F08", PICKED) = 0 THEN RETURN
+  ADD_EXTENSION(".F08")
+  IF DOS.EXISTS(PICKED) <> 0 THEN
+    IF GUI.YESNO("Save As", PICKED, "exists. Replace it?") = 0 THEN RETURN
+  ENDIF
+  SAVE_FONT()
+END SUB
+
+' Saves the font under FILE_NAME, or by SAVE_AS when it is UNTITLED.
+SUB SAVE_FILE()
+  IF NAMED = 0 THEN
+    SAVE_AS()
+  ELSE
+    PICKED = FILE_NAME
+    SAVE_FONT()
+  ENDIF
+END SUB
+
+' Asks in a dialog whether to save the font when it has changed. Yes saves, No does not, and
+' Esc goes back to the font. Returns 1 to go on: for a font with no changes, after No, or
+' after Yes when the save worked.
+FUNCTION ASK_SAVE() AS UBYTE
+  IF CHANGED = 0 THEN RETURN 1
+  SELECT CASE GUI.MSGBOX("FONTEDIT", "The font is not saved.", "Save it now?", "", "&Yes", "&No")
+    CASE 1
+      SAVE_FILE()
+      RETURN CHANGED = 0
+    CASE 2
+      RETURN 1
+  END SELECT
+  RETURN 0
+END FUNCTION
+
+' Loads a font asked in the file dialog in place of the font, after ASK_SAVE. A file that does
+' not load shows why in a dialog.
+SUB OPEN_FONT()
+  IF ASK_SAVE() = 0 THEN RETURN
+  IF GUI.PICKFILE("Open", "*.F08", PICKED) = 0 THEN RETURN
+  ADD_EXTENSION(".F08")
+  VALUE = LOAD_FONT()
+  IF VALUE <> 0 THEN
+    SHOW_LOAD_ERROR("Open", VALUE)
+  ELSE
+    FILE_NAME = PICKED
+    NAMED = 1
+    CHANGED = 0
+    HAS_UNDO = 0
+    IF LIVE <> 0 THEN SEND(@FONT, 0, FONT_SIZE)
+    MESSAGE = "Loaded"
+  ENDIF
+END SUB
+
+START_COLOR = DOS.GET_COLOR()
+RANGE = "00-FF"
+DOS.STOP_KEY(DOS.STOP.OFF)
+FONT_PORT(0)
+FOR INDEX = 0 TO FONT_SIZE - 1
+  START_FONT(INDEX) = VERA.DATA0
+  FONT(INDEX) = START_FONT(INDEX)
+NEXT
+PICKED = UCASE$(HEAP.SYS_STRINGS_GET(0))
+IF PICKED = "" THEN
+  PICKED = "UNTITLED"
+ELSE
+  NAMED = 1
+ENDIF
+ADD_EXTENSION(".F08")
+FILE_NAME = PICKED
+IF NAMED <> 0 AND DOS.EXISTS(PICKED) <> 0 THEN
+  VALUE = LOAD_FONT()
+  IF VALUE = INVALID_FONT THEN
+    PRINT "Invalid font file"
+    END 1
+  ELSEIF VALUE <> 0 THEN
+    PRINT DOS.ERRMSG(VALUE)
+    END 1
+  ENDIF
+  LIVE = 1
+  SEND(@FONT, 0, FONT_SIZE)
+  MESSAGE = "Loaded"
+ELSE
+  MESSAGE = "New file"
+ENDIF
+CURSOR OFF
+DRAW_ALL()
+DO
+  PRESSED = WAITKEY()
+  MESSAGE = ""
+  SELECT CASE PRESSED
+    CASE KEYS.KEY_UP
+      IF (KEYMODS() AND KEYS.MOD_CTRL) <> 0 THEN
+        EDIT_GLYPH(EDIT_UP)
+      ELSEIF IN_MAP = 0 THEN
+        MOVE_CURSOR(PIXEL_ROW - 1, PIXEL_COLUMN)
+      ELSE
+        PICK(GLYPH - 16)
+      ENDIF
+    CASE KEYS.KEY_DOWN
+      IF (KEYMODS() AND KEYS.MOD_CTRL) <> 0 THEN
+        EDIT_GLYPH(EDIT_DOWN)
+      ELSEIF IN_MAP = 0 THEN
+        MOVE_CURSOR(PIXEL_ROW + 1, PIXEL_COLUMN)
+      ELSE
+        PICK(GLYPH + 16)
+      ENDIF
+    CASE KEYS.KEY_LEFT
+      IF IN_MAP = 0 THEN
+        MOVE_CURSOR(PIXEL_ROW, PIXEL_COLUMN - 1)
+      ELSE
+        PICK(GLYPH - 1)
+      ENDIF
+    CASE KEYS.KEY_RIGHT
+      IF IN_MAP = 0 THEN
+        MOVE_CURSOR(PIXEL_ROW, PIXEL_COLUMN + 1)
+      ELSE
+        PICK(GLYPH + 1)
+      ENDIF
+    CASE KEYS.KEY_CTRL_LEFT
+      EDIT_GLYPH(EDIT_LEFT)
+    CASE KEYS.KEY_CTRL_RIGHT
+      EDIT_GLYPH(EDIT_RIGHT)
+    CASE CTRL_C
+      FOR ROW = 0 TO 7
+        CLIPBOARD(ROW) = FONT(GLYPH_AT + ROW)
+      NEXT
+      MESSAGE = "Copied"
+    CASE CTRL_V
+      EDIT_GLYPH(EDIT_PASTE)
+    CASE KEYS.KEY_PGUP
+      PICK(GLYPH - 1)
+    CASE KEYS.KEY_PGDN
+      PICK(GLYPH + 1)
+    CASE KEYS.TAB
+      IN_MAP = IN_MAP XOR 1
+      DRAW_TITLES()
+      PICK(GLYPH)
+    CASE KEYS.ENTER
+      IF IN_MAP <> 0 THEN
+        IN_MAP = 0
+        DRAW_TITLES()
+        PICK(GLYPH)
+      ENDIF
+    CASE KEY_F2
+      SAVE_FILE()
+      DRAW_ALL()
+    CASE KEY_F3
+      OPEN_FONT()
+      DRAW_ALL()
+    CASE KEY_F4
+      SAVE_AS()
+      DRAW_ALL()
+    CASE KEY_F5
+      LIVE = LIVE XOR 1
+      IF LIVE <> 0 THEN
+        SEND(@FONT, 0, FONT_SIZE)
+      ELSE
+        SEND(@START_FONT, 0, FONT_SIZE)
+      ENDIF
+      DRAW_ALL()
+    CASE KEY_F6
+      IMPORT_GLYPHS()
+      DRAW_ALL()
+    CASE KEY_F7
+      EXPORT_SOURCE()
+      DRAW_ALL()
+    CASE KEYS.ESC
+      IF ASK_SAVE() <> 0 THEN EXIT DO
+      DRAW_ALL()
+    CASE ELSE
+      IF IN_MAP <> 0 THEN
+        IF PRESSED >= 32 AND PRESSED < 256 THEN PICK(PRESSED AND 255)
+      ELSEIF PRESSED = KEYS.SPACE THEN
+        TOGGLE()
+      ELSEIF PRESSED < 256 THEN
+        ' A letter in either case.
+        SELECT CASE PRESSED AND $DF
+          CASE ASC("I")
+            EDIT_GLYPH(EDIT_INVERT)
+          CASE ASC("H")
+            EDIT_GLYPH(EDIT_MIRROR)
+          CASE ASC("V")
+            EDIT_GLYPH(EDIT_FLIP)
+          CASE ASC("C")
+            EDIT_GLYPH(EDIT_CLEAR)
+          CASE ASC("U")
+            UNDO_EDIT()
+          CASE ASC("R")
+            REVERT()
+        END SELECT
+      ENDIF
+  END SELECT
+  IF PRESSED <> KEYS.ESC THEN DRAW_STATUS()
+LOOP
+IF LIVE <> 0 THEN SEND(@START_FONT, 0, FONT_SIZE)
+DOS.SET_COLOR(START_COLOR)
+PRINT CONS.CLEAR_SCREEN$;
+CURSOR ON
+END 0

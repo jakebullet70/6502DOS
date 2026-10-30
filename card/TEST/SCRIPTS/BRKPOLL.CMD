@@ -1,0 +1,5 @@
+PRINT "A"
+PAUSE
+PRINT "B"
+PRINT "C"
+PRINT "D"

@@ -1,0 +1,680 @@
+'=============================================================================================
+' -- GUIDEMO
+' -- shows what GUI Forms does. The main form has a menu bar and a button for each demo; the
+' -- menu item and the button open the same demo. After a demo, the status line, the screen's
+' -- last row, tells how it ended and what it returned.
+' --     F10, Alt+letter   open a menu
+' --     Alt+letter        press a button of the main form
+' --     Esc               end the program
+' -- Program, Memory shows how the program uses memory: the low RAM it fills, the RAM banks of
+' -- the system, of GUIDEMO, of the programs that ran it and of programs kept, the free bytes
+' -- of the string heap, and a map of the banks.
+' -- The demos:
+' --     Forms     fields with captions, sections in one and two columns, a mask, the
+' --               PASSWORD, READ_ONLY, UPPER, LOWER and PROPER flags, and a VALIDATE field
+' --               that REFUSE holds until it takes two digits
+' --     Controls  check boxes in two columns, two sets of radio buttons, a combo box, and
+' --               the buttons OK, Show and Cancel; Show reports the choices and keeps the form
+' --     Memo      a memo of 2047 bytes at most, and a file name; Load reads the file into the
+' --               memo, Save writes the memo to it, and New empties the memo
+' --     Lists     a list of planets and a list of toppings that takes marks; Pick chooses a
+' --               planet in a list box
+' --     Dialogs   a button for each dialog: a message box with two buttons, a yes or no
+' --               question, an input box, and an input box of two fields
+' --     Files     a mask, and two buttons that open the file dialog with it: Open picks a
+' --               file, and Manage adds the keys of a file manager
+' --     Look      a button for each built-in theme, and a theme file's name with a button
+' --               that loads it; the screen is drawn again in the theme chosen
+' -- Exit code 0.
+' --
+' -- From a prompt:
+' --     GUIDEMO
+'=============================================================================================
+#INCLUDE "DOS.UXI"
+#INCLUDE "KEYS.UXI"
+#INCLUDE "CONS.UXI"
+#INCLUDE "VERA.UXI"
+#INCLUDE "GUI.UXI"
+#INCLUDE "BANK.UXI"
+#INCLUDE "HEAP.UXI"
+#INCLUDE "PICKFILE.UXI"
+
+' The ids of the menu items and the buttons.
+CONST ID_EXIT AS UBYTE = 1, ID_MEMORY AS UBYTE = 2, ID_FORMS AS UBYTE = 10
+CONST ID_CONTROLS AS UBYTE = 11, ID_MEMO AS UBYTE = 12, ID_LISTS AS UBYTE = 13
+CONST ID_DIALOGS AS UBYTE = 14, ID_FILES AS UBYTE = 15, ID_LOOK AS UBYTE = 16
+' The Controls demo's Show button, the Memo demo's Load, Save and New buttons, the Lists demo's
+' Pick button, the Dialogs demo's buttons, the Files demo's Open and Manage buttons, and the
+' Look demo's theme buttons; its Load button is ID_LOAD.
+CONST ID_SHOW AS UBYTE = 3, ID_LOAD AS UBYTE = 4, ID_SAVE AS UBYTE = 5, ID_NEW AS UBYTE = 6
+CONST ID_PICK AS UBYTE = 7, ID_MESSAGE AS UBYTE = 8, ID_QUESTION AS UBYTE = 9
+CONST ID_INPUT AS UBYTE = 10, ID_TWO_FIELDS AS UBYTE = 11, ID_OPEN AS UBYTE = 12
+CONST ID_MANAGE AS UBYTE = 13, ID_DARK AS UBYTE = 14, ID_LIGHT AS UBYTE = 15
+CONST ID_GRAY AS UBYTE = 16, ID_POPUP AS UBYTE = 17
+' The choices of the Controls demo's radio buttons and combo box. A form keeps their addresses.
+CONST SIZES$ = "Small|Medium|Large", ALIGNS$ = "Left|Center|Right"
+CONST INKS$ = "Black|Red|Green|Yellow|Blue|Magenta|Cyan|White"
+' The Lists demo's items.
+CONST PLANETS$ = "Mercury|Venus|Earth|Mars|Jupiter|Saturn|Uranus|Neptune"
+CONST TOPPINGS$ = "Cheese|Olives|Onion|Pepper|Mushroom|Ham|Pineapple|Basil|Tomato|Garlic"
+' The Dialogs demo's popup menu. Each choice starts with its hot letter.
+CONST FRUITS$ = "&Apple|&Banana|&Cherry|&Grape|&Lemon"
+
+' The kernel's table of bank owners, in RAM bank 0, as src/asm/mem.inc and banks.s lay it out.
+' Trap: a change to BANK_OWNER or its owner codes there must change these.
+CONST OWNER_TABLE AS UWORD = $AC00, OWNER_SYSTEM AS UBYTE = $FF, OWNER_KEPT AS UBYTE = $FE
+CONST OWNER_FIRST AS UBYTE = $80, OWNER_DEPTH AS UBYTE = $7F
+' The PSP's last page of the program, and the end of the program area.
+CONST PSP_TOP AS UWORD = $0702, PROGRAM_START AS UWORD = $0801, PROGRAM_LAST AS UWORD = $9EFF
+
+DIM MAIN_FORM AS UBYTE, EVENT AS UBYTE, START_COLOR AS UBYTE
+DIM MESSAGE AS STRING * 79
+
+' The Forms demo's fields. A form keeps the addresses of its targets, so they are global.
+DIM PERSON_NAME AS STRING * 24, SECRET AS STRING * 12, PHONE AS STRING * 14
+DIM AGE AS STRING * 2, SHOWN_ONLY AS STRING * 24
+DIM SHOUT AS STRING * 12, QUIET AS STRING * 12, PROPER_NAME AS STRING * 12, PLAIN AS STRING * 12
+
+' The Controls demo's choices: 1 for a checked box, and a choice's number from 0.
+DIM BOLD AS UBYTE, ITALIC AS UBYTE, UNDERLINE AS UBYTE, BLINKING AS UBYTE
+DIM TEXT_SIZE AS UBYTE, TEXT_ALIGN AS UBYTE, INK_CHOICE AS UBYTE
+
+' The Memo demo's file name.
+DIM MEMO_FILE AS STRING * 12
+
+' The Lists demo's items, as LIST takes them: a record of 8 bytes for each planet and of 9 for
+' each topping, padded with spaces. The planet and the topping chosen, 1 for the first.
+DIM PLANET_ITEMS AS STRING * 64, TOPPING_ITEMS AS STRING * 90
+DIM PLANET AS UBYTE, TOPPING AS UBYTE
+
+' The Dialogs demo's input boxes edit these.
+DIM CITY AS STRING * 20, FIRST_NAME AS STRING * 16, LAST_NAME AS STRING * 16
+' The fruit chosen last in the popup menu, 1 for the first.
+DIM FRUIT AS UBYTE
+
+' The Files demo's mask, and the full path of the file picked.
+DIM FILE_MASK AS STRING * 12, PICKED_FILE AS STRING * 80
+
+' The Look demo's theme file.
+DIM THEME_PATH AS STRING * 24
+
+' The Memory popup's lines, and a row of the bank map for each 64 banks.
+DIM LOW_LINE AS STRING * 68, PROGRAM_LINE AS STRING * 68, LOW_FREE_LINE AS STRING * 68
+DIM BANKS_LINE AS STRING * 68, SYSTEM_LINE AS STRING * 68, FREE_BANKS_LINE AS STRING * 68
+DIM OWN_LINE AS STRING * 68, LOADED_LINE AS STRING * 68
+DIM CALLERS_LINE AS STRING * 68, KEPT_LINE AS STRING * 68, HEAP_LINE AS STRING * 68
+DIM MAP_ROW0 AS STRING * 68, MAP_ROW1 AS STRING * 68, MAP_ROW2 AS STRING * 68
+DIM MAP_ROW3 AS STRING * 68
+
+' Shows MESSAGE on the status line.
+SUB SHOW_FOOTER()
+  GUI.STATUS_LINE(MESSAGE)
+END SUB
+
+' NUMBER in decimal, with no space in front.
+FUNCTION DECIMAL(NUMBER AS UWORD) AS STRING
+  RETURN MID$(STR$(NUMBER), 2)
+END FUNCTION
+
+' NUMBER as $ and four hex digits.
+FUNCTION HEX_WORD(NUMBER AS UWORD) AS STRING
+  DIM TEXT AS STRING * 5, SHIFT AS UBYTE
+  TEXT = "$"
+  FOR SHIFT = 12 TO 0 STEP -4
+    TEXT = TEXT + MID$("0123456789ABCDEF", ((NUMBER >> SHIFT) AND 15) + 1, 1)
+  NEXT
+  RETURN TEXT
+END FUNCTION
+
+' The owner of RAM bank NUMBER in the kernel's table.
+FUNCTION OWNER_OF(NUMBER AS UBYTE) AS UBYTE
+  RETURN BANK.GET_BYTE(0, OWNER_TABLE + NUMBER)
+END FUNCTION
+
+
+
+' The Memory popup. A bank's owner is the exec depth of the program that took it, plus 1, so
+' GUIDEMO's banks have the deepest owner, and the programs that ran it own the ones below.
+SUB MEMORY_INFO()
+  DIM FORM AS UBYTE, NUMBER AS UBYTE, OWNER AS UBYTE, OWN_DEPTH AS UBYTE, MARK AS STRING * 1
+  DIM BANK_COUNT AS UWORD, PROGRAM_END AS UWORD, SYSTEM_BANKS AS UWORD, FREE_BANKS AS UWORD
+  DIM OWN_BANKS AS UWORD, OWN_RUNS AS UWORD, CALLER_BANKS AS UWORD, KEPT_BANKS AS UWORD
+  DIM LOW_USED AS UWORD, LOW_FREE AS UWORD
+  DIM SYSTEM_LIST AS STRING * 40, OWN_LIST AS STRING * 40, MAP AS STRING * 64
+  ' Low RAM: the program runs from $0801 to the end of the page in PSP_TOP.
+  PROGRAM_END = ContentsAt(PSP_TOP)
+  PROGRAM_END = (PROGRAM_END << 8) OR 255
+  LOW_USED = PROGRAM_END - PROGRAM_START + 1
+  LOW_FREE = 0
+  IF PROGRAM_END < PROGRAM_LAST THEN LOW_FREE = PROGRAM_LAST - PROGRAM_END
+  LOW_LINE = "Low RAM    $0801-$9EFF  38655 bytes: " + DECIMAL(LOW_USED) + " used, " + DECIMAL(LOW_FREE) + " free"
+  PROGRAM_LINE = "  GUIDEMO  $0801-" + HEX_WORD(PROGRAM_END) + "  " + DECIMAL(LOW_USED) + " bytes, code and variables"
+  IF LOW_FREE > 0 THEN
+    LOW_FREE_LINE = "  Free     " + HEX_WORD(PROGRAM_END + 1) + "-$9EFF  " + DECIMAL(LOW_FREE) + " bytes"
+  ELSE
+    LOW_FREE_LINE = "  Free     none"
+  ENDIF
+  ' A machine has 64, 128 or 256 banks. The banks it lacks are the system's.
+  BANK_COUNT = 64
+  OWN_DEPTH = 0
+  FOR NUMBER = 0 TO 255
+    OWNER = OWNER_OF(NUMBER)
+    IF OWNER <> OWNER_SYSTEM THEN
+      IF NUMBER >= 128 THEN
+        BANK_COUNT = 256
+      ELSEIF NUMBER >= 64 AND BANK_COUNT = 64 THEN
+        BANK_COUNT = 128
+      ENDIF
+      IF OWNER <> OWNER_KEPT AND (OWNER AND OWNER_DEPTH) > OWN_DEPTH THEN OWN_DEPTH = OWNER AND OWNER_DEPTH
+    ENDIF
+  NEXT
+  ' Counts each kind of bank and draws the map, a mark for each bank.
+  MAP_ROW0 = ""
+  MAP_ROW1 = ""
+  MAP_ROW2 = ""
+  MAP_ROW3 = ""
+  MAP = ""
+  SYSTEM_BANKS = 0
+  FREE_BANKS = 0
+  OWN_BANKS = 0
+  OWN_RUNS = 0
+  CALLER_BANKS = 0
+  KEPT_BANKS = 0
+  FOR NUMBER = 0 TO BANK_COUNT - 1
+    OWNER = OWNER_OF(NUMBER)
+    IF OWNER = OWNER_SYSTEM THEN
+      MARK = "S"
+      SYSTEM_BANKS = SYSTEM_BANKS + 1
+      SYSTEM_LIST = SYSTEM_LIST + " " + DECIMAL(NUMBER)
+    ELSEIF OWNER = 0 THEN
+      MARK = "."
+      FREE_BANKS = FREE_BANKS + 1
+    ELSEIF OWNER = OWNER_KEPT THEN
+      MARK = "K"
+      KEPT_BANKS = KEPT_BANKS + 1
+    ELSEIF (OWNER AND OWNER_DEPTH) = OWN_DEPTH THEN
+      MARK = "G"
+      OWN_BANKS = OWN_BANKS + 1
+      OWN_LIST = OWN_LIST + " " + DECIMAL(NUMBER)
+      IF (OWNER AND OWNER_FIRST) <> 0 THEN OWN_RUNS = OWN_RUNS + 1
+    ELSE
+      MARK = "C"
+      CALLER_BANKS = CALLER_BANKS + 1
+    ENDIF
+    MAP = MAP + MARK
+    IF (NUMBER AND 63) = 63 THEN
+      SELECT CASE NUMBER >> 6
+        CASE 0
+          MAP_ROW0 = "  0 " + MAP
+        CASE 1
+          MAP_ROW1 = " 64 " + MAP
+        CASE 2
+          MAP_ROW2 = "128 " + MAP
+        CASE 3
+          MAP_ROW3 = "192 " + MAP
+      END SELECT
+      MAP = ""
+    ENDIF
+  NEXT
+  BANKS_LINE = "RAM banks  " + DECIMAL(BANK_COUNT) + " banks of 8 KB at $A000-$BFFF, " + DECIMAL(BANK_COUNT * 8) + " KB"
+  SYSTEM_LINE = "  System   " + DECIMAL(SYSTEM_BANKS) + " banks:" + SYSTEM_LIST
+  FREE_BANKS_LINE = "  Free     " + DECIMAL(FREE_BANKS) + " banks, " + DECIMAL(FREE_BANKS * 8) + " KB"
+  OWN_LINE = "  GUIDEMO  " + DECIMAL(OWN_BANKS) + " banks in " + DECIMAL(OWN_RUNS) + " runs:" + OWN_LIST
+  LOADED_LINE = "  Loaded   " + DECIMAL(REGION_BYTES(0)) + " bytes of GUIDEMO's code and data, in its banks"
+  CALLERS_LINE = "  Callers  " + DECIMAL(CALLER_BANKS) + " banks of the programs that ran GUIDEMO"
+  KEPT_LINE = "  Kept     " + DECIMAL(KEPT_BANKS) + " banks of programs that ended with keep"
+  HEAP_LINE = "Strings    " + DECIMAL(HEAP.STR_GC()) + " bytes free in the string heap, bank " + DECIMAL(ContentsAt(HEAP.PSP_HEAP))
+
+  // form starts here
+  FORM = GUI.CREATEFORM("Memory", GUI.CENTER, GUI.CENTER, 73, 24, GUI.FRAMED)
+  GUI.SAY(2, 2, LOW_LINE)
+  GUI.SAY(3, 2, PROGRAM_LINE)
+  GUI.SAY(4, 2, LOW_FREE_LINE)
+  GUI.SAY(6, 2, BANKS_LINE)
+  GUI.SAY(7, 2, SYSTEM_LINE)
+  GUI.SAY(8, 2, FREE_BANKS_LINE)
+  GUI.SAY(9, 2, OWN_LINE)
+  GUI.SAY(10, 2, LOADED_LINE)
+  GUI.SAY(11, 2, CALLERS_LINE)
+  GUI.SAY(12, 2, KEPT_LINE)
+  GUI.SAY(14, 2, HEAP_LINE)
+  GUI.SAY(16, 2, "Bank map   S system  . free  G GUIDEMO  C callers  K kept")
+  GUI.SAY(17, 2, MAP_ROW0)
+  GUI.SAY(18, 2, MAP_ROW1)
+  GUI.SAY(19, 2, MAP_ROW2)
+  GUI.SAY(20, 2, MAP_ROW3)
+  GUI.BUTTON(21, 33, "&OK", 1)
+  GUI.SHOW(FORM) '--- show form
+  GUI.FREE(FORM) '--- free it
+  MESSAGE = "Memory: " + DECIMAL(FREE_BANKS) + " banks free, GUIDEMO has " + DECIMAL(OWN_BANKS)
+  SHOW_FOOTER()
+END SUB
+
+
+
+' The Forms demo: a form of two sections over the buttons OK and Cancel. Leaving the Age field
+' with a space in it is refused.
+SUB FORMS_DEMO()
+  DIM FORM AS UBYTE, AGE_FIELD AS UBYTE, RESULT AS UBYTE
+  FORM = GUI.CREATEFORM("Forms", GUI.CENTER, GUI.CENTER, 56, 17, GUI.FRAMED)
+  GUI.SAY(GUI.AUTO, 2, "Tab, Up and Down move. Esc cancels.")
+  GUI.STARTSECTION(FORM, "Fields", GUI.FRAMED)
+  GUI.SAYGET(GUI.AUTO, GUI.AUTO, "Name", PERSON_NAME, 24, "", GUI.PROPER)
+  GUI.SAYGET(GUI.AUTO, GUI.AUTO, "Password", SECRET, 12, "", GUI.PASSWORD)
+  GUI.SAYGET(GUI.AUTO, GUI.AUTO, "Phone", PHONE, 14, "(###)-###-####")
+  AGE_FIELD = GUI.SAYGET(GUI.AUTO, GUI.AUTO, "Age", AGE, 2, "##", GUI.VALIDATE)
+  GUI.SAYGET(GUI.AUTO, GUI.AUTO, "Read only", SHOWN_ONLY, 24, "", GUI.READ_ONLY)
+  GUI.STARTSECTION(FORM, "Case", GUI.FRAMED OR GUI.TWO_COL)
+  GUI.SAYGET(GUI.AUTO, GUI.AUTO, "Upper", SHOUT, 12, "", GUI.UPPER)
+  GUI.SAYGET(GUI.AUTO, GUI.AUTO, "Lower", QUIET, 12, "", GUI.LOWER)
+  GUI.SAYGET(GUI.AUTO, GUI.AUTO, "Proper", PROPER_NAME, 12, "", GUI.PROPER)
+  GUI.SAYGET(GUI.AUTO, GUI.AUTO, "Plain", PLAIN, 12)
+  GUI.ENDSECTION()
+  GUI.BUTTON(15, 17, "&OK", 1)
+  GUI.BUTTON(15, 27, "&Cancel", 2)
+  DO
+    RESULT = GUI.SHOW(FORM)
+    IF RESULT <> GUI.EV_LEAVE THEN EXIT DO
+    IF GUI.LEFT_FIELD = AGE_FIELD AND INSTR(AGE, " ") > 0 THEN GUI.REFUSE("Age takes two digits.")
+  LOOP
+  GUI.FREE(FORM)
+  IF RESULT = 1 THEN
+    MESSAGE = "Forms: OK. " + PERSON_NAME + ", " + AGE + ", " + PHONE
+  ELSE
+    MESSAGE = "Forms: cancelled, event " + STR$(RESULT)
+  ENDIF
+  SHOW_FOOTER()
+END SUB
+
+' Choice NUMBER of CHOICES$, whose choices have | between them, counted from 0.
+FUNCTION CHOICE_NAME(CHOICES$ AS CONST, NUMBER AS UBYTE) AS STRING
+  DIM START AS UBYTE, FINISH AS UBYTE
+  START = 1
+  REPEAT NUMBER
+    START = INSTR(CHOICES$, "|", START) + 1
+  END REPEAT
+  FINISH = INSTR(CHOICES$, "|", START)
+  IF FINISH = 0 THEN FINISH = LEN(CHOICES$) + 1
+  RETURN MID$(CHOICES$, START, FINISH - START)
+END FUNCTION
+
+' The Controls demo's choices as words: the checked boxes, the size, the alignment and the ink.
+FUNCTION CONTROLS_TEXT() AS STRING
+  DIM TEXT AS STRING * 60
+  TEXT = ""
+  IF BOLD THEN TEXT = "Bold "
+  IF ITALIC THEN TEXT = TEXT + "Italic "
+  IF UNDERLINE THEN TEXT = TEXT + "Underline "
+  IF BLINKING THEN TEXT = TEXT + "Blink "
+  IF TEXT = "" THEN TEXT = "Plain "
+  RETURN TEXT + CHOICE_NAME(SIZES$, TEXT_SIZE) + ", " + CHOICE_NAME(ALIGNS$, TEXT_ALIGN) + ", " + CHOICE_NAME(INKS$, INK_CHOICE) + " ink"
+END FUNCTION
+
+' The Controls demo: four check boxes in a section of two columns, then two sets of radio
+' buttons and a combo box, over the buttons OK, Show and Cancel. Show reports the choices on the
+' status line and the form stays.
+SUB CONTROLS_DEMO()
+  DIM FORM AS UBYTE, RESULT AS UBYTE
+  FORM = GUI.CREATEFORM("Controls", GUI.CENTER, GUI.CENTER, 56, 15, GUI.FRAMED)
+  GUI.SAY(GUI.AUTO, 2, "Space checks a box and opens the Ink list. Left and")
+  GUI.SAY(GUI.AUTO, 2, "Right choose a size and an alignment. Show reports.")
+  GUI.STARTSECTION(FORM, "Style", GUI.FRAMED OR GUI.TWO_COL)
+  GUI.CHECK(GUI.AUTO, GUI.AUTO, "Bold", @BOLD)
+  GUI.CHECK(GUI.AUTO, GUI.AUTO, "Italic", @ITALIC)
+  GUI.CHECK(GUI.AUTO, GUI.AUTO, "Underline", @UNDERLINE)
+  GUI.CHECK(GUI.AUTO, GUI.AUTO, "Blink", @BLINKING)
+  GUI.STARTSECTION(FORM, "Choices", GUI.FRAMED)
+  GUI.RADIO(GUI.AUTO, GUI.AUTO, "Size", SIZES$, @TEXT_SIZE)
+  GUI.RADIO(GUI.AUTO, GUI.AUTO, "Align", ALIGNS$, @TEXT_ALIGN)
+  GUI.CBO(GUI.AUTO, GUI.AUTO, "Ink", INKS$, @INK_CHOICE, 10)
+  GUI.ENDSECTION()
+  GUI.BUTTON(13, 12, "&OK", 1)
+  GUI.BUTTON(13, 21, "&Show", ID_SHOW)
+  GUI.BUTTON(13, 32, "&Cancel", 2)
+  DO
+    RESULT = GUI.SHOW(FORM)
+    IF RESULT <> ID_SHOW THEN EXIT DO
+    MESSAGE = "Controls: " + CONTROLS_TEXT()
+    SHOW_FOOTER()
+  LOOP
+  GUI.FREE(FORM)
+  IF RESULT = 1 THEN
+    MESSAGE = "Controls: OK. " + CONTROLS_TEXT()
+  ELSE
+    MESSAGE = "Controls: cancelled, event " + STR$(RESULT)
+  ENDIF
+  SHOW_FOOTER()
+END SUB
+
+' The bytes of text in the memo.
+FUNCTION MEMO_BYTES() AS STRING
+  RETURN DECIMAL(GUI.MEMO_END - GUI.MEMO_TEXT) + " bytes"
+END FUNCTION
+
+' The Memo demo: a file name and a memo over the buttons Load, Save, New and Close. A memo
+' shows the text MEMO_LOAD or MEMO_CLEAR changed when it next takes the focus, so the demo
+' draws it again at once.
+SUB MEMO_DEMO()
+  DIM FORM AS UBYTE, TEXT_FIELD AS UBYTE, RESULT AS UBYTE
+  FORM = GUI.CREATEFORM("Memo", GUI.CENTER, GUI.CENTER, 60, 17, GUI.FRAMED)
+  GUI.SAY(GUI.AUTO, 2, "Enter starts a line in the memo. Tab leaves it.")
+  GUI.SAYGET(GUI.AUTO, 2, "File", MEMO_FILE, 12, "", GUI.UPPER)
+  TEXT_FIELD = GUI.MEMO(GUI.AUTO, 2, "Text", 50, 11)
+  GUI.BUTTON(15, 12, "&Load", ID_LOAD)
+  GUI.BUTTON(15, 22, "&Save", ID_SAVE)
+  GUI.BUTTON(15, 32, "&New", ID_NEW)
+  GUI.BUTTON(15, 41, "&Close", 1)
+  DO
+    RESULT = GUI.SHOW(FORM)
+    SELECT CASE RESULT
+      CASE ID_LOAD
+        SELECT CASE GUI.MEMO_LOAD(MEMO_FILE)
+          CASE GUI.MEMO_MISSING
+            MESSAGE = "Memo: " + MEMO_FILE + " not found, the memo is empty"
+          CASE GUI.MEMO_CUT
+            MESSAGE = "Memo: " + MEMO_FILE + " is cut to " + MEMO_BYTES()
+          CASE ELSE
+            MESSAGE = "Memo: loaded " + MEMO_BYTES() + " from " + MEMO_FILE
+        END SELECT
+        GUI.EDIT_FIELD(TEXT_FIELD, GUI.DRAW_ONLY)
+      CASE ID_SAVE
+        IF GUI.MEMO_SAVE(MEMO_FILE) = 0 THEN
+          MESSAGE = "Memo: saved " + MEMO_BYTES() + " to " + MEMO_FILE
+        ELSE
+          MESSAGE = "Memo: cannot write " + MEMO_FILE
+        ENDIF
+      CASE ID_NEW
+        GUI.MEMO_CLEAR()
+        GUI.EDIT_FIELD(TEXT_FIELD, GUI.DRAW_ONLY)
+        MESSAGE = "Memo: empty"
+      CASE ELSE
+        EXIT DO
+    END SELECT
+    SHOW_FOOTER()
+  LOOP
+  GUI.FREE(FORM)
+  IF RESULT = 1 THEN
+    MESSAGE = "Memo: closed, " + MEMO_BYTES()
+  ELSE
+    MESSAGE = "Memo: cancelled, event " + STR$(RESULT)
+  ENDIF
+  SHOW_FOOTER()
+END SUB
+
+' The first COUNT choices of CHOICES$, each cut or padded with spaces to LENGTH characters.
+FUNCTION PADDED_ITEMS(CHOICES$ AS CONST, COUNT AS UBYTE, LENGTH AS UBYTE) AS STRING
+  DIM TEXT AS STRING * 90, NUMBER AS UBYTE
+  TEXT = ""
+  FOR NUMBER = 0 TO COUNT - 1
+    TEXT = TEXT + LEFT$(CHOICE_NAME(CHOICES$, NUMBER) + "         ", LENGTH)
+  NEXT
+  RETURN TEXT
+END FUNCTION
+
+' The Lists demo's planet chosen, and the toppings marked, or None.
+FUNCTION LISTS_TEXT() AS STRING
+  DIM TEXT AS STRING * 70, NUMBER AS UBYTE
+  TEXT = ""
+  FOR NUMBER = 1 TO 10
+    IF GUI.MARKED(NUMBER) THEN TEXT = TEXT + " " + CHOICE_NAME(TOPPINGS$, NUMBER - 1)
+  NEXT
+  IF TEXT = "" THEN TEXT = " None"
+  RETURN CHOICE_NAME(PLANETS$, PLANET - 1) + ", toppings:" + TEXT
+END FUNCTION
+
+' The Lists demo: a list of planets and a list of toppings that takes marks, over the buttons
+' OK, Pick and Cancel. Pick chooses a planet in a list box, and the form stays. A list shows a
+' new choice only when it is drawn, so the demo draws the planets again. The marks clear each
+' time the demo opens, as LIST with LIST_MULTI clears them.
+SUB LISTS_DEMO()
+  DIM FORM AS UBYTE, PLANET_FIELD AS UBYTE, RESULT AS UBYTE, NUMBER AS UBYTE
+  FORM = GUI.CREATEFORM("Lists", GUI.CENTER, GUI.CENTER, 56, 12, GUI.FRAMED)
+  GUI.SAY(GUI.AUTO, 2, "Up, Down, PgUp, PgDn, Home, End and a letter move.")
+  GUI.SAY(GUI.AUTO, 2, "Space marks a topping. Pick opens a list box.")
+  PLANET_FIELD = GUI.LIST(4, 8, "Planet", @PLANET_ITEMS + 2, 0, 8, 8, @PLANET, 4, 9)
+  GUI.LIST(4, 28, "Toppings", @TOPPING_ITEMS + 2, 0, 9, 10, @TOPPING, 5, 11, GUI.LIST_MULTI)
+  GUI.BUTTON(10, 12, "&OK", 1)
+  GUI.BUTTON(10, 21, "&Pick", ID_PICK)
+  GUI.BUTTON(10, 32, "&Cancel", 2)
+  DO
+    RESULT = GUI.SHOW(FORM)
+    IF RESULT <> ID_PICK THEN EXIT DO
+    NUMBER = GUI.LISTBOX("Planets", @PLANET_ITEMS + 2, 0, 8, 8, 4)
+    IF NUMBER = 0 THEN
+      MESSAGE = "Lists: Pick cancelled"
+    ELSE
+      PLANET = NUMBER
+      GUI.EDIT_FIELD(PLANET_FIELD, GUI.DRAW_ONLY)
+      MESSAGE = "Lists: picked " + CHOICE_NAME(PLANETS$, PLANET - 1)
+    ENDIF
+    SHOW_FOOTER()
+  LOOP
+  GUI.FREE(FORM)
+  IF RESULT = 1 THEN
+    MESSAGE = "Lists: OK. " + LISTS_TEXT()
+  ELSE
+    MESSAGE = "Lists: cancelled, event " + STR$(RESULT)
+  ENDIF
+  SHOW_FOOTER()
+END SUB
+
+' The Dialogs demo: a button for each dialog, over the button Close. Each dialog's result goes
+' to the status line, and the form stays.
+SUB DIALOGS_DEMO()
+  DIM FORM AS UBYTE, RESULT AS UBYTE
+  FORM = GUI.CREATEFORM("Dialogs", GUI.CENTER, GUI.CENTER, 54, 10, GUI.FRAMED)
+  GUI.SAY(GUI.AUTO, 2, "Each button opens a dialog. The status line")
+  GUI.SAY(GUI.AUTO, 2, "tells what it returned. Esc in a dialog cancels.")
+  GUI.BUTTON(4, 4, "&Message", ID_MESSAGE)
+  GUI.BUTTON(4, 17, "&Yes or no", ID_QUESTION)
+  GUI.BUTTON(4, 32, "&Input", ID_INPUT)
+  GUI.BUTTON(6, 4, "&Two fields", ID_TWO_FIELDS)
+  GUI.BUTTON(6, 20, "&Popup", ID_POPUP)
+  GUI.BUTTON(6, 32, "&Close", 1)
+  DO
+    RESULT = GUI.SHOW(FORM)
+    SELECT CASE RESULT
+      CASE ID_MESSAGE
+        RESULT = GUI.MSGBOX("Message", "A message box shows up to three lines", "and one or two buttons. Each button", "returns its number.", "&First", "&Second")
+        MESSAGE = "Dialogs: MSGBOX returned " + DECIMAL(RESULT)
+      CASE ID_QUESTION
+        IF GUI.YESNO("Question", "Is the 6502 your favorite CPU?") THEN
+          MESSAGE = "Dialogs: YESNO returned 1, Yes"
+        ELSE
+          MESSAGE = "Dialogs: YESNO returned 0, No or Esc"
+        ENDIF
+      CASE ID_INPUT
+        RESULT = GUI.INPUTBOX("Input", "Which city do you live in?", CITY, 20, "", GUI.PROPER)
+        MESSAGE = "Dialogs: INPUTBOX returned " + DECIMAL(RESULT) + ", " + CITY
+      CASE ID_TWO_FIELDS
+        RESULT = GUI.INPUTBOX2("Two fields", "First name", FIRST_NAME, "Last name", LAST_NAME, 16, "", GUI.PROPER)
+        MESSAGE = "Dialogs: INPUTBOX2 returned " + DECIMAL(RESULT) + ", " + FIRST_NAME + " " + LAST_NAME
+      CASE ID_POPUP
+        ' The menu opens under the Popup button: the form is centered on the screen's 30 rows.
+        RESULT = GUI.PICKMENU(17, 33, "Fruit", FRUITS$, FRUIT)
+        MESSAGE = "Dialogs: PICKMENU returned " + DECIMAL(RESULT)
+        IF RESULT = 0 THEN
+          MESSAGE = MESSAGE + ", Esc"
+        ELSE
+          FRUIT = RESULT
+          MESSAGE = MESSAGE + ", " + MID$(CHOICE_NAME(FRUITS$, RESULT - 1), 2)
+        ENDIF
+      CASE ELSE
+        EXIT DO
+    END SELECT
+    SHOW_FOOTER()
+  LOOP
+  GUI.FREE(FORM)
+  IF RESULT = 1 THEN
+    MESSAGE = "Dialogs: closed"
+  ELSE
+    MESSAGE = "Dialogs: cancelled, event " + STR$(RESULT)
+  ENDIF
+  SHOW_FOOTER()
+END SUB
+
+' The Files demo: a mask over the buttons Open, Manage and Close. Open and Manage show the file
+' dialog with the mask, and the file picked goes to the status line; the form stays.
+SUB FILES_DEMO()
+  DIM FORM AS UBYTE, RESULT AS UBYTE
+  FORM = GUI.CREATEFORM("Files", GUI.CENTER, GUI.CENTER, 58, 10, GUI.FRAMED)
+  GUI.SAY(GUI.AUTO, 2, "Open picks a file. Manage adds these keys in a list:")
+  GUI.SAY(GUI.AUTO, 2, "Del deletes, F2 renames, F5 copies, F7 makes a folder.")
+  GUI.SAYGET(4, 2, "Mask", FILE_MASK, 12, "", GUI.UPPER)
+  GUI.BUTTON(6, 12, "&Open", ID_OPEN)
+  GUI.BUTTON(6, 23, "&Manage", ID_MANAGE)
+  GUI.BUTTON(6, 36, "&Close", 1)
+  DO
+    RESULT = GUI.SHOW(FORM)
+    SELECT CASE RESULT
+      CASE ID_OPEN
+        RESULT = GUI.PICKFILE("Open", FILE_MASK, PICKED_FILE)
+        MESSAGE = "Files: PICKFILE returned " + DECIMAL(RESULT)
+      CASE ID_MANAGE
+        RESULT = GUI.PICKMANAGE("Manage", FILE_MASK, PICKED_FILE)
+        MESSAGE = "Files: PICKMANAGE returned " + DECIMAL(RESULT)
+      CASE ELSE
+        EXIT DO
+    END SELECT
+    IF RESULT = 1 THEN MESSAGE = MESSAGE + ", " + PICKED_FILE
+    SHOW_FOOTER()
+  LOOP
+  GUI.FREE(FORM)
+  IF RESULT = 1 THEN
+    MESSAGE = "Files: closed"
+  ELSE
+    MESSAGE = "Files: cancelled, event " + STR$(RESULT)
+  ENDIF
+  SHOW_FOOTER()
+END SUB
+
+' The Look demo: a theme file's name over the buttons Dark, Light, Gray, Load and Close. Dark,
+' Light and Gray make a built-in theme current, and Load the theme in the file. The main form,
+' the status line and this form are then drawn again in the theme; the form stays.
+SUB LOOK_DEMO()
+  DIM FORM AS UBYTE, RESULT AS UBYTE
+  FORM = GUI.CREATEFORM("Look", GUI.CENTER, GUI.CENTER, 56, 10, GUI.FRAMED)
+  GUI.SAY(GUI.AUTO, 2, "Dark, Light and Gray choose a built-in theme. Load")
+  GUI.SAY(GUI.AUTO, 2, "reads the theme file, as THEMED saves it.")
+  GUI.SAYGET(4, 2, "Theme file", THEME_PATH, 24, "", GUI.UPPER)
+  GUI.BUTTON(6, 3, "&Dark", ID_DARK)
+  GUI.BUTTON(6, 13, "&Light", ID_LIGHT)
+  GUI.BUTTON(6, 24, "&Gray", ID_GRAY)
+  GUI.BUTTON(6, 34, "L&oad", ID_LOAD)
+  GUI.BUTTON(6, 44, "&Close", 1)
+  DO
+    RESULT = GUI.SHOW(FORM)
+    SELECT CASE RESULT
+      CASE ID_DARK
+        GUI.THEME(DARK)
+        MESSAGE = "Look: THEME(DARK)"
+      CASE ID_LIGHT
+        GUI.THEME(LIGHT)
+        MESSAGE = "Look: THEME(LIGHT)"
+      CASE ID_GRAY
+        GUI.THEME(GRAY)
+        MESSAGE = "Look: THEME(GRAY)"
+      CASE ID_LOAD
+        GUI.THEME_FILE(THEME_PATH)
+        MESSAGE = "Look: THEME_FILE(" + THEME_PATH + "); DARK when it cannot be read"
+      CASE ELSE
+        EXIT DO
+    END SELECT
+    ' SHOW draws this form whole again, as another form was drawn last.
+    GUI.DRAW_WHOLE(MAIN_FORM)
+    SHOW_FOOTER()
+  LOOP
+  GUI.FREE(FORM)
+  IF RESULT = 1 THEN
+    MESSAGE = "Look: closed"
+  ELSE
+    MESSAGE = "Look: cancelled, event " + STR$(RESULT)
+  ENDIF
+  SHOW_FOOTER()
+END SUB
+
+SUb SEED_demo()
+  PERSON_NAME = "Ada Lovelace"
+  PHONE = "(555)-010-1815"
+  AGE = "36"
+  SHOWN_ONLY = "This field reads only"
+  BOLD = 1
+  TEXT_SIZE = 1
+  MEMO_FILE = "MEMO.TXT"
+  PLANET_ITEMS = PADDED_ITEMS(PLANETS$, 8, 8)
+  TOPPING_ITEMS = PADDED_ITEMS(TOPPINGS$, 10, 9)
+  PLANET = 3
+  TOPPING = 1
+  CITY = "Springfield"
+  FIRST_NAME = "Grace"
+  LAST_NAME = "Hopper"
+  FRUIT = 1
+  FILE_MASK = "*.*"
+  THEME_PATH = "sys\themes\CUSTOM-LIGHT.GTH"
+end sub
+
+
+START_COLOR = DOS.GET_COLOR()
+GUI.THEME(GRAY)
+GUI.USE_COLOR(GUI.ROLE.PAGE)
+CONS.CLS()
+SEED_demo()
+
+' The main form fills the screen between the menu bar and the status line.
+MAIN_FORM = GUI.CREATEFORM("6502DOS GUI Demo", 1, 0, 80, 28, GUI.FRAMED OR GUI.NO_SHADOW)
+GUI.SAY(2, 3, "F10, or Alt with a menu's letter, opens the menus. Esc ends the program.")
+GUI.SAY(3, 3, "Each button opens the demo of the menu item with its name.")
+GUI.BUTTON(5, 3, "&Forms", ID_FORMS)
+GUI.BUTTON(5, 13, "&Controls", ID_CONTROLS)
+GUI.BUTTON(5, 26, "M&emo", ID_MEMO)
+GUI.BUTTON(5, 35, "&Lists", ID_LISTS)
+GUI.BUTTON(5, 45, "D&ialogs", ID_DIALOGS)
+GUI.BUTTON(5, 57, "File&s", ID_FILES)
+GUI.BUTTON(5, 67, "L&ook", ID_LOOK)
+GUI.BUTTON(7, 3, "&Memory", ID_MEMORY)
+GUI.BUTTON(7, 15, "E&xit", ID_EXIT)
+GUI.MENUBAR(MAIN_FORM)
+GUI.BEGINMENU("&Program")
+GUI.MENUITEM("&Memory", ID_MEMORY)
+GUI.MENUITEM("E&xit", ID_EXIT)
+GUI.ENDMENU()
+GUI.BEGINMENU("&Demos")
+GUI.MENUITEM("&Forms", ID_FORMS)
+GUI.MENUITEM("&Controls", ID_CONTROLS)
+GUI.MENUITEM("M&emo", ID_MEMO)
+GUI.MENUITEM("&Lists", ID_LISTS)
+GUI.MENUITEM("D&ialogs", ID_DIALOGS)
+GUI.MENUITEM("File&s", ID_FILES)
+GUI.MENUITEM("L&ook", ID_LOOK)
+GUI.ENDMENU()
+MESSAGE = "Ready."
+SHOW_FOOTER()
+DO
+  EVENT = GUI.SHOW(MAIN_FORM)
+  SELECT CASE EVENT
+    CASE ID_FORMS
+      FORMS_DEMO()
+    CASE ID_CONTROLS
+      CONTROLS_DEMO()
+    CASE ID_MEMO
+      MEMO_DEMO()
+    CASE ID_LISTS
+      LISTS_DEMO()
+    CASE ID_DIALOGS
+      DIALOGS_DEMO()
+    CASE ID_FILES
+      FILES_DEMO()
+    CASE ID_LOOK
+      LOOK_DEMO()
+    CASE ID_MEMORY
+      MEMORY_INFO()
+    CASE ID_EXIT, GUI.EV_CANCEL
+      EXIT DO
+  END SELECT
+LOOP
+
+// --- END of prg
+DOS.SET_COLOR(START_COLOR)
+CONS.CLS()
+PRINT "End GUI Demo... Bye!"
+END

@@ -1,8 +1,11 @@
+PATH$ = "C:\sys;C:\"
+REG THEME SILENT
+IF P1$ = "" REG THEME = DARK
+CONCOLOR
 print "CMD Shell in ROM: BASICShell v0.1.0, setting path and binds"
-print "And... Its in "; 
+print "And... Its in ";
 gosub printcolor
 print
-PATH$ = "C:\sys;C:\sys\themes;C:\;c:\help"
 print "Checking disk..."
 diskinfo c:
 
@@ -14,8 +17,6 @@ BIND SET=SETSYS
 BIND h=hdir
 SETSYS PROMPT$="$p$g"
 
-REM --- sets theme
-REG THEME = DARK
 goto out
 
 
@@ -30,7 +31,7 @@ color brown,black
 print "o";
 color white,black
 print "r";
-color green,black
+CONCOLOR
 return
 
 out:

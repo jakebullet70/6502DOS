@@ -1,3 +1,4 @@
+F$ = P1$
 PUSHD C:\sys\themes
-THEMED.COM P1$
+THEMED.COM F$
 POPD

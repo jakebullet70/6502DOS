@@ -1,6 +1,9 @@
 # Build and test output: tools/build.py writes build/, UXCBASIC/tests.py writes build/uxctests/.
 build/
 
+# The X16's temp folder on the card.
+card/sys/temp/
+
 # Python
 __pycache__/
 *.pyc

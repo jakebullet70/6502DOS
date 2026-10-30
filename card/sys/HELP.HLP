@@ -1,0 +1,622 @@
+:HELP
+HELP [topic]
+  Prints the help on topic. With no topic it lists the topics.
+  HELP SHELL tells about the shell's statements.
+  HELP -R remakes the topic index, C:\sys\HELP.IDX, after HELP.HLP is
+  edited. Without a good index HELP still works, more slowly.
+  A program with a topic here shows it for -H or -? first: TREE -? is
+  HELP TREE.
+  DISKFREE, DISKINFO, DATE, TIME, UPTIME, MEM, WHERE and REG work at the
+  prompt and in a script.
+  EXIST is for scripts and prints nothing.
+  Each puts its result in P1$ for a script to test.
+  SILENT prints nothing, not even an error. An error empties P1$.
+  Example:
+    HELP DISKFREE
+:EXIST
+EXIST name                      (Script only)
+  For scripts. Tells whether the file or directory name exists.
+  Name is one file. Wildcards are not allowed.
+  Sets P1$ to 1 or 0. Prints nothing.
+  Example:
+    EXIST DOCS\README.TXT
+    IF P1$ = "1"
+      PRINT "Found the readme"
+    ENDIF
+:DISKFREE
+DISKFREE [d:] [SILENT]          (Command line or Script)
+  Tells the free kilobytes of drive d, or of the current drive.
+  Prints a line such as 877 KB free. Sets P1$ to the number, such as 877.
+  At the prompt:
+    DISKFREE C:
+  In a script:
+    DISKFREE C: SILENT
+    PRINT P1$
+:DISKINFO
+DISKINFO [d:] [SILENT]          (Command line or Script)
+  Tells the size of drive d, or of the current drive.
+  Prints five numbers and sets P1$ to P5$ to them:
+    P1$ KB total      P2$ KB free      P3$ bytes a cluster
+    P4$ clusters      P5$ clusters free
+  At the prompt:
+    DISKINFO C:
+  In a script:
+    DISKINFO C: SILENT
+    PRINT P2$ + " KB free of " + P1$
+:DATE
+DATE [yyyy-mm-dd] [SILENT]      (Command line or Script)
+  Tells the date with its weekday, such as Sun 2026-10-18.
+  With a date, sets the clock and prints nothing. The year is 2000 to 2099.
+  Sets P1$ to the date, P2$ to the weekday,
+  P3$ to P5$ to the year, month and day.
+  At the prompt:
+    DATE 2026-10-18
+  In a script:
+    DATE SILENT
+    PRINT "Today is " + P1$
+:TIME
+TIME [hh:mm[:ss]] [SILENT]      (Command line or Script)
+  Tells the time in 24 hours, such as 13:45:07.
+  With a time, sets the clock and prints nothing.
+  The seconds are 0 when left out.
+  Sets P1$ to the time, P2$ to P4$ to the hours, minutes and seconds.
+  At the prompt:
+    TIME 13:45
+  In a script:
+    TIME SILENT
+    PRINT "It is " + P1$
+:UPTIME
+UPTIME [SILENT]                 (Command line or Script)
+  Tells the time since boot, such as 0 days 01:12:33.
+  Sets P1$ to the seconds since boot, P2$ to the days, P3$ to the rest.
+  At the prompt:
+    UPTIME
+  In a script:
+    UPTIME SILENT
+    PRINT "Up " + P1$ + " seconds"
+:MEM
+MEM [SILENT]                    (Command line or Script)
+  Tells the free low RAM, the program area: 38655 bytes low RAM free.
+  Tells the free 8 KB RAM banks, such as 53 banks free, 424 KB.
+  Sets P1$ to the number of free banks and P2$ to the free low RAM bytes.
+  At the prompt:
+    MEM
+  In a script:
+    MEM SILENT
+    PRINT "Free banks: " + P1$ + ", low RAM: " + P2$
+:WHERE
+WHERE name [SILENT]             (Command line or Script)
+  Tells the path of the program the shell runs for name.
+  Prints a path such as C:\sys\HEAD.COM.
+  A name with no extension is looked for as .SCOM, then .COM, then .CMD.
+  Sets P1$ to the path, or to an empty string when nothing is found.
+  At the prompt:
+    WHERE HEAD
+  In a script:
+    WHERE HEAD SILENT
+    IF P1$ = "" PRINT "No HEAD"
+:REG
+REG key [SILENT]                 (Command line or Script)
+REG key = [value]
+  Reads, sets or removes a key of the settings store, C:\6502DOS.REG.
+  REG key prints the value. REG key = value sets it and prints nothing.
+  REG key = removes the key.
+  SILENT goes in capitals.
+  A key is 1 to 32 characters. Case does not matter.
+  A key read with a space in it is quoted.
+  Key and value together are at most 240 characters.
+  The words of an unquoted value are joined by one space.
+  A value holds 9 arguments less those before it. A quoted value counts as
+  one.
+  Sets P1$ to the value. An error or a removed key empties P1$.
+  Exit code 1 is a key not found, 2 no key given, 3 any other error.
+  At the prompt:
+    REG THEME = DARK BLUE
+    REG THEME
+  In a script:
+    REG THEME SILENT
+    IF P1$ = "DARK BLUE" PRINT "Dark"
+:SHELL
+The shell runs a line typed at the prompt, or a line of a script.
+The first word is a statement, an alias or a program. Case does not matter.
+  The statements, each with its topic:
+  BEEP BIND CALL CD CHDIR CLS COLOR COPY DEL DELETE DIR END ENDIF ENDREP
+  FILES GOSUB GOTO IF INPUT LIST LOCATE MD MKDIR ONERROR PAUSE PRINT RD REM
+  REN RENAME REPEAT RETURN RMDIR RUN SETSYS TYPE VER VERSION WAIT
+  name = expression sets a variable. There is no LET.
+  A program is a .SCOM, .COM or .CMD file. See HELP WHERE.
+  See also HELP SCRIPTS, VARIABLES, EXPRESSIONS, REDIRECT and PROMPT.
+  C:\sys\ROMSHELL.COM, the shell as a program, takes one switch:
+    -N skips C:\STARTUP.CMD.
+    -S asks [Y,N]? before each line of C:\STARTUP.CMD. N skips the line.
+    -C line skips C:\STARTUP.CMD, runs line and the script it starts,
+       then ends.
+  Example:
+    RUN C:\sys\ROMSHELL.COM -C DIR
+:SCRIPTS
+A script is a text file NAME.CMD of shell lines. Typing NAME runs it.
+  The words after NAME go in P1$ to P9$, one each.
+  C:\STARTUP.CMD runs when the shell starts.
+  A line holds up to 127 characters. Lines end in LF or CR LF.
+  An error prints its message and the line, such as in C:\T.CMD line 3,
+  and ends the script. See HELP ONERROR.
+  Ctrl+C asks Terminate CMD job (Y/N)? Y ends the script.
+  A program run from a script goes back to it. A script run from a script
+  ends the first one. CALL runs a script and goes back. See HELP CALL.
+  A label is a name of 2 characters or more and a colon, on its own line.
+  IF blocks, REPEAT, GOTO and GOSUB work only in a script.
+:VARIABLES
+The variables of the shell:
+  A to Z hold whole numbers. A$ to Z$ hold strings of up to 255 characters.
+  P1$ to P9$ hold the words after a program's name. A command such as
+  DISKFREE puts its results there. Running a program empties them first.
+  PATH$, PROMPT$, EDITOR$ and TEMP$ are the system variables. See HELP SETSYS.
+  CURDIR$ is the current drive and directory. It is read only.
+  name = expression sets a variable.
+  Examples:
+    A = 5
+    A$ = CURDIR$ + "\DOCS"
+:EXPRESSIONS
+The numbers and the strings of the shell:
+  A number is whole, from -32768 to 32767. It takes + - * / and brackets.
+  * and / come before + and -. / gives a whole number.
+  A color name such as RED is a number. See HELP COLORS.
+  A string is text in quotes, a string variable or CURDIR$. + joins strings,
+  up to 255 characters. A quote with no closing quote runs to the line end.
+  A file name may be a string, so a variable can hold it: DELETE A$
+  Examples:
+    A = (B + 2) * 3
+    A$ = "C:\" + P1$
+:PRINT
+PRINT [item] [; item]...        (Command line or Script)
+  Prints numbers and strings, then a new line. A ; between items adds
+  nothing. A ; at the end keeps the cursor on the line.
+  A number prints with no spaces around it.
+  Examples:
+    PRINT "A is "; A
+    PRINT "Name: " + A$;
+:INPUT
+INPUT variable                  (Command line or Script)
+  Prints ? and reads a line into variable. A number variable takes the
+  number the line starts with, or 0.
+  Examples:
+    INPUT A$
+    INPUT N
+:IF
+IF condition statement          (Command line or Script)
+IF condition ... ENDIF          (Script only)
+  Runs statement when condition holds. There is no THEN and no ELSE.
+  The condition compares two numbers or two strings with =, <>, <, >, <= or
+  >=. Strings compare by character code, so case counts.
+  A condition alone on its line starts a block up to its ENDIF. When the
+  condition fails, the lines of the block are skipped. Blocks nest.
+  Examples:
+    IF A > 9 PRINT "Big"
+    IF P1$ = ""
+      PRINT "Give a name"
+      END
+    ENDIF
+:ENDIF
+ENDIF ends an IF block. See HELP IF.
+:REPEAT
+REPEAT count ... ENDREP         (Script only)
+  Runs the lines up to the ENDREP count times. count is 1 to 255. Below 1
+  the lines are skipped. Loops nest.
+  Up to 16 loops and GOSUBs are open at once. A GOTO out of a loop leaves
+  it open.
+  Example:
+    REPEAT 3
+      PRINT "Hello"
+    ENDREP
+:ENDREP
+ENDREP ends a REPEAT loop. See HELP REPEAT.
+:GOTO
+GOTO label                      (Script only)
+  Goes on at the line after the line label:. The label is looked for from
+  the start of the script. A label not found gives Label not found.
+  Example:
+    IF P1$ = "" GOTO usage
+    PRINT "Name: " + P1$
+    END
+    usage:
+    PRINT "Give a name"
+:GOSUB
+GOSUB label                     (Script only)
+  Goes to label as GOTO does. RETURN goes back to the line after the GOSUB.
+  GOSUBs nest. RETURN with no GOSUB gives RETURN without GOSUB.
+  Example:
+    GOSUB show
+    END
+    show:
+    PRINT "In show"
+    RETURN
+:RETURN
+RETURN ends a GOSUB. See HELP GOSUB.
+:ONERROR
+ONERROR 1   or   ONERROR 0      (Script only)
+  ONERROR 1: after an error the script goes on at the next line.
+  ONERROR 0: an error ends the script. A script starts with ONERROR 0.
+  Example:
+    ONERROR 1
+    DELETE OLD.TXT
+    ONERROR 0
+:END
+END                             (Command line or Script)
+  Ends the script. At the prompt it ends the shell.
+:REM
+REM text   or   ' text   or   // text
+  A comment. The shell skips the rest of the line.
+:RUN
+RUN name [arguments]            (Command line or Script)
+  Runs the program or script name, as typing name does. In a script, the
+  script ends there. name may be a string, so a variable can hold it.
+  Example:
+    RUN A$ DOCS\README.TXT
+:CALL
+CALL name [arguments]           (Command line or Script)
+  Runs the program or script name, as typing name does. A script called
+  from a script runs to its end or its END. Then the first script goes on
+  at the line after the CALL, with its ONERROR, GOSUBs and loops.
+  P1$ to P9$ hold the called script's words, not the first script's.
+  A called script cannot CALL. That gives Insufficient memory.
+  An error or Ctrl+C that ends the called script ends the first one too.
+  name may be a string, so a variable can hold it.
+  Example:
+    CALL BACKUP DOCS
+:FILES
+FILES [pattern]   or   DIR      (Command line or Script)
+  Lists the names that match pattern, or the current directory. Each name
+  has its size or <DIR>. The count of names comes last.
+  A directory as pattern lists the names in it.
+  Examples:
+    FILES
+    DIR DOCS\*.TXT
+:DIR
+DIR is the same as FILES. See HELP FILES.
+:LIST
+LIST name   or   TYPE name      (Command line or Script)
+  Prints the file name.
+  Example:
+    LIST DOCS\README.TXT
+:TYPE
+TYPE is the same as LIST. See HELP LIST.
+:COPY
+COPY source target              (Command line or Script)
+  Copies the file source to target. A target that is a directory takes the
+  file under its own name. A source with * or ? copies each file that
+  matches, and target must be a directory. Prints the count of files.
+  Examples:
+    COPY HELLO.TXT HI.TXT
+    COPY DOCS\*.TXT BAK
+:CHDIR
+CHDIR name   or   CD name       (Command line or Script)
+  Makes directory name the current directory.
+  Examples:
+    CHDIR DOCS
+    CD ..
+    CD \
+:CD
+CD is short for CHDIR. See HELP CHDIR.
+:DELETE
+DELETE name   or   DEL name     (Command line or Script)
+  Deletes the file name.
+  Example:
+    DELETE NEW\HI.TXT
+:DEL
+DEL is short for DELETE. See HELP DELETE.
+:MKDIR
+MKDIR name   or   MD name       (Command line or Script)
+  Makes the directory name.
+  Example:
+    MKDIR NEW
+:MD
+MD is short for MKDIR. See HELP MKDIR.
+:RMDIR
+RMDIR name   or   RD name       (Command line or Script)
+  Removes the directory name. The directory must be empty.
+  Example:
+    RMDIR NEW
+:RD
+RD is short for RMDIR. See HELP RMDIR.
+:RENAME
+RENAME old new  or  REN old new (Command line or Script)
+  Renames the file old to new.
+  Example:
+    RENAME NEW\HELLO.TXT NEW\HI.TXT
+:REN
+REN is short for RENAME. See HELP RENAME.
+:VERSION
+VERSION   or   VER              (Command line or Script)
+  Prints the version of 6502DOS, such as 6502DOS V0.1.0 Beta 1.
+  Example:
+    VERSION
+:VER
+VER is short for VERSION. See HELP VERSION.
+:SETSYS
+SETSYS [name = value]           (Command line or Script)
+  Sets a system variable. With nothing after it, lists them.
+  The system variables are PATH$, PROMPT$, EDITOR$ and TEMP$. They outlast a
+  program. CURDIR$ is the current directory, read only.
+  PATH$ holds the directories searched for a program, separated by ;.
+  TEMP$ is the directory of the pipe files. Empty puts them in the root.
+  Examples:
+    SETSYS TEMP$ = "C:\TMP"
+    PATH$ = "C:\sys"
+:BIND
+BIND [name = command]           (Command line or Script)
+  Makes name run command. The words typed after name follow the command.
+  BIND alone lists the names. An empty command removes name.
+  The commands share 255 characters.
+  After BIND H = HELP, typing H IF runs HELP IF.
+  Examples:
+    BIND H = HELP
+    BIND H =
+:COLOR
+COLOR foreground, background    (Command line or Script)
+  Sets the color of the text printed after it. Each value is 0 to 15.
+  The color names are numbers too. See HELP COLORS.
+  Examples:
+    COLOR WHITE, BLUE
+    COLOR 5, 0
+:COLORS
+The color names, for COLOR and in any number:
+  BLACK    0    PURPLE   4    ORANGE    8    GRAY       12
+  WHITE    1    GREEN    5    BROWN     9    LIGHTGREEN 13
+  RED      2    BLUE     6    LIGHTRED 10    LIGHTBLUE  14
+  CYAN     3    YELLOW   7    DARKGRAY 11    LIGHTGRAY  15
+  Example:
+    PRINT LIGHTGRAY * 16 + WHITE
+:CLS
+CLS                             (Command line or Script)
+  Clears the screen.
+:BEEP
+BEEP                            (Command line or Script)
+  Prints character 7, the bell.
+:LOCATE
+LOCATE row, column              (Command line or Script)
+  Moves the cursor to row 0 to 29 and column 0 to 79, from the top left.
+  Example:
+    LOCATE 10, 20
+:WAIT
+WAIT seconds                    (Command line or Script)
+  Waits that many seconds. A key does not end the wait. Ctrl+C does.
+  Example:
+    WAIT 2
+:PAUSE
+PAUSE                           (Command line or Script)
+  Waits for a key. Prints nothing.
+  Example:
+    PRINT "Press a key"
+    PAUSE
+:PROMPT
+The keys and the quotes at the prompt:
+  Tab completes the last word: a file or a directory, or, as the first word,
+  a statement or a .SCOM, .COM or .CMD program on PATH$. Each Tab gives the
+  next match, and Shift+Tab the one before.
+  After CD, CHDIR, RD and RMDIR, Tab gives directories only. As the first
+  word it leaves out ENDIF, ENDREP, GOSUB, GOTO, IF, INPUT, ONERROR, PAUSE,
+  REM, REPEAT, RETURN and WAIT.
+  Up brings back the line before, and Down the line after. The last 8 lines
+  are kept.
+  A name with a space goes in quotes. Tab puts a match with a space in quotes.
+  A program gets a quoted name such as "MY FILE.TXT" whole in P1$ to P9$.
+  Its command tail drops the quotes.
+  PROMPT$ is the prompt. $P is the current drive and directory, $N the drive,
+  $G >, $L <, $B |, $Q =, $_ a new line and $$ $. Empty shows C>.
+  Examples:
+    COPY HELLO.TXT "MY FILE.TXT"
+    SETSYS PROMPT$ = "$P$G"
+:REDIRECT
+statement TO file   or   APPEND file   or   FROM file
+statement | statement           (Command line or Script)
+  TO sends the output of statement to file, made new.
+  APPEND adds the output to the end of file, and makes file when missing.
+  FROM reads the input of statement from file.
+  | sends the output of a statement to the input of the next.
+  The pipe files are PIPE1.$$$ and PIPE2.$$$ in TEMP$.
+  TO, APPEND and FROM are words of their own, outside quotes.
+  Examples:
+    FILES TO LIST.TXT
+    PRINT "Done" APPEND LOG.TXT
+    LIST DOCS\LONG.TXT | GREP -n x | MORE
+:TO
+TO is a redirect. See HELP REDIRECT.
+:APPEND
+APPEND is a redirect. See HELP REDIRECT.
+:FROM
+FROM is a redirect. See HELP REDIRECT.
+:VIEW
+VIEW name                       (Command line only)
+  Shows the text file name a page at a time.
+  Up and Down move a line. PgUp and PgDn move a page. Space moves a page down.
+  Home goes to the first line, End to the last page.
+  Left and Right move the view 8 columns sideways.
+  W turns wrap on and off.
+  F or / asks for a text and finds it, in any case. N finds the next one.
+  Q or Esc ends it.
+  Example:
+    VIEW DOCS\README.TXT
+:EDIT
+EDIT [name]                     (Command line only)
+  Edits the text file name, or a new text UNTITLED, with menus and dialogs.
+  F10 or Alt with a menu's letter opens a menu.
+  Shift and a cursor key select. Ctrl+X cuts, Ctrl+C copies, Ctrl+V pastes.
+  Ctrl+F finds, F3 finds again, Ctrl+R changes. Ctrl+S saves.
+  Shift+F1 shows a topic of this help. Ctrl+Q ends it.
+  The text holds 65535 bytes. Options, Display sets the colors and the tab
+  stops, kept in C:\6502DOS.INI.
+  Example:
+    EDIT DOCS\README.TXT
+:TED
+TED name                        (Command line only)
+  Edits the text file name on the full screen, a smaller editor than EDIT.
+  F1 shows the keys. Shift and a cursor key select. Ctrl+X cuts,
+  Ctrl+C copies, Ctrl+V pastes. Ctrl+S saves. Ctrl+Q ends it.
+  Shift+F1 shows a topic of this help.
+  Example:
+    TED DOCS\README.TXT
+:TREE
+TREE [d:][path] [-F]            (Command line only)
+  Draws every directory below path, or below the root, as a tree.
+  -F lists the files of each directory too.
+  Example:
+    TREE C:\DOCS -F
+:MORE
+MORE [file]                     (Command line only)
+  Shows file, or the input, a screen at a time.
+  -- More -- waits for a key. Ctrl+C ends it.
+  Examples:
+    MORE DOCS\README.TXT
+    LIST DOCS\README.TXT | MORE
+:HEAD
+HEAD [-n count] [file]          (Command line only)
+  Writes the first count lines of file, or of the input.
+  count is 10 when left out.
+  Examples:
+    HEAD -n 20 DOCS\LONG.TXT
+    LIST DOCS\LONG.TXT | HEAD
+:TAIL
+TAIL [-n count] [file]          (Command line only)
+  Writes the last count lines of file, or of the input.
+  count is 10 when left out.
+  Examples:
+    TAIL -n 20 DOCS\LONG.TXT
+    LIST DOCS\LONG.TXT | TAIL
+:GREP
+GREP [-i] [-n] [-v] [-c] pattern [file] (Command line only)
+  Writes each line of file, or of the input, that matches pattern.
+  ^ is the start of the line, $ its end, and . any character.
+  [abc] is one of a, b and c, [a-z] one of a to z, and [^abc] any other.
+  * after one of these matches it 0 or more times. \. matches a dot.
+  -i ignores case. -n writes the line numbers.
+  -v writes the lines that do not match. -c writes only the count.
+  Examples:
+    GREP -n "^Line 0[1-3]" DOCS\LONG.TXT
+    LIST DOCS\LONG.TXT | GREP -c "x.*z"
+:XCOPY
+XCOPY source [target] [-s] [-e] [-p] [-l] [-y] (Command line only)
+  Copies the files of directory source, or the files that match a pattern,
+  to directory target, or to the current directory. A missing target is made.
+  -s copies the directories below too. -e copies the empty ones as well.
+  -p asks before each file. -l lists the files and copies nothing.
+  -y overwrites a file with no question. Without -y a file that exists asks
+  Overwrite path (Y/N/A)? A overwrites the rest.
+  Esc at a question stops the copy.
+  Examples:
+    XCOPY C:\DOCS C:\BAK -s
+    XCOPY DOCS\*.TXT BAK -sp
+:HELPBAS
+HELPBAS [topic | -R]            (Command line only)
+  Prints the help on the MSBASIC keyword topic, from C:\sys\HELPBAS.HLP.
+  With no topic it lists the topics. Small letters are the same as capitals.
+  HELPBAS -R remakes the topic index, C:\sys\HELPBAS.IDX, after HELPBAS.HLP
+  is edited. Without a good index HELPBAS still works, more slowly.
+  Examples:
+    HELPBAS PRINT
+    HELPBAS str$
+:HELPXBASE
+HELPXBASE [topic | -R]             (Command line only)
+  Prints the help on the DB command topic, from C:\sys\xbase\HELPXBASE.HLP.
+  With no topic it lists the topics. Small letters are the same as capitals.
+  HELPXBASE -R remakes the topic index, C:\sys\xbase\HELPXBASE.IDX, after
+  HELPXBASE.HLP is edited. Without a good index HELPXBASE still works, more slowly.
+  Examples:
+    HELPXBASE
+    HELPXBASE replace
+:HDIR
+HDIR [d:][path] [-1..-9] [-l] [-n -e -d -s] [-t] [-a] [-c] (Command line only)
+  Lists the directories and files of path, or of the current directory,
+  as a grid in colors. A path such as DOCS\*.TXT lists the names that match.
+  Directories come first. Names sort by name, case aside.
+  -e sorts by extension, -d by date, -s by size, -n by name.
+  -1 to -9 set the number of columns, 2 when left out.
+  -l runs the names across each row. -t shows the dates.
+  -a skips hidden and system names. -c clears the screen first.
+  Switches may share one -: -2le.
+  The listing stops at each full screen. Esc or Ctrl+C there ends it.
+  Output to a file or to NUL has no colors and no stops.
+  HDIR is in C:\sys.
+  Examples:
+    HDIR C:\DOCS -1t
+    HDIR *.COM -s
+:HELPED
+HELPED [name]                   (Command line only)
+  Edits the text file name, or README.TXT, in a form. The text is 2047
+  bytes at most. A longer file loads cut, and Save then writes nothing.
+  Folder picks the current directory, C:\sys or C:\sys.
+  With Backup checked, Save first renames the old file to NAME.BAK.
+  Theme picks Dark, Light or Gray. It takes effect at the next button.
+  Tab and Shift+Tab move between the controls.
+  Alt+L loads, Alt+S saves. Alt+Q or Esc ends without saving.
+  The last row tells what Load and Save did.
+  HELPED is in C:\sys.
+  Example:
+    HELPED HDIR.TXT
+:THEMED
+THEMED [name]                   (Command line only)
+  Builds a color theme for GUI programs in the file name, or CUSTOM.GTH.
+  A name with no extension takes .GTH. The file loads at the start when it
+  exists. Else the theme starts as Dark.
+  Up and Down choose a role. Left and Right step its color. Tab switches
+  between the background and the foreground. 1, 2 and 3 start again from
+  Dark, Light and Gray.
+  L loads and S saves. A dialog asks for the file name first; Esc there
+  keeps the name. A file not found, or one that cannot be written, shows a
+  message. Save asks before it writes over a file.
+  Esc ends. When the theme is not saved, a dialog asks first.
+  A theme file is 13 bytes, a color for each role: background * 16 +
+  foreground.
+  THEMED is in C:\sys.
+  Example:
+    THEMED BLUE.GTH
+:ZIP
+ZIP [-r] archive files          (Command line only)
+  Adds files to the ZIP archive, and makes the archive when it is missing.
+  files are up to 8 names or patterns with * and ?. An archive name with
+  no . gets .ZIP.
+  A folder adds an entry for itself. -r adds the files and folders in it
+  too, down to 16 folders deep. Hidden and system files are left out.
+  A file whose name is in the archive already replaces that entry.
+  Each file is deflated, and its line tells the saving in percent. A file
+  of up to 32768 bytes that deflate does not shrink is stored.
+  ZIP is in C:\sys.
+  Examples:
+    ZIP GAMES *.PRG
+    ZIP -r C:\BACKUP DOCS SRC\*.UXB
+:UNZIP
+UNZIP [-o] [-d folder] archive [names] (Command line only)
+UNZIP -l archive [names]
+  Extracts the entries of the ZIP archive into the current folder, or into
+  folder with -d, and makes the folders their names hold.
+  names are names or patterns with * and ?, in any case, and pick the
+  entries. With no names every entry is picked.
+  -o replaces a file that exists. Without -o UNZIP asks: y replaces it,
+  A replaces it and every one after, N keeps it and every one after.
+  An entry whose name has a drive or a .. folder is skipped.
+  -l lists the entries with their lengths, dates and times.
+  An archive name with no . that does not open gets .ZIP.
+  UNZIP is in C:\sys.
+  Examples:
+    UNZIP GAMES
+    UNZIP -o -d C:\GAMES GAMES.ZIP *.PRG
+    UNZIP -l GAMES.ZIP DOCS\*.TXT
+:PUSHD
+PUSHD [folder] [-L] [-C] [-H]   (Command line only)
+  Saves the current folder on the folder stack, then changes to folder and
+  its drive. With no folder it saves the current folder and stays there.
+  The stack holds 6 folders, kept in C:\6502DOS.REG. POPD takes the last
+  one off. The startup script empties it.
+  -L lists the stack, the newest first. -C empties it. -H or -? shows this
+  help. A switch takes either case, and goes alone.
+  Examples:
+    PUSHD C:\DOCS
+    PUSHD -L
+:POPD
+POPD [-L] [-C] [-H]             (Command line only)
+  Takes the last folder PUSHD saved off the folder stack, and changes to it
+  and its drive.
+  -L lists the stack, the newest first. -C empties it. -H or -? shows this
+  help. A switch takes either case, and goes alone.
+  Examples:
+    POPD
+    POPD -C

@@ -1,0 +1,294 @@
+'=============================================================================================
+' -- THEMED [name]
+' -- builds a color theme of GUI Forms and saves it as a theme file, which GUI.THEME_FILE
+' -- loads. A theme file holds 15 bytes, one color a role in GUI.ROLE's order, each the
+' -- background times 16 plus the foreground.
+' -- The name starts as the parameter, or CUSTOM.GTH, and takes the extension .GTH when it has
+' -- none. That file is loaded at the start when it exists, and the theme is DARK when not.
+' -- The left of the screen is a sample form in the theme. The right lists the roles, each
+' -- with a sample and its background and foreground in hex. A change shows at once.
+' --     Up, Down      choose a role
+' --     Left, Right   step its background or foreground through the 16 colors
+' --     Tab           switch between the background and the foreground
+' --     1, 2, 3       start again from DARK, LIGHT or GRAY
+' --     L, S          load or save the theme file; a dialog asks for the name first, and
+' --                   Save asks before it writes over a file
+' --     Esc           end the program; a dialog asks first when the theme is not saved
+' -- The status line, the screen's last row, tells what Load and Save did. A dialog tells why
+' -- they failed.
+' -- -H or -? as the first parameter runs HELP THEMED.
+' -- Exit code 0.
+' --
+' -- From a prompt:
+' --     THEMED BLUE.GTH
+'=============================================================================================
+#INCLUDE "DOS.UXI"
+#INCLUDE "HEAP.UXI"
+#INCLUDE "KEYS.UXI"
+#INCLUDE "CONS.UXI"
+#INCLUDE "VERA.UXI"
+#INCLUDE "GUI.UXI"
+#INCLUDE "HELPSW.UXI"
+
+CONST ROLES AS UBYTE = 15
+' The role list's box, 34 columns by 24 rows, the inside's first column, and the rows of the
+' first role and the file.
+CONST LIST_COLUMN AS UBYTE = 44
+CONST INSIDE AS UBYTE = LIST_COLUMN + 2
+CONST FIRST_ROLE_ROW AS UBYTE = 2, FILE_ROW AS UBYTE = FIRST_ROLE_ROW + ROLES
+CONST FILE_COLUMN AS UBYTE = INSIDE + 6, FILE_WIDTH AS UBYTE = 24
+' Each role's name, NAME_WIDTH characters, in GUI.ROLE's order.
+CONST NAME_WIDTH AS UBYTE = 12
+CONST ROLE_NAMES$ = "Page        Frame       Title       Text        Field       Field focus Button      Button focusHot key     Disabled    Menu        Menu chosen Status line Shadow      Console     "
+CONST DIGITS$ = "0123456789ABCDEF"
+
+DIM FILE_NAME AS STRING * 40, TYPED_NAME AS STRING * 40, MESSAGE AS STRING * 64
+' The theme as last loaded or saved.
+DIM SAVED_COLORS AS STRING * 15
+DIM THEME_AT AS UWORD, PRESSED AS UWORD, HANDLE AS UWORD
+DIM CHOSEN AS UBYTE, SIDE AS UBYTE, ROLE AS UBYTE, COLOR AS UBYTE, START_COLOR AS UBYTE
+
+' Returns the theme's color for ROLE_NUMBER.
+FUNCTION COLOR_OF(ROLE_NUMBER AS UBYTE) AS UBYTE
+  RETURN ContentsAt(THEME_AT + ROLE_NUMBER)
+END FUNCTION
+
+' Prints CAPTION$ at ROW and COLUMN as a button in the color WHICH, its first letter in the
+' HOT_KEY color's foreground, as GUI.BUTTON draws it.
+SUB SAMPLE_BUTTON(ROW AS UBYTE, COLUMN AS UBYTE, CAPTION$ AS CONST, WHICH AS UBYTE)
+  POS(1) = ROW
+  POS(0) = COLUMN
+  DOS.SET_COLOR(COLOR_OF(WHICH))
+  PRINT "< ";
+  DOS.SET_COLOR((COLOR_OF(WHICH) AND $F0) OR (COLOR_OF(GUI.ROLE.HOT_KEY) AND 15))
+  PRINT LEFT$(CAPTION$, 1);
+  DOS.SET_COLOR(COLOR_OF(WHICH))
+  PRINT MID$(CAPTION$, 2) + " >";
+END SUB
+
+' Draws role ROLE's row of the list: its name, a sample, and its background and foreground.
+' The HOT_KEY sample shows its foreground on the BUTTON color's background, as a button does.
+SUB DRAW_ROLE()
+  COLOR = COLOR_OF(ROLE)
+  POS(1) = FIRST_ROLE_ROW + ROLE
+  POS(0) = INSIDE
+  GUI.USE_COLOR(GUI.ROLE.TEXT)
+  IF ROLE = CHOSEN THEN GUI.USE_COLOR(GUI.ROLE.FIELD_FOCUS)
+  PRINT MID$(ROLE_NAMES$, ROLE * NAME_WIDTH + 1, NAME_WIDTH);
+  GUI.USE_COLOR(GUI.ROLE.TEXT)
+  PRINT " ";
+  IF ROLE = GUI.ROLE.HOT_KEY THEN
+    DOS.SET_COLOR((COLOR_OF(GUI.ROLE.BUTTON) AND $F0) OR (COLOR AND 15))
+  ELSE
+    DOS.SET_COLOR(COLOR)
+  ENDIF
+  PRINT " Abc ";
+  GUI.USE_COLOR(GUI.ROLE.TEXT)
+  PRINT "  ";
+  IF ROLE = CHOSEN AND SIDE = 0 THEN GUI.USE_COLOR(GUI.ROLE.FIELD_FOCUS)
+  PRINT MID$(DIGITS$, COLOR / 16 + 1, 1);
+  GUI.USE_COLOR(GUI.ROLE.TEXT)
+  PRINT "  ";
+  IF ROLE = CHOSEN AND SIDE = 1 THEN GUI.USE_COLOR(GUI.ROLE.FIELD_FOCUS)
+  PRINT MID$(DIGITS$, (COLOR AND 15) + 1, 1);
+END SUB
+
+' Draws the role list at the right, with the file's name and the keys, in the theme.
+SUB DRAW_LIST()
+  GUI.USE_COLOR(GUI.ROLE.FRAME)
+  GUI.BOX(0, LIST_COLUMN, 34, 24)
+  GUI.USE_COLOR(GUI.ROLE.TITLE)
+  POS(1) = 0
+  POS(0) = INSIDE
+  PRINT " Theme ";
+  GUI.USE_COLOR(GUI.ROLE.TEXT)
+  POS(1) = 1
+  POS(0) = INSIDE
+  PRINT "Role          Sample  Bg Fg";
+  FOR ROLE = 0 TO ROLES - 1
+    DRAW_ROLE()
+  NEXT ROLE
+  POS(1) = FILE_ROW
+  POS(0) = INSIDE
+  PRINT "File";
+  GUI.USE_COLOR(GUI.ROLE.FIELD)
+  POS(0) = FILE_COLUMN
+  PRINT LEFT$(FILE_NAME + "                        ", FILE_WIDTH);
+  GUI.USE_COLOR(GUI.ROLE.TEXT)
+  POS(1) = FILE_ROW + 1
+  POS(0) = INSIDE
+  PRINT "Up Down     role";
+  POS(1) = FILE_ROW + 2
+  POS(0) = INSIDE
+  PRINT "Left Right  color";
+  POS(1) = FILE_ROW + 3
+  POS(0) = INSIDE
+  PRINT "Tab         Bg or Fg";
+  POS(1) = FILE_ROW + 4
+  POS(0) = INSIDE
+  PRINT "1 2 3       Dark Light Gray";
+  POS(1) = FILE_ROW + 5
+  POS(0) = INSIDE
+  PRINT "L S Esc     load save quit";
+END SUB
+
+' Draws the sample form's shadow, where GUI draws a form's, and a sample console line under it.
+SUB DRAW_EXTRAS()
+  DIM ROW AS UBYTE
+  GUI.USE_COLOR(GUI.ROLE.SHADOW)
+  FOR ROW = 3 TO 13
+    POS(1) = ROW
+    POS(0) = 41
+    PRINT "  ";
+  NEXT ROW
+  POS(1) = 14
+  POS(0) = 3
+  PRINT "                                        ";
+  GUI.USE_COLOR(GUI.ROLE.CONSOLE)
+  POS(1) = 16
+  POS(0) = 1
+  PRINT "C:\>DIR                                 ";
+END SUB
+
+' Clears the screen in the PAGE color and draws it all in the theme: a sample form at the left,
+' with a menu bar, its shadow and a console line, the role list at the right, and the status
+' line.
+SUB DRAW_ALL()
+  GUI.USE_COLOR(GUI.ROLE.PAGE)
+  PRINT CONS.CLEAR_SCREEN$;
+  GUI.USE_COLOR(GUI.ROLE.MENU)
+  POS(1) = 0
+  POS(0) = 0
+  PRINT " File ";
+  GUI.USE_COLOR(GUI.ROLE.MENU_SELECTED)
+  PRINT " Edit ";
+  GUI.USE_COLOR(GUI.ROLE.MENU)
+  PRINT " Help                        ";
+  GUI.USE_COLOR(GUI.ROLE.FRAME)
+  GUI.BOX(2, 1, 40, 12, GUI.LINES.DOUBLE)
+  GUI.USE_COLOR(GUI.ROLE.TITLE)
+  POS(1) = 2
+  POS(0) = 4
+  PRINT " Sample ";
+  GUI.USE_COLOR(GUI.ROLE.TEXT)
+  POS(1) = 4
+  POS(0) = 4
+  PRINT "Name";
+  POS(1) = 5
+  POS(0) = 4
+  PRINT "Path";
+  GUI.USE_COLOR(GUI.ROLE.FIELD)
+  POS(1) = 4
+  POS(0) = 10
+  PRINT "README.TXT    ";
+  GUI.USE_COLOR(GUI.ROLE.FIELD_FOCUS)
+  POS(1) = 5
+  POS(0) = 10
+  PRINT "C:\sys        ";
+  GUI.USE_COLOR(GUI.ROLE.DISABLED)
+  POS(1) = 7
+  POS(0) = 4
+  PRINT "Read only";
+  SAMPLE_BUTTON(10, 4, "OK", GUI.ROLE.BUTTON)
+  SAMPLE_BUTTON(10, 12, "Cancel", GUI.ROLE.BUTTON_FOCUS)
+  DRAW_EXTRAS()
+  DRAW_LIST()
+  GUI.STATUS_LINE(MESSAGE)
+END SUB
+
+' Steps the chosen role's side SIDE by AMOUNT, 1 up or 15 down, through the 16 colors.
+SUB STEP_COLOR(AMOUNT AS UBYTE)
+  COLOR = COLOR_OF(CHOSEN)
+  IF SIDE = 0 THEN
+    COLOR = COLOR + AMOUNT * 16
+  ELSE
+    COLOR = (COLOR AND $F0) OR ((COLOR + AMOUNT) AND 15)
+  ENDIF
+  ContentsAt(THEME_AT + CHOSEN) = COLOR
+END SUB
+
+' Asks for the file's name in a dialog titled TITLE$, and returns 1 when OK ends it. The name
+' takes .GTH when it has no extension. FILE_NAME is kept when the dialog is cancelled.
+FUNCTION ASK_NAME(TITLE$ AS CONST) AS UBYTE
+  TYPED_NAME = FILE_NAME
+  IF GUI.INPUTBOX(TITLE$, "File name:", TYPED_NAME, FILE_WIDTH, "", GUI.UPPER) <> 1 THEN RETURN 0
+  FILE_NAME = TYPED_NAME
+  IF INSTR(FILE_NAME, ".") = 0 THEN FILE_NAME = FILE_NAME + ".GTH"
+  RETURN 1
+END FUNCTION
+
+' Makes the theme in FILE_NAME the theme, and puts what happened in MESSAGE, or shows why not.
+SUB LOAD_THEME()
+  IF DOS.EXISTS(FILE_NAME) = 0 THEN
+    GUI.MSGBOX("Load", "Not found:", FILE_NAME)
+    RETURN
+  ENDIF
+  GUI.THEME_FILE(FILE_NAME)
+  SAVED_COLORS = GUI.COLORS$
+  MESSAGE = "Loaded " + FILE_NAME
+END SUB
+
+' Writes the theme to FILE_NAME, after asking when the file exists, and puts what happened in
+' MESSAGE, or shows why not.
+SUB SAVE_THEME()
+  IF DOS.EXISTS(FILE_NAME) <> 0 THEN
+    IF GUI.YESNO("Save", FILE_NAME, "exists. Replace it?") = 0 THEN RETURN
+  ENDIF
+  HANDLE = OPEN(FILE_NAME, O.WRITE)
+  IF HANDLE = NOFILE THEN
+    GUI.MSGBOX("Save", "Cannot write", FILE_NAME)
+    RETURN
+  ENDIF
+  WRITE HANDLE, THEME_AT, ROLES
+  CLOSE HANDLE
+  SAVED_COLORS = GUI.COLORS$
+  MESSAGE = "Saved " + FILE_NAME
+END SUB
+
+START_COLOR = DOS.GET_COLOR()
+HELP_SWITCH("THEMED")
+FILE_NAME = UCASE$(HEAP.SYS_STRINGS_GET(0))
+IF FILE_NAME = "" THEN FILE_NAME = "CUSTOM"
+IF INSTR(FILE_NAME, ".") = 0 THEN FILE_NAME = FILE_NAME + ".GTH"
+GUI.THEME(DARK)
+THEME_AT = @GUI.COLORS$ + 2
+IF DOS.EXISTS(FILE_NAME) <> 0 THEN
+  LOAD_THEME()
+ELSE
+  MESSAGE = "New theme " + FILE_NAME
+  SAVED_COLORS = GUI.COLORS$
+ENDIF
+DO
+  DRAW_ALL()
+  PRESSED = WAITKEY()
+  MESSAGE = ""
+  SELECT CASE PRESSED
+    CASE KEYS.KEY_UP
+      IF CHOSEN = 0 THEN CHOSEN = ROLES
+      CHOSEN = CHOSEN - 1
+    CASE KEYS.KEY_DOWN
+      CHOSEN = CHOSEN + 1
+      IF CHOSEN = ROLES THEN CHOSEN = 0
+    CASE KEYS.KEY_LEFT
+      STEP_COLOR(15)
+    CASE KEYS.KEY_RIGHT
+      STEP_COLOR(1)
+    CASE KEYS.TAB
+      SIDE = SIDE XOR 1
+    CASE ASC("1")
+      GUI.THEME(DARK)
+    CASE ASC("2")
+      GUI.THEME(LIGHT)
+    CASE ASC("3")
+      GUI.THEME(GRAY)
+    CASE ASC("L"), ASC("l")
+      IF ASK_NAME("Load") <> 0 THEN LOAD_THEME()
+    CASE ASC("S"), ASC("s")
+      IF ASK_NAME("Save") <> 0 THEN SAVE_THEME()
+    CASE KEYS.ESC
+      IF GUI.COLORS$ = SAVED_COLORS THEN EXIT DO
+      IF GUI.YESNO("Quit", "The theme is not saved.", "Quit anyway?") <> 0 THEN EXIT DO
+  END SELECT
+LOOP
+DOS.SET_COLOR(START_COLOR)
+PRINT CONS.CLEAR_SCREEN$;

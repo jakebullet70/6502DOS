@@ -1,6 +1,6 @@
 r"""Build the 6502DOS ROM image.
 
-    python tools/build.py [--release]
+    python tools/build.py [--release] [--card]
 
 Runs tools/genapi.py, assembles every src/asm/*.s and build/gen/*.s with ca65, links them
 with src/asm/rom.cfg into build/6502DOS.ROM, ROM banks 0, 1 and 5, and copies LICENSE and NOTICE
@@ -18,23 +18,22 @@ UXCBASIC/tpl/MKTPL.PY rebuilds the template tables when a UXCBASIC/tpl or UXCBAS
 .ASM file is newer than UXCBASIC/tpl/UXDOS/UXC.TPL.BIN. Each src/bas/NAME.UXB compiles to
 build/bas/NAME.COM with tools/uxb.py when the COM file is older than the source, than a file it
 includes, than the template table or than pyuxc. Each src/scom/NAME.UXB, a
-commandlet, compiles the same way to build/sys/NAME.SCOM, a long name on the card. Each
+commandlet, compiles the same way to card/sys/NAME.SCOM, a long name on the card. Each
 src/dos/NAME.UXB, a DOS utility, compiles to
-build/sys/NAME.COM, and each src/dos/NAME.TXT and NAME.HLP is copied to build/sys, with
-build/sys/HELP.IDX, the index of HELP.HLP that HELP -R writes. card/sys/xbase/HELPXBASE.HLP is copied
-to build/sys/xbase, with HELPXBASE.IDX, the index that HELPXBASE -R writes, and
-card/sys/basic/HELPBAS.HLP to build/sys/basic, with HELPBAS.IDX, the index that HELPBAS -R writes. Each
-src/utils/FOLDER/NAME.UXB, a utility, compiles to build/sys/NAME.COM, and the files of
-src/utils/FOLDER are copied to build/source/xcbasic/FOLDER. Each test named in SHOWN_TESTS, tests/NAME.UXB,
-compiles to build/sys/NAME.COM as well. CMDSHELL.COM, ROMSHELL.COM and BASIC.COM are copied to build/sys.
+card/sys/NAME.COM, and each src/dos/NAME.TXT and NAME.HLP is copied to card/sys, with
+card/sys/HELP.IDX, the index of HELP.HLP that HELP -R writes. card/sys/xbase/HELPXBASE.HLP gets
+card/sys/xbase/HELPXBASE.IDX, the index that HELPXBASE -R writes, and
+card/sys/basic/HELPBAS.HLP gets card/sys/basic/HELPBAS.IDX, the index that HELPBAS -R writes. Each
+src/utils/FOLDER/NAME.UXB, a utility, compiles to card/sys/NAME.COM, and the files of
+src/utils/FOLDER are copied to card/source/xcbasic/FOLDER. Each test named in SHOWN_TESTS, tests/NAME.UXB,
+compiles to card/sys/NAME.COM as well. CMDSHELL.COM, ROMSHELL.COM and BASIC.COM are copied to card/sys.
 
-Then tools/mksd.py makes the SD card image build/SD.IMG from the folder card, the folder build/sys,
-which is the card's folder sys, the folder build/source, which is the card's folder source, the
-folders of CARD_FOLDERS and the card's folder TEST, gathered in build/card. TEST holds the other COM files in build/bas and the
-files and folders of the test card's folder tests/sd. A file in card wins a
-name it shares with the others. Before that, each file and folder that the X16 added to the old
-build/SD.IMG or changed goes into card, and each one it deleted leaves card; build/SD.SUM lists
-what the last build wrote.
+The folder card is the whole card, and git tracks all of it but its empty folders and card/sys/temp.
+The build makes the folders of CARD_FOLDERS in it and fills card/TEST with the other COM files in
+build/bas and the files and folders of the test card's folder tests/sd.
+
+With --card, tools/mksd.py then makes the SD card image build/SD.IMG from the folder card. Files
+saved on that image stay in it, and the next --card overwrites them.
 
 With --release, it then empties build/release and fills it with a 4 MB SD.IMG, 6502DOS.ROM,
 LICENSE, NOTICE, the files of tools/release (RUN.BAT and the folder x16emu with the licences),
@@ -47,8 +46,6 @@ compile failed, api.py is inconsistent, or build/SD.IMG or build/release is open
 """
 
 import glob
-import hashlib
-import json
 import os
 import re
 import shutil
@@ -78,8 +75,6 @@ BANK0_START = 0xC000
 TEST_SD_FOLDER = os.path.join(ROOT, "tests", "sd")
 SD_IMAGE = os.path.join(BUILD, "SD.IMG")
 CARD = os.path.join(ROOT, "card")
-STAGE = os.path.join(BUILD, "card")
-CARD_SUM = os.path.join(BUILD, "SD.SUM")
 RELEASE = os.path.join(BUILD, "release")
 RELEASE_STAGE = os.path.join(BUILD, "release-card")
 RELEASE_FILES = os.path.join(ROOT, "tools", "release")
@@ -93,16 +88,16 @@ EMU_FILES = ("x16emu.exe", "SDL2.dll", "zlib1.dll", "libwinpthread-1.dll")
 BAS = os.path.join(ROOT, "src", "bas")
 BAS_OUT = os.path.join(BUILD, "bas")
 SCOM = os.path.join(ROOT, "src", "scom")
-SYS_OUT = os.path.join(BUILD, "sys")
+SYS_OUT = os.path.join(CARD, "sys")
 UTILITIES = os.path.join(ROOT, "src", "dos")
 UTILS = os.path.join(ROOT, "src", "utils")
-SOURCE_OUT = os.path.join(BUILD, "source")
+SOURCE_OUT = os.path.join(CARD, "source")
 # The folders of the card that start empty.
 CARD_FOLDERS = ("help", "sys/temp", "sys/themes", "sys/basic", "sys/xbase", "sys/edit", "sys/uxcbasic", "source/basic",
                 "source/xcbasic", "source/uxcbasic", "source/scripts", "source/xbase", "apps", "games")
-# The utilities of src/utils that go to build/sys/themes, with the fonts and color themes.
+# The utilities of src/utils that go to card/sys/themes, with the fonts and color themes.
 THEME_PROGRAMS = ("THEMED", "FONTEDIT")
-# The tests that also go to build/sys, for the user to run on the card.
+# The tests that also go to card/sys, for the user to run on the card.
 SHOWN_TESTS = []
 TEMPLATES = os.path.join(ROOT, "UXCBASIC", "tpl")
 MSBASIC_SRC = os.path.join(ROOT, "MSBASIC", "src")
@@ -147,8 +142,8 @@ def compile_bas():
 
 
 def compile_scom():
-    """Compile each src/scom/NAME.UXB to build/sys/NAME.SCOM and each src/dos/NAME.UXB to
-    build/sys/NAME.COM, and copy each src/dos/NAME.TXT and NAME.HLP to build/sys. Return the folder build/sys."""
+    """Compile each src/scom/NAME.UXB to card/sys/NAME.SCOM and each src/dos/NAME.UXB to
+    card/sys/NAME.COM, and copy each src/dos/NAME.TXT and NAME.HLP to card/sys. Return the folder card/sys."""
     os.makedirs(SYS_OUT, exist_ok=True)
     for source in sorted(glob.glob(os.path.join(SCOM, "*.UXB"))):
         name = os.path.splitext(os.path.basename(source))[0].upper() + ".SCOM"
@@ -162,10 +157,6 @@ def compile_scom():
     for folder, name in (("xbase", "HELPXBASE"), ("basic", "HELPBAS")):
         card_folder = os.path.join(CARD, "sys", folder)
         write_help_index(os.path.join(card_folder, name + ".HLP"), os.path.join(card_folder, name + ".IDX"))
-        out_folder = os.path.join(SYS_OUT, folder)
-        os.makedirs(out_folder, exist_ok=True)
-        for extension in (".HLP", ".IDX"):
-            shutil.copyfile(os.path.join(card_folder, name + extension), os.path.join(out_folder, name + extension))
     return SYS_OUT
 
 
@@ -183,10 +174,10 @@ def write_help_index(source, target):
 
 
 def compile_utils():
-    """Compile each src/utils/FOLDER/NAME.UXB to build/sys/NAME.COM, or build/sys/themes/NAME.COM
+    """Compile each src/utils/FOLDER/NAME.UXB to card/sys/NAME.COM, or card/sys/themes/NAME.COM
     for THEME_PROGRAMS, copy the files of
-    src/utils/FOLDER to build/source/xcbasic/FOLDER, and compile each test of SHOWN_TESTS to
-    build/sys/NAME.COM. Return the folder build/source."""
+    src/utils/FOLDER to card/source/xcbasic/FOLDER, and compile each test of SHOWN_TESTS to
+    card/sys/NAME.COM. Return the folder card/source."""
     themes = os.path.join(SYS_OUT, "themes")
     os.makedirs(themes, exist_ok=True)
     for folder in sorted(glob.glob(os.path.join(UTILS, "*", ""))):
@@ -286,97 +277,37 @@ def make_test_rom():
         out.write(image)
 
 
-def stage_card(stage, sources, tests):
-    """Fill the folder stage with CARD_FOLDERS, the files and folders in sources, and those in
-    tests under the folder TEST, which only tests makes. Return the upper-case paths it holds,
-    joined by "/"."""
-    shutil.rmtree(stage, ignore_errors=True)
+def copy_into(folder, sources):
+    """Copy the files and folders in sources into the folder, without names that start with a dot."""
     ignore = shutil.ignore_patterns(".*")
-    for folder in CARD_FOLDERS:
-        os.makedirs(os.path.join(stage, *folder.split("/")), exist_ok=True)
-    if tests:
-        os.makedirs(os.path.join(stage, "TEST"), exist_ok=True)
-    for source, folder in [(s, stage) for s in sources] + [(s, os.path.join(stage, "TEST"))
-                                                          for s in tests]:
+    os.makedirs(folder, exist_ok=True)
+    for source in sources:
         target = os.path.join(folder, os.path.basename(source))
         if os.path.isdir(source):
             shutil.copytree(source, target, ignore=ignore, dirs_exist_ok=True)
         else:
             shutil.copy2(source, target)
-    held = set()
-    for folder, dirs, files in os.walk(stage):
-        for name in dirs + files:
-            held.add(os.path.relpath(os.path.join(folder, name), stage).replace("\\", "/").upper())
-    return held
 
 
-def digest(data):
-    return None if data is None else hashlib.sha1(data).hexdigest()
+def stage_card(stage, sources):
+    """Empty the folder stage and fill it with CARD_FOLDERS and the files and folders in sources."""
+    shutil.rmtree(stage, ignore_errors=True)
+    for folder in CARD_FOLDERS:
+        os.makedirs(os.path.join(stage, *folder.split("/")), exist_ok=True)
+    copy_into(stage, sources)
 
 
-def pull_card(staged):
-    """Copy into the folder card each file and folder that the X16 added to build/SD.IMG or
-    changed since the last build, and delete from card each one the X16 deleted.
-
-    build/SD.SUM lists what the last build wrote. Without it, only paths not in staged, the
-    upper-case paths of build/card, are copied, and nothing is deleted. A path in staged, or under
-    a folder in staged that the image lacks, is never deleted from card."""
-    if not os.path.exists(SD_IMAGE):
-        return
-    try:
-        with open(CARD_SUM, encoding="utf-8") as listing:
-            built = json.load(listing)
-    except FileNotFoundError:
-        built = None
-    found = {}
-    for path, data, when in mksd.read(SD_IMAGE):
-        key = path.upper()
-        found[key] = path
-        if built is None:
-            if key in staged:
-                continue
-        elif key in built and built[key][1] == digest(data):
-            continue
-        target = os.path.join(CARD, *path.split("/"))
-        if data is None:
-            os.makedirs(target, exist_ok=True)
-        else:
-            os.makedirs(os.path.dirname(target), exist_ok=True)
-            with open(target, "wb") as out:
-                out.write(data)
-            if when is not None:
-                os.utime(target, (when.timestamp(), when.timestamp()))
-        print("card: kept %s" % path)
-    for key, (path, _) in (built or {}).items():
-        target = os.path.join(CARD, *path.split("/"))
-        if key in found or not os.path.lexists(target):
-            continue
-        parts = key.split("/")
-        lost = [p for p in ("/".join(parts[:n]) for n in range(1, len(parts) + 1))
-                if p in staged and p not in found]
-        if lost:
-            print("card: kept %s; the image lacks %s" % (path, built.get(lost[0], [lost[0]])[0]))
-            continue
-        if os.path.isdir(target):
-            shutil.rmtree(target)
-        else:
-            os.remove(target)
-        print("card: deleted %s" % path)
-
-
-def make_card(sources, tests):
-    """Write build/SD.IMG from the files and folders in sources, those in tests under TEST,
-    and the folder card, which wins a name they share, after pull_card. Write build/SD.SUM."""
-    staged = stage_card(STAGE, sources, tests)
-    pull_card(staged)
-    shutil.copytree(CARD, STAGE, ignore=shutil.ignore_patterns(".*"), dirs_exist_ok=True)
-    try:
-        mksd.make(STAGE, SD_IMAGE)
-    except PermissionError:
-        sys.exit("build: cannot write %s; close x16emu" % os.path.relpath(SD_IMAGE, ROOT))
-    listing = {path.upper(): [path, digest(data)] for path, data, when in mksd.read(SD_IMAGE)}
-    with open(CARD_SUM, "w", encoding="utf-8") as out:
-        json.dump(listing, out, indent=0)
+def make_card(tests, image):
+    """Make the folders of CARD_FOLDERS in the folder card and copy the files and folders in tests
+    to card/TEST. With image, write build/SD.IMG from card."""
+    for folder in CARD_FOLDERS:
+        os.makedirs(os.path.join(CARD, *folder.split("/")), exist_ok=True)
+    copy_into(os.path.join(CARD, "TEST"), tests)
+    if image:
+        try:
+            mksd.make(CARD, SD_IMAGE)
+        except PermissionError:
+            sys.exit("build: cannot write %s; close x16emu" % os.path.relpath(SD_IMAGE, ROOT))
 
 
 def make_release(sources):
@@ -389,7 +320,7 @@ RELEASE_ZIPS."""
             shutil.rmtree(RELEASE)
     except PermissionError:
         sys.exit("build: cannot empty %s; close x16emu" % os.path.relpath(RELEASE, ROOT))
-    stage_card(RELEASE_STAGE, sources, [])
+    stage_card(RELEASE_STAGE, sources)
     shutil.copytree(CARD, RELEASE_STAGE, ignore=shutil.ignore_patterns(".*", *RELEASE_SKIP), dirs_exist_ok=True)
     os.makedirs(RELEASE)
     mksd.make(RELEASE_STAGE, os.path.join(RELEASE, "SD.IMG"))
@@ -409,9 +340,10 @@ RELEASE_ZIPS."""
 
 
 def main():
-    release = sys.argv[1:] == ["--release"]
-    if sys.argv[1:] and not release:
-        sys.exit("usage: build.py [--release]")
+    release = "--release" in sys.argv[1:]
+    image = "--card" in sys.argv[1:]
+    if set(sys.argv[1:]) - {"--release", "--card"}:
+        sys.exit("usage: build.py [--release] [--card]")
     started = time.time()
     genapi.main()
     os.makedirs(OBJ, exist_ok=True)
@@ -448,7 +380,7 @@ def main():
     card_sources = [compile_scom(), compile_utils()]
     for program in shell + [basic, database]:
         shutil.copy2(program, SYS_OUT)
-    make_card(card_sources, [p for p in programs if p not in shell] + test_files)
+    make_card([p for p in programs if p not in shell] + test_files, image)
     if release:
         make_release(card_sources)
     print("built %s, %d bytes, %.2f s" % (os.path.relpath(ROM, ROOT), os.path.getsize(ROM),

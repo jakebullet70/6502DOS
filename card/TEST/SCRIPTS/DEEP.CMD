@@ -1,0 +1,6 @@
+ONERROR(1)
+N = 0
+DOWN:
+N = N + 1
+GOSUB DOWN
+PRINT "DEPTH "; N

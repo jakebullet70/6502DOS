@@ -1,0 +1,26 @@
+'=============================================================================================
+' -- Callable Commandlet -----> CONCOLOR
+' -- Sets the console color to the CONSOLE color of the current theme. Prints nothing.
+' -- The registry key THEME names the theme file: THEME = DARK reads C:\sys\themes\DARK.GTH.
+' -- Exit code 0 when the color is set. The color stays as it is otherwise.
+' -- Exit code 1 when the key is missing, 2 when the file is missing or has no CONSOLE byte.
+' --
+' -- From a script:
+' --     REG THEME = DARK
+' --     CONCOLOR
+'=============================================================================================
+#INCLUDE "DOS.UXI"
+' Checklist: the place of CONSOLE in ENUM ROLE in lib/GUI.UXI.
+CONST CONSOLE_BYTE AS UWORD = 14
+DIM THEME_PATH AS STRING * 255, HANDLE AS UWORD, COUNT AS UWORD, CONSOLE_COLOR AS UBYTE
+
+THEME_PATH = "C:\sys\themes\" + DOS.REG_GET("THEME", "") + ".GTH"
+IF DOS.ERROR THEN END 1
+HANDLE = DOS.OPEN_FILE(THEME_PATH, DOS.ACCESS_READ)
+IF DOS.ERROR THEN END 2
+DOS.SEEK(HANDLE, 0, CONSOLE_BYTE, 0)
+COUNT = DOS.READ_FILE(HANDLE, @CONSOLE_COLOR, 1)
+DOS.CLOSE_FILE(HANDLE)
+IF COUNT = 0 THEN END 2
+DOS.SET_COLOR(CONSOLE_COLOR)
+END 0

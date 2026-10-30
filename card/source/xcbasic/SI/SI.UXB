@@ -1,0 +1,135 @@
+'=============================================================================================
+' -- SI
+' -- prints the system's information, a fact a line:
+' --     CPU:      65C02, 8 MHz
+' --     ROM:      6502DOS 0.1.1
+' --     VERA:     V47.0.2
+' --     RAM:      2048 KB, 256 banks, 241 free
+' --     SD card:  4 MB FAT32
+' --     Clock:    Tue 2026-10-27 14:05:33
+' -- The CPU is 65C02 or 65C816. The speed is the cycles of a loop in 60 VSYNCs, to the nearest
+' -- MHz; the test takes about a second. A VERA too old to give its version prints no version.
+' -- The banks are the 8 KB RAM banks, free the ones bank_alloc can hand out. The card's size
+' -- is the data area of C:, in MB below 1 GB, in GB from there, rounded. A card without a
+' -- FAT32 volume prints the error's message.
+' -- Exit code 0.
+' --
+' -- From a prompt:
+' --     C:\sys\SI
+'=============================================================================================
+#INCLUDE "DOS.UXI"
+#INCLUDE "BANK.UXI"
+' Trap: TICKS_ADDRESS is the kernel's zero-page VSYNC count, ticks in build/6502DOS.LBL. The
+' speed loop reads it at once; DOS.TICKS costs too many cycles a pass.
+CONST TICKS_ADDRESS AS UBYTE = $80
+' The speed loop's pass is 20 cycles when no byte of COUNT carries, so 50000 passes are 1 MHz.
+CONST MHZ_PASSES AS ULONG = 50000, SPEED_TICKS AS UBYTE = 60
+CONST VERA_CTRL AS UWORD = $9F25, VERA_DC_VIDEO AS UWORD = $9F29, DCSEL_VERSION AS UBYTE = 63 << 1
+' BANK_OWNER, in RAM bank 0, holds $FF for each bank the machine lacks (src/asm/mem.inc).
+CONST BANK_OWNER AS UWORD = $AC00, BANK_MISSING AS UBYTE = $FF
+CONST DAY_NAMES AS STRING = "SunMonTueWedThuFriSat"
+
+DIM IS_65816 AS UBYTE, END_TICK AS UBYTE, COUNT AS ULONG
+DIM BANKS AS UWORD, SECTORS AS ULONG, CLOCK_TEXT AS STRING * 24
+
+' N in decimal, without the leading space of STR$.
+FUNCT DECIMAL(N AS ULONG) AS STRING
+  RETURN MID$(STR$(N), 2)
+END FUNCT
+
+' N in two digits, a leading 0 below 10.
+FUNCT TWO_DIGITS(N AS UBYTE) AS STRING
+  IF N < 10 THEN RETURN "0" + DECIMAL(N)
+  RETURN DECIMAL(N)
+END FUNCT
+
+' The clock is read first, so the speed test does not move it on.
+DOS.GETDATE()
+DOS.GETTIME()
+CLOCK_TEXT = MID$(DAY_NAMES, DOS.WEEKDAY * 3 + 1, 3) + " " + DECIMAL(DOS.YEAR) + "-"
+CLOCK_TEXT = CLOCK_TEXT + TWO_DIGITS(DOS.MONTH) + "-" + TWO_DIGITS(DOS.DAY) + " "
+CLOCK_TEXT = CLOCK_TEXT + TWO_DIGITS(DOS.HOURS) + ":" + TWO_DIGITS(DOS.MINUTES) + ":"
+CLOCK_TEXT = CLOCK_TEXT + TWO_DIGITS(DOS.SECONDS)
+
+' REP #$02 clears Z on a 65C816; a 65C02 skips it as a 2-byte NOP.
+ASM
+    lda #0
+    $C2, $02
+    beq done
+    lda #1
+done: sta @IS_65816
+END ASM
+
+' The speed loop counts its passes from one VSYNC to the 60th after it. The common pass takes
+' no branch, so a branch across a page adds no cycle.
+COUNT = 0
+ASM
+    lda TICKS_ADDRESS
+edge: cmp TICKS_ADDRESS
+    beq edge
+    lda TICKS_ADDRESS
+    clc
+    adc #SPEED_TICKS
+    sta @END_TICK
+pass: inc @COUNT
+    beq carry
+same: lda TICKS_ADDRESS
+    cmp @END_TICK
+    beq done
+    jmp pass
+carry: inc @COUNT + 1
+    bne same
+    inc @COUNT + 2
+    jmp same
+done:
+END ASM
+PRINT "CPU:      65C";
+IF IS_65816 THEN
+  PRINT "816";
+ELSE
+  PRINT "02";
+END IF
+PRINT ", "; DECIMAL((COUNT + MHZ_PASSES / 2) / MHZ_PASSES); " MHz"
+
+PRINT "ROM:      6502DOS "; DOS.VERSION()
+
+PRINT "VERA:     ";
+ContentsAt(VERA_CTRL) = DCSEL_VERSION
+IF ContentsAt(VERA_DC_VIDEO) = ASC("V") THEN
+  PRINT "V"; DECIMAL(ContentsAt(VERA_DC_VIDEO + 1)); "."; DECIMAL(ContentsAt(VERA_DC_VIDEO + 2));
+  PRINT "."; DECIMAL(ContentsAt(VERA_DC_VIDEO + 3))
+ELSE
+  PRINT "no version"
+END IF
+' Trap: bit 7 of VERA_CTRL resets VERA, so it is never written set.
+ContentsAt(VERA_CTRL) = 0
+
+' A machine has 64, 128 or 256 banks.
+BANKS = 64
+IF BANK.GET_BYTE(0, BANK_OWNER + 64) <> BANK_MISSING THEN BANKS = 128
+IF BANK.GET_BYTE(0, BANK_OWNER + 128) <> BANK_MISSING THEN BANKS = 256
+PRINT "RAM:      "; DECIMAL(BANKS * 8); " KB, "; DECIMAL(BANKS); " banks, ";
+PRINT DECIMAL(BANK.ALLOC(0)); " free"
+
+PRINT "SD card:  ";
+DOS.DISKFREE(3)
+IF DOS.ERROR <> 0 THEN
+  PRINT DOS.ERRMSG(DOS.ERROR)
+ELSE
+  SECTORS = DOS.TOTAL_HIGH
+  SECTORS = (SECTORS << 16) + DOS.TOTAL_LOW
+  ' The sectors a cluster are a power of 2.
+  DO WHILE DOS.CLUSTER_SECTORS > 1
+    SECTORS = SECTORS << 1
+    DOS.CLUSTER_SECTORS = DOS.CLUSTER_SECTORS >> 1
+  LOOP
+  ' 2^21 sectors are 1 GB; the last bit shifted out rounds.
+  IF SECTORS < $200000 THEN
+    PRINT DECIMAL((SECTORS + 1024) >> 11); " MB FAT32"
+  ELSE
+    PRINT DECIMAL((SECTORS + $100000) >> 21); " GB FAT32"
+  END IF
+END IF
+
+PRINT "Clock:    "; CLOCK_TEXT
+END 0
