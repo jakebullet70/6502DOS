@@ -7,7 +7,7 @@
 ENUM BUILT_IN
   NONE = 0
   RECORD_NUMBER = 7, END_OF_FILE, START_OF_FILE, IS_DELETED, TODAY, TEXT_LENGTH, UPPER_CASE
-  TRIM_END, TEXT_VALUE, WHOLE_PART, FILE_EXISTS, REGISTRY_VALUE, NUMBER_TEXT, PART_TEXT
+  TRIM_END, TEXT_VALUE, WHOLE_PART, FILE_EXISTS, REGISTRY_VALUE, NUMBER_TEXT, PART_TEXT, MENU_PICK
 END ENUM
 
 ' The last two digits of NUMBER.
@@ -20,7 +20,7 @@ FUNCT FUNCTION_NUMBER(NAME AS STRING) AS ENUM.BUILT_IN
   DIM PLACE AS UBYTE
   IF LEN(NAME) > 8 THEN RETURN BUILT_IN.NONE
   ' 8 characters a name. A name padded with spaces can only match at the start of one.
-  PLACE = INSTR("RECNO   EOF     BOF     DELETED DATE    LEN     UPPER   TRIM    VAL     INT     FILE    REG     STR     SUBSTR  ",LEFT$(NAME + "        ", 8))
+  PLACE = INSTR("RECNO   EOF     BOF     DELETED DATE    LEN     UPPER   TRIM    VAL     INT     FILE    REG     STR     SUBSTR  MENU    ",LEFT$(NAME + "        ", 8))
   IF PLACE = 0 THEN RETURN BUILT_IN.NONE
   RETURN PLACE / 8 + BUILT_IN.RECORD_NUMBER
 END FUNCT
@@ -92,7 +92,8 @@ END FUNCT
 ' right-aligned in length characters, 10 and 0 when left out; a longer one comes back whole.
 ' SUBSTR(text, start, count) is count characters from start, all the rest when count is left
 ' out. FILE(text) is .T. when a file or folder matches the path text. REG(text) is the value of
-' the key text in the settings store C:\6502DOS.REG, "" when it is missing.
+' the key text in the settings store C:\6502DOS.REG, "" when it is missing. MENU(row, column,
+' items) is MENU_FUNCTION's.
 SUB APPLY_FUNCTION(ROUTINE AS ENUM.BUILT_IN, ARGUMENTS AS UBYTE)
   DIM SLOT AS UBYTE, VALUE AS UWORD, START AS UBYTE, LENGTH AS UBYTE, KIND AS ENUM.VALUE_KIND
   DIM NEGATIVE AS UBYTE, MOST AS UBYTE, SECOND AS UBYTE, THIRD AS UBYTE, TEXT AS STRING * 255
@@ -102,10 +103,18 @@ SUB APPLY_FUNCTION(ROUTINE AS ENUM.BUILT_IN, ARGUMENTS AS UBYTE)
     SYNTAX_ERROR()
     RETURN
   ENDIF
+  SLOT = VALUE_COUNT - ARGUMENTS
+  IF ROUTINE = BUILT_IN.MENU_PICK
+    IF ARGUMENTS = 3
+      MENU_FUNCTION(SLOT)
+    ELSE
+      SYNTAX_ERROR()
+    ENDIF
+    RETURN
+  ENDIF
   SECOND = 10
   THIRD = 0
   IF ROUTINE = BUILT_IN.PART_TEXT THEN THIRD = 255
-  SLOT = VALUE_COUNT - ARGUMENTS
   IF ARGUMENTS > 1 THEN SECOND = SMALL_WHOLE(SLOT + 1)
   IF ARGUMENTS = 3 THEN THIRD = SMALL_WHOLE(SLOT + 2)
   IF FAILED THEN RETURN

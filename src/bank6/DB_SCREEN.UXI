@@ -1,5 +1,5 @@
-' DB_SCREEN.UXI -- the screen commands of DB.UXB: @ ... SAY ... GET, @ ... TO, BOX, READ, CLEAR
-' and CLS. DB.UXB includes it after DB_DO.UXI.
+' DB_SCREEN.UXI -- the screen commands of DB.UXB: @ ... SAY ... GET, @ ... TO, BOX, READ, CLEAR,
+' CLS, @ ... PROMPT and MENU TO, and the MENU() function. DB.UXB includes it after DB_DO.UXI.
 
 ' The pending GETs, 0 to GET_COUNT - 1, at most GET_LIMIT. GET n has its place, the field it
 ' edits or 0 for a memory variable, the variable's number, and its value's VALUE_KIND. At
@@ -434,6 +434,53 @@ SUB ADD_PROMPT(ROW AS UBYTE, COLUMN AS UBYTE)
   BAR_COLUMN(BAR_COUNT) = COLUMN
   BAR_WIDTH(BAR_COUNT) = LEN(TEXT_OF(0))
   BAR_COUNT = BAR_COUNT + 1
+END SUB
+
+' MENU(row, column, items), the function, with its arguments at SLOT of the value stack and
+' after: draws a box of single lines, its top left corner at row and column, from 0, with the
+' items inside, one a row, and gives the number of the one picked, as PICK_BAR. items is a
+' text of at most 254 characters, the items apart by ;, at most BAR_LIMIT of them. The box is
+' as wide as the widest item, and each bar is that wide. The box stays on the screen. The
+' prompts of @ ... PROMPT are dropped.
+SUB MENU_FUNCTION(SLOT AS UBYTE)
+  DIM ROW AS UBYTE, COLUMN AS UBYTE, WIDTH AS UBYTE, START AS UBYTE, ENDING AS UBYTE
+  DIM NUMBER AS UBYTE, ITEMS AS STRING * 255
+  IF VALUE_TYPE(SLOT + 2) <> VALUE_KIND.TEXT
+    TYPE_MISMATCH()
+    RETURN
+  ENDIF
+  ROW = SMALL_WHOLE(SLOT)
+  COLUMN = SMALL_WHOLE(SLOT + 1)
+  IF FAILED THEN RETURN
+  ' The items are the end of TEXT_BUFFER. They come off, with a ; after the last.
+  START = ContentsAt(VALUE_AT(SLOT + 2))
+  ITEMS = MID$(TEXT_BUFFER, START) + ";"
+  TEXT_BUFFER = LEFT$(TEXT_BUFFER, START - 1)
+  ' The bars are counted and measured first, as the box clears its inside.
+  WIDTH = 0
+  BAR_COUNT = 0
+  START = 1
+  DO WHILE START <= LEN(ITEMS)
+    ENDING = INSTR(ITEMS, ";", START)
+    IF ENDING - START > WIDTH THEN WIDTH = ENDING - START
+    BAR_ROW(BAR_COUNT) = ROW + 1 + BAR_COUNT
+    BAR_COUNT = BAR_COUNT + 1
+    START = ENDING + 1
+  LOOP
+  BOX(ROW, COLUMN, WIDTH + 2, BAR_COUNT + 2, LINES.SINGLE)
+  START = 1
+  FOR NUMBER = 0 TO BAR_COUNT - 1
+    ENDING = INSTR(ITEMS, ";", START)
+    POS(1) = BAR_ROW(NUMBER)
+    POS(0) = COLUMN + 1
+    PRINT MID$(ITEMS, START, ENDING - START);
+    BAR_COLUMN(NUMBER) = COLUMN + 1
+    BAR_WIDTH(NUMBER) = WIDTH
+    START = ENDING + 1
+  NEXT
+  VALUE_COUNT = SLOT
+  PUSH_WHOLE(PICK_BAR())
+  BAR_COUNT = 0
 END SUB
 
 ' MENU TO name: shows the prompts of @ ... PROMPT picked one at a time, as PICK_BAR, and stores
