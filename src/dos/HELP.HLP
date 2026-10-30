@@ -6,8 +6,8 @@ HELP [topic]
   edited. Without a good index HELP still works, more slowly.
   A program with a topic here shows it for -H or -? first: TREE -? is
   HELP TREE.
-  DISKFREE, DISKINFO, DATE, TIME, UPTIME, MEM and WHERE work at the prompt
-  and in a script.
+  DISKFREE, DISKINFO, DATE, TIME, UPTIME, MEM, WHERE and REG work at the
+  prompt and in a script.
   EXIST is for scripts and prints nothing.
   Each puts its result in P1$ for a script to test.
   SILENT prints nothing, not even an error. An error empties P1$.
@@ -95,6 +95,27 @@ WHERE name [SILENT]             (Command line or Script)
   In a script:
     WHERE HEAD SILENT
     IF P1$ = "" PRINT "No HEAD"
+:REG
+REG key [SILENT]                 (Command line or Script)
+REG key = [value]
+  Reads, sets or removes a key of the settings store, C:\6502DOS.REG.
+  REG key prints the value. REG key = value sets it and prints nothing.
+  REG key = removes the key.
+  SILENT goes in capitals.
+  A key is 1 to 32 characters. Case does not matter.
+  A key read with a space in it is quoted.
+  Key and value together are at most 240 characters.
+  The words of an unquoted value are joined by one space.
+  A value holds 9 arguments less those before it. A quoted value counts as
+  one.
+  Sets P1$ to the value. An error or a removed key empties P1$.
+  Exit code 1 is a key not found, 2 no key given, 3 any other error.
+  At the prompt:
+    REG THEME = DARK BLUE
+    REG THEME
+  In a script:
+    REG THEME SILENT
+    IF P1$ = "DARK BLUE" PRINT "Dark"
 :SHELL
 The shell runs a line typed at the prompt, or a line of a script.
 The first word is a statement, an alias or a program. Case does not matter.

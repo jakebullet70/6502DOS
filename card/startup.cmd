@@ -13,6 +13,9 @@ REM BIND LS FILES
 BIND SET=SETSYS
 BIND h=hdir
 SETSYS PROMPT$="$p$g"
+
+REM --- sets theme
+REG THEME = DARK
 goto out
 
 

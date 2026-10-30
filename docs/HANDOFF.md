@@ -2433,6 +2433,8 @@ the beta 1 list).
 
 ## Next
 
+- Fonts (the user, 2026-10-30): revisit them. `GUI.F08` replaces `$DB`, the solid block, with a
+  GUI glyph, so block art such as `splash.dot` breaks under that font.
 - XFMGR (the user, 2026-10-30): port XFMGR2, the Prog8 file manager at
   `C:\dev\CmdrX16\dos_tools\XFMGR2`, to UXCBASIC. The plan is `docs/XFMGR.PLAN.md`, steps X1 to X17,
   one a compact. Asm approved for this plan. Done: the plan. Next: X1, after the user's word.

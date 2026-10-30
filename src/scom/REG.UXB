@@ -1,0 +1,60 @@
+'=============================================================================================
+' -- Callable Commandlet -----> REG key [SILENT]    REG key = [value]
+' -- Reads, sets or removes a key of the settings store, C:\6502DOS.REG.
+' -- REG key prints the value. SILENT, in capitals, prints nothing.
+' -- REG key = value sets the key and prints nothing. REG key = removes the key.
+' -- The key is before the first = and the value is after it, each without the spaces at its
+' -- start and its end. The words of an unquoted value are joined by one space. A value holds
+' -- 9 arguments less those before it, and a quoted value counts as one.
+' -- A key read with a space in it is quoted.
+' -- A key is 1 to 32 characters and matches in any case. Key and value together are at most
+' -- 240 characters.
+' -- Sets P1$ to the value, and to an empty string on an error or a removed key.
+' -- A key not found prints Key not found and gives exit code 1. No key prints Required
+' -- parameter missing and gives exit code 2. Any other error prints its message and gives
+' -- exit code 3. Exit code 0 otherwise.
+' --
+' -- From a script:
+' --     REG THEME = DARK
+' --     REG THEME SILENT
+' --     IF P1$ = "DARK" PRINT "Dark"
+'=============================================================================================
+#INCLUDE "DOS.UXI"
+#INCLUDE "HEAP.UXI"
+#INCLUDE "SCOM.UXI"
+DIM ARGUMENTS AS STRING * 255, REG_KEY AS STRING * 255, REG_VALUE AS STRING * 255
+DIM SLOT AS UBYTE, EQUALS_AT AS UBYTE, ERROR_CODE AS UBYTE
+
+FOR SLOT = SLOT_P1 TO SLOT_P9
+  ARGUMENTS = ARGUMENTS + HEAP.SYS_STRINGS_GET(SLOT) + " "
+NEXT
+EQUALS_AT = INSTR(ARGUMENTS, "=")
+IF EQUALS_AT THEN
+  REG_KEY = TRIM$(LEFT$(ARGUMENTS, EQUALS_AT - 1))
+ELSE
+  REG_KEY = HEAP.SYS_STRINGS_GET(SLOT_P1)
+  IF HEAP.SYS_STRINGS_GET(SLOT_P2) = "SILENT" THEN SILENT = 1
+END IF
+IF REG_KEY = "" THEN
+  IF SILENT = 0 THEN PRINT "Required parameter missing"
+  END 2
+END IF
+IF EQUALS_AT THEN
+  REG_VALUE = TRIM$(MID$(ARGUMENTS, EQUALS_AT + 1))
+  DOS.REG_SET(REG_KEY, REG_VALUE)
+ELSE
+  REG_VALUE = DOS.REG_GET(REG_KEY, "")
+END IF
+ERROR_CODE = DOS.ERROR
+IF ERROR_CODE THEN REG_VALUE = ""
+HEAP.SYS_STRINGS_SET(SLOT_P1, REG_VALUE)
+IF ERROR_CODE = 2 THEN
+  IF SILENT = 0 THEN PRINT "Key not found"
+  END 1
+END IF
+IF ERROR_CODE THEN
+  IF SILENT = 0 THEN PRINT DOS.ERRMSG(ERROR_CODE)
+  END 3
+END IF
+IF SILENT = 0 AND EQUALS_AT = 0 THEN PRINT REG_VALUE
+END 0
