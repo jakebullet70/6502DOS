@@ -27,10 +27,9 @@ src/utils/FOLDER/NAME.UXB, a utility, compiles to build/sys/NAME.COM, and the fi
 src/utils/FOLDER are copied to build/source/xcbasic/FOLDER. Each test named in SHOWN_TESTS, tests/NAME.UXB,
 compiles to build/sys/NAME.COM as well. CMDSHELL.COM, ROMSHELL.COM and MSBASIC.COM are copied to build/sys.
 
-Then tools/mksd.py makes the SD card image build/SD.IMG from the folder sd, the folder build/sys,
+Then tools/mksd.py makes the SD card image build/SD.IMG from the folder card, the folder build/sys,
 which is the card's folder sys, the folder build/source, which is the card's folder source, the
-folders of CARD_FOLDERS, the card's folder TEST, and
-the folder card, gathered in build/card. TEST holds the other COM files in build/bas and the
+folders of CARD_FOLDERS and the card's folder TEST, gathered in build/card. TEST holds the other COM files in build/bas and the
 files and folders of the test card's folder tests/sd. A file in card wins a
 name it shares with the others. Before that, each file and folder that the X16 added to the old
 build/SD.IMG or changed goes into card, and each one it deleted leaves card; build/SD.SUM lists
@@ -41,8 +40,8 @@ LICENSE, NOTICE, the files of tools/release (RUN.BAT and the folder x16emu with 
 and x16emu with its DLLs from EMU, in the folder x16emu. It zips build/release to
 release/6502DOS-VERSION-win.zip, under the folder 6502DOS, with VERSION from api.py, such as
 0.1.0-beta1. That SD.IMG, staged in
-build/release-card, holds the folder sd less RELEASE_SKIP, sys, source and the folders of
-CARD_FOLDERS; it has no TEST and nothing from card. Exit status 1 when a tool or a
+build/release-card, holds the folder card less RELEASE_SKIP, sys, source and the folders of
+CARD_FOLDERS. Exit status 1 when a tool or a
 compile failed, api.py is inconsistent, or build/SD.IMG or build/release is open in x16emu.
 """
 
@@ -75,7 +74,6 @@ ROM = os.path.join(BUILD, "6502DOS.ROM")
 TEST_ROM = os.path.join(BUILD, "TEST.ROM")
 LABELS = os.path.join(BUILD, "6502DOS.LBL")
 BANK0_START = 0xC000
-SD_FOLDER = os.path.join(ROOT, "sd")
 TEST_SD_FOLDER = os.path.join(ROOT, "tests", "sd")
 SD_IMAGE = os.path.join(BUILD, "SD.IMG")
 CARD = os.path.join(ROOT, "card")
@@ -85,8 +83,8 @@ RELEASE = os.path.join(BUILD, "release")
 RELEASE_STAGE = os.path.join(BUILD, "release-card")
 RELEASE_FILES = os.path.join(ROOT, "tools", "release")
 RELEASE_ZIPS = os.path.join(ROOT, "release")
-# The files of the folder sd left off the release card.
-RELEASE_SKIP = ("WIDE.TXT",)
+# The files of the folder card left off the release card.
+RELEASE_SKIP = ("WIDE.TXT", "TEST")
 # x16emu and the DLLs it loads, copied to build/release/x16emu. Their licences are in
 # tools/release/x16emu.
 EMU = r"C:\8bitProgramming\x16emu"
@@ -99,8 +97,8 @@ UTILITIES = os.path.join(ROOT, "src", "dos")
 UTILS = os.path.join(ROOT, "src", "utils")
 SOURCE_OUT = os.path.join(BUILD, "source")
 # The folders of the card that start empty.
-CARD_FOLDERS = ("sys/temp", "sys/themes", "sys/basic", "sys/xbase", "sys/edit", "source/basic", "source/xcbasic",
-                "source/xbase", "apps", "games")
+CARD_FOLDERS = ("help", "sys/temp", "sys/themes", "sys/basic", "sys/xbase", "sys/edit", "sys/uxcbasic", "source/basic",
+                "source/xcbasic", "source/uxcbasic", "source/scripts", "source/xbase", "apps", "games")
 # The utilities of src/utils that go to build/sys/themes, with the fonts and color themes.
 THEME_PROGRAMS = ("THEMED", "FONTEDIT")
 # The tests that also go to build/sys, for the user to run on the card.
@@ -281,13 +279,12 @@ def make_test_rom():
         out.write(image)
 
 
-def stage_card(stage, sources, tests, skip=()):
-    """Fill the folder stage with the folder sd less the names in skip, CARD_FOLDERS, the files
-    and folders in sources, and those in tests under the folder TEST, which only tests makes. Return the
-    upper-case paths it holds, joined by "/"."""
+def stage_card(stage, sources, tests):
+    """Fill the folder stage with CARD_FOLDERS, the files and folders in sources, and those in
+    tests under the folder TEST, which only tests makes. Return the upper-case paths it holds,
+    joined by "/"."""
     shutil.rmtree(stage, ignore_errors=True)
     ignore = shutil.ignore_patterns(".*")
-    shutil.copytree(SD_FOLDER, stage, ignore=shutil.ignore_patterns(".*", *skip))
     for folder in CARD_FOLDERS:
         os.makedirs(os.path.join(stage, *folder.split("/")), exist_ok=True)
     if tests:
@@ -361,13 +358,11 @@ def pull_card(staged):
 
 
 def make_card(sources, tests):
-    """Write build/SD.IMG from the folder sd, the files and folders in sources, those in tests
-    under TEST, and the folder card, which wins a name they share, after pull_card. Write
-    build/SD.SUM."""
+    """Write build/SD.IMG from the files and folders in sources, those in tests under TEST,
+    and the folder card, which wins a name they share, after pull_card. Write build/SD.SUM."""
     staged = stage_card(STAGE, sources, tests)
     pull_card(staged)
-    if os.path.isdir(CARD):
-        shutil.copytree(CARD, STAGE, ignore=shutil.ignore_patterns(".*"), dirs_exist_ok=True)
+    shutil.copytree(CARD, STAGE, ignore=shutil.ignore_patterns(".*"), dirs_exist_ok=True)
     try:
         mksd.make(STAGE, SD_IMAGE)
     except PermissionError:
@@ -378,8 +373,8 @@ def make_card(sources, tests):
 
 
 def make_release(sources):
-    """Empty build/release and write its SD.IMG from the folder sd less RELEASE_SKIP and the
-    files and folders in sources, with no TEST and nothing from card. Copy the ROM, LICENSE,
+    """Empty build/release and write its SD.IMG from the folder card less RELEASE_SKIP and the
+    files and folders in sources. Copy the ROM, LICENSE,
     NOTICE, the files of tools/release and EMU_FILES beside it. Zip build/release into
 RELEASE_ZIPS."""
     try:
@@ -387,7 +382,8 @@ RELEASE_ZIPS."""
             shutil.rmtree(RELEASE)
     except PermissionError:
         sys.exit("build: cannot empty %s; close x16emu" % os.path.relpath(RELEASE, ROOT))
-    stage_card(RELEASE_STAGE, sources, [], RELEASE_SKIP)
+    stage_card(RELEASE_STAGE, sources, [])
+    shutil.copytree(CARD, RELEASE_STAGE, ignore=shutil.ignore_patterns(".*", *RELEASE_SKIP), dirs_exist_ok=True)
     os.makedirs(RELEASE)
     mksd.make(RELEASE_STAGE, os.path.join(RELEASE, "SD.IMG"))
     for path in (ROM, os.path.join(ROOT, "LICENSE"), os.path.join(ROOT, "NOTICE")):

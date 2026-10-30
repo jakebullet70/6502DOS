@@ -1,5 +1,5 @@
-"""Makes sd/sys/themes/GUI.F08, the GUI font: the CP437 font of src/asm/font.s with GUI glyphs in
-some slots. Also makes sd/sys/themes/CP437.F08, the font of font.s unchanged; FONT loads it to put
+"""Makes card/sys/themes/GUI.F08, the GUI font: the CP437 font of src/asm/font.s with GUI glyphs in
+some slots. Also makes card/sys/themes/CP437.F08, the font of font.s unchanged; FONT loads it to put
 the ROM's font back.
 
 GUI.F08 is 2048 bytes raw: 256 glyphs of 8 by 8 pixels, 8 bytes each, from character 0 up, the
@@ -21,8 +21,8 @@ import zlib
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FONT_SOURCE = os.path.join(ROOT, "src", "asm", "font.s")
-FONT_OUT = os.path.join(ROOT, "sd", "sys", "themes", "GUI.F08")
-CP437_OUT = os.path.join(ROOT, "sd", "sys", "themes", "CP437.F08")
+FONT_OUT = os.path.join(ROOT, "card", "sys", "themes", "GUI.F08")
+CP437_OUT = os.path.join(ROOT, "card", "sys", "themes", "CP437.F08")
 
 # The GUI glyphs. $B5-$D8 are CP437's mixed single and double box junctions; $01-$06 are
 # CP437's smileys and card suits. Each glyph is 8 rows of 8 pixels, '#' set.

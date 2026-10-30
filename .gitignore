@@ -1,9 +1,6 @@
 # Build and test output: tools/build.py writes build/, UXCBASIC/tests.py writes build/uxctests/.
 build/
 
-# The files the X16 saves on build/SD.IMG; tools/build.py keeps them here and puts them back.
-card/
-
 # Python
 __pycache__/
 *.pyc

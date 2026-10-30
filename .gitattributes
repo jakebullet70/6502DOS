@@ -1,6 +1,9 @@
 # Auto detect text files and perform LF normalization
 * text=auto
 
+# The card's files go on the card byte for byte.
+card/** -text
+
 # MSBASIC reads program files with CR LF line ends.
 tests/sd/*.BAS text eol=crlf
 src/dos/HELPBAS.HLP text eol=crlf
