@@ -11,7 +11,7 @@
 .include "api.inc"
 
 .export api_bank_alloc, api_bank_free, api_bank_call, bank_init, bank_exit
-.import bank0
+.import bank0, host_on
 .importzp exec_depth, saved_bank, gate_a
 
 .segment "KERNELRAM"
@@ -20,7 +20,7 @@ bank_want:    .res 1            ; bank_alloc: the length of the run; bank_exit: 
 
 .segment "CODE"
 
-; bank_init: marks bank 0, VARBANK and the banks the machine lacks as the system's, the other banks
+; bank_init: marks bank 0, VARBANK, HOST_BANK when the calls go to the host, and the banks the machine lacks as the system's, the other banks
 ; as free. A machine has 64, 128 or 256 banks. Bank 64 or 128 is missing when a byte written to it
 ; reads back wrong or lands in bank 0. Needs RAM bank 0 selected. Returns Y = the number of
 ; banks, 0 for 256. Changes A and X.
@@ -54,6 +54,10 @@ bank_init:
         bcs @free
         lda #BANK_SYSTEM
         sta BANK_OWNER + VARBANK
+        bit host_on
+        bpl @done
+        sta BANK_OWNER + HOST_BANK
+@done:
         rts
         .assert VARBANK < 64, error, "VARBANK is on every machine"
 

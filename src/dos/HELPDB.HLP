@@ -1,6 +1,6 @@
 :!
 ! [command line]
-  Runs C:\ROMSHELL.COM, the shell, without C:\STARTUP.CMD. ! and RUN are
+  Runs C:\sys\ROMSHELL.COM, the shell, without C:\STARTUP.CMD. ! and RUN are
   the same command.
   Alone, it gives the shell's prompt, and the shell's END comes back to DB.
   With a command line, the shell runs that line, and the script it starts,
@@ -127,7 +127,7 @@ DATE()
   The date of the clock, as text MM/DD/YY.
 :DB
 DB [file]
-  DB is a database at a dot prompt, after dBASE II. DB.COM starts it. DB
+  DB is a database at a dot prompt, after dBASE II. XBASE.COM starts it. DB
   file runs the command file file first, as DO does. QUIT ends it.
   DB prints the prompt ". " and runs each line typed. A command word may be
   cut to its first 4 letters or more, as DISP STRU for DISPLAY STRUCTURE.
@@ -261,7 +261,7 @@ GOTO n | GOTO TOP | GOTO BOTTOM
   The same as GO. HELPDB GO gives GO.
 :HELP
 HELP [topic]
-  Runs C:\DOS\HELPDB.COM on topic, then comes back to the prompt. HELP
+  Runs C:\sys\HELPXBASE.COM on topic, then comes back to the prompt. HELP
   alone lists the topics.
   HELP REPLACE
 :IF
@@ -353,7 +353,7 @@ MENU TO name | MENU(row, column, items)
   ? MENU(2, 30, "Red;Green;Blue")
 :MODIFY
 MODIFY COMMAND file
-  Runs C:\DOS\EDIT.COM on file, with .PRG added when it has no extension.
+  Runs C:\sys\EDIT.COM on file, with .PRG added when it has no extension.
   The tables, indexes and command files stay open. Each takes one of the
   files the editor can open.
   MODIFY COMMAND REPORT

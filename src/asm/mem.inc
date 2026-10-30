@@ -61,6 +61,15 @@ EXEC_LEVELS   = 4
 BANKED_RAM    = $A000           ; $A000-$BFFF, the bank in RAM_BANK
 ROM           = $C000           ; $C000-$FFFF, the bank in ROM_BANK
 
+; RAM bank HOST_BANK, taken only when the calls go to the host: hostfs.inc's directories of the
+; searches in progress, 128 bytes each, and its window on a listing.
+HOST_BANK     = 12
+HOST_DIRS     = $A000
+HOST_WINDOW   = $B400
+HOST_ITEM_SIZE = 42
+HOST_WINDOW_COUNT = 73
+.assert HOST_WINDOW + HOST_WINDOW_COUNT * HOST_ITEM_SIZE <= ROM, error, "the window fits the bank"
+
 ; A string heap (strings.s): a RAM bank of string blocks. VARBANK is the shared one.
 VARBANK       = 11
 HEAP_BUMP     = $A000           ; the address of the next block
@@ -89,6 +98,9 @@ FAT32_BUFFER  = $A900           ; $A900-$AAFF: the FAT32 library's sector buffer
 RENAME_PATH   = $AB00           ; $AB00-$ABFF: api_rename's new path
 BANK_OWNER    = $AC00           ; $AC00-$ACFF: the owner of each RAM bank (banks.s)
 FAT32_CONTEXT_RAM = $AD00       ; $AD00-$AEFF: the FAT32 library's contexts, 32 bytes each
+HOST_CWD      = $AF00           ; $AF00-$AF4F: hostfs.inc's current directory, from the root
+HOST_LINE     = $AF50           ; $AF50-$AFCF: hostfs.inc's line of a listing or a status
+HOST_PATHS    = $B000           ; $B000-$B7FF: hostfs.inc's path of each channel, 128 bytes each
 BANK_SYSTEM   = $FF             ; BANK_OWNER: a kernel bank, or a bank the machine lacks
 BANK_FIRST    = $80             ; BANK_OWNER: the first bank of a run
 BANK_KEPT     = $FE             ; BANK_OWNER: a bank of a program that ended with keep

@@ -39,7 +39,7 @@
 ' -- The console's font at the start goes back at the end. Exit code 0.
 ' --
 ' -- From a prompt:
-' --     FONTEDIT \UTILS\GUI.F08
+' --     FONTEDIT \sys\themes\GUI.F08
 '=============================================================================================
 #INCLUDE "DOS.UXI"
 #INCLUDE "HEAP.UXI"

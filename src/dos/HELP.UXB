@@ -1,10 +1,10 @@
 '=============================================================================================
 ' -- HELP [topic | -R]
-' -- prints the help on topic from C:\DOS\HELP.HLP. With no topic it lists the topic names.
+' -- prints the help on topic from C:\sys\HELP.HLP. With no topic it lists the topic names.
 ' -- A small letter in topic is the same as a capital.
 ' -- In HELP.HLP a line :NAME starts the topic NAME, in capitals. The lines after it, up to the
 ' -- next :NAME line, are its text. A line is 80 characters at most; the rest is cut.
-' -- C:\DOS\HELP.IDX indexes HELP.HLP. Its first line is the size of HELP.HLP, such as 22387,
+' -- C:\sys\HELP.IDX indexes HELP.HLP. Its first line is the size of HELP.HLP, such as 22387,
 ' -- after a space. Each line after it is a topic name, a space and the byte position of its
 ' -- :NAME line, such as PUSHD 21034. Lines end with CR LF. tools/build.py writes the same file.
 ' -- HELP finds a topic by the index and reads only its text. A missing index, or one whose size
@@ -26,7 +26,7 @@
 #INCLUDE "DOS.UXI"
 #INCLUDE "HEAP.UXI"
 CONST SLOT_P1 AS UBYTE = 0, BLOCK_SIZE AS UBYTE = 255, LF AS UBYTE = 10, CR AS UBYTE = 13
-CONST HELP_NAME$ = "C:\DOS\HELP.HLP", INDEX_NAME$ = "C:\DOS\HELP.IDX"
+CONST HELP_NAME$ = "C:\sys\HELP.HLP", INDEX_NAME$ = "C:\sys\HELP.IDX"
 DIM TOPIC AS STRING * 80, TEXT_LINE AS STRING * 80, HEADING AS STRING * 81
 CONST COMMAND_TAIL AS UWORD = $0780        ' a length byte, the text, then a CR
 DIM HELP_FILE AS UWORD, INDEX_FILE AS UWORD, FOUND AS UBYTE, PLACE AS ULONG, TAIL_PLACE AS UWORD

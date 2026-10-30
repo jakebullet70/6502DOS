@@ -2,7 +2,7 @@
 HELP [topic]
   Prints the help on topic. With no topic it lists the topics.
   HELP SHELL tells about the shell's statements.
-  HELP -R remakes the topic index, C:\DOS\HELP.IDX, after HELP.HLP is
+  HELP -R remakes the topic index, C:\sys\HELP.IDX, after HELP.HLP is
   edited. Without a good index HELP still works, more slowly.
   A program with a topic here shows it for -H or -? first: TREE -? is
   HELP TREE.
@@ -87,7 +87,7 @@ MEM [SILENT]                    (Command line or Script)
 :WHERE
 WHERE name [SILENT]             (Command line or Script)
   Tells the path of the program the shell runs for name.
-  Prints a path such as C:\DOS\HEAD.COM.
+  Prints a path such as C:\sys\HEAD.COM.
   A name with no extension is looked for as .SCOM, then .COM, then .CMD.
   Sets P1$ to the path, or to an empty string when nothing is found.
   At the prompt:
@@ -105,13 +105,13 @@ The first word is a statement, an alias or a program. Case does not matter.
   name = expression sets a variable. There is no LET.
   A program is a .SCOM, .COM or .CMD file. See HELP WHERE.
   See also HELP SCRIPTS, VARIABLES, EXPRESSIONS, REDIRECT and PROMPT.
-  C:\ROMSHELL.COM, the shell as a program, takes one switch:
+  C:\sys\ROMSHELL.COM, the shell as a program, takes one switch:
     -N skips C:\STARTUP.CMD.
     -S asks [Y,N]? before each line of C:\STARTUP.CMD. N skips the line.
     -C line skips C:\STARTUP.CMD, runs line and the script it starts,
        then ends.
   Example:
-    RUN C:\ROMSHELL.COM -C DIR
+    RUN C:\sys\ROMSHELL.COM -C DIR
 :SCRIPTS
 A script is a text file NAME.CMD of shell lines. Typing NAME runs it.
   The words after NAME go in P1$ to P9$, one each.
@@ -320,7 +320,7 @@ SETSYS [name = value]           (Command line or Script)
   TEMP$ is the directory of the pipe files. Empty puts them in the root.
   Examples:
     SETSYS TEMP$ = "C:\TMP"
-    PATH$ = "C:\DOS"
+    PATH$ = "C:\sys"
 :BIND
 BIND [name = command]           (Command line or Script)
   Makes name run command. The words typed after name follow the command.
@@ -486,18 +486,18 @@ XCOPY source [target] [-s] [-e] [-p] [-l] [-y] (Command line only)
     XCOPY DOCS\*.TXT BAK -sp
 :HELPBAS
 HELPBAS [topic | -R]            (Command line only)
-  Prints the help on the MSBASIC keyword topic, from C:\DOS\HELPBAS.HLP.
+  Prints the help on the MSBASIC keyword topic, from C:\sys\HELPBAS.HLP.
   With no topic it lists the topics. Small letters are the same as capitals.
-  HELPBAS -R remakes the topic index, C:\DOS\HELPBAS.IDX, after HELPBAS.HLP
+  HELPBAS -R remakes the topic index, C:\sys\HELPBAS.IDX, after HELPBAS.HLP
   is edited. Without a good index HELPBAS still works, more slowly.
   Examples:
     HELPBAS PRINT
     HELPBAS str$
 :HELPDB
 HELPDB [topic | -R]             (Command line only)
-  Prints the help on the DB command topic, from C:\DOS\HELPDB.HLP.
+  Prints the help on the DB command topic, from C:\sys\HELPDB.HLP.
   With no topic it lists the topics. Small letters are the same as capitals.
-  HELPDB -R remakes the topic index, C:\DOS\HELPDB.IDX, after HELPDB.HLP
+  HELPDB -R remakes the topic index, C:\sys\HELPDB.IDX, after HELPDB.HLP
   is edited. Without a good index HELPDB still works, more slowly.
   Examples:
     HELPDB
@@ -514,7 +514,7 @@ HDIR [d:][path] [-1..-9] [-l] [-n -e -d -s] [-t] [-a] [-c] (Command line only)
   Switches may share one -: -2le.
   The listing stops at each full screen. Esc or Ctrl+C there ends it.
   Output to a file or to NUL has no colors and no stops.
-  HDIR is in C:\UTILS.
+  HDIR is in C:\sys.
   Examples:
     HDIR C:\DOCS -1t
     HDIR *.COM -s
@@ -522,13 +522,13 @@ HDIR [d:][path] [-1..-9] [-l] [-n -e -d -s] [-t] [-a] [-c] (Command line only)
 HELPED [name]                   (Command line only)
   Edits the text file name, or README.TXT, in a form. The text is 2047
   bytes at most. A longer file loads cut, and Save then writes nothing.
-  Folder picks the current directory, C:\UTILS or C:\DOS.
+  Folder picks the current directory, C:\sys or C:\sys.
   With Backup checked, Save first renames the old file to NAME.BAK.
   Theme picks Dark, Light or Gray. It takes effect at the next button.
   Tab and Shift+Tab move between the controls.
   Alt+L loads, Alt+S saves. Alt+Q or Esc ends without saving.
   The last row tells what Load and Save did.
-  HELPED is in C:\UTILS.
+  HELPED is in C:\sys.
   Example:
     HELPED HDIR.TXT
 :THEMED
@@ -545,7 +545,7 @@ THEMED [name]                   (Command line only)
   Esc ends. When the theme is not saved, a dialog asks first.
   A theme file is 13 bytes, a color for each role: background * 16 +
   foreground.
-  THEMED is in C:\UTILS.
+  THEMED is in C:\sys.
   Example:
     THEMED BLUE.GTH
 :ZIP
@@ -558,7 +558,7 @@ ZIP [-r] archive files          (Command line only)
   A file whose name is in the archive already replaces that entry.
   Each file is deflated, and its line tells the saving in percent. A file
   of up to 32768 bytes that deflate does not shrink is stored.
-  ZIP is in C:\UTILS.
+  ZIP is in C:\sys.
   Examples:
     ZIP GAMES *.PRG
     ZIP -r C:\BACKUP DOCS SRC\*.UXB
@@ -574,7 +574,7 @@ UNZIP -l archive [names]
   An entry whose name has a drive or a .. folder is skipped.
   -l lists the entries with their lengths, dates and times.
   An archive name with no . that does not open gets .ZIP.
-  UNZIP is in C:\UTILS.
+  UNZIP is in C:\sys.
   Examples:
     UNZIP GAMES
     UNZIP -o -d C:\GAMES GAMES.ZIP *.PRG

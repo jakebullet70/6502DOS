@@ -1,5 +1,5 @@
-' DB_SCOPE.UXI -- the scopes of DB.UXB and the commands that take one: LIST, DISPLAY scope,
-' LOCATE, CONTINUE, COUNT and SUM. DB.UXB includes it after DO_STORE, before DB_CHANGE.UXI.
+' DB_SCOPE.UXI -- the scopes of XBASE.UXB and the commands that take one: LIST, DISPLAY scope,
+' LOCATE, CONTINUE, COUNT and SUM. XBASE.UXB includes it after DO_STORE, before DB_CHANGE.UXI.
 
 DIM SCOPE_START AS UWORD            ' the record the scope starts at, 0 for the first of the order
 DIM SCOPE_LEFT AS UWORD             ' the records of the scope still to look at

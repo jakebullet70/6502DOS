@@ -15,6 +15,16 @@
 .include "api.inc"
 .include "far.inc"
 
+; HOST_GO target: goes to target, in hostfs.inc, when the calls go to the host. Keeps A, X, Y
+; and carry.
+.macro HOST_GO target
+        bit host_on
+        bpl :+
+        jmp target
+:
+.endmacro
+
+.export host_on, host_status
 .export lib_init, lib_open, lib_read, lib_io, lib_seek, lib_close, api_findfirst, api_findnext
 .export api_delete, api_rename, api_mkdir, api_rmdir, api_chdir, api_getcwd, api_diskfree
 .export api_absread, api_abswrite
@@ -28,8 +38,8 @@
 .import fat32_cwd, fat32_size, fat32_dirent, fat32_errno, fat32_readonly, skip_mask, sector_lba
 .import fat32_root, fat32_sectors_per_cluster, fat32_cluster_count
 .import sync_sector_buffer, sdcard_read_sector, sd_input, sd_output, jsrfar1
-.import DPB, current_drive, create_attr
-.importzp saved_bank, bank_save, file_context, file_size
+.import DPB, current_drive, create_attr, match_name
+.importzp saved_bank, bank_save, file_context, file_size, krn_ptr1
 
 ; The search state of a find buffer, before FIND_ATTR.
 FIND_PATTERN  = 0               ; the name part of findfirst's path, ended by 0
@@ -68,7 +78,7 @@ lib_init:
         sta sector_lba+1
         sta sector_lba+2
         sta sector_lba+3
-        rts
+        jmp host_probe
 
 ; api_findfirst: findfirst, call 13. Selects RAM bank 0 while it runs and keeps the caller's
 ; bank in saved_bank.
@@ -76,6 +86,11 @@ api_findfirst:
         pha                     ; the attributes
         jsr lib_enter
         bcs @fail
+        bit host_on
+        bpl @pattern_start
+        jsr host_find_dir
+        bcs @fail
+@pattern_start:
         ldx lib_slash           ; the name part to FIND_PATTERN: lib_find is lib_path
         ldy #$FF
 @pattern:
@@ -102,10 +117,16 @@ api_findfirst:
         bne @clear
         pla
         sta lib_find + FIND_SEARCH
+        bit host_on
+        bpl @library
+        jsr host_find_init
+        bra @search
+@library:
         stz fat32_ptr           ; the current directory, which lib_enter set
         stz fat32_ptr+1
         jsr fat32_open_dir
         bcc lib_drop_errno
+@search:
         jsr find_search
         bcc find_put
         cmp #ERR_NO_MORE_FILES
@@ -132,6 +153,8 @@ api_findnext:
         sta lib_find,y
         dey
         bpl @state
+        bit host_on
+        bmi @search
         lda #0                  ; the volume
         jsr fat32_alloc_context
         bcc lib_fault
@@ -140,6 +163,7 @@ api_findnext:
         bcc lib_drop_errno
         jsr fat32_seek_dir
         bcc lib_drop_errno
+@search:
         jsr find_search
         bcs lib_drop
         ; fall through
@@ -201,6 +225,7 @@ lib_done:
 ; api_delete: delete, call 6. Selects RAM bank 0 while it runs and keeps the caller's bank in
 ; saved_bank.
 api_delete:
+        HOST_GO host_delete
         jsr lib_enter
         bcs lib_bank
         jsr name_check
@@ -212,6 +237,7 @@ api_delete:
 ; api_mkdir: mkdir, call 15. Selects RAM bank 0 while it runs and keeps the caller's bank in
 ; saved_bank.
 api_mkdir:
+        HOST_GO host_mkdir
         jsr lib_enter
         bcs lib_bank
         jsr name_check
@@ -226,6 +252,7 @@ api_mkdir:
 ; size. Access 1 or 2 on a read-only file gives ERR_ACCESS. Selects RAM bank 0 while it runs
 ; and keeps the caller's bank in saved_bank. Changes X and Y.
 lib_open:
+        HOST_GO host_open
         php
         pha
         jsr lib_enter
@@ -257,7 +284,8 @@ lib_open:
         and #ATTR_READ_ONLY | ATTR_HIDDEN | ATTR_SYSTEM | ATTR_ARCHIVE
         sec                     ; empty a file that exists
         jsr fat32_create
-        bcc lib_drop_errno
+        bcs @opened
+        jmp lib_drop_errno
 @opened:
         jsr fat32_get_size
         ldx #3
@@ -276,6 +304,7 @@ lib_open:
 ; A \ at the end of the path is left out. Selects RAM bank 0 while it runs and keeps the
 ; caller's bank in saved_bank.
 api_rmdir:
+        HOST_GO host_rmdir
         jsr lib_take
         bcs @bank
         jsr path_trim
@@ -323,6 +352,7 @@ api_rmdir:
 ; api_chdir: chdir, call 18. Selects RAM bank 0 while it runs and keeps the caller's bank in
 ; saved_bank.
 api_chdir:
+        HOST_GO host_chdir
         jsr lib_enter
         bcs @bank
         bit lib_wild
@@ -355,6 +385,7 @@ api_chdir:
 ; paths from the current directory. A directory moved to another directory gives ERR_ACCESS.
 ; Selects RAM bank 0 while it runs and keeps the caller's bank in saved_bank.
 api_rename:
+        HOST_GO host_rename
         lda r0+1                ; the old path, for later
         pha
         lda r0
@@ -435,6 +466,7 @@ api_rename:
 ; api_diskfree: diskfree, call 22. The free clusters are the FS info sector's count, which the
 ; library keeps. Selects RAM bank 0 while it runs and keeps the caller's bank in saved_bank.
 api_diskfree:
+        HOST_GO host_diskfree
         jsr drive_enter
         bcs @bank
         lda #0                  ; the volume: a context mounts it
@@ -482,6 +514,7 @@ api_abswrite:
 api_absread:
         clc
 abs_io:
+        HOST_GO host_abs_io
         ldy RAM_BANK
         sty saved_bank
         stz RAM_BANK
@@ -536,6 +569,7 @@ abs_io:
 ; api_getcwd: getcwd, call 19. Copies the path cwd_build makes to r0. Selects RAM bank 0 while
 ; it runs and keeps the caller's bank in saved_bank.
 api_getcwd:
+        HOST_GO host_getcwd
         jsr drive_enter
         bcs @bank
         lda #0                  ; the volume
@@ -638,6 +672,7 @@ lib_enter:
 
 ; lib_split: lib_enter after lib_take.
 lib_split:
+        HOST_GO host_split
         lda #0                  ; the volume
         jsr fat32_alloc_context
         bcs @taken
@@ -768,6 +803,7 @@ dir_change:
 ; the file. RAM bank 0 must be selected, and saved_bank must be the bank of a buffer at
 ; $A000-$BFFF. Changes X and Y.
 lib_read:
+        HOST_GO host_read
         ldx r1
         bne @read
         ldx r1+1
@@ -811,6 +847,7 @@ lib_errno_set:
 ; lib_seek: moves context A to the position in r0 and r1. A position past the end of the file
 ; stays at the end. RAM bank 0 must be selected. Changes X and Y.
 lib_seek:
+        HOST_GO host_seek
         jsr fat32_set_context
         bcc lib_errno_set
         ldx #3
@@ -827,6 +864,7 @@ lib_seek:
 ; lib_close: closes context A and frees it, even on a fault. RAM bank 0 must be selected.
 ; Changes X and Y.
 lib_close:
+        HOST_GO host_close
         sta lib_context
         jsr fat32_set_context
         bcc @free
@@ -878,6 +916,7 @@ lib_io:
 ; drive stops the write early, with no error. Returns r1 = the bytes written. RAM bank 0 must be
 ; selected, and saved_bank must be the bank of a buffer at $A000-$BFFF. Changes X and Y.
 lib_write:
+        HOST_GO host_write
         jsr lib_set_bank
         bcc @fault
         jsr fat32_get_size      ; lib_gap = the position - the size
@@ -964,6 +1003,7 @@ lib_write:
 ; the pattern at lib_find and whose attributes pass, and fills lib_find from it. Returns carry
 ; set and A = the error, ERR_NO_MORE_FILES at the end of the directory. Changes X and Y.
 find_search:
+        HOST_GO host_find_search
         lda #<lib_find
         sta fat32_ptr
         lda #>lib_find
@@ -1197,3 +1237,5 @@ errno_errors:
         .byte ERR_WRITE_FAULT   ; ERRNO_WRITE_PROTECT_ON
         .byte ERR_TOO_MANY_FILES ; ERRNO_OUT_OF_RESOURCES
         .assert * - errno_errors = ERRNO_OUT_OF_RESOURCES + 1, error, "an error for each errno"
+
+.include "hostfs.inc"

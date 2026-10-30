@@ -1,4 +1,4 @@
-"""DBSCRN's card: DBDOT's, with CLUB.DB, EMPTY.DB and DB.COM."""
+"""DBSCRN's card: DBDOT's, with CLUB.DB, EMPTY.DB and XBASE.COM."""
 import os
 import runpy
 

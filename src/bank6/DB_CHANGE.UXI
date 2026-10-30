@@ -1,5 +1,5 @@
-' DB_CHANGE.UXI -- the commands of DB.UXB that make or change a table: DELETE, RECALL, PACK,
-' REPLACE, APPEND, EDIT and CREATE. DB.UXB includes it after DB_SCOPE.UXI.
+' DB_CHANGE.UXI -- the commands of XBASE.UXB that make or change a table: DELETE, RECALL, PACK,
+' REPLACE, APPEND, EDIT and CREATE. XBASE.UXB includes it after DB_SCOPE.UXI.
 
 ' DELETE scope and RECALL scope, MARKING 1 for DELETE: mark each record of the scope that meets
 ' its FOR condition deleted, or clear its mark, and print how many. The scope is the current

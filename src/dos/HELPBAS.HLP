@@ -136,7 +136,7 @@ GOTO line or label
   GOTO MAIN
 :HELP
 HELP [topic]                                        (Direct only)
-  Prints the help on topic, or the topic names, from C:\DOS\HELPBAS.HLP.
+  Prints the help on topic, or the topic names, from C:\sys\HELPBAS.HLP.
   The shell command HELPBAS does the same.
   HELP PRINT
 :HEX$

@@ -1,4 +1,4 @@
-"""DBFILT's card: DBDOT's, with CLUB.DB, EMPTY.DB and DB.COM."""
+"""DBFILT's card: DBDOT's, with CLUB.DB, EMPTY.DB and XBASE.COM."""
 import os
 import runpy
 

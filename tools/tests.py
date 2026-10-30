@@ -3,7 +3,7 @@
     python tools/tests.py [NAME ...] [--update]
 
 build/TEST.ROM boots to the monitor. The tests in SHELL_ROM_TESTS boot build/6502DOS.ROM, which
-runs C:\\ROMSHELL.COM at boot.
+runs C:\\sys\\ROMSHELL.COM at boot.
 
 Each test is an expected output tests/NAME.OUT. A test boots the ROM in x16emu with -echo raw
 and reads what the ROM writes through $FFD2. It passes when that output equals NAME.OUT. It
@@ -14,8 +14,8 @@ Every test runs with the SD card image build/tests/SD.IMG, which tools/mksd.py m
 tests/sd at the start: 256 MB, 2 sectors per cluster, 259079 clusters, the files dated
 2026-10-13. Its root also holds build/bas/NAME.COM, from tools/build.py, tests/com/NAME.S
 assembled to NAME.COM: the load address $0801, then the code from $0801, and tests/com/NAME.UXB and
-tests/NAME.UXB compiled to NAME.COM. Its folder DOS is build/DOS, the commandlets from
-tools/build.py, and its folder UTILS is build/UTILS. Each test gets a new copy of the image.
+tests/NAME.UXB compiled to NAME.COM. Its folder sys is build/sys, the commandlets and utilities
+from tools/build.py. Each test gets a new copy of the image.
 tests/NAME.PY, when it exists, defines card(image), which then changes the copy or writes a card
 of its own in its place. It may also define check(image), which reads the card after the run and
 returns a list of faults; a fault fails the test.
@@ -29,6 +29,10 @@ A test can type keys into the monitor with x16emu -bas:
 NAMEs pick tests; with none, every test runs but those in STOPPED_TESTS. --update runs each test for 4.5 s and writes
 NAME.OUT from what it printed: read the .OUT before you keep it. Build first
 (tools/build.py). Exit status 1 when a test failed or a program did not assemble.
+
+--host runs the tests from a folder with x16emu -fsroot, not from an image. The folder is tests/sd,
+the programs and sys, copied to build/tests/HOST for each test. A test with a card hook in
+tests/NAME.PY is skipped.
 
 --msbasic runs MSBASIC's tests instead, on build/6502DOS.ROM: MSBASIC/tests/name.bas is typed
 into MSBASIC at the shell, then QUIT. The transcript after the banner must equal name.out after
@@ -72,14 +76,16 @@ KEYS = os.path.join(OBJ, "keys.txt")
 SD_FOLDER = os.path.join(TESTS, "sd")
 SD_IMAGE = os.path.join(OBJ, "SD.IMG")
 RUN_IMAGE = os.path.join(OBJ, "RUN.IMG")
+HOST_BASE = os.path.join(OBJ, "HOSTBASE")
+HOST_CARD = os.path.join(OBJ, "HOST")
+HOST_MODE = "--host" in sys.argv
 # The test card: 256 MB at 2 sectors per cluster, and a block of 4 MB for the programs.
 CLUSTERS = 259079
 RESERVE = 4096
 CC65 = os.path.join(ROOT, "tools", "cc65", "bin")
 COM_FOLDER = os.path.join(TESTS, "com")
 BAS_OUT = os.path.join(ROOT, "build", "bas")
-SCOM_OUT = os.path.join(ROOT, "build", "DOS")
-UTILS_OUT = os.path.join(ROOT, "build", "UTILS")
+SYS_OUT = os.path.join(ROOT, "build", "sys")
 PROGRAM_START = 0x1000
 COM_START = 0x0801
 BYTES_PER_LINE = 24             # "E 1000 " and 24 bytes fit the monitor's 79 characters
@@ -143,8 +149,8 @@ def boot(rom, want, keys, done=None, cut=lambda text: text):
     seconds; cut returns None while it cannot tell yet. With want None, stop after
     UPDATE_SECONDS, or, with done, when done(output) is true or after LIMIT seconds."""
     env = dict(os.environ, SDL_VIDEODRIVER="dummy")
-    command = [EMU, "-rom", rom, "-warp", "-sound", "none", "-nohostfs", "-echo", "raw",
-               "-sdcard", RUN_IMAGE]
+    command = [EMU, "-rom", rom, "-warp", "-sound", "none", "-echo", "raw"]
+    command += ["-fsroot", HOST_CARD] if HOST_MODE else ["-nohostfs", "-sdcard", RUN_IMAGE]
     if keys is not None:
         with open(KEYS, "w", encoding="latin-1", newline="") as out:
             out.write(keys.replace("\r\n", "\n").replace("\n", "\r"))
@@ -162,12 +168,21 @@ def boot(rom, want, keys, done=None, cut=lambda text: text):
     thread = threading.Thread(target=reader, daemon=True)
     thread.start()
     deadline = time.time() + (UPDATE_SECONDS if want is None and done is None else LIMIT)
+    seen = 0
+    since = time.time()
     while time.time() < deadline:
         if want is not None:
             # A CR at the end may be the start of a CR LF still arriving.
             got = cut(clean(b"".join(chunks).rstrip(b"\r")))
-            if got is not None and (len(got) >= len(want) or not want.startswith(got)):
+            if got is not None and len(got) >= len(want):
                 break
+            if got is not None and not want.startswith(got):
+                # --host shows all of a run that departs: until the output stops for 0.5 s.
+                if not HOST_MODE or (len(chunks) == seen and time.time() - since > 0.5):
+                    break
+            if len(chunks) != seen:
+                seen = len(chunks)
+                since = time.time()
         elif done is not None and done(clean(b"".join(chunks))):
             break
         time.sleep(0.02)
@@ -230,6 +245,18 @@ def test_name(out_path):
     return os.path.splitext(os.path.basename(out_path))[0].upper()
 
 
+def host_base(programs):
+    """Make the folder each --host test starts from."""
+    shutil.rmtree(HOST_BASE, ignore_errors=True)
+    shutil.copytree(SD_FOLDER, HOST_BASE)
+    for program in programs:
+        if os.path.isdir(program):
+            shutil.copytree(program, os.path.join(HOST_BASE, os.path.basename(program)),
+                            dirs_exist_ok=True)
+        else:
+            shutil.copy(program, HOST_BASE)
+
+
 def main():
     args = sys.argv[1:]
     update = "--update" in args
@@ -258,13 +285,15 @@ def main():
         program = os.path.join(OBJ, os.path.splitext(os.path.basename(source))[0].upper() + ".COM")
         uxb.compile(source, program)
         programs.append(program)
-    for folder in (SCOM_OUT, UTILS_OUT):
-        if os.path.isdir(folder):
-            programs.append(folder)
+    if os.path.isdir(SYS_OUT):
+        programs.append(SYS_OUT)
     # The programs go in a block of their own, so the free space and the clusters of the files
     # of tests/sd stay the same when a program changes.
-    mksd.make(SD_FOLDER, SD_IMAGE, sectors_per_cluster=2, clusters=CLUSTERS,
-              date=datetime.date(2026, 10, 13), extra=programs, reserve=RESERVE, root_clusters=2)
+    if HOST_MODE:
+        host_base(programs)
+    else:
+        mksd.make(SD_FOLDER, SD_IMAGE, sectors_per_cluster=2, clusters=CLUSTERS,
+                  date=datetime.date(2026, 10, 13), extra=programs, reserve=RESERVE, root_clusters=2)
     failed = []
     started = time.time()
     count = len(outs)
@@ -276,8 +305,16 @@ def main():
         want = open(out_path, encoding="latin-1").read().replace("\r\n", "\n")
         base = os.path.splitext(out_path)[0]
         keys = None
-        shutil.copyfile(SD_IMAGE, RUN_IMAGE)
         hooks = runpy.run_path(base + ".PY") if os.path.exists(base + ".PY") else {}
+        if HOST_MODE:
+            if "card" in hooks:
+                print("skip  %-12s has a card hook" % test_name(out_path))
+                continue
+            hooks = {}
+            shutil.rmtree(HOST_CARD, ignore_errors=True)
+            shutil.copytree(HOST_BASE, HOST_CARD)
+        else:
+            shutil.copyfile(SD_IMAGE, RUN_IMAGE)
         if "card" in hooks:
             hooks["card"](RUN_IMAGE)
         if os.path.exists(base + ".S"):

@@ -1,4 +1,4 @@
-' DB.UXB -- DB, the dot prompt over the table library (docs/DB.PLAN.md). Reads a command at
+' XBASE.UXB -- DB, the dot prompt over the table library (docs/DB.PLAN.md). Reads a command at
 ' the prompt ". " and runs it: USE, CREATE, LIST, DISPLAY, GO or GOTO, SKIP, LOCATE, CONTINUE, DISPLAY
 ' STRUCTURE, ?, STORE, name = value, RELEASE, DISPLAY MEMORY, COUNT, SUM, APPEND, APPEND BLANK,
 ' EDIT, REPLACE, DELETE, RECALL, PACK, INDEX ON, SET INDEX TO, SET PATH TO, SET FILTER TO, FIND, REINDEX, SELECT PRIMARY,
@@ -12,7 +12,7 @@
 ' A field hides a memory variable of its name. An L field is logical, true
 ' for T or Y in either case. A C or D field is text.
 '
-' Runs from ROM banks 6, 7 and 8: tools/build.py puts its code there and DB.COM starts it.
+' Runs from ROM banks 6, 7 and 8: tools/build.py puts its code there and XBASE.COM starts it.
 #ORG $C000
 #DATA $0801
 #ROMBANKS 6, 7, 8
@@ -770,19 +770,19 @@ DO WHILE RUNNING
   ELSEIF TOKEN = "CLS"
     DO_CLEAR(0)
   ELSEIF TOKEN = "!" OR TOKEN = "RUN" OR IS("SHELL")
-    ' !, RUN and SHELL run C:\ROMSHELL.COM without STARTUP.CMD. Alone, the shell's END comes back;
+    ' !, RUN and SHELL run C:\sys\ROMSHELL.COM without STARTUP.CMD. Alone, the shell's END comes back;
     ' with a command line, the shell runs it and ends.
     IF REST = ""
       REST = "N"
     ELSE
       REST = "C " + REST
     ENDIF
-    DOS.EXEC("C:\ROMSHELL.COM", " -" + REST)
+    DOS.EXEC("C:\sys\ROMSHELL.COM", " -" + REST)
     IF DOS.ERROR THEN FILE_ERROR()
   ELSEIF IS("HELP")
-    ' HELP [topic] runs C:\DOS\HELPDB.COM. Trap: HELPDB reads the topic from P1$, not the tail.
+    ' HELP [topic] runs C:\sys\HELPXBASE.COM. Trap: HELPDB reads the topic from P1$, not the tail.
     HEAP.SYS_STRINGS_SET(0, REST)
-    DOS.EXEC("C:\DOS\HELPDB.COM", " " + REST)
+    DOS.EXEC("C:\sys\HELPXBASE.COM", " " + REST)
     IF DOS.ERROR THEN FILE_ERROR()
   ELSEIF IS("SAVE")
     DO_SCREEN_FILE(0)

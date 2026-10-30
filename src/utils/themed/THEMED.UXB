@@ -165,7 +165,7 @@ SUB DRAW_ALL()
   GUI.USE_COLOR(GUI.ROLE.FIELD_FOCUS)
   POS(1) = 5
   POS(0) = 10
-  PRINT "C:\UTILS      ";
+  PRINT "C:\sys        ";
   GUI.USE_COLOR(GUI.ROLE.DISABLED)
   POS(1) = 7
   POS(0) = 4

@@ -23,7 +23,7 @@ END SUB
 PRINT "1 ["; DOS.REG_GET("FONT.FILE", "NONE"); "]"
 
 ' 2: the first write makes the file; a lower-case key; a changed key moves to the end; an =
-DOS.REG_SET("FONT.FILE", "C:\UTILS\GUI.F08")
+DOS.REG_SET("FONT.FILE", "C:\sys\GUI.F08")
 DOS.REG_SET("EDIT.TABS", "4")
 DOS.REG_SET("edit.theme", "DARK")
 DOS.REG_SET("EDIT.TABS", "2")

@@ -74,5 +74,5 @@ def card(image):
     patch(bad, "KIND.TXT", reserved)
     patch(bad, "SHORT.TXT", short)
     programs = sorted(glob.glob(os.path.join(ROOT, "build", "bas", "*.COM")))
-    programs += [os.path.join(ROOT, "build", "DOS"), os.path.join(ROOT, "build", "UTILS")]
+    programs += [os.path.join(ROOT, "build", "sys")]
     mksd.make(FOLDER, image, extra=programs)

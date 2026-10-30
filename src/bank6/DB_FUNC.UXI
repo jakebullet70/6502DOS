@@ -1,5 +1,5 @@
-' DB_FUNC.UXI -- the functions of DB.UXB's expressions: RECNO(), DATE(), LEN(), SUBSTR() and
-' the rest. DB.UXB includes it after DB_EXPR.UXI, before DB_MEM.UXI.
+' DB_FUNC.UXI -- the functions of XBASE.UXB's expressions: RECNO(), DATE(), LEN(), SUBSTR() and
+' the rest. XBASE.UXB includes it after DB_EXPR.UXI, before DB_MEM.UXI.
 
 ' The functions. The codes start at 7, above OPERATION's, and stay below 32.
 ' Checklist: FUNCTION_NUMBER's names are in this order. TEXT_LENGTH is the first that takes

@@ -1,5 +1,5 @@
-' DB_EXPR.UXI -- the expression stacks of DB.UXB, their operators, and the reading of text,
-' numbers and names for EVALUATE. DB.UXB includes it after DO_SKIP, before DB_FUNC.UXI.
+' DB_EXPR.UXI -- the expression stacks of XBASE.UXB, their operators, and the reading of text,
+' numbers and names for EVALUATE. XBASE.UXB includes it after DO_SKIP, before DB_FUNC.UXI.
 
 ' The expression stacks of EVALUATE. An operator is its character, or a code below 7 for a
 ' unary minus, .NOT., .AND., .OR., <= and >=. An open function call is its BUILT_IN code, with

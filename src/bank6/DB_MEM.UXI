@@ -1,5 +1,5 @@
-' DB_MEM.UXI -- the memory variables of DB.UXB: their slots and pool, ASSIGN, RELEASE and
-' DISPLAY MEMORY. DB.UXB includes it after DB_FUNC.UXI, before READ_NAME.
+' DB_MEM.UXI -- the memory variables of XBASE.UXB: their slots and pool, ASSIGN, RELEASE and
+' DISPLAY MEMORY. XBASE.UXB includes it after DB_FUNC.UXI, before READ_NAME.
 
 ' The memory variables live in a RAM bank of their own, selected at $A000 while DB runs; the
 ' DB library and the DOS calls keep $00. Variable N, 0 to 63, is 16 bytes at VARIABLE_SLOTS +

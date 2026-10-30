@@ -4,7 +4,7 @@
 ' -- Sets P1$ to 1 when name exists and to 0 when it does not. P1$ stays empty with no name.
 ' -- Exit code 0 when name exists, 1 when it does not, 2 with no name.
 ' --
-' --     PATH$ = "C:\DOS"
+' --     PATH$ = "C:\sys"
 ' --     EXIST DOCS\README.TXT
 ' --     IF P1$ = "1"
 ' --       PRINT "Found the readme"

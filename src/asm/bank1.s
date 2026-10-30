@@ -42,6 +42,16 @@ irq_entry1:
         FAR_IRQ_ENTRY
         FAR_IRQ_EXIT
 
+; hostfs.inc's probe of x16emu's LISTEN trap: without the trap, this returns with carry as it came.
+.segment "LISTEN1"
+
+        rts
+
+; x16emu traps the KERNAL's IEEE calls only in a bank with this.
+.segment "SIGNATURE1"
+
+        .byte "MIST"
+
 ; The vector pull selects bank 0, so these serve only a machine that does not.
 .segment "B1VECTORS"
 

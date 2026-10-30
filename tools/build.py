@@ -9,8 +9,8 @@ ROM bank 2, appended to the image; its labels are build/MSBASIC.LBL. MSBASIC/src
 assembles to build/bas/MSBASIC.COM, which starts it. ROM banks 3 and 4, appended next, are the
 one src/bank3/NAME.UXB, which sets #ORG $C000 and #ROMBANKS 3, 4, compiled and linked with
 src/bank3/bank.s and bank.cfg; src/bank3/stub.s assembles to build/bas/NAME.COM, which starts
-it. Bank 5, the table library, follows bank 4. ROM banks 6, 7 and 8 are src/bank6/DB.UXB, with
-#ROMBANKS 6, 7, 8, built the same way to build/bas/DB.COM. ca65 and ld65 come from tools/cc65/bin only. Includes are found in src/asm and build/gen. The map is
+it. Bank 5, the table library, follows bank 4. ROM banks 6, 7 and 8 are src/bank6/XBASE.UXB, with
+#ROMBANKS 6, 7, 8, built the same way to build/bas/XBASE.COM. ca65 and ld65 come from tools/cc65/bin only. Includes are found in src/asm and build/gen. The map is
 build/6502DOS.MAP, the label file build/6502DOS.LBL, and each listing build/obj/NAME.LST.
 build/TEST.ROM is the same image with boot_shell cleared: it boots to the monitor, not the shell.
 
@@ -18,18 +18,18 @@ UXCBASIC/tpl/MKTPL.PY rebuilds the template tables when a UXCBASIC/tpl or UXCBAS
 .ASM file is newer than UXCBASIC/tpl/UXDOS/UXC.TPL.BIN. Each src/bas/NAME.UXB compiles to
 build/bas/NAME.COM with tools/uxb.py when the COM file is older than the source, than a file it
 includes, than the template table or than pyuxc. Each src/scom/NAME.UXB, a
-commandlet, compiles the same way to build/DOS/NAME.SCOM, a long name on the card. Each
+commandlet, compiles the same way to build/sys/NAME.SCOM, a long name on the card. Each
 src/dos/NAME.UXB, a DOS utility, compiles to
-build/DOS/NAME.COM, and each src/dos/NAME.TXT and NAME.HLP is copied to build/DOS, with
-build/DOS/HELP.IDX, HELPBAS.IDX and HELPDB.IDX, the indexes of HELP.HLP, HELPBAS.HLP and
+build/sys/NAME.COM, and each src/dos/NAME.TXT and NAME.HLP is copied to build/sys, with
+build/sys/HELP.IDX, HELPBAS.IDX and HELPDB.IDX, the indexes of HELP.HLP, HELPBAS.HLP and
 HELPDB.HLP that HELP -R, HELPBAS -R and HELPDB -R write. Each
-src/utils/FOLDER/NAME.UXB, a utility, compiles to build/UTILS/NAME.COM, and the files of
-src/utils/FOLDER are copied to build/UTILS/SRC/FOLDER. Each test named in SHOWN_TESTS, tests/NAME.UXB,
-compiles to build/UTILS/NAME.COM as well.
+src/utils/FOLDER/NAME.UXB, a utility, compiles to build/sys/NAME.COM, and the files of
+src/utils/FOLDER are copied to build/source/xcbasic/FOLDER. Each test named in SHOWN_TESTS, tests/NAME.UXB,
+compiles to build/sys/NAME.COM as well. CMDSHELL.COM, ROMSHELL.COM and MSBASIC.COM are copied to build/sys.
 
-Then tools/mksd.py makes the SD card image build/SD.IMG from the folder sd, CMDSHELL.COM,
-ROMSHELL.COM and MSBASIC.COM, the folder build/DOS, which is the card's folder DOS, the folder build/UTILS, which
-is the card's folder UTILS, the card's folder TEST, and
+Then tools/mksd.py makes the SD card image build/SD.IMG from the folder sd, the folder build/sys,
+which is the card's folder sys, the folder build/source, which is the card's folder source, the
+folders of CARD_FOLDERS, the card's folder TEST, and
 the folder card, gathered in build/card. TEST holds the other COM files in build/bas and the
 files and folders of the test card's folder tests/sd. A file in card wins a
 name it shares with the others. Before that, each file and folder that the X16 added to the old
@@ -41,8 +41,8 @@ LICENSE, NOTICE, the files of tools/release (RUN.BAT and the folder x16emu with 
 and x16emu with its DLLs from EMU, in the folder x16emu. It zips build/release to
 release/6502DOS-VERSION-win.zip, under the folder 6502DOS, with VERSION from api.py, such as
 0.1.0-beta1. That SD.IMG, staged in
-build/release-card, holds the folder sd less RELEASE_SKIP, CMDSHELL.COM, ROMSHELL.COM,
-MSBASIC.COM, DOS and UTILS; it has no TEST and nothing from card. Exit status 1 when a tool or a
+build/release-card, holds the folder sd less RELEASE_SKIP, sys, source and the folders of
+CARD_FOLDERS; it has no TEST and nothing from card. Exit status 1 when a tool or a
 compile failed, api.py is inconsistent, or build/SD.IMG or build/release is open in x16emu.
 """
 
@@ -94,11 +94,16 @@ EMU_FILES = ("x16emu.exe", "SDL2.dll", "zlib1.dll", "libwinpthread-1.dll")
 BAS = os.path.join(ROOT, "src", "bas")
 BAS_OUT = os.path.join(BUILD, "bas")
 SCOM = os.path.join(ROOT, "src", "scom")
-SCOM_OUT = os.path.join(BUILD, "DOS")
+SYS_OUT = os.path.join(BUILD, "sys")
 UTILITIES = os.path.join(ROOT, "src", "dos")
 UTILS = os.path.join(ROOT, "src", "utils")
-UTILS_OUT = os.path.join(BUILD, "UTILS")
-# The tests that also go to build/UTILS, for the user to run on the card.
+SOURCE_OUT = os.path.join(BUILD, "source")
+# The folders of the card that start empty.
+CARD_FOLDERS = ("sys/temp", "sys/themes", "sys/basic", "sys/xbase", "sys/edit", "source/basic", "source/xcbasic",
+                "source/xbase", "apps", "games")
+# The utilities of src/utils that go to build/sys/themes, with the fonts and color themes.
+THEME_PROGRAMS = ("THEMED", "FONTEDIT")
+# The tests that also go to build/sys, for the user to run on the card.
 SHOWN_TESTS = []
 TEMPLATES = os.path.join(ROOT, "UXCBASIC", "tpl")
 MSBASIC_SRC = os.path.join(ROOT, "MSBASIC", "src")
@@ -143,20 +148,20 @@ def compile_bas():
 
 
 def compile_scom():
-    """Compile each src/scom/NAME.UXB to build/DOS/NAME.SCOM and each src/dos/NAME.UXB to
-    build/DOS/NAME.COM, and copy each src/dos/NAME.TXT and NAME.HLP to build/DOS. Return the folder build/DOS."""
-    os.makedirs(SCOM_OUT, exist_ok=True)
+    """Compile each src/scom/NAME.UXB to build/sys/NAME.SCOM and each src/dos/NAME.UXB to
+    build/sys/NAME.COM, and copy each src/dos/NAME.TXT and NAME.HLP to build/sys. Return the folder build/sys."""
+    os.makedirs(SYS_OUT, exist_ok=True)
     for source in sorted(glob.glob(os.path.join(SCOM, "*.UXB"))):
         name = os.path.splitext(os.path.basename(source))[0].upper() + ".SCOM"
-        uxb.compile(source, os.path.join(SCOM_OUT, name))
+        uxb.compile(source, os.path.join(SYS_OUT, name))
     for source in sorted(glob.glob(os.path.join(UTILITIES, "*.UXB"))):
         name = os.path.splitext(os.path.basename(source))[0].upper() + ".COM"
-        uxb.compile(source, os.path.join(SCOM_OUT, name))
+        uxb.compile(source, os.path.join(SYS_OUT, name))
     for text in sorted(glob.glob(os.path.join(UTILITIES, "*.TXT")) + glob.glob(os.path.join(UTILITIES, "*.HLP"))):
-        shutil.copyfile(text, os.path.join(SCOM_OUT, os.path.basename(text).upper()))
+        shutil.copyfile(text, os.path.join(SYS_OUT, os.path.basename(text).upper()))
     for name in ("HELP", "HELPBAS", "HELPDB"):
-        write_help_index(os.path.join(UTILITIES, name + ".HLP"), os.path.join(SCOM_OUT, name + ".IDX"))
-    return SCOM_OUT
+        write_help_index(os.path.join(UTILITIES, name + ".HLP"), os.path.join(SYS_OUT, name + ".IDX"))
+    return SYS_OUT
 
 
 def write_help_index(source, target):
@@ -173,20 +178,22 @@ def write_help_index(source, target):
 
 
 def compile_utils():
-    """Compile each src/utils/FOLDER/NAME.UXB to build/UTILS/NAME.COM, copy the files of
-    src/utils/FOLDER to build/UTILS/SRC/FOLDER, and compile each test of SHOWN_TESTS to
-    build/UTILS/NAME.COM. Return the folder build/UTILS."""
-    os.makedirs(UTILS_OUT, exist_ok=True)
+    """Compile each src/utils/FOLDER/NAME.UXB to build/sys/NAME.COM, or build/sys/themes/NAME.COM
+    for THEME_PROGRAMS, copy the files of
+    src/utils/FOLDER to build/source/xcbasic/FOLDER, and compile each test of SHOWN_TESTS to
+    build/sys/NAME.COM. Return the folder build/source."""
+    themes = os.path.join(SYS_OUT, "themes")
+    os.makedirs(themes, exist_ok=True)
     for folder in sorted(glob.glob(os.path.join(UTILS, "*", ""))):
         folder = os.path.dirname(folder)
         for source in sorted(glob.glob(os.path.join(folder, "*.UXB"))):
-            name = os.path.splitext(os.path.basename(source))[0].upper() + ".COM"
-            uxb.compile(source, os.path.join(UTILS_OUT, name))
-        shutil.copytree(folder, os.path.join(UTILS_OUT, "SRC", os.path.basename(folder).upper()),
+            name = os.path.splitext(os.path.basename(source))[0].upper()
+            uxb.compile(source, os.path.join(themes if name in THEME_PROGRAMS else SYS_OUT, name + ".COM"))
+        shutil.copytree(folder, os.path.join(SOURCE_OUT, "xcbasic", os.path.basename(folder).upper()),
                         ignore=shutil.ignore_patterns(".*"), dirs_exist_ok=True)
     for name in SHOWN_TESTS:
-        uxb.compile(os.path.join(ROOT, "tests", name + ".UXB"), os.path.join(UTILS_OUT, name + ".COM"))
-    return UTILS_OUT
+        uxb.compile(os.path.join(ROOT, "tests", name + ".UXB"), os.path.join(SYS_OUT, name + ".COM"))
+    return SOURCE_OUT
 
 
 def build_basic():
@@ -275,12 +282,14 @@ def make_test_rom():
 
 
 def stage_card(stage, sources, tests, skip=()):
-    """Fill the folder stage with the folder sd less the names in skip, the files and folders in
-    sources, and those in tests under the folder TEST, which only tests makes. Return the
+    """Fill the folder stage with the folder sd less the names in skip, CARD_FOLDERS, the files
+    and folders in sources, and those in tests under the folder TEST, which only tests makes. Return the
     upper-case paths it holds, joined by "/"."""
     shutil.rmtree(stage, ignore_errors=True)
     ignore = shutil.ignore_patterns(".*")
     shutil.copytree(SD_FOLDER, stage, ignore=shutil.ignore_patterns(".*", *skip))
+    for folder in CARD_FOLDERS:
+        os.makedirs(os.path.join(stage, *folder.split("/")), exist_ok=True)
     if tests:
         os.makedirs(os.path.join(stage, "TEST"), exist_ok=True)
     for source, folder in [(s, stage) for s in sources] + [(s, os.path.join(stage, "TEST"))
@@ -433,7 +442,9 @@ def main():
                   if not entry.startswith(".")]
     programs = compile_bas() + [bank3, database]
     shell = [p for p in programs if os.path.basename(p) in ("CMDSHELL.COM", "ROMSHELL.COM")]
-    card_sources = shell + [basic, compile_scom(), compile_utils()]
+    card_sources = [compile_scom(), compile_utils()]
+    for program in shell + [basic]:
+        shutil.copy2(program, SYS_OUT)
     make_card(card_sources, [p for p in programs if p not in shell] + test_files)
     if release:
         make_release(card_sources)

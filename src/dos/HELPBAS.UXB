@@ -1,12 +1,12 @@
 '=============================================================================================
 ' -- HELPBAS [topic | -R]
-' -- prints the help on the MSBASIC keyword topic from C:\DOS\HELPBAS.HLP. With no topic it
+' -- prints the help on the MSBASIC keyword topic from C:\sys\HELPBAS.HLP. With no topic it
 ' -- lists the topic names, a new line before a name that would pass column 79.
 ' -- A small letter in topic is the same as a capital.
 ' -- HELPBAS.HLP has the format of HELP.HLP: a line :NAME starts the topic NAME, in capitals.
 ' -- The lines after it, up to the next :NAME line, are its text. A line is 80 characters at
 ' -- most; the rest is cut. The file has CR LF line ends, for MSBASIC's HELP.
-' -- C:\DOS\HELPBAS.IDX indexes HELPBAS.HLP in the format of HELP.IDX: its first line is the
+' -- C:\sys\HELPBAS.IDX indexes HELPBAS.HLP in the format of HELP.IDX: its first line is the
 ' -- size of HELPBAS.HLP after a space, and each line after it is a topic name, a space and the
 ' -- byte position of its :NAME line. Lines end with CR LF. tools/build.py writes the same file.
 ' -- HELPBAS finds a topic by the index and reads only its text. A missing index, or one whose
@@ -27,7 +27,7 @@
 #INCLUDE "HEAP.UXI"
 #INCLUDE "HELPSW.UXI"
 CONST SLOT_P1 AS UBYTE = 0, BLOCK_SIZE AS UBYTE = 255, LF AS UBYTE = 10, CR AS UBYTE = 13
-CONST HELP_NAME$ = "C:\DOS\HELPBAS.HLP", INDEX_NAME$ = "C:\DOS\HELPBAS.IDX"
+CONST HELP_NAME$ = "C:\sys\HELPBAS.HLP", INDEX_NAME$ = "C:\sys\HELPBAS.IDX"
 DIM TOPIC_TYPED AS STRING * 80, TOPIC AS STRING * 80, TEXT_LINE AS STRING * 80
 DIM HEADING AS STRING * 81
 DIM HELP_FILE AS UWORD, INDEX_FILE AS UWORD, POSITION AS UBYTE, CHARACTER AS UBYTE

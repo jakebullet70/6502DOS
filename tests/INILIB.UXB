@@ -20,7 +20,7 @@ INI.WRITE_KEY("EDIT", "TABS", "4")
 INI.WRITE_KEY("EDIT", "THEME", "DARK")
 INI.WRITE_KEY("SHELL", "PROMPT", "$P$G")
 INI.WRITE_KEY("EDIT", "TABS", "2")
-INI.WRITE_KEY("EDIT", "HELP", "C:\DOS\EDIT.HLP")
+INI.WRITE_KEY("EDIT", "HELP", "C:\sys\EDIT.HLP")
 SHOW_FILE()
 
 ' 3: reads, a missing key, a missing section, a key that is the start of another

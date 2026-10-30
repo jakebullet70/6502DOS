@@ -1,6 +1,6 @@
-' DB_SCREEN.UXI -- the screen commands of DB.UXB: @ ... SAY ... GET, @ ... TO, BOX, READ, CLEAR,
+' DB_SCREEN.UXI -- the screen commands of XBASE.UXB: @ ... SAY ... GET, @ ... TO, BOX, READ, CLEAR,
 ' CLS, @ ... PROMPT, MENU TO, SAVE SCREEN TO and RESTORE SCREEN FROM, and the MENU() function.
-' DB.UXB includes it after DB_DO.UXI.
+' XBASE.UXB includes it after DB_DO.UXI.
 
 ' The pending GETs, 0 to GET_COUNT - 1, at most GET_LIMIT. GET n has its place, the field it
 ' edits or 0 for a memory variable, the variable's number, and its value's VALUE_KIND. At

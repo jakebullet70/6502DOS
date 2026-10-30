@@ -43,5 +43,5 @@ def card(image):
     with open(os.path.join(FOLDER, "NOTZIP.TXT"), "wb") as out:
         out.write(b"NO ARCHIVE HERE, JUST TEXT LONG ENOUGH FOR AN END RECORD\r\n")
     programs = sorted(glob.glob(os.path.join(ROOT, "build", "bas", "*.COM")))
-    programs += [os.path.join(ROOT, "build", "DOS"), os.path.join(ROOT, "build", "UTILS")]
+    programs += [os.path.join(ROOT, "build", "sys")]
     mksd.make(FOLDER, image, extra=programs)

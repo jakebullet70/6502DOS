@@ -1,4 +1,4 @@
-"""DBDOT's card: CLUB.DB, 4 records with record 3 deleted, EMPTY.DB, no records, and DB.COM."""
+"""DBDOT's card: CLUB.DB, 4 records with record 3 deleted, EMPTY.DB, no records, and XBASE.COM."""
 
 import datetime
 import os
@@ -11,7 +11,7 @@ import db  # noqa: E402
 import mksd  # noqa: E402
 
 FOLDER = os.path.join(ROOT, "build", "tests", "DBDOT")
-PROGRAM = os.path.join(ROOT, "build", "bas", "DB.COM")
+PROGRAM = os.path.join(ROOT, "build", "bas", "XBASE.COM")
 
 
 def card(image, files=None):

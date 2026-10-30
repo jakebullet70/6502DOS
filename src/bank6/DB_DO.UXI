@@ -1,5 +1,5 @@
-' DB_DO.UXI -- the command files of DB.UXB: DO, RETURN, CANCEL, IF, ELSE, ENDIF, DO WHILE,
-' ENDDO, ACCEPT, INPUT, WAIT and MODIFY COMMAND. DB.UXB includes it after DB_INDEX.UXI. A command file is under 64 KB.
+' DB_DO.UXI -- the command files of XBASE.UXB: DO, RETURN, CANCEL, IF, ELSE, ENDIF, DO WHILE,
+' ENDDO, ACCEPT, INPUT, WAIT and MODIFY COMMAND. XBASE.UXB includes it after DB_INDEX.UXI. A command file is under 64 KB.
 
 CONST DO_LIMIT AS UBYTE = 8
 DIM DO_DEPTH AS UBYTE               ' the command files running, 0 at the prompt
@@ -309,7 +309,7 @@ SUB DO_WAIT()
   ENDIF
 END SUB
 
-' MODIFY COMMAND name: runs C:\DOS\EDIT.COM on name, with .PRG added when it has no extension.
+' MODIFY COMMAND name: runs C:\sys\EDIT.COM on name, with .PRG added when it has no extension.
 ' The tables, indexes and command files stay open, and each takes one of the files the
 ' editor could open.
 SUB DO_MODIFY()
@@ -327,6 +327,6 @@ SUB DO_MODIFY()
   TOKEN = WITH_EXTENSION(TOKEN, ".PRG")
   HEAP.SYS_STRINGS_SET(0, TOKEN)
   HEAP.SYS_STRINGS_SET(1, "")
-  DOS.EXEC("C:\DOS\EDIT.COM", " " + TOKEN)
+  DOS.EXEC("C:\sys\EDIT.COM", " " + TOKEN)
   IF DOS.ERROR THEN FILE_ERROR()
 END SUB

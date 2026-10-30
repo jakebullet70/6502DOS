@@ -610,7 +610,7 @@ SUb SEED_demo()
   LAST_NAME = "Hopper"
   FRUIT = 1
   FILE_MASK = "*.*"
-  THEME_PATH = "UTILS\CUSTOM-LIGHT.GTH"
+  THEME_PATH = "sys\themes\CUSTOM-LIGHT.GTH"
 end sub
 
 

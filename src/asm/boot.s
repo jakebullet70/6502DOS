@@ -6,13 +6,14 @@
 .include "api.inc"
 .include "far.inc"
 
+.import host_on, host_status
 .import CHROUT, gate_init, kernel_init, heap_init, bank_init, monitor, monitor_brk, put_decimal
 .import sd_ready
 .importzp mon_number
 .export boot_shell, irq
 .exportzp ticks
 
-.define SHELL_PATH "C:\ROMSHELL.COM"   ; starts the shell in ROM banks 3 and 4
+.define SHELL_PATH "C:\sys\ROMSHELL.COM"   ; starts the shell in ROM banks 3 and 4
 
 .segment "KERNELZP" : zeropage
 
@@ -79,8 +80,14 @@ reset:
         ldx #>MONITOR_OUT
         stx r0+1
         jsr API_ERRMSG
-        ldx #cannot - texts
-        jsr print
+        ldx #0
+@cannot:                        ; past print's reach
+        lda cannot,x
+        beq @named
+        jsr CHROUT
+        inx
+        bra @cannot
+@named:
         ldy #0
 @message:                       ; the length, then the message
         cpy MONITOR_OUT
@@ -178,6 +185,9 @@ post:
 @sd:
         ldx #sd_card - texts
         jsr print
+        ldx #hostfs_text - texts
+        bit host_on
+        bmi @card
         ldx #none - texts
         lda sd_ready
         beq @card
@@ -266,6 +276,8 @@ post:
         lda r3
         cmp #'0'
         bne @second
+        lda #' '                ; covers the 1
+        jsr CHROUT
         bra @go
 @found:
         cpx #post_tails_high - post_tails_low
@@ -392,17 +404,19 @@ ok:
 vera:
         .byte "VERA V", 0
 sd_card:
-        .byte "SD card: ", 0
+        .byte "SD Card: ", 0
 none:
         .byte "none", $0D, 0
+hostfs_text:
+        .byte "HostFS", $0D, 0
 fat32:
         .byte "B FAT32", $0D, 0
 keys:
         .byte $0D, "F5 Skip STARTUP.CMD  F8 Step  DEL Monitor", $0D
         .byte "Starting 6502DOS... ", 0
+        .assert * - texts <= 256, error, "print reaches the texts with X"
 cannot:
         .byte "Cannot run ", SHELL_PATH, ": ", 0
-        .assert * - texts <= 256, error, "print reaches the texts with X"
 
 ; The scan codes post takes: F5 and F8, which have the tails below, then F2 and Delete, which
 ; choose the monitor.
@@ -430,6 +444,20 @@ irq_entry:
         FAR_IRQ_ENTRY
 irq_exit:
         FAR_IRQ_EXIT
+
+; x16emu finds its STATUS variable by these three instructions behind the JMP at $FFB7. Nothing
+; runs them. hostfs.inc reads host_status.
+.segment "READST"
+
+        jmp host_readst
+
+.segment "CODE"
+
+host_readst:
+        lda host_status
+        ora host_status
+        sta host_status
+        rts
 
 .segment "SIGNATURE"
 

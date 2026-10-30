@@ -1,4 +1,4 @@
-' HELPSW.UXI: the help switch of a program that has a topic in C:\DOS\HELP.HLP. Include
+' HELPSW.UXI: the help switch of a program that has a topic in C:\sys\HELP.HLP. Include
 ' DOS.UXI first.
 
 CONST HELP_TAIL AS UWORD = $0781          ' the command tail's text, which ends with a CR
@@ -16,7 +16,7 @@ SUB HELP_SWITCH(TOPIC AS STRING)
   CHARACTER = ContentsAt(PLACE + 1) OR $20
   IF CHARACTER <> ASC("h") AND CHARACTER <> ASC("?") THEN RETURN
   IF ContentsAt(PLACE + 2) > ASC(" ") THEN RETURN
-  DOS.EXEC("C:\DOS\HELP.COM", TOPIC)
+  DOS.EXEC("C:\sys\HELP.COM", TOPIC)
   IF DOS.ERROR <> 0 THEN
     PRINT DOS.ERRMSG(DOS.ERROR)
     END 1

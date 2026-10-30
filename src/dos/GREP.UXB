@@ -7,7 +7,7 @@
 ' -- c, [a-z] one of a to z, and [^abc] any other character. A ] first in the set is one of
 ' -- its characters. * after any of these matches it 0 or more times. \ before a character
 ' -- that is not a letter or a digit takes that character as it is: \. \* \[ \\. Any other
-' -- character matches itself, so C:\DOS matches C:\DOS.
+' -- character matches itself, so C:\sys matches C:\sys.
 ' -- -i takes the pattern and each line in capitals. -n writes the line number and a colon
 ' -- before each line. -v writes the lines that do not match. -c writes only the number of
 ' -- lines it would write. Switches may share one -: -in.

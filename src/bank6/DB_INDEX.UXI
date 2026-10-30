@@ -1,5 +1,5 @@
 ' DB_INDEX.UXI -- DB's index commands: USE with INDEX, INDEX ON, SET INDEX TO and SET PATH TO. Included by
-' DB.UXB.
+' XBASE.UXB.
 
 ' Closes the open indexes. The record order follows.
 SUB CLOSE_INDEXES()

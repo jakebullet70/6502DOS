@@ -86,5 +86,5 @@ def card(image):
         assert archive.testzip() is None
         assert archive.getinfo("DESC.TXT").flag_bits & 8
     programs = sorted(glob.glob(os.path.join(ROOT, "build", "bas", "*.COM")))
-    programs += [os.path.join(ROOT, "build", "DOS"), os.path.join(ROOT, "build", "UTILS")]
+    programs += [os.path.join(ROOT, "build", "sys")]
     mksd.make(FOLDER, image, extra=programs, date=datetime.date(2026, 10, 13))

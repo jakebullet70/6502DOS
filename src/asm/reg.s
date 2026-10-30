@@ -5,7 +5,7 @@
 ; no = and no $00. A value is up to 255 characters with no $00. A file that does not start
 ; "6502REG1" reads as empty.
 ;
-;   6502REG1FONT.FILE=C:\UTILS\GUI.F08<$00>EDIT.TABS=4<$00><$00>
+;   6502REG1FONT.FILE=C:\sys\GUI.F08<$00>EDIT.TABS=4<$00><$00>
 ;
 ; reg_set writes the whole file to C:\6502DOS.$$$, deletes C:\6502DOS.REG and renames the
 ; copy. Each call opens its files on handles of the running program.
