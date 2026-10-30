@@ -1,7 +1,7 @@
 ' DB.UXB -- DB, the dot prompt over the table library (docs/DB.PLAN.md). Reads a command at
 ' the prompt ". " and runs it: USE, CREATE, LIST, DISPLAY, GO or GOTO, SKIP, LOCATE, CONTINUE, DISPLAY
 ' STRUCTURE, ?, STORE, name = value, RELEASE, DISPLAY MEMORY, COUNT, SUM, APPEND, APPEND BLANK,
-' EDIT, REPLACE, DELETE, RECALL, PACK, INDEX ON, SET INDEX TO, FIND, REINDEX, SELECT PRIMARY,
+' EDIT, REPLACE, DELETE, RECALL, PACK, INDEX ON, SET INDEX TO, SET PATH TO, FIND, REINDEX, SELECT PRIMARY,
 ' SELECT SECONDARY, DO, RETURN, CANCEL, IF, ELSE, ENDIF, DO WHILE, ENDDO, ACCEPT, INPUT, WAIT,
 ' MODIFY COMMAND, @ ... SAY ... GET, READ, CLEAR, CLS, HELP, REG and QUIT. A command word may be cut to
 ' its first 4 letters, as DISP STRU. LIST, DISPLAY, LOCATE, COUNT, SUM, REPLACE, DELETE and
@@ -41,6 +41,7 @@ DIM OTHER_NAME AS STRING * 80       ' TABLE_NAME of the other area
 DIM OTHER_TABLE AS UBYTE            ' TABLE of the other area
 DIM OTHER_CURRENT AS UWORD          ' CURRENT of the other area
 DIM OTHER_BEFORE AS UBYTE     ' BEFORE_FIRST of the other area
+DIM SEARCH_PATH AS STRING * 80      ' the directories of SET PATH TO, apart by ;
 
 ' Sets TOKEN to the first word of REST, in capitals, and REST to what follows it.
 SUB NEXT_WORD()
@@ -122,6 +123,26 @@ FUNCT WITH_EXTENSION(PATH AS STRING, EXTENSION AS STRING) AS STRING
   PATH = UCASE$(PATH)
   IF INSTR(PATH, ".") = 0 THEN PATH = PATH + EXTENSION
   RETURN PATH
+END FUNCT
+
+' NAME, or the first directory of SEARCH_PATH that holds NAME joined to NAME, when NAME is not
+' found and has no : or \. NAME when no directory holds it.
+' Trap: DOS.EXISTS runs FINDFIRST, so FIND_FILE ends a search in progress.
+FUNCT FIND_FILE(NAME AS STRING) AS STRING
+  DIM LIST AS STRING * 80, SPLIT AS UBYTE, TRIED AS STRING * 128
+  IF INSTR(NAME, ":") <> 0 OR INSTR(NAME, "\") <> 0 THEN RETURN NAME
+  IF DOS.EXISTS(NAME) THEN RETURN NAME
+  LIST = SEARCH_PATH
+  DO WHILE LIST <> ""
+    SPLIT = INSTR(LIST, ";")
+    IF SPLIT = 0 THEN SPLIT = LEN(LIST) + 1
+    TRIED = TRIM$(LEFT$(LIST, SPLIT - 1))
+    IF RIGHT$(TRIED, 1) <> "\" THEN TRIED = TRIED + "\"
+    TRIED = TRIED + NAME
+    IF DOS.EXISTS(TRIED) THEN RETURN TRIED
+    LIST = MID$(LIST, SPLIT + 1)
+  LOOP
+  RETURN NAME
 END FUNCT
 
 ' Closes the table in use, and sets TABLE_NAME to PATH, with .DB added when it has no
@@ -537,6 +558,7 @@ SKIP_DEPTH = 0
 SKIP_LOOP = 0
 LOOP_DEPTH = 0
 GET_COUNT = 0
+SEARCH_PATH = ""
 CALLER_BANK = ContentsAt(DB.RAM_BANK)
 VARIABLE_BANK = DB.TAKE_BANK()
 IF VARIABLE_BANK = 0

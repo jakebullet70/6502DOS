@@ -1,4 +1,4 @@
-' DB_INDEX.UXI -- DB's index commands: USE with INDEX, INDEX ON and SET INDEX TO. Included by
+' DB_INDEX.UXI -- DB's index commands: USE with INDEX, INDEX ON, SET INDEX TO and SET PATH TO. Included by
 ' DB.UXB.
 
 ' Closes the open indexes. The record order follows.
@@ -18,7 +18,7 @@ SUB OPEN_INDEXES()
   DO WHILE REST <> ""
     COMMA = INSTR(REST, ",")
     IF COMMA = 0 THEN COMMA = LEN(REST) + 1
-    IF DB.INDEX_OPEN(WITH_EXTENSION(TRIM$(LEFT$(REST, COMMA - 1)), ".IDX")) = DB.RECORD_ORDER
+    IF DB.INDEX_OPEN(FIND_FILE(WITH_EXTENSION(TRIM$(LEFT$(REST, COMMA - 1)), ".IDX"))) = DB.RECORD_ORDER
       FILE_ERROR()
       EXIT DO
     ENDIF
@@ -43,6 +43,7 @@ SUB DO_USE()
     SYNTAX_ERROR()
     RETURN
   ENDIF
+  TABLE_NAME = FIND_FILE(TABLE_NAME)
   TABLE = DB.OPEN_TABLE(TABLE_NAME)
   IF TABLE = 0
     FILE_ERROR()
@@ -88,10 +89,17 @@ SUB DO_INDEX()
 END SUB
 
 ' SET INDEX TO names: closes the open indexes, then opens names, as OPEN_INDEXES. SET INDEX TO
-' alone leaves the record order.
+' alone leaves the record order. SET PATH TO dirs: USE, the index names and DO look for a
+' name in dirs, apart by ;, as FIND_FILE. SET PATH TO alone clears dirs.
 SUB DO_SET()
   NEXT_WORD()
-  IF IS("INDEX")
+  IF TOKEN = "PATH"
+    NEXT_WORD()
+    IF TOKEN = "TO"
+      SEARCH_PATH = REST
+      RETURN
+    ENDIF
+  ELSEIF IS("INDEX")
     NEXT_WORD()
     IF TOKEN = "TO"
       IF IN_USE() = 0 THEN RETURN
