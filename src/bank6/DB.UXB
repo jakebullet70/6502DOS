@@ -683,6 +683,14 @@ DO WHILE RUNNING
     DO_CLEAR(1)
   ELSEIF TOKEN = "CLS"
     DO_CLEAR(0)
+  ELSEIF TOKEN = "!" OR TOKEN = "RUN" OR IS("SHELL")
+    ' !, RUN and SHELL run C:\ROMSHELL.COM without STARTUP.CMD. The shell's END comes back.
+    IF REST <> ""
+      SYNTAX_ERROR()
+    ELSE
+      DOS.EXEC("C:\ROMSHELL.COM", " -N")
+      IF DOS.ERROR THEN FILE_ERROR()
+    ENDIF
   ELSEIF IS("HELP")
     ' HELP [topic] runs C:\DOS\HELPDB.COM. Trap: HELPDB reads the topic from P1$, not the tail.
     HEAP.SYS_STRINGS_SET(0, REST)
