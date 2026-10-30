@@ -1506,8 +1506,9 @@ To do, not designed yet:
   literals, then the variables, then the array space, at a RAM address outside the file. The
   startup copies the literals there from the file with `T_LITCOPY` and clears the rest. The
   runtime's data records follow the array space. Help topic: Placing the code and the variables.
-  `#ROMBANKS first, second [, NAME]` splits such a program across two ROM banks
-  (`uxc_rombank.py`); help topic: Two ROM banks.
+  `#ROMBANKS first, second [, third] [, NAME]` splits such a program across two or three ROM
+  banks (`uxc_rombank.py`); help topic: Two or three ROM banks. Each bank ends with the 43-byte
+  `T_FAR` at `K_FAR` $FF75, with an entry for each bank at +0, +7 and +14 (`K_FAR_ENTRY` 7).
 
   - Code in ROM cannot be written, so nothing in the code may be a variable. No runtime
     template writes its own code or a source string.
@@ -1587,9 +1588,9 @@ To do, not designed yet:
     wherever the `@` is. A `T_ICALL` in a region's code calls the region's `T_RGGATE` in place
     of `R_ICALL`, so a call through a pointer from a region goes through `bank_call`. A veneer
     is 7 bytes, none when the `SUB` already has one.
-  - `#ROMBANKS`: a pointer holds an address in the first bank. `@` of a `SUB` in the second
-    bank is the address of its veneer in the first bank. A `T_ICALL` in the second bank calls
-    `T_FAR` at `K_FAR` in place of `R_ICALL`, so the call runs in the first bank.
+  - `#ROMBANKS`: a pointer holds an address in the first bank. `@` of a `SUB` in a later bank
+    is the address of its veneer in the first bank. A `T_ICALL` in a later bank calls `T_FAR`'s
+    entry for the first bank in place of `R_ICALL`, so the call runs in the first bank.
   - Not built: a pointer `DIM ... AT`, a `FUNCTION` result of a pointer type, and a `TYPE`
     field of a pointer type.
 - **Variables in banked RAM** (user, 2026-10-13; for 6502DOS). `DIM SFT(15) AT $A000 BANK 0`

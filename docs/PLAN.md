@@ -117,7 +117,7 @@ The UXCBASIC library is the folder `lib/`. Each file holds one namespace of the 
 | `$0700–$07FF` | the PSP of the running program (section 7) |
 | `$0801–$9EFF` | the program |
 | `$9F00–$9FFF` | I/O: VIAs, VERA, YM2151 |
-| `$A000–$BFFF` bank 0 | kernel tables: the system file table at `$A000`, the FAT32 library's variables at `$A100–$A7FF`, the keyboard queue at `$A800–$A80A`, the library's sector buffer at `$A900–$AAFF`, `rename`'s new path at `$AB00–$ABFF`, the bank owner table at `$AC00–$ACFF` (Banked RAM, below) |
+| `$A000–$BFFF` bank 0 | kernel tables: the system file table at `$A000`, the FAT32 library's variables at `$A100–$A7FF`, the keyboard queue at `$A800–$A80A`, the library's sector buffer at `$A900–$AAFF`, `rename`'s new path at `$AB00–$ABFF`, the bank owner table at `$AC00–$ACFF` (Banked RAM, below), the FAT32 library's 16 contexts at `$AD00–$AEFF` |
 | `$A000–$BFFF` bank 11 | VARBANK, the shared string heap (String heaps, below) |
 | `$A000–$BFFF` banks 1 to 10, 12 and up | handed out by `bank_alloc`: `exec`'s saves (section 7) and the programs' banks |
 | `$C000–$FFFF` ROM bank 0 | kernel core and the vectors. `$FFCF` and `$FFD2` jump to `con_in` and `con_out`, and `$FFF6–$FFF9` hold `MIST` (section 10) |
@@ -125,8 +125,10 @@ The UXCBASIC library is the folder `lib/`. Each file holds one namespace of the 
 | `$C000–$FFFF` ROM bank 2 | MSBASIC, started by `MSBASIC.COM` |
 | `$C000–$FFFF` ROM banks 3 and 4 | the UXCBASIC program in `src/bank3`, the shell `ROMSHELL`, started by its `.COM` stub |
 | `$C000–$FFFF` ROM bank 5 | the DB library, call 57, and MSBASIC's float, call 58 |
-| `$C000–$FFFF` ROM banks 6 and 7 | the UXCBASIC program in `src/bank6`, `DB`, started by `DB.COM`; bank 8 is kept for its growth |
-| `$C000–$FFFF` ROM banks 8 and up | not in the image yet |
+| `$C000–$FFFF` ROM banks 6 to 8 | the UXCBASIC program in `src/bank6`, `DB`, started by `DB.COM` |
+| `$C000–$FFFF` ROM banks 9 and up | not in the image yet |
+
+The ROM image holds banks 0 to 8: 9 banks, 147456 bytes.
 
 VRAM:
 
@@ -153,10 +155,11 @@ VRAM:
   and the vectors must not use those four bytes.
 - Trap: `$01` reads back as noise until code writes it. Reset writes 0 to it before the gate
   saves it.
-- The system file table has 8 entries of 32 bytes. An entry holds the number of handles that
-  refer to it, the access mode and the driver's address. A file's entry also holds its context
-  in the FAT32 library, its position and its size. The library has 8 contexts, one for each
-  entry.
+- The system file table, `$A000–$A0FF` in bank 0, has 16 entries of 16 bytes (`SFT_COUNT`,
+  `SFT_SIZE`). Entry 0 is `CON`, so at most 15 files are open at once. An entry holds the
+  number of handles that refer to it, the access mode and the driver's address. A file's entry
+  also holds its context in the FAT32 library, its position and its size. The library has 16
+  contexts of 32 bytes, one for each entry, at `$AD00–$AEFF` (`FAT32_CONTEXT_RAM`).
 
 ### Banked RAM
 
@@ -813,6 +816,9 @@ Short names:
 - `END` ends the script. `RUN name` ends the script, then runs `name`.
 - `C:\STARTUP.CMD` runs when the shell starts. `C:` is the boot drive. A shell run as a child
   runs it too. It gets no arguments, and the slots keep their values.
+- The shell's command tail takes one switch. `-N` skips `STARTUP.CMD`. `-S` steps through it,
+  asking `[Y,N]?` before each line. `-C line` skips it, runs `line` and the script that line
+  starts, then ends the shell. DB's `!`, `RUN` and `SHELL` use `-N` and `-C`.
 - A label is a name of 2 characters at least, then a colon, alone on a line; spaces may come
   before the name and the colon. A letter and a colon is a drive: `D:` alone gives `Bad command
   or file name`. Text after a label's colon is a syntax error. A label does nothing when it runs.
@@ -1108,6 +1114,12 @@ Short names:
   - `HELPBAS.HLP` has the format of `HELP.HLP`, with CR LF line ends. MSBASIC's `HELP [topic]`
     reads the same file.
   - No help for the topic gives exit code 1, and no `HELPBAS.HLP` exit code 2.
+- `HELPDB [topic]` is a DOS utility, `HELPDB.COM`, from `src/dos/HELPDB.UXB`. It prints the
+  help on a DB command from `C:\DOS\HELPDB.HLP`, and with no topic lists the topics. DB's
+  `HELP [topic]` runs it.
+  - `HELPDB.HLP` has the format of `HELP.HLP`, with LF line ends. `HELPDB -R` writes its
+    index, `HELPDB.IDX`.
+  - No help for the topic gives exit code 1, and no `HELPDB.HLP` exit code 2.
 - The utilities lie in the card's folder `\UTILS`, each with its source in `\UTILS\SRC\FOLDER`.
   The build compiles each `src/utils/FOLDER/NAME.UXB` to `build/UTILS/NAME.COM`, and copies
   each `src/utils/FOLDER` to `build/UTILS/SRC/FOLDER`. `sd/startup.cmd` puts `C:\UTILS` in
@@ -1287,9 +1299,9 @@ Folders:
   COM file is older than the source, than `UXCBASIC/tpl/UXDOS/UXC.TPL.BIN`, or than a
   file the source includes, or than a file of pyuxc. `#INCLUDE` looks in the source's folder,
   then `lib/`.
-- `src/asm/rom.cfg` links ROM banks 0 and 1. `build.py` appends MSBASIC's 6502dos target as
-  bank 2 and the program of `src/bank3` as banks 3 and 4, so `build/6502DOS.ROM` is 81920
-  bytes.
+- `src/asm/rom.cfg` links ROM banks 0, 1 and 5. `build.py` appends MSBASIC's 6502dos target as
+  bank 2, the program of `src/bank3` as banks 3 and 4, bank 5, and the program of `src/bank6`
+  as banks 6 to 8, so `build/6502DOS.ROM` is 147456 bytes.
 - `src/bank3` holds one `NAME.UXB`, now `ROMSHELL.UXB`, with `#ORG $C000`, `#DATA $0801` and
   `#ROMBANKS 3, 4`; it includes `DOS.UXI`, `HEAP.UXI` and `../bas/CMDSHELL.UXI`. pyuxc compiles
   it to `build/bank3/BANK3.BIN` and `BANK4.BIN`, empty when the program fits bank 3.
@@ -1457,7 +1469,7 @@ Each step boots and shows something, and each has a test.
    7i. The commandlets of section 8, one a part: 7i1 `EXIST`, 7i2 `DISKFREE`, 7i3 `DISKINFO`,
        7i4 `WHERE`, 7i5 `HELP`, 7i6 `DATE`, `TIME` and `UPTIME` on the clock calls. `MEM`
        comes with step 10. The DOS utilities `VIEW`, `TREE`, `MORE`, `HEAD`, `TAIL`,
-       `GREP`, `XCOPY` and `HELPBAS`, and the utility `HDIR`, follow, one a part.
+       `GREP`, `XCOPY`, `HELPBAS` and `HELPDB`, and the utility `HDIR`, follow, one a part.
 8. `SYSINIT.COM` with `CONFIG.SYS` and `DEVICE=`. Until then the ROM runs `C:\ROMSHELL.COM`
    itself (section 8).
 9. Layer 1 moves to UXCBASIC, one part at a time, as the compiler features land. The parts that
@@ -1495,7 +1507,7 @@ the UXCBASIC plan, section 5, in this order:
    array space at a RAM address outside the file. The startup copies the literals there and
    clears the rest. The runtime's writable bytes are data
    records after the array space. No runtime template writes its own code or a source string.
-   `#ROMBANKS first, second` splits a program across two ROM banks.
+   `#ROMBANKS first, second [, third]` splits a program across two or three ROM banks.
 7. **Relocatable output.**
 
 `LONG` and records are the features being written in UXCBASIC now.

@@ -53,7 +53,7 @@ C:\>LIST README.TXT | MORE
 | `C:\CMDSHELL.COM` | The same shell, built to run from RAM |
 | `C:\MSBASIC.COM` | Starts Microsoft BASIC for the 6502, in ROM bank 2 |
 | `C:\startup.cmd` | The start-up script |
-| `C:\DOS` | `EDIT`, `TED`, `VIEW`, `MORE`, `HEAD`, `TAIL`, `GREP`, `TREE`, `XCOPY`, `HELP`, `HELPBAS`, and the commandlets `DATE`, `TIME`, `UPTIME`, `MEM`, `DISKFREE`, `DISKINFO`, `WHERE`, `EXIST` |
+| `C:\DOS` | `EDIT`, `TED`, `VIEW`, `MORE`, `HEAD`, `TAIL`, `GREP`, `TREE`, `XCOPY`, `HELP`, `HELPBAS`, `HELPDB`, and the commandlets `DATE`, `TIME`, `UPTIME`, `MEM`, `DISKFREE`, `DISKINFO`, `WHERE`, `EXIST` |
 | `C:\Utils` | `HDIR`, `HELPED`, `THEMED`, `GUIDEMO`, three color themes, and the sources in `SRC` |
 | `C:\Programming\basic` | MSBASIC sample programs |
 

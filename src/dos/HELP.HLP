@@ -105,6 +105,13 @@ The first word is a statement, an alias or a program. Case does not matter.
   name = expression sets a variable. There is no LET.
   A program is a .SCOM, .COM or .CMD file. See HELP WHERE.
   See also HELP SCRIPTS, VARIABLES, EXPRESSIONS, REDIRECT and PROMPT.
+  C:\ROMSHELL.COM, the shell as a program, takes one switch:
+    -N skips C:\STARTUP.CMD.
+    -S asks [Y,N]? before each line of C:\STARTUP.CMD. N skips the line.
+    -C line skips C:\STARTUP.CMD, runs line and the script it starts,
+       then ends.
+  Example:
+    RUN C:\ROMSHELL.COM -C DIR
 :SCRIPTS
 A script is a text file NAME.CMD of shell lines. Typing NAME runs it.
   The words after NAME go in P1$ to P9$, one each.

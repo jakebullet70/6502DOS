@@ -39,11 +39,12 @@ status 1.
 `HELLO.PRG`. pyuxc prints the compiler's screen output, then one result line:
 
 ```
-OK,<prg>,<bytes>[,SECOND <pr2> <bytes>][,REGION <slot> <bytes> BYTES]...[,REMOVED <n> SUBS <m> BYTES][,REMOVED <n> VARS <m> BYTES][,REMOVED <n> STRINGS <m> BYTES]
+OK,<prg>,<bytes>[,SECOND <pr2> <bytes>[,THIRD <pr3> <bytes>]][,REGION <slot> <bytes> BYTES]...[,REMOVED <n> SUBS <m> BYTES][,REMOVED <n> VARS <m> BYTES][,REMOVED <n> STRINGS <m> BYTES]
 ERROR,<line>,<message>
 ```
 
 `SECOND` names the second bank's file of a `#ROMBANKS` program, `NAME.PR2`, and its bytes.
+`THIRD` names the third bank's file, `NAME.PR3`, and its bytes, when the program has three banks.
 A `REGION` field gives the bytes of each `#REGION_SLOT` region, in slot order. A `REMOVED` field counts what the compile left out, and the bytes saved. `VARS` counts the
 bytes of both the variables and the array space.
 
@@ -117,7 +118,7 @@ The stock ROM is not supported. The command line has no target option. For `"650
 | `uxc_case.py` | `UXC-CASE.BL`: `ON CASE` |
 | `uxc_select.py` | none: `SELECT CASE` |
 | `uxc_dead.py` | none: `#KEEP`, and leaving out unused SUBs, variables and string literals |
-| `uxc_rombank.py` | none: `#ROMBANKS`, a program in two ROM banks |
+| `uxc_rombank.py` | none: `#ROMBANKS`, a program in two or three ROM banks |
 | `uxc_ramreg.py` | none: `#REGION_SLOT`, SUBs in RAM banks at `$A000` |
 | `uxc_record.py` | `UXC-RECORD.BL` |
 | `uxc_asm.py` | `UXC-ASM.BL` |
@@ -163,7 +164,7 @@ The GPC UXC has none of these:
 - `#KEEP`, and leaving out the SUBs, global variables and string literals nothing uses
   (`uxc_dead.py`). It is on by default; `--keep-subs` and `--keep-vars` turn it off.
 - `#ORG` and `#DATA`, output for ROM (`dd_place_scan` in `uxc_dead.py`, `uxc_link.py`).
-- `#ROMBANKS`, a program in two ROM banks (`uxc_rombank.py`).
+- `#ROMBANKS`, a program in two or three ROM banks (`uxc_rombank.py`).
 - `#REGION_SLOT`, SUBs in RAM banks (`uxc_ramreg.py`), and `REGION_BYTES(n)`
   (`ex_region_bytes` in `uxc_expr.py`, `rg_bytes` in `uxc_ramreg.py`, a fixup of section
   `K_SEC_RGSIZE`).

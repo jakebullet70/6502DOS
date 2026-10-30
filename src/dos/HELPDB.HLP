@@ -1,3 +1,11 @@
+:!
+! [command line]
+  Runs C:\ROMSHELL.COM, the shell, without C:\STARTUP.CMD. ! and RUN are
+  the same command.
+  Alone, it gives the shell's prompt, and the shell's END comes back to DB.
+  With a command line, the shell runs that line, and the script it starts,
+  then comes back. The table in use and the current record are kept.
+  ! DIR *.DB
 :?
 ? [expression [, expression ...]]
   Prints the values with a space between them, then ends the line. ? alone
@@ -5,6 +13,8 @@
   ? NAME, AGE * 2
 :@
 @ row, column [SAY expression] [GET name [PICTURE text]]
+@ row, column TO row, column [DOUBLE]
+@ row, column PROMPT text
   Puts the cursor at row and column and prints the SAY value there with no
   line end. Row and column count from 0, and are 0 to 255. With neither SAY
   nor GET it blanks the row from column to its end. The line is checked
@@ -19,8 +29,13 @@
   must fit on its row.
   At most 32 GETs are pending. Each takes twice its width plus 4 bytes of a
   2048-byte pool. Past either limit @ gives Too many GETs.
+  @ ... TO draws a box from the first corner, the top left, to the second,
+  the bottom right, as BOX does.
+  @ ... PROMPT prints text there and adds it to the prompts MENU TO picks
+  from. At most 16 prompts.
   HELPDB PICTURE gives the PICTURE characters, HELPDB READ the editing.
   @ 2, 0 SAY "Name" GET NAME PICTURE "!XXXXXXXXX"
+  @ 1, 10 TO 5, 40 DOUBLE
 :ACCEPT
 ACCEPT [prompt] TO name
   Prints prompt, a text, then stores the line typed as text in the memory
@@ -41,15 +56,23 @@ BOF()
   .T. when SKIP with a negative count has stopped at the first record of
   the order, and in a table with no records. Else .F.. With no table in use
   it is .F..
+:BOX
+BOX row, column, width, height [DOUBLE]
+  Draws a box of single lines, or double lines with DOUBLE, its top left
+  corner at row and column, from 0. The inside is cleared to spaces. width
+  and height are at least 2. The box takes the current colors.
+  A box that ends in the screen's last column moves the cursor to the next
+  row, and on the last row that scrolls the screen.
+  BOX 2, 10, 30, 6 DOUBLE
 :CANCEL
 CANCEL
   Ends every command file running. DB goes back to the dot prompt. At the
   prompt CANCEL does nothing.
 :CHANGING
-APPEND  EDIT  REPLACE  DELETE  RECALL  PACK
+APPEND  EDIT  REPLACE  DELETE  RECALL  PACK  ZAP
   The commands that add and change records. A change to a record is written
   to the table at once. DELETE only marks a record; PACK removes the marked
-  records.
+  records. ZAP removes every record.
   HELPDB name gives each command.
 :CLEAR
 CLEAR [GETS]
@@ -64,6 +87,16 @@ CONTINUE
   order, over what is left of the LOCATE's scope. Prints "Record n", or "End
   of LOCATE" at the scope's end. Without a LOCATE it gives No LOCATE active.
   USE, CREATE and SELECT end the LOCATE.
+:COPY
+COPY TO path
+  Makes the table path, with .DB added when it has no extension, with the
+  fields of the table in use. Copies to it, in the order, each record that
+  is not deleted and meets SET FILTER, and prints "n records copied". The
+  place past the last record is then current.
+  A file of that path is emptied. The path of the table of either work
+  area gives Table in use. Another path to the table in use, such as
+  .\PEOPLE.DB for PEOPLE.DB, empties it.
+  COPY TO OLDPEOPLE
 :COUNT
 COUNT [scope] [TO name]
   Prints how many records of the scope meet its FOR condition, as "n
@@ -93,9 +126,9 @@ CREATE path
 DATE()
   The date of the clock, as text MM/DD/YY.
 :DB
-DB
-  DB is a database at a dot prompt, after dBASE II. DB.COM starts it, and
-  reads no arguments. QUIT ends it.
+DB [file]
+  DB is a database at a dot prompt, after dBASE II. DB.COM starts it. DB
+  file runs the command file file first, as DO does. QUIT ends it.
   DB prints the prompt ". " and runs each line typed. A command word may be
   cut to its first 4 letters or more, as DISP STRU for DISPLAY STRUCTURE.
   Small letters are the same as capitals.
@@ -105,6 +138,7 @@ DB
   command gives Unknown command, unless it is name = value.
   DB keeps its memory variables in a RAM bank of their own. Without a free
   bank DB prints the error and ends.
+  HELP [topic] at the prompt runs HELPDB. ! runs the shell.
   HELPDB alone lists the topics. HELPDB name prints a topic. The groups:
   TABLES, MOVING, SHOWING, CHANGING, INDEXES, VARIABLES, SCREENS, PROGRAMS,
   FUNCTIONS, OPERATORS, SCOPE, PICTURE, KEYS, EXPRESSIONS.
@@ -206,7 +240,7 @@ FIND key
   FIND compares key as typed.
   FIND Smith
 :FUNCTIONS
-RECNO EOF BOF DELETED DATE LEN UPPER TRIM VAL INT FILE STR SUBSTR
+RECNO EOF BOF DELETED DATE LEN UPPER TRIM VAL INT FILE REG STR SUBSTR MENU
   A function name is typed whole, with its ( right after it, no space
   between. An unknown name gives Unknown function. A wrong number of
   arguments gives Syntax error, and an argument of the wrong kind Type
@@ -225,6 +259,11 @@ GO n | GO TOP | GO BOTTOM
 :GOTO
 GOTO n | GOTO TOP | GOTO BOTTOM
   The same as GO. HELPDB GO gives GO.
+:HELP
+HELP [topic]
+  Runs C:\DOS\HELPDB.COM on topic, then comes back to the prompt. HELP
+  alone lists the topics.
+  HELP REPLACE
 :IF
 IF condition
   In a command file, when condition is false, the lines up to this IF's
@@ -294,6 +333,24 @@ LOCATE [scope]
   and prints "Record n". At the scope's end it prints "End of LOCATE". The
   scope is every record when left out. CONTINUE finds the next record.
   LOCATE FOR CITY = "Boston"
+:MENU
+MENU TO name | MENU(row, column, items)
+  MENU TO shows the prompts of @ ... PROMPT, one picked at a time, and
+  stores in the memory variable name the number of the one picked, from 1
+  in the order they were made, or 0 for Esc. With no prompt it stores 0
+  and waits for no key. The prompts are then dropped.
+  MENU(row, column, items), the function, draws a box of single lines, its
+  top left corner at row and column, with the items inside, one a row, and
+  gives the number of the item picked, or 0 for Esc. items is a text, the
+  items apart by ;, at most 16. The box is as wide as the widest item, and
+  stays on the screen. The prompts of @ ... PROMPT are dropped.
+  Up and Left go to the one before, Down and Right to the next, around the
+  ends. Enter picks the one shown. A key picks the first whose first
+  character it is, in either case.
+  @ 5, 10 PROMPT "Add"
+  @ 6, 10 PROMPT "Quit"
+  MENU TO PICK
+  ? MENU(2, 30, "Red;Green;Blue")
 :MODIFY
 MODIFY COMMAND file
   Runs C:\DOS\EDIT.COM on file, with .PRG added when it has no extension.
@@ -338,8 +395,14 @@ PICTURE text
   it. With no PICTURE the mask is all # for a number, L for a logical, else
   all X.
   @ 5, 0 GET PHONE PICTURE "(999) 999-9999"
+:POP
+POP
+  Takes back the last PUSH: selects its work area and makes its record
+  current, and BOF() is as it was. A record past the last of the table now
+  in use is the place past the last. POP ends the LOCATE. Without a PUSH
+  it gives Stack empty.
 :PROGRAMS
-DO IF ELSE ENDIF DO WHILE ENDDO RETURN CANCEL ACCEPT INPUT WAIT MODIFY
+DO IF ELSE ENDIF DO WHILE ENDDO RETURN CANCEL ACCEPT INPUT WAIT MODIFY !
   A command file is a text file with the extension .PRG, under 64 KB. DO
   runs it, and MODIFY COMMAND edits it. Its lines run as if typed at the
   prompt.
@@ -348,6 +411,17 @@ DO IF ELSE ENDIF DO WHILE ENDDO RETURN CANCEL ACCEPT INPUT WAIT MODIFY
   An error in a command file prints "Line n: " and the line, and ends every
   command file.
   HELPDB name gives each command.
+:PROMPT
+PROMPT text
+  Part of @. HELPDB @ gives @ ... PROMPT, HELPDB MENU the picking.
+:PUSH
+PUSH
+  Saves the work area in use, its current record and BOF(). POP gives
+  them back. PUSHes nest 4 deep; a fifth gives Stack full.
+  The table, its filter and its indexes are not saved.
+  PUSH
+  SELECT SECONDARY
+  POP
 :QUIT
 QUIT
   Ends every command file, closes the tables of both work areas, and ends
@@ -374,6 +448,13 @@ RECALL [scope]
 RECNO()
   The number of the current record. Past the last record it is the record
   count plus 1. With no table in use it is 0.
+:REG
+REG key TO text | REG(key)
+  REG key TO text sets key in the settings store C:\6502DOS.REG to text.
+  The text "" removes key.
+  REG(key), the function, is the text of key, "" when key is missing.
+  REG GREETING TO "Hello"
+  ? REG("GREETING")
 :REINDEX
 REINDEX
   Builds each open index again from the table, and prints "n records
@@ -397,10 +478,25 @@ REPLACE [scope] field WITH value [, field WITH value ...] [scope]
   mismatch, and a name that is no field Field not found.
   A record that fails part way is left unchanged.
   REPLACE ALL PRICE WITH PRICE * 1.1
+:RESTORE
+RESTORE SCREEN FROM path
+  Puts the cells of a SAVE SCREEN file back on the screen, with .SCR added
+  to path when it has no extension. A short file restores the rows it
+  holds. The cursor does not move.
+  RESTORE SCREEN FROM MAIN
 :RETURN
 RETURN
   Ends the innermost command file, and its caller goes on. At the prompt
   RETURN does nothing.
+:RUN
+RUN [command line]
+  The same as !. HELPDB ! gives !.
+:SAVE
+SAVE SCREEN TO path
+  Writes the 80 by 60 screen's cells to path, with .SCR added when it has
+  no extension: each cell its character then its color, 160 bytes a row,
+  with no header. RESTORE SCREEN FROM reads it back.
+  SAVE SCREEN TO MAIN
 :SAY
 SAY expression
   Part of @. HELPDB @ gives @ ... SAY.
@@ -421,10 +517,12 @@ ALL | NEXT n | RECORD n  [FOR condition]
   A field named ALL, NEXT, RECORD, FOR or TO is read as the scope word.
   LIST NEXT 10 FOR PAID
 :SCREENS
-@  SAY  GET  PICTURE  READ  CLEAR  CLS
+@  SAY  GET  PICTURE  READ  PROMPT  MENU  BOX  CLEAR  CLS  SAVE  RESTORE
   @ ... SAY prints at a place on the screen. @ ... GET adds a pending GET,
-  and READ edits the pending GETs. CLEAR blanks the screen and drops the
-  GETs.
+  and READ edits the pending GETs. @ ... PROMPT and MENU TO, or MENU(),
+  pick from a list. BOX and @ ... TO draw a box. CLEAR blanks the screen
+  and drops the GETs. SAVE SCREEN and RESTORE SCREEN keep the screen in a
+  file. SET REVERSE shows text in reverse video.
   HELPDB name gives each, and HELPDB KEYS gives READ's keys.
 :SELECT
 SELECT PRIMARY | SELECT SECONDARY
@@ -435,12 +533,28 @@ SELECT PRIMARY | SELECT SECONDARY
   SELECT SECONDARY
 :SET
 SET INDEX TO [name [, name ...]]
-  Closes the open indexes, then opens each name, with .IDX added when it has
-  no extension. The first is the order, and the first record of the order
-  is current. SET INDEX TO alone leaves the record order. An index that
-  fails to open prints its error, and the names after it are not opened.
-  SET takes only INDEX.
+SET PATH TO [folder [; folder ...]]
+SET FILTER TO [condition]
+SET REVERSE ON | SET REVERSE OFF
+  SET INDEX TO closes the open indexes, then opens each name, with .IDX
+  added when it has no extension. The first is the order, and the first
+  record of the order is current. SET INDEX TO alone leaves the record
+  order. An index that fails to open prints its error, and the names after
+  it are not opened.
+  SET PATH TO gives the folders where USE, the index names and DO look for
+  a name not found, when it has no : or \. SET PATH TO alone clears them.
+  SET FILTER TO makes GO TOP, GO BOTTOM, SKIP, the scopes and COPY TO pass
+  over the records where condition, a logical, is false. The current record
+  stays. GO n does not check it. SET FILTER TO alone clears it, and USE and
+  CREATE clear it. Each work area keeps its own filter.
+  SET REVERSE ON, or SET REV ON, shows what prints after in reverse video.
+  SET REVERSE OFF gives the usual colors back.
   SET INDEX TO NAMES, CITIES
+  SET PATH TO C:\DATA; C:\OLD
+  SET FILTER TO AGE > 30
+:SHELL
+SHELL [command line]
+  The same as !. HELPDB ! gives !.
 :SHOWING
 LIST  DISPLAY  ?  COUNT  SUM
   The commands that print records and values.
@@ -482,12 +596,14 @@ SUM expression [, expression ...] [scope] [TO name [, name ...]]
   the sums in order, one name for each.
   SUM PRICE, PRICE * QTY FOR PAID TO TOTAL, VALUE
 :TABLES
-USE  CREATE  DISPLAY STRUCTURE  SELECT
+USE  CREATE  DISPLAY STRUCTURE  SELECT  PUSH  POP  COPY  SET
   A table is a .DB file of records, each of the same fields. A field is C
   text, N a number, L a logical or D a date as text.
   DB has two work areas, PRIMARY and SECONDARY, each with a table of its
-  own. A command works on the area in use.
-  HELPDB name gives each of USE, CREATE, DISPLAY and SELECT.
+  own. A command works on the area in use. PUSH and POP save and take back
+  the area in use and its record.
+  HELPDB name gives each of USE, CREATE, DISPLAY, SELECT, PUSH, POP, COPY
+  and SET.
 :TRIM
 TRIM(text)
   text without its trailing spaces.
@@ -517,3 +633,7 @@ STORE  name = value  RELEASE  DISPLAY MEMORY  ACCEPT  INPUT  WAIT
 WAIT [TO name]
   Prints WAITING and waits for a key. TO stores the key in the memory
   variable name as a text of 1 character, or "" for an extended key.
+:ZAP
+ZAP
+  Removes every record of the table in use, and prints "0 records left".
+  It asks nothing first. The open indexes are built again, empty.

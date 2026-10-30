@@ -654,8 +654,8 @@ This prints 10  11.
 - A pointer call in a region's code goes through the region's gate. A SUB in
   low RAM that selects another bank returns with the region's bank selected.
 - With #ROMBANKS, a pointer holds an address in the first bank. @ of a SUB in
-  the second bank is the address of its veneer in the first. A pointer call in
-  the second bank runs through the bank switch at $FF89.
+  a later bank is the address of its veneer in the first. A pointer call in a
+  later bank runs through the bank switch at $FF75, in the first bank.
 
 ### Errors with pointers
 
@@ -670,7 +670,7 @@ This prints 10  11.
 - SUBS CALL EACH OTHER: a SUB calls through a pointer of its own signature,
   or through a loop of such calls.
 
-See [[Subroutines]], [[Code in RAM banks]], [[Two ROM banks]].
+See [[Subroutines]], [[Code in RAM banks]], [[Two or three ROM banks]].
 
 # Commands
 
@@ -2229,8 +2229,10 @@ lines start with UXCBASIC 0.1 and COMPILING NAME.UXB.
   space.
 - The string literals that no code names are left out. The result line then
   gets REMOVED n STRINGS m BYTES.
-- With #ROMBANKS it prints ROM BANK a n BYTES, ROM BANK b m BYTES, the bytes
-  each bank uses. The result line gets SECOND NAME.PR2 size after the size.
+- With #ROMBANKS it prints ROM BANK a n BYTES, ROM BANK b m BYTES, and with a
+  third bank ROM BANK c k BYTES: the bytes each bank uses. The result line
+  gets SECOND NAME.PR2 size after the size, then THIRD NAME.PR3 size with a
+  third bank.
 - With #REGION_SLOT it prints REGION s: n BYTES, d OF DATA, r OF RUNTIME, m
   FREE for each region, s its slot. The result line gets REGION s n BYTES for
   each, after the size.
@@ -2345,42 +2347,48 @@ COUNT = COUNT + 1
 - Code past $FFFF stops the compile with PROGRAM TOO BIG. Variables or array
   space that meet the code stop it with #DATA OVERLAPS THE CODE.
 
-See [[Targets]], [[Compiling]], [[Two ROM banks]].
+See [[Targets]], [[Compiling]], [[Two or three ROM banks]].
 
-## Two ROM banks
+## Two or three ROM banks
 
-#ROMBANKS first, second splits a program for ROM across two ROM banks. It
-needs #ORG and #DATA. The program runs from ROM bank first at the #ORG
-address, and the SUBs at its tail run from ROM bank second at the same
-address.
+#ROMBANKS first, second [, third] [, name] splits a program for ROM across two
+or three ROM banks. It needs #ORG and #DATA. The program runs from ROM bank
+first at the #ORG address. The SUBs at its tail run from ROM bank second, then
+third, at the same address.
 
 ```
 #ORG $C000
 #DATA $0801
-#ROMBANKS 3, 4
+#ROMBANKS 6, 7, 8
 ```
 
 - The compile moves the fewest SUBs at the tail, in code order, that let the
-  first bank fit. #ROMBANKS 3, 4, NAME moves the SUB or FUNCTION NAME and each
-  SUB after it, and more before it when the first bank needs.
+  first bank fit. Of those, the second bank keeps the most it can hold, and
+  the third takes the rest.
+- name, a SUB or FUNCTION, moves name and each SUB after it, and more before
+  it when the first bank needs.
 - The first bank holds the main code, the SUBs not moved, the startup and the
   string literals. Each bank holds its own copy of the run-time routines its
   code calls.
-- NAME.PRG holds the first bank, NAME.PR2 the second. Each file runs from the
-  #ORG address to $FFA0, filled with $FF, and ends with a 23-byte bank switch
-  at $FF89. The ROM build adds the IRQ entry and the vectors from $FFA0.
-- A call to a SUB in the other bank goes through a 7-byte veneer, one for each
-  SUB called across, and takes about 50 cycles.
+- NAME.PRG holds the first bank, NAME.PR2 the second, NAME.PR3 the third.
+  Each file runs from the #ORG address to $FFA0, filled with $FF, and ends
+  with the 43-byte bank switch T_FAR at $FF75. T_FAR has an entry for each
+  bank, at $FF75, $FF7C and $FF83. The ROM build adds the IRQ entry and the
+  vectors from $FFA0.
+- A call to a SUB in another bank goes through a 7-byte veneer, one for each
+  SUB and calling bank. T_FAR selects the SUB's bank, calls it, and selects
+  the caller's bank again. It keeps X and returns A, Y and C.
 - The banks are 0 to 255 and differ. #ROMBANKS is given once: a second stops
   the compile with #ROMBANKS TWICE.
 
-### Errors in two ROM banks
+### Errors in ROM banks
 
 Without #ORG and #DATA the compile stops with #ROMBANKS NEEDS #ORG AND #DATA.
-#ORG PAST THE ROM BANK when #ORG is
-$FF89 or more. #ROMBANKS SUB NOT FOUND when NAME is not a SUB left in. GOTO
-ACROSS ROM BANKS and JUMP ACROSS ROM BANKS for a jump other than a SUB call
-into the other bank. PROGRAM TOO BIG FOR TWO ROM BANKS, ROM BANK FULL.
+#ORG PAST THE ROM BANK when #ORG is $FF75 or more. #ROMBANKS SUB NOT FOUND
+when name is not a SUB left in. GOTO ACROSS ROM BANKS and JUMP ACROSS ROM
+BANKS for a jump other than a SUB call into another bank. PROGRAM TOO BIG FOR
+TWO ROM BANKS or PROGRAM TOO BIG FOR THREE ROM BANKS when the code does not
+fit. ROM BANK FULL.
 
 See [[Placing the code and the variables]], [[Code in RAM banks]].
 
@@ -2463,7 +2471,7 @@ PRINT REGION_BYTES(1); REGION_BYTES(0)
 - #REGION_SLOT IS 0 TO 63.
 - #REGION_SLOT WITH #ORG, #DATA OR #ROMBANKS: a region in a program for ROM.
 
-See [[Subroutines]], [[Two ROM banks]].
+See [[Subroutines]], [[Two or three ROM banks]].
 
 ## Options
 
