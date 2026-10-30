@@ -1,5 +1,20 @@
 # Handoff
 
+## Working rule, read first
+
+Make only the change the user asked for. Touch no other files. Add no tests, docs or HANDOFF
+entries, and run no build or test, unless the user asks. Read only what the edit needs, and name
+anything else in one line. This overrides the CLAUDE.md orders to run the tests of the code
+touched and to update HANDOFF each step.
+
+1. The user names one small change. Make it, and reply in a few lines.
+2. The user says "build". Run `tools/build.py` in the background, timed, and report the time.
+3. The user runs it on the X16 emulator and reports what happened.
+4. The user says "commit" when satisfied. Commit locally; the user pushes.
+
+When something needs a decision, state the proposed change in a line or two and wait for "go".
+Remind the user to `/compact` when a change is done.
+
 ## Open questions
 
 Resume here (2026-10-28): DB, item 11, A2c3 done: the compares, `$`, `.AND.`, `.OR.`,

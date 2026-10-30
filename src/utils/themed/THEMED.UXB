@@ -1,7 +1,7 @@
 '=============================================================================================
 ' -- THEMED [name]
 ' -- builds a color theme of GUI Forms and saves it as a theme file, which GUI.THEME_FILE
-' -- loads. A theme file holds 13 bytes, one color a role in GUI.ROLE's order, each the
+' -- loads. A theme file holds 15 bytes, one color a role in GUI.ROLE's order, each the
 ' -- background times 16 plus the foreground.
 ' -- The name starts as the parameter, or CUSTOM.GTH, and takes the extension .GTH when it has
 ' -- none. That file is loaded at the start when it exists, and the theme is DARK when not.
@@ -30,21 +30,21 @@
 #INCLUDE "GUI.UXI"
 #INCLUDE "HELPSW.UXI"
 
-CONST ROLES AS UBYTE = 13
+CONST ROLES AS UBYTE = 15
 ' The role list's box, 34 columns by 24 rows, the inside's first column, and the rows of the
 ' first role and the file.
 CONST LIST_COLUMN AS UBYTE = 44
 CONST INSIDE AS UBYTE = LIST_COLUMN + 2
-CONST FIRST_ROLE_ROW AS UBYTE = 2, FILE_ROW AS UBYTE = FIRST_ROLE_ROW + ROLES + 1
+CONST FIRST_ROLE_ROW AS UBYTE = 2, FILE_ROW AS UBYTE = FIRST_ROLE_ROW + ROLES
 CONST FILE_COLUMN AS UBYTE = INSIDE + 6, FILE_WIDTH AS UBYTE = 24
 ' Each role's name, NAME_WIDTH characters, in GUI.ROLE's order.
 CONST NAME_WIDTH AS UBYTE = 12
-CONST ROLE_NAMES$ = "Page        Frame       Title       Text        Field       Field focus Button      Button focusHot key     Disabled    Menu        Menu chosen Status line "
+CONST ROLE_NAMES$ = "Page        Frame       Title       Text        Field       Field focus Button      Button focusHot key     Disabled    Menu        Menu chosen Status line Shadow      Console     "
 CONST DIGITS$ = "0123456789ABCDEF"
 
 DIM FILE_NAME AS STRING * 40, TYPED_NAME AS STRING * 40, MESSAGE AS STRING * 64
 ' The theme as last loaded or saved.
-DIM SAVED_COLORS AS STRING * 13
+DIM SAVED_COLORS AS STRING * 15
 DIM THEME_AT AS UWORD, PRESSED AS UWORD, HANDLE AS UWORD
 DIM CHOSEN AS UBYTE, SIDE AS UBYTE, ROLE AS UBYTE, COLOR AS UBYTE, START_COLOR AS UBYTE
 
@@ -115,25 +115,44 @@ SUB DRAW_LIST()
   POS(0) = FILE_COLUMN
   PRINT LEFT$(FILE_NAME + "                        ", FILE_WIDTH);
   GUI.USE_COLOR(GUI.ROLE.TEXT)
-  POS(1) = FILE_ROW + 2
+  POS(1) = FILE_ROW + 1
   POS(0) = INSIDE
   PRINT "Up Down     role";
-  POS(1) = FILE_ROW + 3
+  POS(1) = FILE_ROW + 2
   POS(0) = INSIDE
   PRINT "Left Right  color";
-  POS(1) = FILE_ROW + 4
+  POS(1) = FILE_ROW + 3
   POS(0) = INSIDE
   PRINT "Tab         Bg or Fg";
-  POS(1) = FILE_ROW + 5
+  POS(1) = FILE_ROW + 4
   POS(0) = INSIDE
   PRINT "1 2 3       Dark Light Gray";
-  POS(1) = FILE_ROW + 6
+  POS(1) = FILE_ROW + 5
   POS(0) = INSIDE
   PRINT "L S Esc     load save quit";
 END SUB
 
+' Draws the sample form's shadow, where GUI draws a form's, and a sample console line under it.
+SUB DRAW_EXTRAS()
+  DIM ROW AS UBYTE
+  GUI.USE_COLOR(GUI.ROLE.SHADOW)
+  FOR ROW = 3 TO 13
+    POS(1) = ROW
+    POS(0) = 41
+    PRINT "  ";
+  NEXT ROW
+  POS(1) = 14
+  POS(0) = 3
+  PRINT "                                        ";
+  GUI.USE_COLOR(GUI.ROLE.CONSOLE)
+  POS(1) = 16
+  POS(0) = 1
+  PRINT "C:\>DIR                                 ";
+END SUB
+
 ' Clears the screen in the PAGE color and draws it all in the theme: a sample form at the left,
-' with a menu bar, the role list at the right, and the status line.
+' with a menu bar, its shadow and a console line, the role list at the right, and the status
+' line.
 SUB DRAW_ALL()
   GUI.USE_COLOR(GUI.ROLE.PAGE)
   PRINT CONS.CLEAR_SCREEN$;
@@ -172,6 +191,7 @@ SUB DRAW_ALL()
   PRINT "Read only";
   SAMPLE_BUTTON(10, 4, "OK", GUI.ROLE.BUTTON)
   SAMPLE_BUTTON(10, 12, "Cancel", GUI.ROLE.BUTTON_FOCUS)
+  DRAW_EXTRAS()
   DRAW_LIST()
   GUI.STATUS_LINE(MESSAGE)
 END SUB

@@ -1,0 +1,3 @@
+PUSHD C:\sys\themes
+THEMED.COM P1$
+POPD
