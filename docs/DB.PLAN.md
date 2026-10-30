@@ -215,6 +215,9 @@ shell. The program is UXCBASIC, `src/bank6/XBASE.UXB` and the files it includes:
 `DB_SCREEN.UXI`. It is compiled with `#ROMBANKS 6, 7, 8`. It calls the library through
 `lib/DB.UXI` and the float through `lib/FLOAT.UXI`.
 
+`XBASE` with no command file clears the screen and prints `C:\sys\xbase\splash.dot`, CP437 text,
+before the dot prompt. Without the file it does neither.
+
 `DB name` runs the command file `name`, as `DO name` does, then gives the dot prompt. A `QUIT`
 in the file ends DB.
 
@@ -486,7 +489,7 @@ MENU TO CHOICE
 
 #### Other programs
 
-- `HELP [topic]` runs `C:\sys\HELPXBASE.COM`, which prints the topic from `C:\sys\HELPDB.HLP`,
+- `HELP [topic]` runs `C:\sys\HELPXBASE.COM`, which prints the topic from `C:\sys\xbase\HELPXBASE.HLP`,
   or with no topic lists the topics.
 - `!`, `RUN` and `SHELL` alone run `C:\sys\ROMSHELL.COM -N`, a shell that skips `STARTUP.CMD`. Its
   `END` comes back to DB, with the tables and records kept. With a command line after them,
@@ -586,7 +589,7 @@ written. Every step below is done.
     - A7b. `@ row, column GET`, `READ`, `PICTURE`, `CLEAR GETS`. The program takes ROM bank 8:
       `#ROMBANKS` takes a third bank.
     - A7c. The help topic.
-15. **B1. `HELPXBASE.COM`.** `src/dos/HELPXBASE.UXB` and `src/dos/HELPDB.HLP`, the DB help as its own
+15. **B1. `HELPXBASE.COM`.** `src/dos/HELPXBASE.UXB` and `card/sys/xbase/HELPXBASE.HLP`, the DB help as its own
     program, as `HELPBAS`.
 16. **`DB name`** runs a command file.
 17. **B2. `HELP [topic]`** at the dot prompt runs `HELPXBASE.COM`.

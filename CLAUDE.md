@@ -26,9 +26,8 @@ them that apply here are below.
   A build well past its baseline is locked: stop it, kill the emulator by PID, and say so.
 - Run one test at a time, time it, and report it before the next: the name, pass or fail, and
   the time. A test past 5 s is a failure to investigate at once.
-- Run the full suite every 7th step only, and only when single tests pass. After any other step,
-  run the tests of the code touched. `docs/HANDOFF.md` counts the steps since the last full
-  suite.
+- Run the full suite every 7th step only, and only when single tests pass. `docs/HANDOFF.md`
+  counts the steps since the last full suite.
 - Kill the emulator by its PID or handle only, never by image name.
 - No `git init` until the user says so.
 - Bash heredocs with complex quoting fail. Use Write/Edit, or a Python script in the scratchpad.
@@ -46,8 +45,7 @@ them that apply here are below.
 
 ## Compact
 
-Remind the user to `/compact` after every step. Update `docs/HANDOFF.md` first, so the work
-survives the compact.
+Remind the user to `/compact` after every step.
 
 ## Prose
 

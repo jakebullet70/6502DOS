@@ -540,6 +540,7 @@ Drivers follow MS-DOS 2.0's device drivers.
   | `$02` | 1 | `PSP_TOP`: the last page of the program's RAM that `exec` saves |
   | `$03` | 1 | `PSP_BREAK`: the mode of the STOP key |
   | `$18` | 20 | the handles: each a system file table entry number, or `$FF` when closed |
+  | `$2C` | 84 | the program's path as `exec` got it: a length byte, then up to 83 characters |
   | `$80` | 128 | the command tail: a length byte, the text after the program's name, then CR |
 
   - At boot handles 0, 1 and 2 share the `CON` entry.
@@ -1118,12 +1119,12 @@ Short names:
   - `HELPBAS.HLP` has the format of `HELP.HLP`, with CR LF line ends. MSBASIC's `HELP [topic]`
     reads the same file.
   - No help for the topic gives exit code 1, and no `HELPBAS.HLP` exit code 2.
-- `HELPDB [topic]` is a DOS utility, `HELPXBASE.COM`, from `src/dos/HELPXBASE.UXB`. It prints the
-  help on a DB command from `C:\sys\HELPDB.HLP`, and with no topic lists the topics. DB's
+- `HELPXBASE [topic]` is a DOS utility, `HELPXBASE.COM`, from `src/dos/HELPXBASE.UXB`. It prints the
+  help on a DB command from `C:\sys\xbase\HELPXBASE.HLP`, and with no topic lists the topics. DB's
   `HELP [topic]` runs it.
-  - `HELPDB.HLP` has the format of `HELP.HLP`, with LF line ends. `HELPDB -R` writes its
-    index, `HELPDB.IDX`.
-  - No help for the topic gives exit code 1, and no `HELPDB.HLP` exit code 2.
+  - `HELPXBASE.HLP` has the format of `HELP.HLP`, with LF line ends. Its source is
+    `card/sys/xbase/HELPXBASE.HLP`. `HELPXBASE -R` writes its index, `HELPXBASE.IDX`.
+  - No help for the topic gives exit code 1, and no `HELPXBASE.HLP` exit code 2.
 - The utilities lie in the card's folder `\sys`, each with its source in
   `\source\xcbasic\FOLDER`. The build compiles each `src/utils/FOLDER/NAME.UXB` to
   `build/sys/NAME.COM`, and copies each `src/utils/FOLDER` to `build/source/xcbasic/FOLDER`.
@@ -1475,7 +1476,7 @@ Each step boots and shows something, and each has a test.
    7i. The commandlets of section 8, one a part: 7i1 `EXIST`, 7i2 `DISKFREE`, 7i3 `DISKINFO`,
        7i4 `WHERE`, 7i5 `HELP`, 7i6 `DATE`, `TIME` and `UPTIME` on the clock calls. `MEM`
        comes with step 10. The DOS utilities `VIEW`, `TREE`, `MORE`, `HEAD`, `TAIL`,
-       `GREP`, `XCOPY`, `HELPBAS` and `HELPDB`, and the utility `HDIR`, follow, one a part.
+       `GREP`, `XCOPY`, `HELPBAS` and `HELPXBASE`, and the utility `HDIR`, follow, one a part.
 8. `SYSINIT.COM` with `CONFIG.SYS` and `DEVICE=`. Until then the ROM runs `C:\sys\ROMSHELL.COM`
    itself (section 8).
 9. Layer 1 moves to UXCBASIC, one part at a time, as the compiler features land. The parts that
@@ -1536,7 +1537,7 @@ run on 6502DOS.
 
 ## To do
 
-- Refactor every help: `HELP`, `HELPBAS`, `HELPDB`, `TED.HLP`, `HELPED`, and the `HELP` statement
+- Refactor every help: `HELP`, `HELPBAS`, `HELPXBASE`, `TED.HLP`, `HELPED`, and the `HELP` statement
   of MSBASIC.
 - MSBASIC's `HELP` statement fails: `MSBASIC/src/6502dos_extra.s` opens
   `C:\DOS\HELPBAS.HLP`, and the card has no `C:\DOS`. `HELPBAS.HLP` is in `C:\sys`.

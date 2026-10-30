@@ -58,9 +58,10 @@ C:\>LIST README.TXT | MORE
 | Path | Holds |
 |---|---|
 | `C:\startup.cmd` | The start-up script |
-| `C:\sys` | `ROMSHELL.COM`, which starts the shell in ROM; `CMDSHELL.COM`, the same shell built to run from RAM; `MSBASIC.COM`, which starts Microsoft BASIC in ROM bank 2; `HDIR`, `HELPED`, `GUIDEMO`; `EDIT`, `TED`, `VIEW`, `MORE`, `HEAD`, `TAIL`, `GREP`, `TREE`, `XCOPY`, `HELP`, `HELPBAS`, `HELPDB`, and the commandlets `DATE`, `TIME`, `UPTIME`, `MEM`, `DISKFREE`, `DISKINFO`, `WHERE`, `EXIST` |
+| `C:\sys` | `ROMSHELL.COM`, which starts the shell in ROM; `CMDSHELL.COM`, the same shell built to run from RAM; `MSBASIC.COM`, which starts Microsoft BASIC in ROM bank 2; `HDIR`, `HELPED`, `GUIDEMO`; `EDIT`, `TED`, `VIEW`, `MORE`, `HEAD`, `TAIL`, `GREP`, `TREE`, `XCOPY`, `HELP`, `HELPBAS`, `HELPXBASE`, and the commandlets `DATE`, `TIME`, `UPTIME`, `MEM`, `DISKFREE`, `DISKINFO`, `WHERE`, `EXIST` |
 | `C:\sys\themes` | The fonts and color themes; `THEMED`, `FONTEDIT` |
-| `C:\sys\temp`, `basic`, `xbase`, `edit` | Data of the system and its programs |
+| `C:\sys\xbase` | `HELPXBASE.HLP` and `HELPXBASE.IDX`, the xBASE help that `HELPXBASE` reads |
+| `C:\sys\temp`, `basic`, `edit` | Data of the system and its programs |
 | `C:\source\basic` | MSBASIC sample programs |
 | `C:\source\xcbasic` | The sources of the utilities |
 | `C:\source\xbase` | xBASE programs |

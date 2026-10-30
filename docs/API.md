@@ -78,6 +78,7 @@ Conventions:
 | `reg_set` | 56 | `$03E8` | none | `r0` key<br>`r1` value | none | 4, 5, 13, 21, 29, 30 | yes |
 | `db` | 57 | `$03EB` | none | `Y` function<br>`A` the table's RAM bank<br>`X r0-r3` by function | `X r0` by function | 1, 2, 3, 4, 5, 6, 11, 13, 15, 17, 21, 29, 30 | yes |
 | `fp` | 58 | `$03EE` | none | `Y` function<br>`X r0-r2` by function | `A X r0-r2` by function | 1, 13 | yes |
+| `progpath` | 59 | `$03F1` | none | `r0` buffer, 84 bytes | `r0` buffer, filled with a length-prefixed path | none | yes |
 
 ## What each call does
 
@@ -140,6 +141,7 @@ Conventions:
 - `reg_set`: Sets a key in the settings store, C:\6502DOS.REG, to a value of up to 255 characters with no $00. An empty value removes the key. A changed key moves to the end of the store. The call writes the store to C:\6502DOS.$$$, deletes C:\6502DOS.REG and renames the copy; it writes nothing when the store holds the value already. A key as for `reg_get`; a key or a value that breaks the rules gives error 13. A full drive gives error 29, and the store is left as it was. Needs two free handles.
 - `db`: The table and index library in ROM bank 5. Runs function Y of DB_FUNCTIONS with RAM bank A, the table's workspace, selected, then selects the caller's RAM bank again. A program takes one bank from `bank_alloc` for each open table. A function not written, or a Y past the last, gives error 1. A function that needs a table gives error 6 when the bank holds none. `open` gives error 11 for a file that is not a table. A field past the table's last, a record outside 1 to the number of records, `get`, `put`, `write` or `flag` with no record current, text longer than its field, a full table, and a `create` with no fields, a field of length 0 or a record past 1000 bytes give error 13. A short write gives error 29. A failed `pack` leaves no table. `ix_open` gives error 11 for a file that is not an index on the table's fields, and error 4 for a fourth index. `ix_create` gives error 13 for bad key fields or flags, or a key not unique, and error 4 for a fourth index; a failed build deletes the file. `write` gives error 13 for a key already in a unique index, and writes nothing, and error 11 when an index lacks the record's old key. A failed build in `pack` leaves that index and those after it closed, and its file deleted. `ix_close` or `ix_order` of a slot with no index gives error 6. `ix_find` in the record order, or with a key longer than the index's, gives error 13. `close` closes the indexes. The file calls' errors pass through.
 - `fp`: The float library in ROM bank 5, MSBASIC's arithmetic. Runs function Y of FP_FUNCTIONS. A value is MSBASIC's 5-byte float: the exponent, then the mantissa, high byte first, whose top bit is the sign. A Y past the last gives error 1. An overflow gives error 13.
+- `progpath`: Gives the path `exec` ran the program with, as the caller gave it, cut to 83 characters. It holds a folder only when the caller's path did: a program found in the current directory may have a bare name. A path that does not start at a root is relative to the current directory at the program's start.
 
 ## Errors
 
