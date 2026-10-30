@@ -3,7 +3,7 @@
 ' STRUCTURE, ?, STORE, name = value, RELEASE, DISPLAY MEMORY, COUNT, SUM, APPEND, APPEND BLANK,
 ' EDIT, REPLACE, DELETE, RECALL, PACK, INDEX ON, SET INDEX TO, FIND, REINDEX, SELECT PRIMARY,
 ' SELECT SECONDARY, DO, RETURN, CANCEL, IF, ELSE, ENDIF, DO WHILE, ENDDO, ACCEPT, INPUT, WAIT,
-' MODIFY COMMAND, @ ... SAY ... GET, READ, CLEAR, CLS and QUIT. A command word may be cut to
+' MODIFY COMMAND, @ ... SAY ... GET, READ, CLEAR, CLS, HELP and QUIT. A command word may be cut to
 ' its first 4 letters, as DISP STRU. LIST, DISPLAY, LOCATE, COUNT, SUM, REPLACE, DELETE and
 ' RECALL take a scope: ALL, NEXT n, RECORD n, FOR condition.
 '
@@ -23,6 +23,7 @@
 #INCLUDE "STR.UXI"
 #INCLUDE "KEYS.UXI"
 
+CONST COMMAND_TAIL AS UWORD = $0780 ' the text after DB on its command line
 DIM COMMAND_LINE AS STRING * 128    ' the line typed at the prompt
 DIM REST AS STRING * 128            ' the line after the words read
 DIM TOKEN AS STRING * 43            ' the word NEXT_WORD read, in capitals; a key of 4 fields
@@ -31,6 +32,7 @@ DIM TABLE AS UBYTE                  ' the table's workspace, 0 for none
 DIM CURRENT AS UWORD                ' the current record; RECORD_COUNT + 1 past the last
 DIM BEFORE_FIRST AS UBYTE           ' 1 after SKIP has stopped at record 1 on its way back
 DIM RUNNING AS UBYTE
+DIM TAIL_INDEX AS UBYTE
 DIM CURSOR AS UBYTE                 ' the character of REST an expression reads, from 1
 DIM FAILED AS UBYTE                 ' 1 once a command has printed an error
 DIM PART_LINE AS UBYTE              ' 1 while ? has printed part of a line
@@ -522,6 +524,16 @@ ELSE
   ContentsAt(DB.RAM_BANK) = VARIABLE_BANK
   CLEAR_VARIABLES()
   RUNNING = 1
+  ' DB name runs the command file name, as DO name does. The command tail is a length byte and
+  ' the text, as a string's.
+  FOR TAIL_INDEX = 0 TO ContentsAt(COMMAND_TAIL)
+    ContentsAt(@REST + 1 + TAIL_INDEX) = ContentsAt(COMMAND_TAIL + TAIL_INDEX)
+  NEXT
+  REST = TRIM$(REST)
+  IF REST <> ""
+    COMMAND_LINE = "DO " + REST
+    DO_DO()
+  ENDIF
 ENDIF
 DO WHILE RUNNING
   IF DO_DEPTH = 0
@@ -626,6 +638,11 @@ DO WHILE RUNNING
     DO_CLEAR(1)
   ELSEIF TOKEN = "CLS"
     DO_CLEAR(0)
+  ELSEIF IS("HELP")
+    ' HELP [topic] runs C:\DOS\HELPDB.COM. Trap: HELPDB reads the topic from P1$, not the tail.
+    HEAP.SYS_STRINGS_SET(0, REST)
+    DOS.EXEC("C:\DOS\HELPDB.COM", " " + REST)
+    IF DOS.ERROR THEN FILE_ERROR()
   ELSEIF IS("QUIT")
     RUNNING = 0
   ELSE

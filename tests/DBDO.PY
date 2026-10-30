@@ -29,6 +29,7 @@ FILES = {
                  "DO WHILE .T.\nDO WRET\nRETURN\nENDDO\n",
     "WRET.PRG": "DO WHILE .T.\n? \"wret\"\nRETURN\nENDDO\n",
     "WBAD.PRG": "DO WHILE 1\n? \"bad never\"\nENDDO\n",
+    "BYE.PRG": "? \"bye\"\nQUIT\n",
     "ASK.PRG": "ACCEPT \"Who? \" TO WHO\nINPUT \"Age? \" TO AGE\n? \"ask\", WHO, AGE + 1\n",
 }
 
