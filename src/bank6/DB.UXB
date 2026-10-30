@@ -3,7 +3,7 @@
 ' STRUCTURE, ?, STORE, name = value, RELEASE, DISPLAY MEMORY, COUNT, SUM, APPEND, APPEND BLANK,
 ' EDIT, REPLACE, DELETE, RECALL, PACK, INDEX ON, SET INDEX TO, FIND, REINDEX, SELECT PRIMARY,
 ' SELECT SECONDARY, DO, RETURN, CANCEL, IF, ELSE, ENDIF, DO WHILE, ENDDO, ACCEPT, INPUT, WAIT,
-' MODIFY COMMAND, @ ... SAY ... GET, READ, CLEAR, CLS, HELP and QUIT. A command word may be cut to
+' MODIFY COMMAND, @ ... SAY ... GET, READ, CLEAR, CLS, HELP, REG and QUIT. A command word may be cut to
 ' its first 4 letters, as DISP STRU. LIST, DISPLAY, LOCATE, COUNT, SUM, REPLACE, DELETE and
 ' RECALL take a scope: ALL, NEXT n, RECORD n, FOR condition.
 '
@@ -442,6 +442,27 @@ SUB DO_PRINT()
   PART_LINE = 0
 END SUB
 
+' REG key TO expression: sets key in the settings store C:\6502DOS.REG to the text value. ""
+' removes the key.
+SUB DO_REG()
+  DIM KEY AS STRING * 43
+  NEXT_WORD()
+  KEY = TOKEN
+  CURSOR = 1
+  IF NAME_AT() <> "TO"
+    SYNTAX_ERROR()
+    RETURN
+  ENDIF
+  EVALUATE()
+  IF FAILED THEN RETURN
+  IF VALUE_TYPE(0) <> VALUE_KIND.TEXT
+    TYPE_MISMATCH()
+    RETURN
+  ENDIF
+  DOS.REG_SET(KEY, TEXT_OF(0))
+  IF DOS.ERROR THEN FILE_ERROR()
+END SUB
+
 ' STORE expression TO name: puts the value in the memory variable name.
 SUB DO_STORE()
   CURSOR = 1
@@ -583,6 +604,8 @@ DO WHILE RUNNING
     DO_DISPLAY()
   ELSEIF IS("STORE")
     DO_STORE()
+  ELSEIF TOKEN = "REG"
+    DO_REG()
   ELSEIF IS("RELEASE")
     DO_RELEASE()
   ELSEIF IS("LOCATE")
