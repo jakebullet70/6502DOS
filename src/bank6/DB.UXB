@@ -2,7 +2,7 @@
 ' the prompt ". " and runs it: USE, CREATE, LIST, DISPLAY, GO or GOTO, SKIP, LOCATE, CONTINUE, DISPLAY
 ' STRUCTURE, ?, STORE, name = value, RELEASE, DISPLAY MEMORY, COUNT, SUM, APPEND, APPEND BLANK,
 ' EDIT, REPLACE, DELETE, RECALL, PACK, INDEX ON, SET INDEX TO, SET PATH TO, SET FILTER TO, FIND, REINDEX, SELECT PRIMARY,
-' SELECT SECONDARY, DO, RETURN, CANCEL, IF, ELSE, ENDIF, DO WHILE, ENDDO, ACCEPT, INPUT, WAIT,
+' SELECT SECONDARY, PUSH, POP, DO, RETURN, CANCEL, IF, ELSE, ENDIF, DO WHILE, ENDDO, ACCEPT, INPUT, WAIT,
 ' MODIFY COMMAND, @ ... SAY ... GET, READ, @ ... PROMPT, MENU TO, CLEAR, CLS, SAVE SCREEN TO, RESTORE SCREEN FROM, HELP, REG and QUIT. A command word may be cut to
 ' its first 4 letters, as DISP STRU. LIST, DISPLAY, LOCATE, COUNT, SUM, REPLACE, DELETE and
 ' RECALL take a scope: ALL, NEXT n, RECORD n, FOR condition.
@@ -44,6 +44,11 @@ DIM OTHER_BEFORE AS UBYTE     ' BEFORE_FIRST of the other area
 DIM SEARCH_PATH AS STRING * 80      ' the directories of SET PATH TO, apart by ;
 DIM FILTER AS STRING * 128          ' the condition of SET FILTER TO, "" for none
 DIM OTHER_FILTER AS STRING * 128    ' FILTER of the other area
+CONST PUSH_LIMIT AS UBYTE = 4       ' the levels of PUSH
+DIM PUSH_DEPTH AS UBYTE             ' the levels PUSH has saved and POP not taken back
+DIM PUSHED_AREA(4) AS UBYTE         ' AREA of each level
+DIM PUSHED_RECORD(4) AS UWORD       ' CURRENT of each level
+DIM PUSHED_BEFORE(4) AS UBYTE       ' BEFORE_FIRST of each level
 
 ' Sets TOKEN to the first word of REST, in capitals, and REST to what follows it.
 SUB NEXT_WORD()
@@ -555,6 +560,37 @@ SUB DO_SELECT()
   LOCATE_ACTIVE = 0
 END SUB
 
+' PUSH (POPPING 0) saves the work area in use, its current record and BEFORE_FIRST, at most
+' PUSH_LIMIT levels. POP (POPPING 1) selects the area of the last level and makes its record
+' current again. A record past the last of the table now in use is past the last. The table,
+' the filter and the indexes are not saved. A LOCATE ends.
+SUB DO_PUSH(POPPING AS UBYTE)
+  IF REST <> ""
+    SYNTAX_ERROR()
+    RETURN
+  ENDIF
+  IF POPPING
+    IF PUSH_DEPTH = 0
+      REPORT_ERROR("Stack empty")
+      RETURN
+    ENDIF
+    PUSH_DEPTH = PUSH_DEPTH - 1
+    IF PUSHED_AREA(PUSH_DEPTH) <> AREA THEN SWAP_AREA()
+    IF TABLE <> 0 THEN MOVE_TO(PUSHED_RECORD(PUSH_DEPTH))
+    BEFORE_FIRST = PUSHED_BEFORE(PUSH_DEPTH)
+    LOCATE_ACTIVE = 0
+    RETURN
+  ENDIF
+  IF PUSH_DEPTH = PUSH_LIMIT
+    REPORT_ERROR("Stack full")
+    RETURN
+  ENDIF
+  PUSHED_AREA(PUSH_DEPTH) = AREA
+  PUSHED_RECORD(PUSH_DEPTH) = CURRENT
+  PUSHED_BEFORE(PUSH_DEPTH) = BEFORE_FIRST
+  PUSH_DEPTH = PUSH_DEPTH + 1
+END SUB
+
 ' DISPLAY STRUCTURE: prints the table's path, its records and each field, then the record's
 ' length, the delete flag included. DISPLAY MEMORY is SHOW_MEMORY, DISPLAY scope DO_LIST.
 SUB DO_DISPLAY()
@@ -585,6 +621,7 @@ END SUB
 
 ' The variables' bank. Without a free bank DB does not run.
 RUNNING = 0
+PUSH_DEPTH = 0
 LOCATE_ACTIVE = 0
 DO_DEPTH = 0
 AHEAD_COUNT = 0
@@ -649,6 +686,10 @@ DO WHILE RUNNING
     DO_SET()
   ELSEIF IS("SELECT")
     DO_SELECT()
+  ELSEIF TOKEN = "PUSH"
+    DO_PUSH(0)
+  ELSEIF TOKEN = "POP"
+    DO_PUSH(1)
   ELSEIF IS("FIND")
     DO_FIND()
   ELSEIF IS("REINDEX")
