@@ -437,6 +437,7 @@ VIEW name                       (Command line only)
   W turns wrap on and off.
   F or / asks for a text and finds it, in any case. N finds the next one.
   Q or Esc ends it.
+  The colors come from the theme REG THEME names.
   Example:
     VIEW DOCS\README.TXT
 :EDIT
@@ -456,6 +457,7 @@ TED name                        (Command line only)
   F1 shows the keys. Shift and a cursor key select. Ctrl+X cuts,
   Ctrl+C copies, Ctrl+V pastes. Ctrl+S saves. Ctrl+Q ends it.
   Shift+F1 shows a topic of this help.
+  The colors come from the theme REG THEME names.
   Example:
     TED DOCS\README.TXT
 :TREE

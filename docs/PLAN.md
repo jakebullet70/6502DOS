@@ -984,9 +984,13 @@ Short names:
     prints `File not found` and gives exit code 2. The exit code is 0 otherwise.
 - `VIEW name` is a DOS utility, `VIEW.COM`, for the command line. It shows a text file a page at
   a time.
-  - The page is 29 rows of text and a footer row in black on light grey. The footer shows the
+  - The page is 29 rows of text and a footer row. The footer shows the
     name cut to 24 characters, the number of the top line, `Wrap` or the first column shown,
     and the keys.
+  - The registry key `THEME` names the theme: `THEME = DARK` reads `C:\sys\themes\DARK.GTH`, and
+    a missing key reads `DARK`. The text takes the theme's `CONSOLE` color, and the footer and
+    the `Find:` prompt its `STATUS` color. With no theme file, the text keeps the console's color
+    and the footer is black on light grey. The console's color comes back at the end.
   - Up and Down move one line, PgUp and PgDn a page, Space a page down. Home goes to the first
     line, End to the last page. Left and Right move the view 8 columns sideways.
   - W turns wrap on and off. A wrapped line takes 1 to 4 rows, and Left and Right do nothing.
@@ -1004,6 +1008,9 @@ Short names:
 - `TED name` is a DOS utility, `TED.COM`, for the command line. It edits a text file on the full
   screen: 29 rows of text and a status row. The keys are in the header of `src/dos/TED.UXB`
   and in `C:\sys\TED.HLP`, which F1 shows.
+  - The registry key `THEME` names the theme, as in `VIEW`. The text takes the theme's `CONSOLE`
+    color and the status row its `STATUS` color. With no theme file, the text keeps the console's
+    color and the status row is black on light grey. The console's color comes back at the end.
   - The text takes the RAM from the program's end to `$96FF`, and the clipboard `$9700` to
     `$9EFF`, 2048 bytes.
   - A save writes `TED.$$$` in the file's directory, then gives it the file's name.

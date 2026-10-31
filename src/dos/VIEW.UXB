@@ -2,6 +2,10 @@
 ' -- VIEW file
 ' -- shows file a page at a time: 29 rows of text and a footer row with the file name, the
 ' -- number of the top line and the keys. For the command line, not for scripts.
+' -- The registry key THEME names the theme: THEME = DARK reads C:\sys\themes\DARK.GTH. A missing
+' -- key reads DARK. The text takes the theme's CONSOLE color and the footer its STATUS color.
+' -- With no theme file, the text keeps the console's color and the footer is black on light
+' -- grey. The console's color comes back at the end.
 ' -- Up and Down move one line, PgUp and PgDn a page, Space a page down, Home to the first
 ' -- line, End to the last page. Left and Right move the view 8 columns sideways. W turns
 ' -- wrap on and off: a line then takes 1 to 4 rows, and Left and Right do nothing. F, f or /
@@ -24,8 +28,11 @@
 #INCLUDE "CONS.UXI"
 #INCLUDE "HELPSW.UXI"
 CONST SLOT_P1 AS UBYTE = 0
-' The footer's colors, black on light grey.
-CONST FOOTER_COLORS$ = "{BLACK}{ON WHITE}"
+' A theme file's bytes, and the places of STATUS and CONSOLE in them. NO_THEME_FOOTER is black on
+' light grey.
+' Checklist: the size of COLORS$ and the places in ENUM ROLE in lib/GUI.UXI.
+CONST THEME_SIZE AS UBYTE = 15, STATUS_BYTE AS UBYTE = 12, CONSOLE_BYTE AS UBYTE = 14
+CONST NO_THEME_FOOTER AS UBYTE = $F0
 CONST TEXT_ROWS AS UBYTE = 29, FOOTER_ROW AS UBYTE = 29, COLUMNS AS UBYTE = 80
 CONST LINE_MAX AS UBYTE = 255
 ' SHIFT_MAX is the last multiple of SHIFT_STEP that shows a character of a full line.
@@ -38,6 +45,9 @@ CONST INDEX_SHIFT AS UBYTE = 4, INDEX_STEP AS UWORD = 16, INDEX_ENTRIES AS UWORD
 
 DIM FILE_NAME AS STRING * 80, FOOTER AS STRING * 120
 DIM VIEWED_FILE AS UWORD
+' Each color is background times 16 plus foreground. CONSOLE_COLOR is the console's at the start.
+DIM THEME_COLORS(THEME_SIZE) AS UBYTE
+DIM CONSOLE_COLOR AS UBYTE, TEXT_COLOR AS UBYTE, FOOTER_COLOR AS UBYTE
 DIM BUFFER(BUFFER_SIZE) AS UBYTE
 DIM BUFFER_START AS ULONG, BUFFER_COUNT AS UWORD, BUFFER_NEXT AS UWORD
 DIM SEEK_TARGET AS ULONG
@@ -184,12 +194,32 @@ SUB SHOW_LINE(ROW AS UBYTE, FIRST AS UBYTE)
   PRINT CONS.NORMAL$;
 END SUB
 
-' Puts FOOTER on the last row, in black on light grey. It stays under 80 characters, so the
-' screen does not scroll.
+' Sets TEXT_COLOR and FOOTER_COLOR from the theme file REG THEME names, and sets the console to
+' TEXT_COLOR.
+SUB READ_THEME()
+  DIM THEME_PATH AS STRING * 50, THEME_FILE AS UWORD, COUNT AS UWORD
+  CONSOLE_COLOR = DOS.GET_COLOR()
+  TEXT_COLOR = CONSOLE_COLOR
+  FOOTER_COLOR = NO_THEME_FOOTER
+  THEME_PATH = "C:\sys\themes\" + DOS.REG_GET("THEME", "DARK") + ".GTH"
+  THEME_FILE = DOS.OPEN_FILE(THEME_PATH, DOS.ACCESS_READ)
+  IF DOS.ERROR = 0 THEN
+    COUNT = DOS.READ_FILE(THEME_FILE, @THEME_COLORS, THEME_SIZE)
+    DOS.CLOSE_FILE(THEME_FILE)
+    TEXT_COLOR = THEME_COLORS(CONSOLE_BYTE)
+    FOOTER_COLOR = THEME_COLORS(STATUS_BYTE)
+  END IF
+  DOS.SET_COLOR(TEXT_COLOR)
+END SUB
+
+' Puts FOOTER on the last row, in FOOTER_COLOR. It stays under 80 characters, so the screen does
+' not scroll.
 SUB PUT_FOOTER()
   POS(1) = FOOTER_ROW
   POS(0) = 0
-  PRINT FOOTER_COLORS$; LEFT$(FOOTER, COLUMNS - 1); CONS.CLEAR_EOL$; CONS.NORMAL$;
+  DOS.SET_COLOR(FOOTER_COLOR)
+  PRINT LEFT$(FOOTER, COLUMNS - 1); CONS.CLEAR_EOL$;
+  DOS.SET_COLOR(TEXT_COLOR)
 END SUB
 
 ' Shows the footer: the file name, the top line, the column or Wrap, and the keys.
@@ -338,6 +368,7 @@ IF VIEWED_FILE = NOFILE THEN
   PRINT DOS.ERRMSG(DOS.ERROR)
   END 2
 END IF
+READ_THEME()
 INDEXED = 1
 MATCH_LINE = 65535
 SHOW_PAGE()
@@ -356,9 +387,10 @@ DO
       ' LINPUT echoes the CR, which scrolls the screen; the page is drawn again after it.
       POS(1) = FOOTER_ROW
       POS(0) = 0
-      PRINT FOOTER_COLORS$; "Find: "; CONS.CLEAR_EOL$;
+      DOS.SET_COLOR(FOOTER_COLOR)
+      PRINT "Find: "; CONS.CLEAR_EOL$;
       LINPUT FIND_TEXT
-      PRINT CONS.NORMAL$;
+      DOS.SET_COLOR(TEXT_COLOR)
       TO_UPPER(@FIND_TEXT + 2, LEN(FIND_TEXT))
       MATCH_LINE = 65535
       IF FIND_TEXT = "" THEN
@@ -409,5 +441,6 @@ DO
   END SELECT
 LOOP UNTIL QUIT = 1
 DOS.CLOSE_FILE(VIEWED_FILE)
-PRINT CONS.NORMAL$; CONS.CLEAR_SCREEN$;
+DOS.SET_COLOR(CONSOLE_COLOR)
+PRINT CONS.CLEAR_SCREEN$;
 END 0
