@@ -625,7 +625,7 @@ KERNAL entries:
 
 | Group | Statements |
 |---|---|
-| Screen | `PRINT`, `INPUT`, `CLS`, `LOCATE row,column`, `COLOR foreground,background`, `BEEP`, `WAIT seconds` |
+| Screen | `PRINT`, `INPUT`, `CLS`, `LOCATE row,column`, `COLOR foreground[,background]`, `BEEP`, `WAIT seconds` |
 | Flow | `IF`, `ENDIF`, `GOTO`, `GOSUB`, `RETURN`, `REPEAT n`, `ENDREP`, `END`, `ONERROR(n)` |
 | Files | `FILES [pattern]`, `LIST file`, `COPY from to`, `DELETE file`, `RENAME old new`, `MKDIR`, `RMDIR`, `CHDIR` |
 | System | `VERSION`, `PAUSE`, `SETSYS`, `BIND`, `RUN`, `CALL` |
@@ -648,10 +648,11 @@ Short names:
   an `IF` condition: `IF A=1 ' NOTE`. No other statement takes a comment after it. `REMARK` is
   a name, not a comment.
 - `NAME:` alone on a line is a label, a place for `GOTO` and `GOSUB`.
-- `IF condition statement` runs the statement when the condition holds. The statement may be an
-  `IF`: `IF A=1 IF B=2 PRINT "X"`.
-- `IF condition` with nothing after it starts a block, and `ENDIF` ends it. There is no `THEN`
-  and no `ELSE`. Blocks work in a script only (Scripts, below).
+- `IF condition [THEN] statement` runs the statement when the condition holds. The statement may
+  be an `IF`: `IF A=1 IF B=2 PRINT "X"`. A program named `THEN` needs the word twice:
+  `IF A=1 THEN THEN`.
+- `IF condition [THEN]` with nothing after it starts a block, and `ENDIF` ends it. There is no
+  `ELSE`. Blocks work in a script only (Scripts, below).
 - `REPEAT n` runs the lines up to `ENDREP` n times, in a script only.
 - `END` ends the script. At the prompt it ends the shell.
 - `RUN name` ends the script, then runs the program or script `name`.
@@ -662,9 +663,9 @@ Short names:
 - `LIST file` prints a text file.
 - `LOCATE row,column` moves the cursor. Rows run 0 to 29 and columns 0 to 79. A value out of
   range gives `Syntax error`.
-- `COLOR foreground,background` sets the color of the characters written after it:
-  `COLOR WHITE, BLUE`. Each value runs 0 to 15 (Variables, below). Both are needed. A value out
-  of range gives `Syntax error`.
+- `COLOR foreground[,background]` sets the color of the characters written after it:
+  `COLOR WHITE, BLUE`. Each value runs 0 to 15 (Variables, below). With no background, the
+  current background stays. A value out of range gives `Syntax error`.
 - `BEEP` prints the BEL, `CHR$(7)`. The console makes no sound for it yet.
 - `PAUSE` waits for a key and drops it. It prints nothing. The key comes from the keyboard, even
   under `FROM`. Ctrl+C ends it too.

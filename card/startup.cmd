@@ -1,15 +1,27 @@
+rem ----------------------------------------------------------------- 
+rem --
+rem --  startup.cmd, runs at machine boot, think autoexec.bat
+rem --
+rem ----------------------------------------------------------------
+
 PATH$ = "C:\sys;C:\"
+
+rem -- get, set default console color if not set
 REG THEME SILENT
-IF P1$ = "" REG THEME = DARK
+IF P1$ = "" then REG THEME = DARK
+rem -- setup default console color for system
 CONCOLOR
-print "CMD Shell in ROM: BASICShell v0.1.0, setting path and binds"
+cls
+
+print "CMD Shell in ROM: BASICShell v0.1.1, setting path and binds"
 print "And... Its in ";
 gosub printcolor
 print
 print "Checking disk..."
 diskinfo c:
 
-REM -- clear the PUSH - POP DIR stack from REG
+print "Clearing dir stack..."
+REM -- clear the PUSH - POP DIR stack from the REG
 POPD -C
 
 REM BIND LS FILES
@@ -21,15 +33,15 @@ goto out
 
 
 PrintColor:
-color red,black
+color red
 print "C";
-color yellow,black
+color yellow
 print "o";
-color gray,black
+color gray
 print "l";
-color brown,black
+color brown
 print "o";
-color white,black
+color white
 print "r";
 CONCOLOR
 return

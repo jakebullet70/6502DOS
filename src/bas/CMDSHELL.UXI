@@ -551,11 +551,20 @@ SUB DO_LOCATE()
   POS(0) = SECOND_NUMBER
 END SUB
 
-' COLOR foreground,background: sets the color of the characters written from now on. Each
-' value is 0 to 15, from DOS.UXI's color names. A value out of range is a syntax error.
+' COLOR foreground[,background]: sets the color of the characters written from now on. Each
+' value is 0 to 15, from DOS.UXI's color names. A value out of range is a syntax error. With no
+' background, the current background stays.
 SUB DO_COLOR()
-  EVAL_PAIR()
+  EVAL_NUMBER()
   IF FAILED THEN RETURN
+  FIRST_NUMBER = NUMBER_RESULT
+  SECOND_NUMBER = DOS.GET_COLOR() >> 4
+  IF CURRENT_CHAR() = 44
+    CURSOR = CURSOR + 1
+    EVAL_NUMBER()
+    IF FAILED THEN RETURN
+    SECOND_NUMBER = NUMBER_RESULT
+  ENDIF
   ' CURSOR on the COLOR makes EXPECT_END report the error.
   IF FIRST_NUMBER > 15 OR SECOND_NUMBER > 15 THEN CURSOR = 1
   EXPECT_END()
@@ -1345,14 +1354,15 @@ SUB DO_ENDREP()
   FLOW_COUNT = FLOW_COUNT + 1
 END SUB
 
-' IF condition [statement]. The condition is two number or two string expressions with =, <>,
-' <, >, <= or >= between them. Returns other than 0 when the statement after the condition is to
-' run. A condition alone on the line starts a block that ENDIF ends: when it fails in a script,
+' IF condition [THEN] [statement]. The condition is two number or two string expressions with =,
+' <>, <, >, <= or >= between them. Returns other than 0 when the statement after the condition is
+' to run. A condition alone on the line starts a block that ENDIF ends: when it fails in a script,
 ' the lines up to that ENDIF are skipped. In a line being skipped, it opens a block within.
 ' Trap: a skipped IF line with a syntax error does not open a block, so its ENDIF closes the
 ' block around it.
 FUNCT DO_IF() AS UBYTE
-  DIM IS_TEXT AS UBYTE, MASK AS UBYTE, CODE AS UBYTE, RELATION AS UBYTE, LEFT_NUMBER AS WORD
+  DIM IS_TEXT AS UBYTE, MASK AS UBYTE, CODE AS UBYTE, RELATION AS UBYTE, START AS UBYTE
+  DIM LEFT_NUMBER AS WORD
   SKIP_SPACES()
   IS_TEXT = IS_STRING_START()
   IF IS_TEXT
@@ -1390,6 +1400,10 @@ FUNCT DO_IF() AS UBYTE
   ENDIF
   IF FAILED THEN RETURN 0
   MASK = MASK AND RELATION
+  SKIP_SPACES()
+  START = CURSOR
+  READ_NAME()
+  IF NAME_TEXT <> "THEN" THEN CURSOR = START
   SKIP_SPACES()
   IF CURRENT_CHAR() THEN RETURN MASK
   IF SKIP_DEPTH

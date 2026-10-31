@@ -183,15 +183,16 @@ INPUT variable                  (Command line or Script)
     INPUT A$
     INPUT N
 :IF
-IF condition statement          (Command line or Script)
-IF condition ... ENDIF          (Script only)
-  Runs statement when condition holds. There is no THEN and no ELSE.
+IF condition [THEN] statement   (Command line or Script)
+IF condition [THEN] ... ENDIF   (Script only)
+  Runs statement when condition holds. There is no ELSE.
   The condition compares two numbers or two strings with =, <>, <, >, <= or
   >=. Strings compare by character code, so case counts.
   A condition alone on its line starts a block up to its ENDIF. When the
   condition fails, the lines of the block are skipped. Blocks nest.
   Examples:
     IF A > 9 PRINT "Big"
+    IF A > 9 THEN PRINT "Big"
     IF P1$ = ""
       PRINT "Give a name"
       END
@@ -352,12 +353,14 @@ BIND [name = command]           (Command line or Script)
     BIND H = HELP
     BIND H =
 :COLOR
-COLOR foreground, background    (Command line or Script)
+COLOR foreground[, background]  (Command line or Script)
   Sets the color of the text printed after it. Each value is 0 to 15.
+  With no background, the current background stays.
   The color names are numbers too. See HELP COLORS.
   Examples:
     COLOR WHITE, BLUE
     COLOR 5, 0
+    COLOR WHITE
 :COLORS
 The color names, for COLOR and in any number:
   BLACK    0    PURPLE   4    ORANGE    8    GRAY       12
