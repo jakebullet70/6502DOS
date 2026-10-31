@@ -17,6 +17,16 @@ Remind the user to `/compact` when a change is done.
 
 ## Open questions
 
+Resume here (2026-10-31), `XBASE.COM`, `BROWSE`:
+
+- `SAVE SCREEN` and `RESTORE SCREEN` now take the console's 30 rows, in `DB_SCREEN.UXI`, with `DB.PLAN.md` and `HELPXBASE.HLP` changed to match. Built, not run. A file is 4800 bytes. A 9600-byte file from before restores its first 30 rows.
+- `BROWSE` step B1 is built, not run: `src/bank6/DB_BROWSE.UXI`, read-only, with draw, move, pan and the row shift. `FLIP_CELLS` is new in `DB_SCREEN.UXI`, and `BOTTOM_OF_ORDER` in `XBASE.UXB`. Build 2.97 s, outer 3207 ms, the new baseline.
+- Agreed for the next steps: B2 `BROWSE FIELDS a, b`. B3 cell edit on GET 0, saved on leaving the cell, with `READ_GET`, `EDIT_GET` and `STORE_GETS`; the pending GETs drop. B4 Ctrl+U toggles the delete mark; `EDIT_GET` must also return key 21. B5 docs in `DB.PLAN.md` and `HELPXBASE.HLP`. Left for the super-browse: adding a record past the end, column freeze, search.
+- The dot prompt's line editor, agreed steps: L1 history, L2 Tab, L3 `*` and `//` comment lines. L1, L2 and L3 are built, not run: `src/bank6/DB_LINE.UXI`, with `C:\sys\xbase\cmds.bin` read at start and written at `QUIT`, and the lines at `$BB00` of the variables' bank, so `POOL_LIMIT` is `$BB00`. L2: first word the 51 xbase commands, later words files and folders, Shift+Tab back, no PATH programs, no quotes on names. Between Tabs, `REST` holds the word and `TEXT_BUFFER` the line. L3: a line that starts with `*` or `//` runs as an empty line, in the main loop of `XBASE.UXB`. Build 2.93 s, outer 3081 ms, the new baseline.
+- `SET DELETED ON` and `OFF` are built, not run, and in `HELPXBASE.HLP`, not in `DB.PLAN.md`: `SKIP_DELETED` in `XBASE.UXB`, checked in `IN_FILTER`, one flag for both areas, 0 at start. `SWAP_AREA` now swaps `DB.DELETED` with `OTHER_DELETED`, so `DELETED()` and `BROWSE`'s first `IN_FILTER` read the right area after `SELECT`. Build 3.06 s, outer 3237 ms, the new baseline.
+- ROM space: bank 8's longest run of $FF is 723 bytes, bank 7 has 412 and bank 6 has 261. L1 took 1033 bytes, L2 1445, L3 73, `SET DELETED` 151 and the `SWAP_AREA` fix 23. Low RAM: XBASE's data ends at `$4171`, below `K_TOP` `$9F00`, before the run-time library's variables.
+- The commit "xbase: BROWSE, line editor, SET DELETED" holds the work above and is local only.
+
 Resume here (2026-10-28): DB, item 11, A2c3 done: the compares, `$`, `.AND.`, `.OR.`,
 `.NOT.` and the logical type in `DB.COM`, test `DBLOGIC` (item 11, A2c3, below). ENUM step done:
 `DB.FIELD_TYPE` returns `ENUM DB.FIELD_KIND`; `DB.COM`'s codes are ENUMs (below). A2c4a

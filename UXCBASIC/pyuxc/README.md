@@ -134,7 +134,7 @@ The stock ROM is not supported. The command line has no target option. For `"650
   banks. `uxc_bank` hands them out and stops the compile with `OUT OF RAM BANKS` past
   `K_RAM_BANKS`, 254.
 - These differ from the GPC UXC, so that a code offset can pass 65535:
-  - The symbol table is `K_SYM_BANKS`, 8 banks of the GPC UXC's layout, and a ninth bank,
+  - The symbol table is `K_SYM_BANKS`, 16 banks of the GPC UXC's layout, and another bank,
     `g.sy_xbank`, with the third byte of each record's value and of each `SUB`'s end.
     `sy_end_get` and `sy_end_set` read and write the end.
   - The code buffer and the fixups take a bank each time they fill one (`cb_put`, `fx_add`,

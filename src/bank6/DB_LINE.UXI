@@ -1,0 +1,210 @@
+' DB_LINE.UXI -- the line editor of the prompt in XBASE.UXB: the last lines typed, Up and Down,
+' and Tab. XBASE.UXB includes it after DB_BROWSE.UXI.
+
+' The last 10 lines typed are records of 128 bytes from HISTORY_START, oldest first, in the
+' variables' bank: a length byte, 0 for no line, then the text. HISTORY_FILE holds the same bytes.
+CONST HISTORY_FILE$ = "C:\sys\xbase\cmds.bin"
+CONST HISTORY_SIZE AS UBYTE = 10, HISTORY_CHARS AS UBYTE = 128
+CONST HISTORY_BYTES AS UWORD = 1280
+' The column the line starts in, the lines Up went back, 0 for the line typed.
+DIM PROMPT_COLUMN AS UBYTE, HISTORY_BACK AS UBYTE
+' Tab at the prompt. Between Tabs REST is the word Tab completes and TEXT_BUFFER the line as the
+' last Tab left it; no command runs then, so neither is in use. COMPLETE_START is the word's
+' position in the line, 0 before the first Tab of a line. COMPLETE_COMMAND is 1 when the word is
+' the line's first. COMPLETE_INDEX is the match on show, from 0, or 255 for none.
+DIM COMPLETE_START AS UBYTE, COMPLETE_COMMAND AS UBYTE, COMPLETE_INDEX AS UBYTE
+' FIND_MATCH looks for match MATCH_WANTED, counts in MATCH_SEEN, and puts each name in MATCH_NAME.
+DIM MATCH_WANTED AS UBYTE, MATCH_SEEN AS UBYTE
+DIM MATCH_NAME AS STRING * 33
+
+' Reads HISTORY_FILE. Without the file there are no lines.
+SUB LOAD_HISTORY()
+  DIM HANDLE AS UWORD, COUNT AS UWORD, PLACE AS UWORD
+  FOR PLACE = HISTORY_START TO HISTORY_START + HISTORY_BYTES - 1 STEP HISTORY_CHARS
+    ContentsAt(PLACE) = 0
+  NEXT
+  HANDLE = DOS.OPEN_FILE(HISTORY_FILE$, DOS.ACCESS_READ)
+  IF DOS.ERROR THEN RETURN
+  COUNT = DOS.READ_FILE(HANDLE, HISTORY_START, HISTORY_BYTES)
+  DOS.CLOSE_FILE(HANDLE)
+END SUB
+
+' Writes HISTORY_FILE. A failed write shows nothing.
+SUB SAVE_HISTORY()
+  DIM HANDLE AS UWORD, COUNT AS UWORD
+  HANDLE = DOS.CREATE_FILE(HISTORY_FILE$, 0)
+  IF DOS.ERROR THEN RETURN
+  COUNT = DOS.WRITE_FILE(HANDLE, HISTORY_START, HISTORY_BYTES)
+  DOS.CLOSE_FILE(HANDLE)
+END SUB
+
+' The address StringAt takes for the line BACK lines before the next one kept, from 1, the newest.
+' It is a byte before the record, as a string block starts a byte before its length.
+FUNCT HISTORY_LINE(BACK AS UBYTE) AS UWORD
+  DIM RECORD AS UWORD
+  RECORD = HISTORY_SIZE - BACK
+  RETURN HISTORY_START - 1 + (RECORD << 7)
+END FUNCT
+
+' Keeps COMMAND_LINE as the newest line, in place of the oldest. An empty line or a repeat of the
+' newest is not kept.
+SUB KEEP_LINE()
+  IF COMMAND_LINE = "" OR COMMAND_LINE = StringAt(HISTORY_LINE(1)) THEN RETURN
+  COPY_BYTES(HISTORY_START, HISTORY_START + HISTORY_CHARS, HISTORY_BYTES - HISTORY_CHARS)
+  COPY_BYTES(HISTORY_LINE(1) + 1, @COMMAND_LINE + 1, HISTORY_CHARS)
+END SUB
+
+' Up: COMMAND_LINE becomes the line before the one shown. Down: the line after it, or an empty
+' line after the newest. Any other key leaves it.
+SUB RECALL_LINE(PRESSED AS UWORD)
+  IF PRESSED = KEYS.KEY_UP
+    IF HISTORY_BACK = HISTORY_SIZE THEN RETURN
+    IF StringAt(HISTORY_LINE(HISTORY_BACK + 1)) = "" THEN RETURN
+    HISTORY_BACK = HISTORY_BACK + 1
+    COMMAND_LINE = StringAt(HISTORY_LINE(HISTORY_BACK))
+  ELSEIF PRESSED = KEYS.KEY_DOWN
+    IF HISTORY_BACK = 0 THEN RETURN
+    HISTORY_BACK = HISTORY_BACK - 1
+    COMMAND_LINE = ""
+    IF HISTORY_BACK THEN COMMAND_LINE = StringAt(HISTORY_LINE(HISTORY_BACK))
+  ENDIF
+END SUB
+
+' Counts the match in MATCH_NAME. Returns 1 when it is match MATCH_WANTED.
+FUNCT TAKE_MATCH() AS UBYTE
+  IF MATCH_SEEN = MATCH_WANTED THEN RETURN 1
+  MATCH_SEEN = MATCH_SEEN + 1
+  RETURN 0
+END FUNCT
+
+' Takes each name of NAMES$, each with a space after it, that starts with the word in TOKEN to
+' TAKE_MATCH, and returns 1 when one is the match wanted.
+FUNCT TAKE_COMMANDS(NAMES$ AS CONST) AS UBYTE
+  DIM POSITION AS UBYTE, FINISH AS UBYTE
+  POSITION = 1
+  DO WHILE POSITION < LEN(NAMES$)
+    FINISH = INSTR(NAMES$, " ", POSITION)
+    MATCH_NAME = MID$(NAMES$, POSITION, FINISH - POSITION)
+    IF LEFT$(MATCH_NAME, LEN(TOKEN)) = TOKEN
+      IF TAKE_MATCH() THEN RETURN 1
+    ENDIF
+    POSITION = FINISH + 1
+  LOOP
+  RETURN 0
+END FUNCT
+
+' The length of the directory part of the word in REST: up to its last \, / or :.
+FUNCT DIRECTORY_LENGTH() AS UBYTE
+  DIM POSITION AS UBYTE, LENGTH AS UBYTE, CODE AS UBYTE
+  POSITION = LEN(REST)
+  LENGTH = 0
+  DO WHILE POSITION > 0 AND LENGTH = 0
+    CODE = CHAR_AT(POSITION)
+    IF CODE = 92 OR CODE = 47 OR CODE = 58 THEN LENGTH = POSITION
+    POSITION = POSITION - 1
+  LOOP
+  RETURN LENGTH
+END FUNCT
+
+' Puts match MATCH_WANTED of the word in REST in MATCH_NAME, and returns 1. The matches are the
+' commands when COMPLETE_COMMAND is 1, else the files and directories, each directory with a \ on
+' its end. A name that starts with . is left out. Returns 0 when there are not that many, with
+' their count in MATCH_SEEN.
+FUNCT FIND_MATCH() AS UBYTE
+  MATCH_SEEN = 0
+  IF COMPLETE_COMMAND
+    TOKEN = UCASE$(REST)
+    ' A literal holds 255 characters at most.
+    IF TAKE_COMMANDS("ACCEPT APPEND BOX BROWSE CANCEL CLEAR CLS CONTINUE COPY COUNT CREATE DELETE DISPLAY DO EDIT ELSE ENDDO ENDIF FIND GOTO HELP IF INDEX INPUT LIST ") THEN RETURN 1
+    RETURN TAKE_COMMANDS("LOCATE MENU MODIFY PACK POP PUSH QUIT READ RECALL REG REINDEX RELEASE REPLACE RESTORE RETURN RUN SAVE SELECT SET SHELL SKIP STORE SUM USE WAIT ZAP ")
+  ENDIF
+  IF INSTR(REST, ".", DIRECTORY_LENGTH() + 1)
+    DOS.FINDFIRST(REST + "*", DOS.ATTR_DIRECTORY)
+  ELSE
+    DOS.FINDFIRST(REST + "*.*", DOS.ATTR_DIRECTORY)
+  ENDIF
+  DO WHILE DOS.ERROR = 0
+    MATCH_NAME = DOS.FOUND_NAME
+    IF DOS.FOUND_ATTRIBUTES AND DOS.ATTR_DIRECTORY THEN MATCH_NAME = MATCH_NAME + "\"
+    IF ASC(MATCH_NAME) <> 46
+      IF TAKE_MATCH() THEN RETURN 1
+    ENDIF
+    DOS.FINDNEXT()
+  LOOP
+  RETURN 0
+END FUNCT
+
+' Tab at the prompt: puts the next match of the line's last word in its place, or the one before
+' with Shift. After the last match comes the first, and before the first the last. A line that Tab
+' did not leave starts again: Tab gives its first match, Shift+Tab its last. A word with no match
+' stays as it is. The word starts after the line's last space.
+SUB COMPLETE_WORD()
+  IF COMPLETE_START = 0 OR COMMAND_LINE <> TEXT_BUFFER
+    REST = COMMAND_LINE
+    COMPLETE_START = LEN(REST) + 1
+    DO WHILE COMPLETE_START > 1 AND CHAR_AT(COMPLETE_START - 1) <> 32
+      COMPLETE_START = COMPLETE_START - 1
+    LOOP
+    CURSOR = 1
+    SKIP_SPACES()
+    COMPLETE_COMMAND = CURSOR = COMPLETE_START
+    REST = MID$(REST, COMPLETE_START)
+    COMPLETE_INDEX = 255
+  ENDIF
+  ' Bit 0 of the modifiers is Shift.
+  IF DOS.CON_EDIT_MODS AND 1
+    IF COMPLETE_INDEX = 0 OR COMPLETE_INDEX = 255
+      ' Past the last match: MATCH_SEEN is the count.
+      MATCH_WANTED = 255
+      IF FIND_MATCH() = 0 THEN COMPLETE_INDEX = MATCH_SEEN
+    ENDIF
+    MATCH_WANTED = COMPLETE_INDEX - 1
+  ELSE
+    ' 255 + 1 is 0.
+    MATCH_WANTED = COMPLETE_INDEX + 1
+  ENDIF
+  TEXT_BUFFER = COMMAND_LINE
+  IF FIND_MATCH() = 0
+    MATCH_WANTED = 0
+    IF FIND_MATCH() = 0 THEN RETURN
+  ENDIF
+  COMPLETE_INDEX = MATCH_WANTED
+  COMMAND_LINE = LEFT$(LEFT$(COMMAND_LINE, COMPLETE_START - 1) + LEFT$(REST, DIRECTORY_LENGTH()) + MATCH_NAME, 127)
+  TEXT_BUFFER = COMMAND_LINE
+END SUB
+
+' Clears COMMAND_LINE from the screen, the cursor at its end, and puts the cursor where it started,
+' for CON_EDIT to show the line again.
+SUB CLEAR_LINE()
+  DIM ROW AS UBYTE, COUNT AS UBYTE
+  ROW = POS(1) - (PROMPT_COLUMN + LEN(COMMAND_LINE)) / POS(3)
+  POS(1) = ROW
+  POS(0) = PROMPT_COLUMN
+  COUNT = LEN(COMMAND_LINE)
+  DO WHILE COUNT > 0
+    PRINT " ";
+    COUNT = COUNT - 1
+  LOOP
+  POS(1) = ROW
+  POS(0) = PROMPT_COLUMN
+END SUB
+
+' Reads a line at the prompt into COMMAND_LINE, and keeps it.
+SUB READ_COMMAND()
+  DIM PRESSED AS UWORD
+  PROMPT_COLUMN = POS(0)
+  COMMAND_LINE = ""
+  HISTORY_BACK = 0
+  COMPLETE_START = 0
+  DO
+    PRESSED = DOS.CON_EDIT(COMMAND_LINE)
+    IF PRESSED = KEYS.ENTER THEN EXIT DO
+    CLEAR_LINE()
+    IF PRESSED = KEYS.TAB
+      COMPLETE_WORD()
+    ELSE
+      RECALL_LINE(PRESSED)
+    ENDIF
+  LOOP
+  KEEP_LINE()
+END SUB

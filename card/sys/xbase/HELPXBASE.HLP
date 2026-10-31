@@ -442,7 +442,8 @@ READ
 RECALL [scope]
   Clears the deleted mark of each record of the scope that meets its FOR
   condition, and prints "n records recalled". The scope is the current
-  record when left out.
+  record when left out. After SET DELETED ON a scope passes over the deleted
+  records, so RECALL ALL recalls none.
   RECALL ALL
 :RECNO
 RECNO()
@@ -493,7 +494,7 @@ RUN [command line]
   The same as !. HELPDB ! gives !.
 :SAVE
 SAVE SCREEN TO path
-  Writes the 80 by 60 screen's cells to path, with .SCR added when it has
+  Writes the 80 by 30 screen's cells to path, with .SCR added when it has
   no extension: each cell its character then its color, 160 bytes a row,
   with no header. RESTORE SCREEN FROM reads it back.
   SAVE SCREEN TO MAIN
@@ -536,6 +537,7 @@ SET INDEX TO [name [, name ...]]
 SET PATH TO [folder [; folder ...]]
 SET FILTER TO [condition]
 SET REVERSE ON | SET REVERSE OFF
+SET DELETED ON | SET DELETED OFF
   SET INDEX TO closes the open indexes, then opens each name, with .IDX
   added when it has no extension. The first is the order, and the first
   record of the order is current. SET INDEX TO alone leaves the record
@@ -549,9 +551,13 @@ SET REVERSE ON | SET REVERSE OFF
   CREATE clear it. Each work area keeps its own filter.
   SET REVERSE ON, or SET REV ON, shows what prints after in reverse video.
   SET REVERSE OFF gives the usual colors back.
+  SET DELETED ON makes GO TOP, GO BOTTOM, SKIP, the scopes and BROWSE pass
+  over deleted records, in both work areas and across USE. GO n, RECORD n
+  and FIND do not check it. SET DELETED OFF, the default, ends it.
   SET INDEX TO NAMES, CITIES
   SET PATH TO C:\DATA; C:\OLD
   SET FILTER TO AGE > 30
+  SET DELETED ON
 :SHELL
 SHELL [command line]
   The same as !. HELPDB ! gives !.

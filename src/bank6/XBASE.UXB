@@ -1,7 +1,7 @@
 ' XBASE.UXB -- DB, the dot prompt over the table library (docs/DB.PLAN.md). Reads a command at
 ' the prompt ". " and runs it: USE, CREATE, LIST, DISPLAY, GO or GOTO, SKIP, LOCATE, CONTINUE, DISPLAY
 ' STRUCTURE, ?, STORE, name = value, RELEASE, DISPLAY MEMORY, COUNT, SUM, APPEND, APPEND BLANK,
-' EDIT, REPLACE, DELETE, RECALL, PACK, INDEX ON, SET INDEX TO, SET PATH TO, SET FILTER TO, FIND, REINDEX, SELECT PRIMARY,
+' EDIT, BROWSE, REPLACE, DELETE, RECALL, PACK, INDEX ON, SET INDEX TO, SET PATH TO, SET FILTER TO, SET DELETED, FIND, REINDEX, SELECT PRIMARY,
 ' SELECT SECONDARY, PUSH, POP, DO, RETURN, CANCEL, IF, ELSE, ENDIF, DO WHILE, ENDDO, ACCEPT, INPUT, WAIT,
 ' MODIFY COMMAND, @ ... SAY ... GET, READ, @ ... PROMPT, MENU TO, CLEAR, CLS, SAVE SCREEN TO, RESTORE SCREEN FROM, HELP, REG and QUIT. A command word may be cut to
 ' its first 4 letters, as DISP STRU. LIST, DISPLAY, LOCATE, COUNT, SUM, REPLACE, DELETE and
@@ -41,9 +41,11 @@ DIM OTHER_NAME AS STRING * 80       ' TABLE_NAME of the other area
 DIM OTHER_TABLE AS UBYTE            ' TABLE of the other area
 DIM OTHER_CURRENT AS UWORD          ' CURRENT of the other area
 DIM OTHER_BEFORE AS UBYTE     ' BEFORE_FIRST of the other area
+DIM OTHER_DELETED AS UBYTE          ' DB.DELETED of the other area
 DIM SEARCH_PATH AS STRING * 80      ' the directories of SET PATH TO, apart by ;
 DIM FILTER AS STRING * 128          ' the condition of SET FILTER TO, "" for none
 DIM OTHER_FILTER AS STRING * 128    ' FILTER of the other area
+DIM SKIP_DELETED AS UBYTE           ' 1 after SET DELETED ON
 CONST PUSH_LIMIT AS UBYTE = 4       ' the levels of PUSH
 DIM PUSH_DEPTH AS UBYTE             ' the levels PUSH has saved and POP not taken back
 DIM PUSHED_AREA(4) AS UBYTE         ' AREA of each level
@@ -107,6 +109,15 @@ END SUB
 ' when it has none.
 SUB TOP_OF_ORDER()
   REACH_FILTERED(DB.FIRST_RECORD())
+END SUB
+
+' Makes the last record of the order that meets FILTER current, or the place past the last when
+' it has none.
+SUB BOTTOM_OF_ORDER()
+  REACHED(DB.LAST_RECORD())
+  DO WHILE IN_FILTER() = 0
+    REACHED(DB.PREVIOUS_RECORD())
+  LOOP
 END SUB
 
 ' Prints "Record n", the current record.
@@ -181,10 +192,7 @@ SUB DO_GO()
   IF IS("TOP")
     TOP_OF_ORDER()
   ELSEIF IS("BOTTOM")
-    REACHED(DB.LAST_RECORD())
-    DO WHILE IN_FILTER() = 0
-      REACHED(DB.PREVIOUS_RECORD())
-    LOOP
+    BOTTOM_OF_ORDER()
   ELSE
     RECORD = VAL(TOKEN)
     IF RECORD = 0 OR RECORD > DB.RECORD_COUNT()
@@ -230,11 +238,14 @@ END SUB
 #INCLUDE "DB_FUNC.UXI"
 #INCLUDE "DB_MEM.UXI"
 
-' 1 when the current record meets FILTER, when FILTER is "", or past the last. Else 0. REST and
-' CURSOR are kept. On an error it sets FAILED and gives 1.
+' 1 past the last, else 0 when SKIP_DELETED is set and the current record is deleted, else 1 when
+' it meets FILTER or FILTER is "". Else 0. REST and CURSOR are kept. On an error it sets FAILED
+' and gives 1.
 FUNCT IN_FILTER() AS UBYTE
   DIM KEPT_REST AS STRING * 128, KEPT_CURSOR AS UBYTE, MEETS AS UBYTE
-  IF FILTER = "" OR PAST_LAST() THEN RETURN 1
+  IF PAST_LAST() THEN RETURN 1
+  IF SKIP_DELETED AND DB.DELETED THEN RETURN 0
+  IF FILTER = "" THEN RETURN 1
   KEPT_REST = REST
   KEPT_CURSOR = CURSOR
   REST = FILTER
@@ -255,8 +266,8 @@ SUB REACH_FILTERED(RECORD AS UWORD)
   LOOP
 END SUB
 
-' Makes the other work area the one in use: its table, path, current record, BEFORE_FIRST and
-' FILTER change places with the area's, and DB.WORKSPACE follows.
+' Makes the other work area the one in use: its table, path, current record, BEFORE_FIRST,
+' DB.DELETED and FILTER change places with the area's, and DB.WORKSPACE follows.
 ' Checklist: a new state of the area gets an OTHER_ copy, swapped here.
 SUB SWAP_AREA()
   DIM KEPT AS UWORD, KEPT_NAME AS STRING * 128
@@ -275,6 +286,9 @@ SUB SWAP_AREA()
   KEPT = BEFORE_FIRST
   BEFORE_FIRST = OTHER_BEFORE
   OTHER_BEFORE = KEPT
+  KEPT = DB.DELETED
+  DB.DELETED = OTHER_DELETED
+  OTHER_DELETED = KEPT
   AREA = 1 - AREA
   DB.WORKSPACE = TABLE
 END SUB
@@ -543,6 +557,8 @@ END SUB
 #INCLUDE "DB_INDEX.UXI"
 #INCLUDE "DB_DO.UXI"
 #INCLUDE "DB_SCREEN.UXI"
+#INCLUDE "DB_BROWSE.UXI"
+#INCLUDE "DB_LINE.UXI"
 
 ' SELECT PRIMARY or SELECT SECONDARY: makes that work area the one in use. Each area keeps its
 ' table, its indexes, its current record and its filter. A LOCATE ends.
@@ -648,6 +664,7 @@ GET_COUNT = 0
 SEARCH_PATH = ""
 FILTER = ""
 OTHER_FILTER = ""
+SKIP_DELETED = 0
 CALLER_BANK = ContentsAt(DB.RAM_BANK)
 VARIABLE_BANK = DB.TAKE_BANK()
 IF VARIABLE_BANK = 0
@@ -655,6 +672,7 @@ IF VARIABLE_BANK = 0
 ELSE
   ContentsAt(DB.RAM_BANK) = VARIABLE_BANK
   CLEAR_VARIABLES()
+  LOAD_HISTORY()
   RUNNING = 1
   ' DB name runs the command file name, as DO name does. The command tail is a length byte and
   ' the text, as a string's.
@@ -672,7 +690,7 @@ ENDIF
 DO WHILE RUNNING
   IF DO_DEPTH = 0
     PRINT ". ";
-    DOS.CON_LINE(COMMAND_LINE)
+    READ_COMMAND()
   ELSEIF READ_DO_LINE() = 0
     CONTINUE
   ENDIF
@@ -681,6 +699,8 @@ DO WHILE RUNNING
   REST = TRIM$(COMMAND_LINE)
   // CUT_SPACES()
   // REST = TRIM$(REST)
+  ' A line that starts with * or // is a comment, and runs as an empty line.
+  IF ASC(REST) = 42 OR LEFT$(REST, 2) = "//" THEN REST = ""
   IF LEFT$(REST, 1) = "?" OR LEFT$(REST, 1) = "@"
     ' ? and @ need no space after them, so they are not words.
     TOKEN = LEFT$(REST, 1)
@@ -740,6 +760,8 @@ DO WHILE RUNNING
     DO_APPEND()
   ELSEIF IS("EDIT")
     DO_EDIT()
+  ELSEIF IS("BROWSE")
+    DO_BROWSE()
   ELSEIF IS("REPLACE")
     DO_REPLACE()
   ELSEIF IS("DELETE")
@@ -807,6 +829,7 @@ DO WHILE RUNNING
   ELSEIF IS("RESTORE")
     DO_SCREEN_FILE(1)
   ELSEIF IS("QUIT")
+    SAVE_HISTORY()
     RUNNING = 0
   ELSE
     ' name = expression stores, as STORE does.

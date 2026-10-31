@@ -2248,7 +2248,7 @@ lines start with UXCBASIC 0.1 and COMPILING NAME.UXB.
   count: see [[Code in RAM banks]].
 - OUT OF RAM BANKS: the compiler keeps its tables, its code and its fixups in
   8 KB RAM banks, as on a 2 MB X16, and has used all 254.
-- TOO MANY NAMES: the program and its includes declare more than 2032 names.
+- TOO MANY NAMES: the program and its includes declare more than 4080 names.
   The parameters, locals and hidden temps of each SUB count.
 
 See [[Including files]], [[Errors]].

@@ -124,7 +124,7 @@ K_F_REC_HI = 6
 
 # Banked RAM, in banks from BANKMGR. The code buffer and the fixups take a bank each time
 # they fill one. K.RAM.BANKS is the free banks of a 2 MB X16: 256 less bank 0 and VARBANK.
-K_SYM_BANKS = 8
+K_SYM_BANKS = 16
 K_RAM_BANKS = 254
 # A fixup is 10 bytes: its code offset (3 bytes), kind, section, value (3 bytes) and owner
 # (word). A bank holds K.FX.BANK of them.
@@ -143,7 +143,7 @@ K_TP_DATA = 254
 # The symbol table: bucket heads, then 32-byte records.
 # Checklist: K_SY_MAX is (K_SYM_BANKS * 8192 - K_SY_HEADS) / 32.
 K_SY_HEADS = 512
-K_SY_MAX = 2032
+K_SY_MAX = 4080
 
 # The most SUBs UXC-DEAD.BL can leave out of one program.
 K_DD_MAX = 512

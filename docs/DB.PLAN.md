@@ -482,8 +482,8 @@ MENU TO CHOICE
 
 - `SAVE SCREEN TO path` writes the screen's cells to `path`, with `.SCR` added when it has no
   extension. `RESTORE SCREEN FROM path` puts them back.
-- The file is the 80 by 60 screen's cells, each its character then its color, 160 bytes a
-  row, 9600 bytes, with no header. A short file restores the rows it holds.
+- The file is the 80 by 30 screen's cells, each its character then its color, 160 bytes a
+  row, 4800 bytes, with no header. A short file restores the rows it holds.
 - A missing file prints `File not found`. A missing `SCREEN`, `TO` or `FROM`, or path, is
   `Syntax error`.
 
@@ -617,7 +617,7 @@ written. Every step below is done.
 - A command line is cut at 128 characters.
 - Command files nest 8 deep, and `DO WHILE` loops 8 deep. `PUSH` holds 4 levels.
 - At most 32 GETs in 2048 bytes, 16 prompts, and 16 items in `MENU()`.
-- The screen files are 80 by 60.
+- The screen files are 80 by 30.
 
 ## Still to decide
 

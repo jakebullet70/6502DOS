@@ -360,16 +360,21 @@ SUB AIM_VERA(ROW AS UBYTE, SPOT AS UBYTE)
   VERA_HIGH = 1
 END SUB
 
-' Swaps the foreground and background of bar NUMBER's cells, to show it picked or not.
-SUB FLIP_BAR(NUMBER AS UBYTE)
-  DIM SPOT AS UBYTE, COLOR AS UBYTE
-  SPOT = BAR_WIDTH(NUMBER)
-  DO WHILE SPOT > 0
-    SPOT = SPOT - 1
-    AIM_VERA(BAR_ROW(NUMBER), (BAR_COLUMN(NUMBER) + SPOT) * 2 + 1)
+' Swaps the foreground and background of WIDTH cells from ROW and COLUMN, to show them picked or
+' not.
+SUB FLIP_CELLS(ROW AS UBYTE, COLUMN AS UBYTE, WIDTH AS UBYTE)
+  DIM COLOR AS UBYTE
+  DO WHILE WIDTH > 0
+    WIDTH = WIDTH - 1
+    AIM_VERA(ROW, (COLUMN + WIDTH) * 2 + 1)
     COLOR = VERA_DATA
     VERA_DATA = (COLOR << 4) OR (COLOR >> 4)
   LOOP
+END SUB
+
+' Swaps the colors of bar NUMBER's cells.
+SUB FLIP_BAR(NUMBER AS UBYTE)
+  FLIP_CELLS(BAR_ROW(NUMBER), BAR_COLUMN(NUMBER), BAR_WIDTH(NUMBER))
 END SUB
 
 ' Shows the bars picked one at a time, from bar 0, and returns the number of the one picked,
@@ -670,7 +675,7 @@ END SUB
 DIM SCREEN_ROW(160) AS UBYTE
 
 ' SAVE SCREEN TO path, with RESTORING 0, and RESTORE SCREEN FROM path, with RESTORING 1; REST
-' is the words after SAVE or RESTORE. The file is the 80 by 60 screen's cells, each its
+' is the words after SAVE or RESTORE. The file is the 80 by 30 screen's cells, each its
 ' character then its color, 160 bytes a row, with no header. The path gets .SCR when it has no
 ' extension. A short file restores the rows it holds.
 SUB DO_SCREEN_FILE(RESTORING AS UBYTE)
@@ -696,7 +701,7 @@ SUB DO_SCREEN_FILE(RESTORING AS UBYTE)
     RETURN
   ENDIF
   ROW = 0
-  DO WHILE ROW < 60
+  DO WHILE ROW < 30
     AIM_VERA(ROW, 0)
     ' A step of 1 after each byte.
     VERA_HIGH = $11
@@ -707,7 +712,7 @@ SUB DO_SCREEN_FILE(RESTORING AS UBYTE)
         VERA_DATA = SCREEN_ROW(SPOT)
         SPOT = SPOT + 1
       LOOP
-      IF COUNT < 160 THEN ROW = 59
+      IF COUNT < 160 THEN ROW = 29
     ELSE
       DO WHILE SPOT < 160
         SCREEN_ROW(SPOT) = VERA_DATA
@@ -716,7 +721,7 @@ SUB DO_SCREEN_FILE(RESTORING AS UBYTE)
       COUNT = DOS.WRITE_FILE(HANDLE, AddrOf(SCREEN_ROW), 160)
     ENDIF
     FAULT = DOS.ERROR
-    IF FAULT THEN ROW = 59
+    IF FAULT THEN ROW = 29
     ROW = ROW + 1
   LOOP
   DOS.CLOSE_FILE(HANDLE)

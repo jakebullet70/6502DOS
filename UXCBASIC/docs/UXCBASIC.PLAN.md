@@ -443,8 +443,8 @@ Every other option comes from `#DEFINE UXC.*` lines in the source.
 **Compiler memory.** pyuxc keeps its tables in banks, each a `bytearray` of 8,192 bytes.
 `uxc_bank` hands them out. Past `K_RAM_BANKS`, 254 banks, the compile stops with
 `OUT OF RAM BANKS`.
-- The symbol table is `K_SYM_BANKS`, 8 banks: 512 bytes of bucket heads, then 2,032 records of
-  32 bytes (`K_SY_MAX`). Past that the compile stops with `TOO MANY NAMES`. A ninth bank,
+- The symbol table is `K_SYM_BANKS`, 16 banks: 512 bytes of bucket heads, then 4,080 records of
+  32 bytes (`K_SY_MAX`). Past that the compile stops with `TOO MANY NAMES`. Another bank,
   `g.sy_xbank`, holds the third byte of each record's value and of each `SUB`'s end.
 - The code buffer takes a bank each time it fills one. A code offset is 3 bytes.
 - A fixup is 10 bytes: its code offset (3 bytes), kind, section, value (3 bytes) and owner (2
