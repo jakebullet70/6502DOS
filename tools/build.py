@@ -341,7 +341,7 @@ RELEASE_ZIPS."""
 
 def main():
     release = "--release" in sys.argv[1:]
-    image = "--card" in sys.argv[1:]
+    card_image = "--card" in sys.argv[1:]
     if set(sys.argv[1:]) - {"--release", "--card"}:
         sys.exit("usage: build.py [--release] [--card]")
     started = time.time()
@@ -380,7 +380,7 @@ def main():
     card_sources = [compile_scom(), compile_utils()]
     for program in shell + [basic, database]:
         shutil.copy2(program, SYS_OUT)
-    make_card([p for p in programs if p not in shell] + test_files, image)
+    make_card([p for p in programs if p not in shell] + test_files, card_image)
     if release:
         make_release(card_sources)
     print("built %s, %d bytes, %.2f s" % (os.path.relpath(ROM, ROOT), os.path.getsize(ROM),

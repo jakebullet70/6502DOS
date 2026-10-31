@@ -1024,6 +1024,13 @@ Short names:
   - No name gives an empty text, `UNTITLED`.
   - The section `[EDIT]` of `C:\6502DOS.INI` holds its settings and its 4 recent files.
   - A file too large, or no RAM bank free, gives exit code 2.
+- `XT` is a DOS utility, `XT.COM`, for the command line. It is a file manager after XTree: a tree
+  of folders, a file window, and two rows of commands that change while Ctrl or Alt is held. The
+  keys are in the header of `src/utils/xt/XT.UXB`. `docs/XFMGR.PLAN.md` holds its steps.
+  - The section `[XT]` of `C:\6502DOS.INI` holds `THEME` and `SORT`: 0 name, 1 extension, 2 size,
+    3 date. With no `THEME` there, the registry key `THEME` names the theme.
+  - `C:\sys\xt` holds the prompts' histories.
+  - Too few free RAM banks give exit code 1. The exit code is 0 otherwise.
 - `TREE [d:][path] [-F]` is a DOS utility, `TREE.COM`, for the command line. It draws every
   directory below `path`, or below the root of drive `d`, as a tree.
   - The first line is `ROOT`, or the start path. Each directory prints one line, ` +- ` and its
@@ -1135,7 +1142,7 @@ Short names:
   - No help for the topic gives exit code 1, and no `HELPXBASE.HLP` exit code 2.
 - The utilities lie in the card's folder `\sys`, each with its source in
   `\source\xcbasic\FOLDER`. The build compiles each `src/utils/FOLDER/NAME.UXB` to
-  `build/sys/NAME.COM`, and copies each `src/utils/FOLDER` to `build/source/xcbasic/FOLDER`.
+  `card/sys/NAME.COM`, and copies each `src/utils/FOLDER` to `card/source/xcbasic/FOLDER`.
   `card/startup.cmd` puts `C:\sys` in `PATH$`.
 - The card's folders: `sys`, with `sys/temp`, `sys/basic`, `sys/xbase` and `sys/edit`; `source`,
   with `source/basic`, `source/xcbasic` and `source/xbase`; `apps`; `games`. `sys` holds the
@@ -1327,12 +1334,13 @@ Folders:
 - `tools/mksd.py` writes an SD card image from a folder: an MBR, one partition of type `$0C` at
   sector 2048, and FAT32. A name that is 8.3 goes in as its 8.3 name in capitals. Any other
   name, up to 255 characters, goes in as a long name as typed, with an 8.3 alias `BASE~N.EXT`.
-  `build.py` makes `build/SD.IMG`, 4 MB with 1 sector per cluster: 6016 clusters, 3008 KB.
-- The card holds the folder `card` and the build outputs. `card` wins a name they share. The `src/bas` programs but `CMDSHELL.COM`, and the entries of `tests/sd`, go in
-  the folder `\TEST`. `build/SD.SUM` lists each path and its SHA-1.
-- Before it writes the card, `build.py` copies into `card` each file and folder that the X16
-  added to `build/SD.IMG` or changed since `SD.SUM`, and deletes from `card` each one the X16
-  deleted. `card` is tracked in git. A build file deleted on the X16 comes back at the next build.
+  `build.py --card` makes `build/SD.IMG` from the folder `card`, 4 MB with 1 sector per cluster:
+  6016 clusters, 3008 KB. Files saved on that image stay in it, and the next `--card` overwrites
+  them.
+- The folder `card` is the whole card. Git tracks all of it but its empty folders and
+  `card/sys/temp`. The build writes its programs there. `CMDSHELL.COM`, `ROMSHELL.COM` and
+  `BASIC.COM` go in `card/sys`. The other `src/bas` programs and the entries of `tests/sd` go in
+  `card/TEST`.
 - `build.py --release` builds as above, then empties `build/release` and fills it with `SD.IMG`,
   `6502DOS.ROM`, `LICENSE`, `NOTICE`, the files of `tools/release`, and x16emu with the DLLs it
   loads in the folder `x16emu`. `tools/release` holds `RUN.BAT`, which starts x16emu with the
@@ -1350,7 +1358,8 @@ Folders:
 - Trap: `fatcheck.py` lists lost clusters on each test card. They are the clusters of the
   program block that `tests.py` reserves and the programs leave unused, which the FAT marks
   as bad.
-- The emulator runs `x16emu -rom build/6502DOS.ROM -sdcard build/SD.IMG`.
+- The emulator runs `x16emu -rom build/6502DOS.ROM -fsroot card`, or with `-sdcard build/SD.IMG`
+  in place of `-fsroot card`.
 - `build.py` copies the ROM to `build/TEST.ROM` with the byte `boot_shell` 0, found through the
   label file. `TEST.ROM` boots to the monitor, `6502DOS.ROM` to the shell (section 8).
 - `tests.py` boots `TEST.ROM`, except for the tests in its list `SHELL_ROM_TESTS`, which boot

@@ -58,7 +58,7 @@ C:\>LIST README.TXT | MORE
 | Path | Holds |
 |---|---|
 | `C:\startup.cmd` | The start-up script |
-| `C:\sys` | `ROMSHELL.COM`, which starts the shell in ROM; `CMDSHELL.COM`, the same shell built to run from RAM; `MSBASIC.COM`, which starts Microsoft BASIC in ROM bank 2; `HDIR`, `HELPED`, `GUIDEMO`; `EDIT`, `TED`, `VIEW`, `MORE`, `HEAD`, `TAIL`, `GREP`, `TREE`, `XCOPY`, `HELP`, `HELPBAS`, `HELPXBASE`, and the commandlets `DATE`, `TIME`, `UPTIME`, `MEM`, `DISKFREE`, `DISKINFO`, `WHERE`, `EXIST` |
+| `C:\sys` | `ROMSHELL.COM`, which starts the shell in ROM; `CMDSHELL.COM`, the same shell built to run from RAM; `MSBASIC.COM`, which starts Microsoft BASIC in ROM bank 2; `HDIR`, `HELPED`, `GUIDEMO`; `EDIT`, `TED`, `VIEW`, `XT`, `MORE`, `HEAD`, `TAIL`, `GREP`, `TREE`, `XCOPY`, `HELP`, `HELPBAS`, `HELPXBASE`, and the commandlets `DATE`, `TIME`, `UPTIME`, `MEM`, `DISKFREE`, `DISKINFO`, `WHERE`, `EXIST` |
 | `C:\sys\themes` | The fonts and color themes; `THEMED`, `FONTEDIT` |
 | `C:\sys\xbase` | `HELPXBASE.HLP` and `HELPXBASE.IDX`, the xBASE help that `HELPXBASE` reads |
 | `C:\sys\temp`, `basic`, `edit` | Data of the system and its programs |
@@ -73,16 +73,18 @@ Building needs Windows, Python 3.13 and x16emu R49. ca65, ld65 and 64tass are in
 
 | Command | Does |
 |---|---|
-| `python tools/build.py` | Builds `build/6502DOS.ROM`, the programs, and `build/SD.IMG` |
+| `python tools/build.py` | Builds `build/6502DOS.ROM` and the programs in `card` |
+| `python tools/build.py --card` | Builds as above, then writes `build/SD.IMG` from the folder `card` |
 | `python tools/build.py --release` | Builds as above, then fills `build/release` with the release files and zips them to `release/` |
 | `python tools/tests.py` | Runs every test, headless, in x16emu |
 | `python tools/tests.py NAME` | Runs the test `NAME` |
 | `BUILD.BAT` | Runs `build.py` |
 | `RUNCARD.BAT` | Starts x16emu in a window on `build/6502DOS.ROM`, with the card `build/SD.IMG` as `C:` |
-| `RUNHOST.BAT` | Starts x16emu in a window on `build/6502DOS.ROM`, with the folder `build/card` as `C:`. The next build deletes files saved there |
+| `RUNHOST.BAT` | Starts x16emu in a window on `build/6502DOS.ROM`, with the folder `card` as `C:`. Files saved on the X16 are files in `card` |
 
-`build/SD.IMG` holds the folder `card`, the build outputs, and the test programs in `\TEST`. Each
-build copies back into `card` the files the X16 saved on `build/SD.IMG`.
+The folder `card` is the whole card, with the test programs in `\TEST`. Git tracks all of it but
+its empty folders and `card/sys/temp`. Files saved on `build/SD.IMG` stay in it, and the next
+`--card` overwrites them.
 
 ## The repository
 
@@ -92,7 +94,7 @@ build copies back into `card` the files the X16 saved on `build/SD.IMG`.
 | `src/bas`, `src/bank3` | The shell, and small programs the tests run |
 | `src/dos`, `src/scom`, `src/utils` | The utilities, the commandlets, the programs in `C:\sys` |
 | `lib` | The UXCBASIC library the programs include |
-| `card` | The files copied to the card, and those the X16 saved on `build/SD.IMG` |
+| `card` | The whole card, `C:` |
 | `tests` | Test programs, their keys and their expected output |
 | `tools` | The build, the tests, the card writer `mksd.py`, the checker `fatcheck.py` |
 | `UXCBASIC` | The UXCBASIC compiler, pyuxc, its templates and its tests |

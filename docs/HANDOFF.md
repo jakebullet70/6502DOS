@@ -2,13 +2,15 @@
 
 ## Working rule, read first
 
-Make only the change the user asked for. Touch no other files. Add no tests, docs or HANDOFF
-entries, and run no build or test, unless the user asks. Read only what the edit needs, and name
-anything else in one line. This overrides the CLAUDE.md orders to run the tests of the code
-touched and to update HANDOFF each step.
+Make only the change the user asked for. Touch no other files. Add no tests or docs, and run no
+test, unless the user asks. Read only what the edit needs, and name anything else in one line.
+This overrides the CLAUDE.md orders to run the tests of the code touched and to update HANDOFF
+each step.
 
 1. The user names one small change. Make it, and reply in a few lines.
-2. The user says "build". Run `tools/build.py` in the background, timed, and report the time.
+2. When a step of writing code is done, run `tools/build.py` in the background, timed, without
+   waiting for the word, and report the time. After the build, update the resume entry in this
+   file.
 3. The user runs it on the X16 emulator and reports what happened.
 4. The user says "commit" when satisfied. Commit locally; the user pushes.
 
@@ -19,13 +21,193 @@ Remind the user to `/compact` when a change is done.
 
 Resume here (2026-10-31), `XBASE.COM`, `BROWSE`:
 
-- `SAVE SCREEN` and `RESTORE SCREEN` now take the console's 30 rows, in `DB_SCREEN.UXI`, with `DB.PLAN.md` and `HELPXBASE.HLP` changed to match. Built, not run. A file is 4800 bytes. A 9600-byte file from before restores its first 30 rows.
-- `BROWSE` step B1 is built, not run: `src/bank6/DB_BROWSE.UXI`, read-only, with draw, move, pan and the row shift. `FLIP_CELLS` is new in `DB_SCREEN.UXI`, and `BOTTOM_OF_ORDER` in `XBASE.UXB`. Build 2.97 s, outer 3207 ms, the new baseline.
-- Agreed for the next steps: B2 `BROWSE FIELDS a, b`. B3 cell edit on GET 0, saved on leaving the cell, with `READ_GET`, `EDIT_GET` and `STORE_GETS`; the pending GETs drop. B4 Ctrl+U toggles the delete mark; `EDIT_GET` must also return key 21. B5 docs in `DB.PLAN.md` and `HELPXBASE.HLP`. Left for the super-browse: adding a record past the end, column freeze, search.
+- `SAVE SCREEN` and `RESTORE SCREEN` now take the console's 30 rows, in `DB_SCREEN.UXI`, with `DB.PLAN.md` and `HELPXBASE.HLP` changed to match. They work, as the user reports. A file is 4800 bytes. A 9600-byte file from before restores its first 30 rows.
+- `BROWSE` step B1 is built, and the user finds it fine: `src/bank6/DB_BROWSE.UXI`, read-only, with draw, move, pan and the row shift. `FLIP_CELLS` is new in `DB_SCREEN.UXI`, and `BOTTOM_OF_ORDER` in `XBASE.UXB`. Build 2.97 s, outer 3207 ms, the new baseline.
+- `BROWSE` step B2 is built, not run: `BROWSE FIELDS a, b`, with `READ_SHOWN` in `DB_BROWSE.UXI`. `FIELDS` shortens to 4 letters, an unknown or missing name gives "Field not found", and anything else gives "Syntax error". At most 32 names, stated in the contract and not checked. Build 2.98 s, outer 3129 ms, the new baseline.
+- Agreed for the next steps: B3 cell edit on GET 0, saved on leaving the cell, with `READ_GET`, `EDIT_GET` and `STORE_GETS`; the pending GETs drop. B4 Ctrl+U toggles the delete mark; `EDIT_GET` must also return key 21. B5 docs in `DB.PLAN.md` and `HELPXBASE.HLP`. Left for the super-browse: adding a record past the end, column freeze, search.
 - The dot prompt's line editor, agreed steps: L1 history, L2 Tab, L3 `*` and `//` comment lines. L1, L2 and L3 are built, not run: `src/bank6/DB_LINE.UXI`, with `C:\sys\xbase\cmds.bin` read at start and written at `QUIT`, and the lines at `$BB00` of the variables' bank, so `POOL_LIMIT` is `$BB00`. L2: first word the 51 xbase commands, later words files and folders, Shift+Tab back, no PATH programs, no quotes on names. Between Tabs, `REST` holds the word and `TEXT_BUFFER` the line. L3: a line that starts with `*` or `//` runs as an empty line, in the main loop of `XBASE.UXB`. Build 2.93 s, outer 3081 ms, the new baseline.
-- `SET DELETED ON` and `OFF` are built, not run, and in `HELPXBASE.HLP`, not in `DB.PLAN.md`: `SKIP_DELETED` in `XBASE.UXB`, checked in `IN_FILTER`, one flag for both areas, 0 at start. `SWAP_AREA` now swaps `DB.DELETED` with `OTHER_DELETED`, so `DELETED()` and `BROWSE`'s first `IN_FILTER` read the right area after `SELECT`. Build 3.06 s, outer 3237 ms, the new baseline.
-- ROM space: bank 8's longest run of $FF is 723 bytes, bank 7 has 412 and bank 6 has 261. L1 took 1033 bytes, L2 1445, L3 73, `SET DELETED` 151 and the `SWAP_AREA` fix 23. Low RAM: XBASE's data ends at `$4171`, below `K_TOP` `$9F00`, before the run-time library's variables.
+- `SET DELETED ON` and `OFF` work, as the user reports, and are in `HELPXBASE.HLP`, not in `DB.PLAN.md`: `SKIP_DELETED` in `XBASE.UXB`, checked in `IN_FILTER`, one flag for both areas, 0 at start. `SWAP_AREA` now swaps `DB.DELETED` with `OTHER_DELETED`, so `DELETED()` and `BROWSE`'s first `IN_FILTER` read the right area after `SELECT`. Build 3.06 s, outer 3237 ms, the new baseline.
+- ROM space: bank 8's longest run of $FF is 512 bytes, bank 7 has 412 and bank 6 has 253. L1 took 1033 bytes, L2 1445, L3 73, `SET DELETED` 151, the `SWAP_AREA` fix 23 and B2 219. Low RAM: XBASE's data ends at `$4171`, below `K_TOP` `$9F00`, before the run-time library's variables.
 - The commit "xbase: BROWSE, line editor, SET DELETED" holds the work above and is local only.
+
+`XT.COM`, the file manager, plan `docs/XFMGR.PLAN.md`:
+
+- X1 to X3 are in commit `18a0f66`, which is local only. X4 to X6 are not committed.
+- A commit of X4 to X6 holds `src/utils/xt/*`, `card/source/xcbasic/XT/*` and `card/sys/XT.COM`.
+  `README.md`, `docs/HANDOFF.md`, `docs/PLAN.md` and `tools/build.py` are also changed, and are
+  not part of it.
+- X4, sort and filespec: the user ran it, and it works.
+- X5, tags: built. The user has not reported on it.
+- X6, scopes: built. The user ran `Alt-F3`, and it works. The rest of the test list below has no
+  report yet.
+- Bottom-line prompts: built, not committed. The user has not reported on it. `ASK_TEXT`, `ASK_YES`
+  and `TELL` in `XT.UXB` replace every `GUI.INPUTBOX`, `GUI.YESNO` and `GUI.MSGBOX` of XT. Row 28
+  holds the label and the field, and row 29 the note and the answer keys. The field is
+  `GUI.INPUT2`, so X9 can take Up and F2 from its ending key.
+- X7, delete, rename and mkdir: written in `src/utils/xt/XTOPS.UXI`, region 7, with prompts on rows
+  28 and 29 in place of the GUI dialogs the plan names. Built, not committed. The user reports `D`
+  and `R` work, and `D`, `R` and `M` fail "in root". The user asked for XFMGR's messages at the
+  root, so the tree's `D` and `R` on `C:\` now say `can't delete the drive root` and `can't rename
+  the drive root`. The tree's `D` on an unlogged folder now says `folder not logged - log it first`
+  before it asks. XFMGR has no such message. Both built, not run. `M` at the root has no change and
+  no reading of the code finds a fault there. The same build as X7 took the clock from the title,
+  and made the filespec's default and empty answer `*.*`. The user reports both work.
+- X8, copy and move: written in `src/utils/xt/XTOPS.UXI`, region 7, with an 8 KB read and write
+  through a new bank, `COPY_BANK`. Built, not run, not committed. `C` and `M` act on the highlighted
+  file in the file window. `Ctrl-C`, `Ctrl-O`, and `Ctrl-D` or `Ctrl-X` act on the tagged rows of the
+  index, from either pane. `Ctrl-X` is beside the plan's `Ctrl-D`, as XFMGR2's comments say x16emu
+  takes `Ctrl-D`. `ASK_KEY` and `NOTICE` are new in `XT.UXB`, `ASK_YES` calls `ASK_KEY`, and
+  `ANSWER_COLUMN` went from 60 to 58 so `Yes [No] All Skip all` fits. `TRIM_GO_PATH` came out of
+  `JUMP_KEY`. A tagged file that the filespec hides stays, though the title counts it. A copy gets
+  today's date, as `DOS.UXI` has no wrapper for `API_FILETIME`. The path answer is from `C:\` only.
+- X9, history and the folder picker: written in the new `src/utils/xt/XTHIST.UXI` and in `XTOPS.UXI`,
+  region 8. Built, not run, not committed. `X8` has no report either. In a prompt for text, `Up` lists
+  the prompt's last 8 answers in a box above the menu, newest at its foot. Each prompt has a file in
+  `C:\sys\xt`: `COPYMOVE`, `JUMP`, `MKDIR`, `RENAME`, `TAG` and `FILESPEC`, each `.HIS`. The first save
+  makes the folder. An answer over 64 characters is not kept. `F2` in the copy and move prompt points at
+  a folder in the tree's pane, and `Enter` puts its path in the field. `ASK_TEXT` returns an `ASK_END`.
+  `SHOW_TREE_CURSOR` came out of `MOVE_TREE_CURSOR`, and `TREE_SPOT_FOR` out of `TREE_KEY`. Plan line
+  171 still says `C:\XT.HIS` and a ring per prompt in the extras bank; there is one ring, read per
+  prompt.
+- `GUI.LISTBOX` costs about 9 KB, as it brings back the form code that the compile now removes: the
+  first X9 build was 42926 bytes. X11's plan names `GUI.LISTBOX`, and `PICK_HISTORY` is the cheap shape.
+- X10, prune: written in `XTOPS.UXI`, region 8. Built, not run, not committed. `Alt-P` in the tree asks
+  for the word `prune`, exact and in lower case, in a prompt with no history, as XFMGR's has none. The
+  walk reads the disk, so a folder that is not logged prunes too. `GO_PATH` is its only state: each pass
+  takes the folder's first name, then goes in, deletes a file, or removes the folder and goes up. The
+  root is refused. A branch that holds C:'s current directory is refused before anything goes, which the
+  plan does not name. An error stops the walk and the tree forgets the folder until it is logged again.
+  A read-only file that the DOS refuses is such an error. `C:\sys` can be pruned. `DROP_TREE_ROW` came
+  out of `DELETE_FOLDER`, and `FORGET_FOLDER` out of `RELEASE_KEY`.
+- X11, find: written in the new `src/utils/xt/XTFIND.UXI`, region 8. Built, not run, not committed.
+  `Ctrl-F` or `Ctrl-G` asks for a filespec of up to 12 characters, with its history in `FIND.HIS`.
+  `Ctrl-G` is beside the plan's `Ctrl-F`, as XFMGR2's notes say x16emu takes `Ctrl-F`. The list is the
+  whole-screen file window in place of the plan's `GUI.LISTBOX`, so the file keys work on the hits and
+  the title shows each hit's folder. The list takes the filespec, and every logged file that matches
+  shows, including one logged before and gone from the disk since. `Enter` there goes to the file in
+  the two panes and keeps that filespec. Leaving another way brings the old filespec back. The walk
+  keeps only `GO_PATH`. It logs and expands the folders above a hit too, so they are logged whole. It
+  does not read a logged folder again, so a subfolder made outside XT since its parent was logged is
+  missed until a relog. `Esc` stops the walk, which the plan does not name. A full tree stops it with
+  a message. `HIGHLIGHT_NODE` now expands the folders above its node, which took that loop out of
+  `PICK_FOLDER`. `SET_FILESPEC` came out of `ASK_FILESPEC`.
+- X12, search tagged: `SEARCH_KEY` in `XTFIND.UXI`, region 8, and `SCAN_FILE` in low RAM, as it reads
+  `COPY_BANK` at `$A000`. Built, not run, not committed. `Ctrl-S` or `Ctrl-E` asks for a text of up to
+  32 characters, with its history in `SEARCH.HIS`. `Ctrl-E` is XFMGR's key for x16emu, which takes
+  `Ctrl-S`. The scan reads 1 KB at a time and keeps the last bytes for the next block. Only A to Z fold.
+  The highlight walks the tagged files, stays on the last one reached, and the title's count falls.
+  `Esc` stops, which the plan does not name, and the files not reached stay tagged. A file that cannot
+  be read stays tagged. The end shows `Found in n file(s)`, with the last error when one failed, as the
+  other batches do. XFMGR has no such message.
+- X13, the children: `XTRUN.UXI`, region 9, and `HEAP.UXI` now included. Built, not run, not committed.
+  `V` runs `VIEW.COM` and `E` runs `EDIT.COM` from `DOS.PROGRAM_FOLDER()` on the highlighted file. Both
+  read their file from `P1$`, which only the shell sets, so XT sets `P1$` to `P9$` as well as the tail.
+  `F1` now sets `P1$` to `XT` for the same reason. `Alt-X` takes `.COM` only, asks for parameters with
+  their history in `RUN.HIS`, splits them as the shell does, changes to the file's folder, runs it, and
+  waits for a key, which the plan does not name. `XT` keeps `C:`'s folder and the current drive at start,
+  and brings them back after each child, so `Q` needs no change of folder. `Alt-Q` asks first, as `Q`
+  does, and leaves in the folder the title names. Each child clears the screen first and repaints after.
+  An exec error or a non-zero exit code shows a message. The file window keeps its records until
+  `Alt-F3`, so an edited file's size stays old. `Alt-X` shows on the Alt menu's second row.
+- X14, view tagged: `VIEW_TAGS_KEY` in region 9. Built, not run, not committed. `Ctrl-V` runs `VIEW.COM` on
+  each tagged file in turn, from either pane. `Q` or `Esc` in VIEW goes to the next file, and nothing else
+  ends the walk early. An exec error or a non-zero exit code stops it and shows a message, which the plan
+  does not name. VIEW gives 1 with no file and 2 when it cannot open one. The highlight stays on the last
+  file viewed, so a stop shows which file. It has no `Ctrl-L` alias: the user's emulator passes `Ctrl-V`.
+- X15, settings and help: new `XTSET.UXI`, and `INI.UXI`, both in region 9. Built, not run, not committed.
+  `Alt-F10` uses rows 28 and 29, not the plan's dialog: `T` picks the next `.GTH` of `C:\sys\themes`, which
+  shows at once; `S` picks the next sort, which runs at the end; `Enter` saves `THEME` and `SORT` in `[XT]`
+  of `C:\6502DOS.INI`; `Esc` brings the old ones back. With no `THEME` in `[XT]`, the registry key names it.
+  `A` works in both panes and shows the DOS version, as XT has none of its own, the free banks and the free
+  KB, under a `Reading the disk` message. `RUN_HELP` moved to region 9. It clears the screen and waits for a
+  key, as HELP does not page and XT repainted over the topic. `HELP.HLP` gains `XT`, 20 lines. PLAN and
+  `README.md` gain XT.
+- `F1`, after X15: the user asked for it to run `VIEW`, as XFMGR's `F1` opened its help in its viewer. It runs
+  `VIEW.COM` on the new `XT.HLP` from `DOS.PROGRAM_FOLDER()`, and no longer waits for a key. `src/dos/XT.HLP`
+  copies to `card/sys`, 168 lines, 8.6 KB, from `xfmgr.hlp` without BMX, WAV, ZSM, syntax colors, hex, the
+  emulator table and the installer. `HELP XT` and `-H` still give the short topic. Built, not run, not
+  committed. XFMGR's clear history setting is not in `Alt-F10`.
+- `XT.COM` is 45828 bytes. `F1`'s change added 77: 69 in region 9 and 8 in low RAM. X15 added 3021 bytes
+  against a planned 600: 2451 in the regions and 570 in low RAM. X14 added 294 bytes against a planned 200: 246 in region 9 and 48 in low RAM.
+  X13 added 2316 bytes against a planned 1000: 1279 in region 9 and 1037 in low
+  RAM, which holds `HEAP.UXI`'s calls. X12 added 1346 bytes against a planned 600: 754 in low RAM and 602
+  in region 8. X11 added 1306 bytes against a planned 1000, and took the file past `$9EFF` for the first time, so
+  its start now reads the rest with `exec_rest`. X10 added 1528 bytes against a planned 700. X9 added
+  3566 bytes against a planned 1500. X8 added 5145 bytes against a planned 2500. Region 5 has 5790
+  bytes free, 6 has 5072, 7 has 1568, 8 has 4056, and 9 has 3853. Last build, which changed only `XT.HLP`: ROM
+  1.45 s, outer 1634 ms. Last that compiled XT: XT 2.0 s, ROM 3.53 s, outer 3713 ms.
+- Build baseline: XT alone 2.70 s, outer 2834 ms.
+- XT declares 2127 names. pyuxc's limit is now 4080: `K_SYM_BANKS` 16 and `K_SY_MAX` 4080 in
+  `UXCBASIC/pyuxc/uxc_defs.py`, with the help and docs under `UXCBASIC` changed to match. The commit
+  "xbase: BROWSE, line editor, SET DELETED" holds those files, as `XBASE.UXB` needs the limit too.
+- X9's history files go in `C:\sys\xt`, a folder not made yet. The plan's X9 still says
+  `C:\XT.HIS`, and its X1 and screen section still name the clock.
+- A file rename to a longer name reads the folder's files again, which clears their tags, as in
+  XFMGR2. A shorter or equal name keeps them. A deleted file's record stays in the run with the
+  `RECORD_GONE` flag.
+- X6 added 2384 bytes against a planned 1200. The split between low RAM and the regions is not
+  measured.
+- Shell `COLOR foreground[,background]`: with no background, the current background stays. Built
+  in `CMDSHELL.UXI`. The user has not reported on it.
+- Shell `IF condition [THEN] [statement]`: `THEN` is optional. Built in `CMDSHELL.UXI`. The user
+  has not reported on it.
+- `HELP.HLP` and PLAN §8 cover both changes. The commit "shell: optional COLOR background and
+  optional IF THEN" holds them and `card/startup.cmd`, and is local only.
+- `TED.COM` reads REG `THEME`: the text takes the `CONSOLE` color, the status row `STATUS`. With
+  no theme file, the text keeps the console's color and the status row is black on light grey.
+  The console's color comes back at the end. Commit `7a5dc57` holds it, and is local only.
+- `VIEW.COM` reads REG `THEME` the same way: the text takes `CONSOLE`, the footer and its `Find:`
+  prompt `STATUS`. `VIEW.COM` is 6902 bytes, 381 more. `HELP.HLP` and PLAN §8 cover TED and VIEW. The
+  commit "view: colors from the THEME registry key" holds them, and is local only. The user has not
+  reported on it.
+- The last build that recompiled every program, as pyuxc had changed, took 15.33 s by `build.py` and
+  15477 ms by the outer timer. That is the baseline for a full build. The last build that compiled
+  `TED.COM` alone took 1.66 s and 1862 ms, the last that compiled `XT.COM` alone 2.51 s and 2677 ms,
+  the last that compiled `CMDSHELL.COM` alone 2.46 s and 2579 ms, and the last that compiled
+  `VIEW.COM` alone 1.60 s and 1815 ms.
+- The X6 test list:
+  - Start XT from a subfolder, and press `Enter` on an unlogged folder. `LOG_FOLDER` was
+    rewritten, so both need a retest.
+  - `S`, `G`: all logged files, in the full width with a time column. The title path follows the
+    row.
+  - `B`: the branch from the tree cursor. A branch with no match gives the message and keeps the
+    two panes.
+  - `Esc`, `Tab`, `Enter`, `Left` each return to the two panes.
+  - In the wide list: `T`, `U`, `Ctrl-T`, `Ctrl-U`, `Ctrl-N`, `Ctrl-W`, `Alt-S`, `F`. `F` with no
+    match returns to the two panes.
+  - `Alt-R`: a logged folder shows "(Enter to log)". An unlogged folder gives a message.
+  - `Alt-J`: `sys\themes`, `C:\sys`, `\sys\`. `sys\nope` stops at `sys` with "No such folder".
+- Known limits of X6:
+  - `Alt-R` frees nothing. Dead records and nodes stay, and the tree cap of 254 counts dead nodes.
+  - `Alt-F3` keeps deleted folders in the tree. Repeated relogs leak records until "No free RAM
+    bank".
+  - `Alt-J` takes a path on `C:` only, in a 64-character field.
+- Open:
+  - The file-pane menu lists `V`, `E`, `C`, `M`, `R`, `D`, which do nothing until later steps.
+  - The sort time at 2048 rows is not measured.
+  - The user saw pauses of a second or two while holding an arrow key, in XT, TED and Notepad, so
+    XT is not the cause. The cause is not known.
+
+Resume here (2026-10-30), the card and themes:
+
+- `card/` is the whole card and the only copy of `C:`. Git tracks it, less its empty folders and
+  `card/sys/temp`. `RUNHOST.BAT` runs on it with `-fsroot card`. `build.py --card` writes
+  `build/SD.IMG` from it, and `RUNCARD.BAT` boots that image. Entries below that name
+  `pull_card`, `SD.SUM`, `build/sys` or `build/source` describe the old flow.
+- The new `tools/build.py` has not run in a real build. Only `make_card` ran, on a copy of `card`.
+  A build writes its programs into the tracked `card/`.
+- `build/sys.unused` and `build/source.unused` are the old output folders, kept unused.
+- `startup.cmd` reads REG `THEME` and sets the console color through the commandlet `CONCOLOR`.
+  `card/sys/themes` holds `DARK.GTH`, `GRAY.GTH` and `LIGHT.GTH`, 15 bytes each.
+- Open, each on the user's word:
+  - `BUILD.BAT` calls `Python313\python.exe`, and README asks for Python 3.13. Only `Python312` is
+    installed.
+  - The SHADOW role in `DRAW_SHADOW`.
+  - The GUI SUB reads REG `THEME`.
+  - Goldens for `THEMED`, `GUITHEME` and `GUISHADOW`.
+  - `GUIDEMO.UXB` line 613 loads `sys\themes\CUSTOM-LIGHT.GTH`, which does not exist.
+  - `card/Utils` still holds `CUSTOM-DARK.GTH`, `CUSTOM-GRAY.GTH` and `CUSTOM-LIGHT.GTH`.
+  - `card/6502DOS.INI` still has `THEME=GRAY`.
 
 Resume here (2026-10-28): DB, item 11, A2c3 done: the compares, `$`, `.AND.`, `.OR.`,
 `.NOT.` and the logical type in `DB.COM`, test `DBLOGIC` (item 11, A2c3, below). ENUM step done:
@@ -2448,9 +2630,10 @@ the beta 1 list).
 
 ## Run
 
-- `python tools/build.py`, then `python tools/tests.py`. `BUILD.BAT` runs `build.py`.
-- In a window: `C:\8bitProgramming\x16emu\x16emu.exe -rom build\6502DOS.ROM -sdcard build\SD.IMG`,
-  or `RUN.BAT`, which adds `-scale 2 -noemucmdkeys`. With `-noemucmdkeys`, Ctrl and Alt keys
+- `python tools/build.py`, then `python tools/tests.py`. `BUILD.BAT` runs `build.py`. `--card` also
+  writes `build/SD.IMG`.
+- In a window: `RUNHOST.BAT` on the folder `card`, or `RUNCARD.BAT` on `build/SD.IMG`. Both add
+  `-scale 2 -noemucmdkeys`. With `-noemucmdkeys`, Ctrl and Alt keys
   reach the X16, and the emulator's Ctrl hotkeys (reset, paste, fullscreen) are off.
   The ROM boots to the shell. `-rom build\TEST.ROM` boots to the monitor; there try `DIR`,
   `TYPE C:\README.TXT`, `RUN ARGS.COM ONE TWO`, `RUN SHOW.COM README.TXT`,
@@ -2460,9 +2643,10 @@ the beta 1 list).
 
 - Fonts (the user, 2026-10-30): revisit them. `GUI.F08` replaces `$DB`, the solid block, with a
   GUI glyph, so block art such as `splash.dot` breaks under that font.
-- XFMGR (the user, 2026-10-30): port XFMGR2, the Prog8 file manager at
-  `C:\dev\CmdrX16\dos_tools\XFMGR2`, to UXCBASIC. The plan is `docs/XFMGR.PLAN.md`, steps X1 to X17,
-  one a compact. Asm approved for this plan. Done: the plan. Next: X1, after the user's word.
+- XT (the user, 2026-10-30): port XFMGR2, the Prog8 file manager at
+  `C:\dev\CmdrX16\dos_tools\XFMGR2`, to UXCBASIC as `XT.COM`. The plan is `docs/XFMGR.PLAN.md`,
+  steps X1 to X15, one a compact. Asm approved for this plan. Written: X1 to X6. Next: X7, after
+  the user's word.
 - Beta 1 (the user, 2026-10-25). Order: scope, the API freeze, the known bugs, a full suite,
   a clean 4 MB release image, the README, the owed doc batches, NOTICE credits, then the
   version text and a tag.
