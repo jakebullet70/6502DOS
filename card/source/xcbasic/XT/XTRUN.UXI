@@ -1,0 +1,172 @@
+' XTRUN.UXI: XT's children, which run on the highlighted file or from its folder, and Alt-Q.
+' Include it in XT.UXB, after XTFIND.UXI.
+'
+' Trap: a program reads its arguments from P1$ to P9$, which only the shell sets, so each child here
+' gets them set as well as its tail. A child's tail holds 126 characters at most. Only P1$ holds a long
+' path whole.
+
+' P1$ to P9$ are system strings 0 to 8.
+CONST ARGUMENT_SLOTS AS UBYTE = 9, QUOTE_CODE AS UBYTE = 34
+' The field of Alt-X's prompt.
+CONST RUN_WIDTH AS UBYTE = 72
+
+' C:'s folder and the current drive when XT started, which each child's end brings back. So Q needs
+' no change of folder.
+DIM START_FOLDER AS STRING * 255, START_DRIVE AS UBYTE
+' What the last child gave: EXEC's error, and its exit code when it ran.
+DIM CHILD_ERROR AS UBYTE, CHILD_EXIT AS UBYTE
+DIM RUN_TEXT AS STRING * 72, RUN_WORD AS STRING * 72, RUN_TAIL AS STRING * 73
+
+#REGION_SLOT 9
+
+' Empties P1$ to P9$.
+SUB CLEAR_ARGUMENTS()
+  DIM SLOT AS UBYTE
+  SLOT = 0
+  DO WHILE SLOT < ARGUMENT_SLOTS
+    HEAP.SYS_STRINGS_SET(SLOT, "")
+    SLOT = SLOT + 1
+  LOOP
+END SUB
+
+' Splits RUN_TEXT as the shell splits a command's words: spaces end a word, and a word that starts with
+' a quote runs to the next quote or the end. Puts the first 9 words in P1$ to P9$, and every word, each
+' after a space, in RUN_TAIL.
+SUB SET_ARGUMENTS()
+  DIM PLACE AS UBYTE, FIRST AS UBYTE, LENGTH AS UBYTE, SLOT AS UBYTE, ENDING AS UBYTE
+  CLEAR_ARGUMENTS()
+  RUN_TAIL = ""
+  LENGTH = LEN(RUN_TEXT)
+  SLOT = 0
+  PLACE = 1
+  DO
+    DO WHILE PLACE <= LENGTH AND ContentsAt(@RUN_TEXT + 1 + PLACE) = ASC(" ")
+      PLACE = PLACE + 1
+    LOOP
+    IF PLACE > LENGTH THEN EXIT DO
+    ENDING = ASC(" ")
+    IF ContentsAt(@RUN_TEXT + 1 + PLACE) = QUOTE_CODE THEN
+      ENDING = QUOTE_CODE
+      PLACE = PLACE + 1
+    END IF
+    FIRST = PLACE
+    DO WHILE PLACE <= LENGTH AND ContentsAt(@RUN_TEXT + 1 + PLACE) <> ENDING
+      PLACE = PLACE + 1
+    LOOP
+    RUN_WORD = MID$(RUN_TEXT, FIRST, PLACE - FIRST)
+    PLACE = PLACE + 1
+    IF SLOT < ARGUMENT_SLOTS THEN
+      HEAP.SYS_STRINGS_SET(SLOT, RUN_WORD)
+      SLOT = SLOT + 1
+    END IF
+    RUN_TAIL = RUN_TAIL + " " + RUN_WORD
+  LOOP
+END SUB
+
+' Clears the screen, runs the program at PATH$ with the tail TAIL$, and brings back the folder and the
+' drive. Sets CHILD_ERROR and CHILD_EXIT. A fifth level of programs gives error 8.
+SUB RUN_CHILD(PATH$ AS CONST, TAIL$ AS CONST)
+  DOS.SET_COLOR(START_COLOR)
+  PRINT CONS.CLEAR_SCREEN$;
+  DOS.EXEC(PATH$, TAIL$)
+  CHILD_ERROR = DOS.ERROR
+  CHILD_EXIT = 0
+  IF CHILD_ERROR = 0 THEN CHILD_EXIT = DOS.EXITCODE()
+  DOS.CHDIR(START_FOLDER)
+  DOS.SETDRIVE(START_DRIVE)
+END SUB
+
+' Draws the whole screen after a child, and shows under LABEL$ why when it did not run or ended with
+' an exit code. The file window keeps the records from before the child, until Alt-F3.
+SUB SHOW_CHILD_END(LABEL$ AS CONST)
+  CURSOR OFF
+  DRAW_ALL()
+  IF CHILD_ERROR <> 0 THEN
+    TELL(LABEL$, DOS.ERRMSG(CHILD_ERROR))
+  ELSEIF CHILD_EXIT <> 0 THEN
+    TELL(LABEL$, "Ended with exit code " + DIGITS$(CHILD_EXIT))
+  END IF
+END SUB
+
+' Waits for a key, so that what a child printed can be read.
+SUB WAIT_UNDER_CHILD()
+  DIM ANSWER AS UWORD
+  PRINT
+  PRINT "Press a key"
+  ANSWER = WAITKEY()
+END SUB
+
+' Acts on F1: runs VIEW on XT.HLP, in XT's own folder.
+SUB RUN_HELP()
+  CLEAR_ARGUMENTS()
+  HEAP.SYS_STRINGS_SET(0, DOS.PROGRAM_FOLDER() + "XT.HLP")
+  RUN_CHILD(DOS.PROGRAM_FOLDER() + "VIEW.COM", " " + DOS.PROGRAM_FOLDER() + "XT.HLP")
+  SHOW_CHILD_END("HELP:")
+END SUB
+
+' Runs PROGRAM$, from XT's own folder, on the file that FOLDER_PATH and ROW_NAME name.
+SUB RUN_ON_NAME(PROGRAM$ AS CONST)
+  CLEAR_ARGUMENTS()
+  HEAP.SYS_STRINGS_SET(0, FOLDER_PATH + ROW_NAME)
+  RUN_CHILD(DOS.PROGRAM_FOLDER() + PROGRAM$, " " + FOLDER_PATH + ROW_NAME)
+END SUB
+
+' Acts on V and E: runs PROGRAM$ on the highlighted file, and shows why under LABEL$ when it fails. The
+' file window holds a row.
+SUB RUN_ON_FILE(PROGRAM$ AS CONST, LABEL$ AS CONST)
+  LOAD_ROW_NAME(FILE_CURSOR)
+  RUN_ON_NAME(PROGRAM$)
+  SHOW_CHILD_END(LABEL$)
+END SUB
+
+' Acts on Ctrl-V: runs VIEW on each tagged file of the file window in turn. Q or Esc in VIEW goes to the
+' next file. The highlight stays on the last file viewed. An error or an exit code from VIEW stops the
+' walk, and a message says why.
+SUB VIEW_TAGS_KEY()
+  DIM ROW AS UWORD
+  IF TAGGED_ROWS() = 0 THEN
+    TELL("VIEW:", "no tagged files")
+    RETURN
+  END IF
+  ROW = 0
+  DO WHILE ROW < ROW_COUNT
+    IF ROW_TAGGED(ROW) <> 0 THEN
+      MOVE_FILE_CURSOR(ROW)
+      IF WIDE_VIEW <> 0 THEN FOLLOW_ROW()
+      LOAD_ROW_NAME(ROW)
+      RUN_ON_NAME("VIEW.COM")
+      IF CHILD_ERROR <> 0 OR CHILD_EXIT <> 0 THEN EXIT DO
+    END IF
+    ROW = ROW + 1
+  LOOP
+  SHOW_CHILD_END("VIEW:")
+END SUB
+
+' Changes to the folder the title names, on C:.
+SUB GO_TO_SELECTED()
+  IF LEN(FOLDER_PATH) > 3 THEN
+    DOS.CHDIR(LEFT$(FOLDER_PATH, LEN(FOLDER_PATH) - 1))
+  ELSE
+    DOS.CHDIR(FOLDER_PATH)
+  END IF
+  DOS.SETDRIVE(DOS.DRIVE_C)
+END SUB
+
+' Acts on Alt-X: asks for the parameters, runs the highlighted .COM file from its folder, and waits
+' for a key so that what it printed can be read. The file window holds a row.
+SUB RUN_PROGRAM_KEY()
+  LOAD_ROW_NAME(FILE_CURSOR)
+  IF UCASE$(RIGHT$(ROW_NAME, 4)) <> ".COM" THEN
+    TELL("RUN:", "Only a .COM file runs")
+    RETURN
+  END IF
+  RUN_TEXT = ""
+  IF ASK_TEXT("RUN:", "Parameters for " + ROW_NAME, RUN_TEXT, RUN_WIDTH, "RUN") = 0 THEN RETURN
+  SET_ARGUMENTS()
+  GO_TO_SELECTED()
+  RUN_CHILD(FOLDER_PATH + ROW_NAME, RUN_TAIL)
+  IF CHILD_ERROR = 0 THEN WAIT_UNDER_CHILD()
+  SHOW_CHILD_END("RUN:")
+END SUB
+
+#REGION_SLOT 0

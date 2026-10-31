@@ -1,0 +1,149 @@
+' XTHIST.UXI: the answers XT's prompts remember.
+' Include it in XT.UXB, after DOS.UXI, BANK.UXI, KEYS.UXI, VERA.UXI and GUI.UXI, and after EXTRAS_BANK,
+' COLOR_OF and MENU_ROW.
+'
+' Each prompt has a file, C:\sys\xt\NAME.HIS. OPEN_HISTORY reads it into the one ring, in the extras
+' bank after the folders' 254 records of 7 bytes, so the ring holds the open prompt's answers. The
+' file and the ring are HISTORY_COUNT records of HISTORY_CHARS bytes, newest first, each a string
+' padded with zeros.
+
+CONST HISTORY_START AS UWORD = $A6F2, HISTORY_BYTES AS UWORD = 512
+CONST HISTORY_CHARS AS UBYTE = 64, HISTORY_ENTRIES AS UBYTE = 8
+' The left column of the list's box.
+CONST HISTORY_COLUMN AS UBYTE = 7
+
+DIM HISTORY_PATH AS STRING * 24, HISTORY_TEXT AS STRING * 64
+DIM HISTORY_COUNT AS UBYTE
+
+' Reads the ring of the prompt NAME$, up to 8 characters, from its file. A file that cannot be read
+' gives an empty ring.
+SUB OPEN_HISTORY(NAME$ AS CONST)
+  DIM HANDLE AS UWORD, COUNT AS UWORD
+  HISTORY_PATH = "C:\sys\xt\" + NAME$ + ".HIS"
+  HISTORY_COUNT = 0
+  HANDLE = DOS.OPEN_FILE(HISTORY_PATH, DOS.ACCESS_READ)
+  IF DOS.ERROR <> 0 THEN RETURN
+  BANK.USE(EXTRAS_BANK)
+  COUNT = DOS.READ_FILE(HANDLE, HISTORY_START, HISTORY_BYTES)
+  IF DOS.ERROR = 0 THEN HISTORY_COUNT = COUNT >> 6
+  DOS.CLOSE_FILE(HANDLE)
+END SUB
+
+' Puts record NUMBER, 1 for the newest, in HISTORY_TEXT.
+SUB HISTORY_RECORD(NUMBER AS UBYTE)
+  DIM PLACE AS UWORD, LENGTH AS UBYTE, CODE AS UBYTE
+  PLACE = NUMBER - 1
+  PLACE = (PLACE << 6) + HISTORY_START
+  BANK.USE(EXTRAS_BANK)
+  LENGTH = 0
+  DO WHILE LENGTH < HISTORY_CHARS
+    CODE = ContentsAt(PLACE + LENGTH)
+    IF CODE = 0 THEN EXIT DO
+    ContentsAt(@HISTORY_TEXT + 2 + LENGTH) = CODE
+    LENGTH = LENGTH + 1
+  LOOP
+  ContentsAt(@HISTORY_TEXT + 1) = LENGTH
+END SUB
+
+' Returns 1 when the record at PLACE holds HISTORY_TEXT, and 0 when it does not. The extras bank is
+' selected.
+FUNCT RECORD_IS_TEXT(PLACE AS UWORD) AS UBYTE
+  DIM LENGTH AS UBYTE, SPOT AS UBYTE
+  LENGTH = LEN(HISTORY_TEXT)
+  IF LENGTH < HISTORY_CHARS THEN
+    IF ContentsAt(PLACE + LENGTH) <> 0 THEN RETURN 0
+  END IF
+  SPOT = 0
+  DO WHILE SPOT < LENGTH
+    IF ContentsAt(PLACE + SPOT) <> ContentsAt(@HISTORY_TEXT + 2 + SPOT) THEN RETURN 0
+    SPOT = SPOT + 1
+  LOOP
+  RETURN 1
+END FUNCT
+
+' Makes HISTORY_TEXT, which is not empty, the ring's newest record, and writes the file, after making
+' its folder. A record with the same text goes, and a full ring drops its oldest. Text that is the
+' newest already writes nothing. A failed write shows nothing.
+SUB REMEMBER_TEXT()
+  DIM PLACE AS UWORD, HANDLE AS UWORD, SPOT AS UBYTE, LENGTH AS UBYTE, CODE AS UBYTE
+  BANK.USE(EXTRAS_BANK)
+  PLACE = HISTORY_START
+  SPOT = 0
+  DO WHILE SPOT < HISTORY_COUNT
+    IF RECORD_IS_TEXT(PLACE) <> 0 THEN EXIT DO
+    PLACE = PLACE + HISTORY_CHARS
+    SPOT = SPOT + 1
+  LOOP
+  IF SPOT = 0 AND HISTORY_COUNT <> 0 THEN RETURN
+  IF SPOT = HISTORY_COUNT THEN
+    IF SPOT = HISTORY_ENTRIES THEN
+      SPOT = SPOT - 1
+      PLACE = PLACE - HISTORY_CHARS
+    ELSE
+      HISTORY_COUNT = HISTORY_COUNT + 1
+    END IF
+  END IF
+  ' SPOT and PLACE are the record that goes. The records before it move up one.
+  PLACE = PLACE + HISTORY_CHARS - 1
+  DO WHILE PLACE >= HISTORY_START + HISTORY_CHARS
+    ContentsAt(PLACE) = ContentsAt(PLACE - HISTORY_CHARS)
+    PLACE = PLACE - 1
+  LOOP
+  LENGTH = LEN(HISTORY_TEXT)
+  FOR SPOT = 0 TO HISTORY_CHARS - 1
+    CODE = 0
+    IF SPOT < LENGTH THEN CODE = ContentsAt(@HISTORY_TEXT + 2 + SPOT)
+    ContentsAt(HISTORY_START + SPOT) = CODE
+  NEXT
+  DOS.MKDIR("C:\sys\xt")
+  HANDLE = DOS.CREATE_FILE(HISTORY_PATH, 0)
+  IF DOS.ERROR <> 0 THEN RETURN
+  PLACE = HISTORY_COUNT
+  DOS.WRITE_FILE(HANDLE, HISTORY_START, PLACE << 6)
+  DOS.CLOSE_FILE(HANDLE)
+END SUB
+
+#REGION_SLOT 8
+
+' Writes record NUMBER in its row of the list, in COLOR.
+SUB DRAW_HISTORY_ROW(NUMBER AS UBYTE, COLOR AS UBYTE)
+  DIM ROW AS UBYTE
+  ROW = MENU_ROW - 1 - NUMBER
+  HISTORY_RECORD(NUMBER)
+  VERA.FILL(ROW, HISTORY_COLUMN + 1, HISTORY_CHARS, 1, ASC(" "), COLOR)
+  VERA.PRINTAT(ROW, HISTORY_COLUMN + 1, HISTORY_TEXT, COLOR)
+END SUB
+
+' Lists the ring, which holds a record, in a box above the menu, with the newest at its foot. Up moves
+' to an older record, and Down to a newer one. Returns the record for Enter, 1 for the newest, and 0
+' for Esc. The screen under the box comes back.
+FUNCT PICK_HISTORY() AS UBYTE
+  DIM HEIGHT AS UBYTE, TOP AS UBYTE, NUMBER AS UBYTE, KEY AS UWORD
+  HEIGHT = HISTORY_COUNT + 2
+  TOP = MENU_ROW - HEIGHT
+  CURSOR OFF
+  VERA.SAVE_RECT(TOP, HISTORY_COLUMN, HISTORY_CHARS + 2, HEIGHT)
+  DOS.SET_COLOR(COLOR_OF(GUI.ROLE.FRAME))
+  GUI.BOX(TOP, HISTORY_COLUMN, HISTORY_CHARS + 2, HEIGHT)
+  VERA.PRINTAT(TOP, HISTORY_COLUMN + 2, " History ", COLOR_OF(GUI.ROLE.FRAME))
+  FOR NUMBER = 1 TO HISTORY_COUNT
+    DRAW_HISTORY_ROW(NUMBER, COLOR_OF(GUI.ROLE.PAGE))
+  NEXT
+  NUMBER = 1
+  DO
+    DRAW_HISTORY_ROW(NUMBER, COLOR_OF(GUI.ROLE.MENU_SELECTED))
+    KEY = WAITKEY()
+    IF KEY = KEYS.ENTER THEN EXIT DO
+    IF KEY = KEYS.ESC THEN
+      NUMBER = 0
+      EXIT DO
+    END IF
+    DRAW_HISTORY_ROW(NUMBER, COLOR_OF(GUI.ROLE.PAGE))
+    IF KEY = KEYS.KEY_UP AND NUMBER < HISTORY_COUNT THEN NUMBER = NUMBER + 1
+    IF KEY = KEYS.KEY_DOWN AND NUMBER > 1 THEN NUMBER = NUMBER - 1
+  LOOP
+  VERA.RESTORE_RECT()
+  RETURN NUMBER
+END FUNCT
+
+#REGION_SLOT 0

@@ -1,8 +1,11 @@
-' XTFILE.UXI: XT's file records, its index, and its file window in columns 28 to 79.
+' XTFILE.UXI: XT's file records, its index, and its file window, in columns 28 to 79 or across the
+' whole screen.
 ' Include it in XT.UXB, after DOS.UXI, BANK.UXI, VERA.UXI and GUI.UXI, and after EXTRAS_BANK,
-' INDEX_BANK, FILE_COUNT, FOCUS, COLOR_OF, DIGITS$, TWO_DIGITS$ and the screen's CONSTs.
+' INDEX_BANK, FILE_COUNT, TAG_COUNT, FOCUS, SORT_BY, WIDE_VIEW, FILESPEC, COLOR_OF, DIGITS$,
+' TWO_DIGITS$, DRAW_TITLE, ASK_TEXT and the screen's CONSTs.
 '
-' Set ARENA_BANK to a taken bank and ARENA_PLACE to ARENA_START before the first ADD_FILE.
+' Set ARENA_BANK to a taken bank and ARENA_PLACE to ARENA_START before the first ADD_FILE. Set
+' FILE_COLUMN to NARROW_COLUMN and FILE_COLUMNS to NARROW_COLUMNS before the first draw.
 '
 ' A record is its length, the 4-byte size, the date, the time, the attributes, the flags, and the
 ' name with a zero after it. A length of 0 ends a bank: the next byte is the next record's bank,
@@ -12,16 +15,18 @@
 ' and place, the tag count. They are good only for a logged folder.
 '
 ' An index row is 8 bytes: the record's bank and place, the owner folder, and the sort key as two
-' UWORDs, so that two compares order it. The key is the name's first 4 characters, folded, with
-' the first character in the high byte of KEY_HIGH. Names that tie on the key compare in full.
-' The index holds the first 2048 files of a folder.
+' UWORDs, so that two compares order it. The key is the first 4 characters of the name or the
+' extension, folded, with the first character in the high byte of KEY_HIGH; or the size; or the
+' date, then the time. Rows that tie on the key compare by the whole name.
+' The index holds the first 2048 files of its folders that match FILESPEC.
 
 CONST ARENA_START AS UWORD = $A000, ARENA_END AS UWORD = $C000
 CONST RECORD_SIZE AS UBYTE = 1, RECORD_DATE AS UBYTE = 5, RECORD_TIME AS UBYTE = 7
 CONST RECORD_ATTR AS UBYTE = 9, RECORD_FLAGS AS UBYTE = 10, RECORD_NAME AS UBYTE = 11
 ' A record's bytes beside the name's characters, and the bytes a bank keeps for its end mark.
 CONST RECORD_FIXED AS UBYTE = 12, END_MARK_BYTES AS UBYTE = 2
-CONST RECORD_TAGGED AS UBYTE = 1
+' The flags' bits. A gone record is a deleted file: it keeps its place in the run, and a walk skips it.
+CONST RECORD_TAGGED AS UBYTE = 1, RECORD_GONE AS UBYTE = 2
 CONST EXTRAS_START AS UWORD = $A000
 CONST EXTRA_FILE_COUNT AS UBYTE = 0, EXTRA_FIRST_BANK AS UBYTE = 2, EXTRA_FIRST_AT AS UBYTE = 3
 CONST EXTRA_TAG_COUNT AS UBYTE = 5
@@ -30,25 +35,50 @@ CONST ROW_BYTES AS UBYTE = 8, ROW_RECORD_BANK AS UBYTE = 0, ROW_RECORD_PLACE AS 
 CONST ROW_OWNER AS UBYTE = 3, ROW_KEY_HIGH AS UBYTE = 4, ROW_KEY_LOW AS UBYTE = 6
 CONST KEY_CHARS AS UBYTE = 4, FOLDED_BYTES AS UBYTE = 33
 ' The window's cells, from its first column: the focus mark, the tag mark, 32 of name, the size
-' ending before SIZE_END_CELL, and the date. A size of 10 digits takes the name's last cell.
-CONST FILE_COLUMN AS UBYTE = 28, FILE_COLUMNS AS UBYTE = 52
+' ending before SIZE_END_CELL, the date, and across the whole screen the time. A size of 10 digits
+' takes the name's last cell.
+CONST NARROW_COLUMN AS UBYTE = 28, NARROW_COLUMNS AS UBYTE = 52
 CONST MARK_CELL AS UBYTE = 0, TAG_CELL AS UBYTE = 1, NAME_CELL AS UBYTE = 2
-CONST SIZE_END_CELL AS UBYTE = 43, DATE_CELL AS UBYTE = 44
+CONST SIZE_END_CELL AS UBYTE = 43, DATE_CELL AS UBYTE = 44, TIME_CELL AS UBYTE = 53
+
+' What a change does to a file's tag.
+ENUM TAG_CHANGE
+  TAGGED, UNTAGGED, FLIPPED
+END ENUM
+
+' Which files of a folder a change reaches: those that match FILESPEC, those that match FILESPEC and
+' SPEC_TEXT, or all of them.
+ENUM TAG_SCOPE
+  SHOWN, ASKED, EVERY
+END ENUM
 
 ' Where the next record goes.
 DIM ARENA_BANK AS UBYTE, ARENA_PLACE AS UWORD
 ' The folder being logged: its file count, and where its run starts.
 DIM LOG_FILE_COUNT AS UWORD, LOG_BANK AS UBYTE, LOG_PLACE AS UWORD
+' A walk of a folder's records: the folder's extras and tag count, the records left, and the record
+' it is on.
+DIM WALK_EXTRAS AS UWORD, FOLDER_TAGS AS UWORD, WALK_LEFT AS UWORD
+DIM WALK_BANK AS UBYTE, WALK_PLACE AS UWORD, WALK_LENGTH AS UBYTE
 ' The index's rows, the highlighted row, and the window's first row.
 DIM ROW_COUNT AS UWORD, FILE_CURSOR AS UWORD, FILE_TOP AS UWORD
+' Where the index's next row goes.
+DIM TARGET_BANK AS UBYTE, TARGET_PLACE AS UWORD
+' The window's first column and its width.
+DIM FILE_COLUMN AS UBYTE, FILE_COLUMNS AS UBYTE
 ' 0 when the folder in the window is not logged.
 DIM FILES_READ AS UBYTE
+' 1 when FILESPEC matches every name. The text the filespec prompt edits.
+DIM MATCH_ALL AS UBYTE, SPEC_TEXT AS STRING * 12
+' The filespec that Find's list replaces. It is empty with no such list.
+DIM OLD_FILESPEC AS STRING * 12
+' A row's key, as the row holds it.
 DIM KEY_BYTES(KEY_CHARS) AS UBYTE
 ' The row the sort holds out, the row it moves, and the names it compares, folded, zero-ended.
 DIM HELD_ROW(ROW_BYTES) AS UBYTE, MOVING_ROW(ROW_BYTES) AS UBYTE
 DIM HELD_NAME(FOLDED_BYTES) AS UBYTE, OTHER_NAME(FOLDED_BYTES) AS UBYTE
 DIM HELD_NAME_READY AS UBYTE
-DIM FILE_ROW_TEXT AS STRING * 52
+DIM FILE_ROW_TEXT AS STRING * 80
 
 ' Starts the run of records of the folder being logged.
 SUB START_FILE_LOG()
@@ -217,57 +247,217 @@ END SUB
 SUB CLEAR_INDEX()
   ROW_COUNT = 0
   FILE_COUNT = 0
+  TAG_COUNT = 0
   FILE_CURSOR = 0
   FILE_TOP = 0
   FILES_READ = 0
+  TARGET_BANK = INDEX_BANK
+  TARGET_PLACE = INDEX_START
 END SUB
 
-' Fills the index with the files of NODE, which is logged, sorts it, and sets FILE_COUNT.
-SUB BUILD_INDEX(NODE AS UBYTE)
-  DIM PLACE AS UWORD, WALK_PLACE AS UWORD, LEFT_TO_READ AS UWORD, SOURCE AS UWORD, TARGET AS UWORD
-  DIM WALK_BANK AS UBYTE, TARGET_BANK AS UBYTE, RECORD_LENGTH AS UBYTE, SPOT AS UBYTE, CODE AS UBYTE
-  CLEAR_INDEX()
-  FILES_READ = 1
-  PLACE = EXTRAS_PLACE(NODE)
-  BANK.USE(EXTRAS_BANK)
-  FILE_COUNT = ContentsAtW(PLACE + EXTRA_FILE_COUNT)
-  WALK_BANK = ContentsAt(PLACE + EXTRA_FIRST_BANK)
-  WALK_PLACE = ContentsAtW(PLACE + EXTRA_FIRST_AT)
-  LEFT_TO_READ = FILE_COUNT
-  IF LEFT_TO_READ > ROW_MAX THEN LEFT_TO_READ = ROW_MAX
-  TARGET_BANK = INDEX_BANK
-  TARGET = INDEX_START
-  DO WHILE LEFT_TO_READ <> 0
-    BANK.USE(WALK_BANK)
-    RECORD_LENGTH = ContentsAt(WALK_PLACE)
-    IF RECORD_LENGTH = 0 THEN
-      WALK_BANK = ContentsAt(WALK_PLACE + 1)
-      WALK_PLACE = ARENA_START
+' The folded character at SPOT of the string at SPEC, or 0 past its end.
+FUNCT SPEC_CODE(SPEC AS UWORD, SPOT AS UBYTE) AS UBYTE
+  IF SPOT >= ContentsAt(SPEC + 1) THEN RETURN 0
+  RETURN FOLDED(ContentsAt(SPEC + 2 + SPOT))
+END FUNCT
+
+' Returns 1 when the name at PLACE, in the selected bank, matches the string at SPEC, and 0 when it
+' does not.
+' Checklist: it matches as match_name does in src/asm/fat32_match.s. Change both together.
+FUNCT NAME_MATCHES(PLACE AS UWORD, SPEC AS UWORD) AS UBYTE
+  DIM SPEC_SPOT AS UBYTE, NAME_SPOT AS UBYTE, STAR_SPEC AS UBYTE, STAR_NAME AS UBYTE
+  DIM WANTED AS UBYTE, CODE AS UBYTE
+  SPEC_SPOT = 0
+  NAME_SPOT = 0
+  STAR_SPEC = 0
+  DO
+    WANTED = SPEC_CODE(SPEC, SPEC_SPOT)
+    IF WANTED = ASC("*") THEN
+      SPEC_SPOT = SPEC_SPOT + 1
+      STAR_SPEC = SPEC_SPOT
+      STAR_NAME = NAME_SPOT
     ELSE
-      SOURCE = WALK_PLACE + RECORD_NAME
+      CODE = FOLDED(ContentsAt(PLACE + NAME_SPOT))
+      IF CODE = 0 THEN EXIT DO
+      IF WANTED = CODE OR WANTED = ASC("?") THEN
+        SPEC_SPOT = SPEC_SPOT + 1
+        NAME_SPOT = NAME_SPOT + 1
+      ELSE
+        IF STAR_SPEC = 0 THEN RETURN 0
+        STAR_NAME = STAR_NAME + 1
+        NAME_SPOT = STAR_NAME
+        SPEC_SPOT = STAR_SPEC
+      END IF
+    END IF
+  LOOP
+  IF WANTED = ASC(".") THEN
+    NAME_SPOT = 0
+    DO
+      CODE = ContentsAt(PLACE + NAME_SPOT)
+      IF CODE = 0 THEN EXIT DO
+      IF CODE = ASC(".") THEN RETURN 0
+      NAME_SPOT = NAME_SPOT + 1
+    LOOP
+    DO
+      SPEC_SPOT = SPEC_SPOT + 1
+      WANTED = SPEC_CODE(SPEC, SPEC_SPOT)
+      IF WANTED <> ASC("*") THEN EXIT DO
+    LOOP
+  END IF
+  IF WANTED = 0 THEN RETURN 1
+  RETURN 0
+END FUNCT
+
+' Returns the place of the characters after the last dot of the name at PLACE, in the selected
+' bank, or of its zero when it has no dot.
+FUNCT EXTENSION_PLACE(PLACE AS UWORD) AS UWORD
+  DIM AFTER_DOT AS UWORD, CODE AS UBYTE
+  AFTER_DOT = 0
+  DO
+    CODE = ContentsAt(PLACE)
+    IF CODE = 0 THEN EXIT DO
+    PLACE = PLACE + 1
+    IF CODE = ASC(".") THEN AFTER_DOT = PLACE
+  LOOP
+  IF AFTER_DOT <> 0 THEN RETURN AFTER_DOT
+  RETURN PLACE
+END FUNCT
+
+' Fills KEY_BYTES from the record at RECORD_PLACE, in the selected bank, for SORT_BY.
+SUB MAKE_KEY(RECORD_PLACE AS UWORD)
+  DIM SOURCE AS UWORD, SPOT AS UBYTE, CODE AS UBYTE
+  SELECT CASE SORT_BY
+    CASE SORT_ORDER.BY_SIZE
+      ContentsAtW(@KEY_BYTES) = ContentsAtW(RECORD_PLACE + RECORD_SIZE + 2)
+      ContentsAtW(@KEY_BYTES + 2) = ContentsAtW(RECORD_PLACE + RECORD_SIZE)
+    CASE SORT_ORDER.BY_DATE
+      ContentsAtW(@KEY_BYTES) = ContentsAtW(RECORD_PLACE + RECORD_DATE)
+      ContentsAtW(@KEY_BYTES + 2) = ContentsAtW(RECORD_PLACE + RECORD_TIME)
+    CASE ELSE
+      SOURCE = RECORD_PLACE + RECORD_NAME
+      IF SORT_BY = SORT_ORDER.BY_EXTENSION THEN SOURCE = EXTENSION_PLACE(SOURCE)
+      ' A UWORD holds its low byte first, so XOR 1 puts each character where the row wants it.
       FOR SPOT = 0 TO KEY_CHARS - 1
         CODE = ContentsAt(SOURCE)
         IF CODE <> 0 THEN SOURCE = SOURCE + 1
-        KEY_BYTES(SPOT) = FOLDED(CODE)
+        KEY_BYTES(SPOT XOR 1) = FOLDED(CODE)
       NEXT
-      BANK.USE(TARGET_BANK)
-      ContentsAt(TARGET + ROW_RECORD_BANK) = WALK_BANK
-      ContentsAtW(TARGET + ROW_RECORD_PLACE) = WALK_PLACE
-      ContentsAt(TARGET + ROW_OWNER) = NODE
-      ContentsAt(TARGET + ROW_KEY_HIGH) = KEY_BYTES(1)
-      ContentsAt(TARGET + ROW_KEY_HIGH + 1) = KEY_BYTES(0)
-      ContentsAt(TARGET + ROW_KEY_LOW) = KEY_BYTES(3)
-      ContentsAt(TARGET + ROW_KEY_LOW + 1) = KEY_BYTES(2)
-      TARGET = TARGET + ROW_BYTES
-      IF TARGET = ARENA_END THEN
-        TARGET_BANK = TARGET_BANK + 1
-        TARGET = INDEX_START
+  END SELECT
+END SUB
+
+' Starts a walk of the records of NODE, which is logged, and reads its tag count.
+SUB START_WALK(NODE AS UBYTE)
+  WALK_EXTRAS = EXTRAS_PLACE(NODE)
+  BANK.USE(EXTRAS_BANK)
+  WALK_LEFT = ContentsAtW(WALK_EXTRAS + EXTRA_FILE_COUNT)
+  WALK_BANK = ContentsAt(WALK_EXTRAS + EXTRA_FIRST_BANK)
+  WALK_PLACE = ContentsAtW(WALK_EXTRAS + EXTRA_FIRST_AT)
+  FOLDER_TAGS = ContentsAtW(WALK_EXTRAS + EXTRA_TAG_COUNT)
+  WALK_LENGTH = 0
+END SUB
+
+' Moves WALK_PLACE to the next record that is not gone, selects its bank, and returns 1. Returns 0
+' past the last.
+FUNCT NEXT_RECORD() AS UBYTE
+  DO
+    WALK_PLACE = WALK_PLACE + WALK_LENGTH
+    IF WALK_LEFT = 0 THEN RETURN 0
+    WALK_LEFT = WALK_LEFT - 1
+    BANK.USE(WALK_BANK)
+    WALK_LENGTH = ContentsAt(WALK_PLACE)
+    IF WALK_LENGTH = 0 THEN
+      WALK_BANK = ContentsAt(WALK_PLACE + 1)
+      WALK_PLACE = ARENA_START
+      BANK.USE(WALK_BANK)
+      WALK_LENGTH = ContentsAt(WALK_PLACE)
+    END IF
+    IF (ContentsAt(WALK_PLACE + RECORD_FLAGS) AND RECORD_GONE) = 0 THEN RETURN 1
+  LOOP
+END FUNCT
+
+' Applies CHANGE, a TAG_CHANGE, to the flags at FLAGS_PLACE, in the selected bank, and keeps
+' FOLDER_TAGS in step.
+SUB CHANGE_TAG(FLAGS_PLACE AS UWORD, CHANGE AS UBYTE)
+  DIM OLD_FLAGS AS UBYTE, NEW_FLAGS AS UBYTE
+  OLD_FLAGS = ContentsAt(FLAGS_PLACE)
+  NEW_FLAGS = OLD_FLAGS OR RECORD_TAGGED
+  IF CHANGE = TAG_CHANGE.UNTAGGED THEN NEW_FLAGS = NEW_FLAGS XOR RECORD_TAGGED
+  IF CHANGE = TAG_CHANGE.FLIPPED THEN NEW_FLAGS = OLD_FLAGS XOR RECORD_TAGGED
+  ContentsAt(FLAGS_PLACE) = NEW_FLAGS
+  IF NEW_FLAGS > OLD_FLAGS THEN FOLDER_TAGS = FOLDER_TAGS + 1
+  IF NEW_FLAGS < OLD_FLAGS THEN FOLDER_TAGS = FOLDER_TAGS - 1
+END SUB
+
+' Writes FOLDER_TAGS to the extras of the walk's folder.
+SUB SAVE_TAGS()
+  BANK.USE(EXTRAS_BANK)
+  ContentsAtW(WALK_EXTRAS + EXTRA_TAG_COUNT) = FOLDER_TAGS
+END SUB
+
+' Applies CHANGE to the file of ROW, and keeps TAG_COUNT in step.
+SUB TAG_ROW(ROW AS UWORD, CHANGE AS UBYTE)
+  DIM PLACE AS UWORD, RECORD_PLACE AS UWORD, RECORD_BANK AS UBYTE
+  PLACE = ROW_PLACE(ROW)
+  RECORD_BANK = ContentsAt(PLACE + ROW_RECORD_BANK)
+  RECORD_PLACE = ContentsAtW(PLACE + ROW_RECORD_PLACE)
+  START_WALK(ContentsAt(PLACE + ROW_OWNER))
+  TAG_COUNT = TAG_COUNT - FOLDER_TAGS
+  BANK.USE(RECORD_BANK)
+  CHANGE_TAG(RECORD_PLACE + RECORD_FLAGS, CHANGE)
+  SAVE_TAGS()
+  TAG_COUNT = TAG_COUNT + FOLDER_TAGS
+END SUB
+
+' Applies CHANGE to the files of NODE, which is logged, that SCOPE, a TAG_SCOPE, reaches. Files past
+' the index's 2048 rows count. FOLDER_TAGS holds the new tag count.
+SUB TAG_FOLDER(NODE AS UBYTE, CHANGE AS UBYTE, SCOPE AS UBYTE)
+  DIM MATCHED AS UBYTE
+  START_WALK(NODE)
+  DO WHILE NEXT_RECORD() <> 0
+    MATCHED = MATCH_ALL
+    IF SCOPE = TAG_SCOPE.EVERY THEN MATCHED = 1
+    IF MATCHED = 0 THEN MATCHED = NAME_MATCHES(WALK_PLACE + RECORD_NAME, @FILESPEC)
+    IF MATCHED <> 0 AND SCOPE = TAG_SCOPE.ASKED THEN MATCHED = NAME_MATCHES(WALK_PLACE + RECORD_NAME, @SPEC_TEXT)
+    IF MATCHED <> 0 THEN CHANGE_TAG(WALK_PLACE + RECORD_FLAGS, CHANGE)
+  LOOP
+  SAVE_TAGS()
+END SUB
+
+' Adds the files of NODE, which is logged, that match FILESPEC to the index, to FILE_COUNT, and its
+' tags to TAG_COUNT. Call CLEAR_INDEX before the first folder and SORT_INDEX after the last.
+SUB ADD_ROWS(NODE AS UBYTE)
+  DIM MATCHED AS UBYTE
+  START_WALK(NODE)
+  TAG_COUNT = TAG_COUNT + FOLDER_TAGS
+  DO WHILE NEXT_RECORD() <> 0
+    MATCHED = MATCH_ALL
+    IF MATCHED = 0 THEN MATCHED = NAME_MATCHES(WALK_PLACE + RECORD_NAME, @FILESPEC)
+    IF MATCHED <> 0 THEN
+      FILE_COUNT = FILE_COUNT + 1
+      IF ROW_COUNT < ROW_MAX THEN
+        MAKE_KEY(WALK_PLACE)
+        BANK.USE(TARGET_BANK)
+        ContentsAt(TARGET_PLACE + ROW_RECORD_BANK) = WALK_BANK
+        ContentsAtW(TARGET_PLACE + ROW_RECORD_PLACE) = WALK_PLACE
+        ContentsAt(TARGET_PLACE + ROW_OWNER) = NODE
+        ContentsAtW(TARGET_PLACE + ROW_KEY_HIGH) = ContentsAtW(@KEY_BYTES)
+        ContentsAtW(TARGET_PLACE + ROW_KEY_LOW) = ContentsAtW(@KEY_BYTES + 2)
+        TARGET_PLACE = TARGET_PLACE + ROW_BYTES
+        IF TARGET_PLACE = ARENA_END THEN
+          TARGET_BANK = TARGET_BANK + 1
+          TARGET_PLACE = INDEX_START
+        END IF
+        ROW_COUNT = ROW_COUNT + 1
       END IF
-      WALK_PLACE = WALK_PLACE + RECORD_LENGTH
-      ROW_COUNT = ROW_COUNT + 1
-      LEFT_TO_READ = LEFT_TO_READ - 1
     END IF
   LOOP
+END SUB
+
+' Fills the index with the files of NODE that match FILESPEC, which is logged, and sorts it.
+SUB BUILD_INDEX(NODE AS UBYTE)
+  CLEAR_INDEX()
+  FILES_READ = 1
+  ADD_ROWS(NODE)
   SORT_INDEX()
 END SUB
 
@@ -284,7 +474,7 @@ END SUB
 
 ' Writes ROW, which the window shows: the marks, the name, the size and the date.
 SUB DRAW_FILE_ROW(ROW AS UWORD)
-  DIM PLACE AS UWORD, RECORD_PLACE AS UWORD, PACKED AS UWORD, FILE_SIZE AS ULONG
+  DIM PLACE AS UWORD, RECORD_PLACE AS UWORD, PACKED AS UWORD, PACKED_TIME AS UWORD, FILE_SIZE AS ULONG
   DIM RECORD_BANK AS UBYTE, CELL AS UBYTE, CODE AS UBYTE, COLOR AS UBYTE
   ContentsAt(@FILE_ROW_TEXT + 1) = FILE_COLUMNS
   FOR CELL = 0 TO FILE_COLUMNS - 1
@@ -297,6 +487,7 @@ SUB DRAW_FILE_ROW(ROW AS UWORD)
   ContentsAtW(@FILE_SIZE) = ContentsAtW(RECORD_PLACE + RECORD_SIZE)
   ContentsAtW(@FILE_SIZE + 2) = ContentsAtW(RECORD_PLACE + RECORD_SIZE + 2)
   PACKED = ContentsAtW(RECORD_PLACE + RECORD_DATE)
+  PACKED_TIME = ContentsAtW(RECORD_PLACE + RECORD_TIME)
   IF (ContentsAt(RECORD_PLACE + RECORD_FLAGS) AND RECORD_TAGGED) <> 0 THEN
     ContentsAt(@FILE_ROW_TEXT + 2 + TAG_CELL) = ASC("*")
   END IF
@@ -311,6 +502,7 @@ SUB DRAW_FILE_ROW(ROW AS UWORD)
   LOOP
   ROW_FIELD(SIZE_END_CELL - LEN(DIGITS$(FILE_SIZE)), DIGITS$(FILE_SIZE))
   ROW_FIELD(DATE_CELL, TWO_DIGITS$(((PACKED >> 9) + 80) MOD 100) + "-" + TWO_DIGITS$((PACKED >> 5) AND 15) + "-" + TWO_DIGITS$(PACKED AND 31))
+  IF WIDE_VIEW <> 0 THEN ROW_FIELD(TIME_CELL, TWO_DIGITS$(PACKED_TIME >> 11) + ":" + TWO_DIGITS$((PACKED_TIME >> 5) AND 63))
   COLOR = COLOR_OF(GUI.ROLE.PAGE)
   IF ROW = FILE_CURSOR THEN
     IF FOCUS = PANE.FILES THEN
@@ -364,11 +556,27 @@ END SUB
 
 #REGION_SLOT 6
 
-' Acts on a key that moves through the file window, which holds a row. Any other key does nothing.
+' Applies CHANGE to the highlighted file, and highlights the next one.
+SUB TAG_AND_MOVE(CHANGE AS UBYTE)
+  TAG_ROW(FILE_CURSOR, CHANGE)
+  DRAW_TITLE()
+  IF FILE_CURSOR < ROW_COUNT - 1 THEN
+    MOVE_FILE_CURSOR(FILE_CURSOR + 1)
+  ELSE
+    DRAW_FILE_ROW(FILE_CURSOR)
+  END IF
+END SUB
+
+' Acts on a key for the file window, which holds a row: it moves through the files or tags one. Any
+' other key does nothing.
 SUB FILE_KEY(KEY AS UWORD)
   DIM LAST_ROW AS UWORD
   LAST_ROW = ROW_COUNT - 1
   SELECT CASE KEY
+    CASE ASC("T"), ASC("t")
+      TAG_AND_MOVE(TAG_CHANGE.FLIPPED)
+    CASE ASC("U"), ASC("u")
+      TAG_AND_MOVE(TAG_CHANGE.UNTAGGED)
     CASE KEYS.KEY_UP
       IF FILE_CURSOR > 0 THEN MOVE_FILE_CURSOR(FILE_CURSOR - 1)
     CASE KEYS.KEY_DOWN
@@ -387,5 +595,20 @@ SUB FILE_KEY(KEY AS UWORD)
       END IF
   END SELECT
 END SUB
+
+' Makes TEXT$ the filespec.
+SUB SET_FILESPEC(TEXT$ AS CONST)
+  FILESPEC = TEXT$
+  MATCH_ALL = FILESPEC = "*" OR FILESPEC = "*.*"
+END SUB
+
+' Asks for the filespec. Returns 1 when Enter sets it, and 0 for Esc. An empty answer gives *.*.
+FUNCT ASK_FILESPEC() AS UBYTE
+  SPEC_TEXT = FILESPEC
+  IF ASK_TEXT("FILESPEC:", "Show the files that match", SPEC_TEXT, 12, "FILESPEC") = 0 THEN RETURN 0
+  IF SPEC_TEXT = "" THEN SPEC_TEXT = "*.*"
+  SET_FILESPEC(SPEC_TEXT)
+  RETURN 1
+END FUNCT
 
 #REGION_SLOT 0

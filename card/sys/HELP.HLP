@@ -460,6 +460,27 @@ TED name                        (Command line only)
   The colors come from the theme REG THEME names.
   Example:
     TED DOCS\README.TXT
+:XT
+XT                              (Command line only)
+  A file manager after XTree: the folders at the left, the files at the right.
+  The bottom rows show the commands. Hold Ctrl or Alt to see more of them.
+  Tab moves between the panes. F sets the filespec. A shows the free space.
+  Folders: Enter logs and expands, - collapses. M makes a folder. R renames
+    and D deletes the folder. S or G shows the files of every logged folder,
+    and B those of the branch.
+  Files: T tags and U untags. V runs VIEW and E runs EDIT. C copies, M moves,
+    R renames and D deletes the file. Alt-X runs a .COM file.
+  Ctrl: T tags, U untags and N flips the files that match the filespec. W tags
+    by a wildcard. C copies, O moves and D deletes the tagged files. V views
+    them in turn. F finds files on the disk. S untags the tagged files that do
+    not hold a text.
+  Alt: F3 reads the disk again. S picks the sort. T tags the branch and U
+    untags all. R forgets a folder. P deletes a branch. J goes to a path.
+    F10 picks the theme and the sort, kept in [XT] of C:\6502DOS.INI.
+  In a prompt, Up lists the last answers, and F2 points at a folder in the tree.
+  Q ends it. Alt-Q ends it in the selected folder.
+  Example:
+    XT
 :TREE
 TREE [d:][path] [-F]            (Command line only)
   Draws every directory below path, or below the root, as a tree.

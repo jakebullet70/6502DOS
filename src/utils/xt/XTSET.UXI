@@ -1,0 +1,95 @@
+' XTSET.UXI: XT's settings, which Alt-F10 picks, and the About message.
+' Include it in XT.UXB, after XTRUN.UXI and INI.UXI.
+'
+' The section [XT] of C:\6502DOS.INI holds THEME, the name of a file in C:\sys\themes without its .GTH,
+' and SORT, the SORT_ORDER as a digit.
+
+#REGION_SLOT 9
+
+' Makes the theme that THEME_NAME names the current one, and sets the colors from it.
+SUB APPLY_THEME()
+  THEME_PATH = "C:\sys\themes\" + THEME_NAME + ".GTH"
+  GUI.THEME_FILE(THEME_PATH)
+  TITLE_COLOR = COLOR_OF(GUI.ROLE.STATUS)
+  MENU_COLOR = COLOR_OF(GUI.ROLE.MENU)
+  HOT_COLOR = (MENU_COLOR AND $F0) OR (COLOR_OF(GUI.ROLE.HOT_KEY) AND 15)
+END SUB
+
+' Reads the settings, and applies the theme. With no THEME in [XT], the registry key THEME names it.
+SUB LOAD_SETTINGS()
+  THEME_NAME = INI.READ_KEY$("XT", "THEME", DOS.REG_GET("THEME", "DARK"))
+  SORT_BY = (ASC(INI.READ_KEY$("XT", "SORT", "0")) - ASC("0")) AND 3
+  APPLY_THEME()
+END SUB
+
+' Puts the theme file after THEME_NAME in THEME_NAME: the first file after the last one, or when
+' THEME_NAME has no file. No file leaves it as it is.
+SUB NEXT_THEME()
+  DIM PASSED AS UBYTE
+  DOS.FINDFIRST("C:\sys\themes\*.GTH", 0)
+  IF DOS.ERROR <> 0 THEN RETURN
+  FIRST_THEME = DOS.FOUND_NAME
+  THEME_WANTED = UCASE$(THEME_NAME) + ".GTH"
+  PASSED = 0
+  DO WHILE DOS.ERROR = 0
+    IF PASSED <> 0 THEN
+      THEME_NAME = LEFT$(DOS.FOUND_NAME, LEN(DOS.FOUND_NAME) - 4)
+      RETURN
+    END IF
+    PASSED = UCASE$(DOS.FOUND_NAME) = THEME_WANTED
+    DOS.FINDNEXT()
+  LOOP
+  THEME_NAME = LEFT$(FIRST_THEME, LEN(FIRST_THEME) - 4)
+END SUB
+
+' Writes the prompt of Alt-F10.
+SUB DRAW_SETTINGS()
+  DRAW_PROMPT("CONFIG:", "", "~Enter~ save  ~Esc~ cancel")
+  MENU_TEXT(SECOND_MENU_ROW, 0, "~T~heme: " + THEME_NAME + "  ~S~ort: " + SORT_NAME$())
+END SUB
+
+' Acts on Alt-F10: T picks the next theme, which shows at once, and S the next sort, which runs at the
+' end. Enter saves both, and Esc brings the old ones back.
+SUB SETTINGS_KEY()
+  DIM ANSWER AS UWORD, OLD_SORT AS UBYTE
+  OLD_THEME = THEME_NAME
+  OLD_SORT = SORT_BY
+  DRAW_SETTINGS()
+  CURSOR OFF
+  DO
+    ANSWER = WAITKEY()
+    IF ANSWER = KEYS.ENTER OR ANSWER = KEYS.ESC THEN EXIT DO
+    IF ANSWER = ASC("T") OR ANSWER = ASC("t") THEN
+      NEXT_THEME()
+      APPLY_THEME()
+      DRAW_ALL()
+      DRAW_SETTINGS()
+    ELSEIF ANSWER = ASC("S") OR ANSWER = ASC("s") THEN
+      SORT_BY = (SORT_BY + 1) AND 3
+      DRAW_SETTINGS()
+    END IF
+  LOOP
+  IF ANSWER = KEYS.ESC THEN
+    SORT_BY = OLD_SORT
+    THEME_NAME = OLD_THEME
+    APPLY_THEME()
+  ELSE
+    INI.WRITE_KEY("XT", "THEME", THEME_NAME)
+    INI.WRITE_KEY("XT", "SORT", DIGITS$(SORT_BY))
+    IF SORT_BY <> OLD_SORT THEN RESHOW_FILES()
+  END IF
+  DRAW_ALL()
+END SUB
+
+' Acts on A: shows the DOS version, the free RAM banks and the free space of C:. DISKFREE reads the
+' whole FAT, so a message shows first.
+SUB ABOUT_KEY()
+  DIM FREE_KB AS ULONG
+  DRAW_PROMPT("ABOUT:", "Reading the disk", "")
+  DOS.DISKFREE(3)
+  FREE_KB = DOS.FREE_HIGH
+  FREE_KB = ((FREE_KB << 16) OR DOS.FREE_LOW) * DOS.CLUSTER_SECTORS
+  TELL("ABOUT:", "XT, 6502DOS " + DOS.VERSION() + "  " + DIGITS$(BANK.FREE_COUNT()) + " free banks  " + DIGITS$(FREE_KB >> 1) + " KB free")
+END SUB
+
+#REGION_SLOT 0

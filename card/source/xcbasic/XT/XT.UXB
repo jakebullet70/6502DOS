@@ -2,20 +2,65 @@
 ' -- XT
 ' -- a file manager after XTree: the tree of folders at the left, the files of the chosen folder
 ' -- at the right, and two rows of commands that change while Ctrl or Alt is held.
-' -- Row 0 holds the folder's path, the counts and the clock. Rows 28 and 29 hold the commands.
-' -- The registry key THEME names the theme: THEME = DARK reads C:\sys\themes\DARK.GTH. A missing
-' -- key or file gives the built-in DARK colors.
+' -- Row 0 holds the folder's path and the counts. Rows 28 and 29 hold the commands, and for a
+' -- prompt or a message its label and field, its note and the keys that answer it.
+' -- THEME in the section [XT] of C:\6502DOS.INI names the theme, and then the registry key THEME:
+' -- THEME = DARK reads C:\sys\themes\DARK.GTH. A missing key or file gives the built-in DARK colors.
+' -- SORT in [XT] is the sort: 0 name, 1 extension, 2 size, 3 date.
 ' --     Up, Down, PgUp, PgDn  move through the tree
 ' --     Enter                 logs and expands the folder, or collapses it
 ' --     +                     logs and expands the folder
 ' --     -, Left               collapses the folder
 ' --     Tab, Right            moves to the folder's files, and logs a folder that is not logged
+' --     S, G                  shows the files of every logged folder across the whole screen
+' --     B                     shows the files of the logged folders of the branch the same way
+' --     D                     deletes the folder, which must be empty, after a prompt
+' --     R                     renames the folder
+' --     M                     makes a folder in the folder
 ' --   In the file window:
 ' --     Up, Down, PgUp, PgDn  move through the files
-' --     Tab, Enter, Left      move back to the tree
+' --     Tab, Enter, Left, Esc move back to the tree, and leave the whole screen's list
+' --     T                     flips the file's tag and moves down
+' --     U                     clears the file's tag and moves down
+' --     D                     deletes the file after a prompt
+' --     R                     renames the file; * and ? in the new name take from the old one
+' --     C                     copies the file to a folder
+' --     M                     moves the file to a folder
+' --     V                     runs VIEW on the file
+' --     E                     runs EDIT on the file
+' --     Alt-X                 asks for parameters and runs the .COM file from its folder
 ' --   Anywhere:
-' --     F1   runs HELP XT
-' --     Q    ends the program; a dialog asks first
+' --     F1      runs VIEW on XT.HLP, beside XT.COM
+' --     A       shows the DOS version, the free RAM banks and the free space of C:
+' --     F       asks for the filespec, which selects the files shown; matches as FINDFIRST does
+' --     Ctrl-T  tags the files of the folder, or of the whole screen's list, that match the filespec
+' --     Ctrl-U  untags them
+' --     Ctrl-N  flips their tags
+' --     Ctrl-W  asks for a wildcard, and tags those of them that match it
+' --     Ctrl-C  copies the tagged files of the file window to a folder
+' --     Ctrl-O  moves them to a folder
+' --     Ctrl-D, Ctrl-X  deletes them, with a prompt for each or for all
+' --     Ctrl-F, Ctrl-G  asks for a filespec, logs the folders of the disk that hold a match, and lists
+' --             the matches across the whole screen; Enter there goes to the highlighted file with
+' --             that filespec, and leaving another way brings the old filespec back
+' --     Ctrl-S, Ctrl-E  asks for a text, and untags the file window's tagged files that do not hold
+' --             it, in either case; Esc stops
+' --     Ctrl-V  runs VIEW on the file window's tagged files in turn; Q or Esc in VIEW goes to the next
+' --     Alt-T   tags the files that match the filespec in the logged folders of the branch
+' --     Alt-U   untags every file of every logged folder
+' --     Alt-S   picks the next sort: name, extension, size, date; it runs when Alt is released
+' --     Alt-R   forgets the folder's files and subfolders until it is logged again
+' --     Alt-P   deletes the tree's highlighted folder and all under it, after the word prune is typed
+' --     Alt-F3  reads the disk again: new subfolders in the tree, the files in the file window,
+' --             where the files' tags clear
+' --     Alt-J   asks for a path from C:\, and logs and expands each folder down to it
+' --     Alt-F10 T picks the next theme and S the next sort; Enter saves them in [XT], Esc brings back
+' --             the old ones
+' --     Q       ends the program in the folder it started in; a prompt asks first
+' --     Alt-Q   ends the program in the selected folder; a prompt asks first
+' --   In a prompt that asks for text:
+' --     Up      lists the prompt's last 8 answers, kept in C:\sys\xt
+' --     F2      points at the destination folder in the tree, for a copy or a move
 ' -- -H or -? as the first parameter runs HELP XT.
 ' -- Exit codes:
 ' --   0  the program ended by Q.
@@ -25,6 +70,7 @@
 ' --     XT
 '=============================================================================================
 #INCLUDE "DOS.UXI"
+#INCLUDE "HEAP.UXI"
 #INCLUDE "BANK.UXI"
 #INCLUDE "KEYS.UXI"
 #INCLUDE "CONS.UXI"
@@ -35,18 +81,36 @@
 CONST TITLE_ROW AS UBYTE = 0, PANE_TOP AS UBYTE = 1, PANE_ROWS AS UBYTE = 27
 CONST MENU_ROW AS UBYTE = 28, SECOND_MENU_ROW AS UBYTE = 29
 CONST SCREEN_COLUMNS AS UBYTE = 80, DIVIDER_COLUMN AS UBYTE = 27
-' The title's path starts at PATH_COLUMN, the counts end before COUNTS_END, and the clock starts
-' at CLOCK_COLUMN. The widest counts, 24 characters, start at column 45.
-CONST PATH_COLUMN AS UBYTE = 1, PATH_WIDTH AS UBYTE = 44
-CONST COUNTS_END AS UBYTE = 69, CLOCK_COLUMN AS UBYTE = 71
+' The title's path starts at PATH_COLUMN, and the counts end before COUNTS_END. The widest counts,
+' 24 characters, start at column 55.
+CONST PATH_COLUMN AS UBYTE = 1, PATH_WIDTH AS UBYTE = 54
+CONST COUNTS_END AS UBYTE = 79
 ' The column of the second row's Q command, plain and with Alt, and of its Tab command.
 CONST QUIT_COLUMN AS UBYTE = 75, QUIT_HERE_COLUMN AS UBYTE = 70, TAB_COLUMN AS UBYTE = 58
-' A VSYNC comes 60 times a second.
-CONST TICKS_A_SECOND AS UWORD = 60
+' The column of the second row's filespec, whose 22 cells end before TAB_COLUMN.
+CONST SPEC_COLUMN AS UBYTE = 36
+' The column of the keys that answer a prompt or a message, on the second row.
+CONST ANSWER_COLUMN AS UBYTE = 58
+' The column of the keys that answer a prompt for text, and of those with F2 among them.
+CONST HIST_KEYS_COLUMN AS UBYTE = 50, PICK_KEYS_COLUMN AS UBYTE = 41
+' The ticks a message that needs no answer stays.
+CONST NOTICE_TICKS AS UBYTE = 120
 ' The code of the vertical line in CP437.
 CONST LINE_DOWN AS UBYTE = 179
 ' Marks the start and end of a menu's hot characters.
 CONST HOT_MARK AS UBYTE = 126
+' The keys that Ctrl and a letter give.
+CONST CTRL_C AS UBYTE = 3, CTRL_D AS UBYTE = 4, CTRL_E AS UBYTE = 5, CTRL_F AS UBYTE = 6
+CONST CTRL_G AS UBYTE = 7, CTRL_N AS UBYTE = 14, CTRL_O AS UBYTE = 15, CTRL_S AS UBYTE = 19
+CONST CTRL_T AS UBYTE = 20, CTRL_U AS UBYTE = 21, CTRL_W AS UBYTE = 23, CTRL_X AS UBYTE = 24
+CONST CTRL_V AS UBYTE = 22
+CONST KEY_ALT_F3 AS UWORD = (KEYS.SCAN_ALT_F1 + 2) * 256
+CONST KEY_F2 AS UWORD = (KEYS.SCAN_F1 + 1) * 256
+
+' How a prompt for text ended.
+ENUM ASK_END
+  ESCAPED, ENTERED, POINTING
+END ENUM
 
 ' Which commands the menu shows.
 ENUM MENU_STATE
@@ -58,13 +122,25 @@ ENUM PANE
   TREE, FILES
 END ENUM
 
-DIM NAMES_BANK AS UBYTE, EXTRAS_BANK AS UBYTE, INDEX_BANK AS UBYTE, FOCUS AS UBYTE
+' What orders the file window.
+ENUM SORT_ORDER
+  BY_NAME, BY_EXTENSION, BY_SIZE, BY_DATE
+END ENUM
+
+DIM NAMES_BANK AS UBYTE, EXTRAS_BANK AS UBYTE, INDEX_BANK AS UBYTE, COPY_BANK AS UBYTE, FOCUS AS UBYTE
+' The SORT_ORDER, and 1 while Alt-S has changed it and the sort has not run.
+DIM SORT_BY AS UBYTE, SORT_WAITING AS UBYTE
+' 1 while the file window fills the screen with the files of the branch at WIDE_TOP.
+DIM WIDE_VIEW AS UBYTE, WIDE_TOP AS UBYTE
+DIM FILESPEC AS STRING * 12
 DIM START_COLOR AS UBYTE, TITLE_COLOR AS UBYTE, MENU_COLOR AS UBYTE, HOT_COLOR AS UBYTE
 DIM SHOWN_MENU AS UBYTE, WANTED_MENU AS UBYTE
-DIM PRESSED AS UWORD, CLOCK_TICK AS UWORD, ELAPSED AS UWORD
-DIM FILE_COUNT AS UWORD, TAG_COUNT AS UWORD, EXEC_ERROR AS UBYTE, HELP_EXIT AS UBYTE
+DIM PRESSED AS UWORD
+DIM FILE_COUNT AS UWORD, TAG_COUNT AS UWORD
 DIM THEME_PATH AS STRING * 255, FOLDER_PATH AS STRING * 255
-DIM COUNTS_TEXT AS STRING * 24, CLOCK_TEXT AS STRING * 8
+' A theme's name, Alt-F10's name to go back to, and two names of theme files.
+DIM THEME_NAME AS STRING * 32, OLD_THEME AS STRING * 32, FIRST_THEME AS STRING * 32, THEME_WANTED AS STRING * 32
+DIM COUNTS_TEXT AS STRING * 24
 
 ' N in decimal, with no space before it.
 FUNCT DIGITS$(N AS ULONG)
@@ -75,6 +151,11 @@ END FUNCT
 FUNCT TWO_DIGITS$(N AS UBYTE)
   IF N < 10 THEN RETURN "0" + DIGITS$(N)
   RETURN DIGITS$(N)
+END FUNCT
+
+' The name of SORT_BY in 4 characters.
+FUNCT SORT_NAME$()
+  RETURN MID$("NameExt SizeDate", (SORT_BY << 2) + 1, 4)
 END FUNCT
 
 ' Returns the theme's color for ROLE_NUMBER.
@@ -94,15 +175,7 @@ FUNCT TAKE_BANKS(COUNT AS UBYTE) AS UBYTE
   RETURN FIRST
 END FUNCT
 
-' Writes the time at the title's right, and starts the next second's wait.
-SUB DRAW_CLOCK()
-  CLOCK_TICK = DOS.TICKS()
-  DOS.GETTIME()
-  CLOCK_TEXT = TWO_DIGITS$(DOS.HOURS) + ":" + TWO_DIGITS$(DOS.MINUTES) + ":" + TWO_DIGITS$(DOS.SECONDS)
-  VERA.PRINTAT(TITLE_ROW, CLOCK_COLUMN, CLOCK_TEXT, TITLE_COLOR)
-END SUB
-
-' Writes row 0: the path, the end of it when it is too long, the counts and the clock.
+' Writes row 0: the path, the end of it when it is too long, and the counts.
 SUB DRAW_TITLE()
   VERA.FILL(TITLE_ROW, 0, SCREEN_COLUMNS, 1, ASC(" "), TITLE_COLOR)
   IF LEN(FOLDER_PATH) > PATH_WIDTH THEN
@@ -112,13 +185,12 @@ SUB DRAW_TITLE()
   END IF
   COUNTS_TEXT = DIGITS$(FILE_COUNT) + " Files " + DIGITS$(TAG_COUNT) + " Tagged"
   VERA.PRINTAT(TITLE_ROW, COUNTS_END - LEN(COUNTS_TEXT), COUNTS_TEXT, TITLE_COLOR)
-  DRAW_CLOCK()
 END SUB
 
-' Clears the panes, and draws the line between the tree and the file window.
+' Clears the panes, and draws the line between the tree and the file window when both show.
 SUB DRAW_FRAME()
   VERA.FILL(PANE_TOP, 0, SCREEN_COLUMNS, PANE_ROWS, ASC(" "), COLOR_OF(GUI.ROLE.PAGE))
-  VERA.FILL(PANE_TOP, DIVIDER_COLUMN, 1, PANE_ROWS, LINE_DOWN, COLOR_OF(GUI.ROLE.FRAME))
+  IF WIDE_VIEW = 0 THEN VERA.FILL(PANE_TOP, DIVIDER_COLUMN, 1, PANE_ROWS, LINE_DOWN, COLOR_OF(GUI.ROLE.FRAME))
 END SUB
 
 ' Writes TEXT$ from ROW and COLUMN in the menu's colors. Each HOT_MARK switches between the MENU
@@ -145,63 +217,173 @@ SUB DRAW_MENU()
   VERA.FILL(MENU_ROW, 0, SCREEN_COLUMNS, 2, ASC(" "), MENU_COLOR)
   SELECT CASE SHOWN_MENU
     CASE MENU_STATE.WITH_CTRL
-      MENU_TEXT(MENU_ROW, 0, "~CTRL:~ ~T~ag  ~U~ntag  ~F~ind")
+      MENU_TEXT(MENU_ROW, 0, "~CTRL:~ ~T~ag  ~U~ntag  i~N~vert  ~W~ild tag  ~C~opy  m~O~ve  ~D~/~X~ delete  ~F~/~G~ find")
+      MENU_TEXT(SECOND_MENU_ROW, 0, "~S~/~E~ search tagged  ~V~iew tagged")
       MENU_TEXT(SECOND_MENU_ROW, QUIT_COLUMN, "~Q~uit")
     CASE MENU_STATE.WITH_ALT
       MENU_TEXT(MENU_ROW, 0, "~ALT:~  ~F3~ Relog  ~P~rune  ~R~elease  ~J~ump  ~T~ag branch  ~U~ntag all  ~F10~ Config")
+      MENU_TEXT(SECOND_MENU_ROW, 0, "~S~ort: " + SORT_NAME$() + "  e~X~ecute")
       MENU_TEXT(SECOND_MENU_ROW, QUIT_HERE_COLUMN, "~Q~uit-here")
     CASE ELSE
       IF FOCUS = PANE.TREE THEN
         MENU_TEXT(MENU_ROW, 0, "~MENU:~ ~Enter~ Log  ~M~kdir  ~R~ename  ~D~elete  ~S~howall  ~B~ranch  ~G~lobal  ~F1~ Help  ~A~bout")
         MENU_TEXT(SECOND_MENU_ROW, TAB_COLUMN, "~Tab~ Files")
       ELSE
-        MENU_TEXT(MENU_ROW, 0, "~MENU:~ ~T~ag  ~U~ntag  ~V~iew  ~E~dit  ~C~opy  ~M~ove  ~F~ilespec  ~R~ename  ~D~elete")
+        MENU_TEXT(MENU_ROW, 0, "~MENU:~ ~T~ag  ~U~ntag  ~V~iew  ~E~dit  ~C~opy  ~M~ove  ~R~ename  ~D~elete")
         MENU_TEXT(SECOND_MENU_ROW, TAB_COLUMN, "~Tab~ Folders")
       END IF
       MENU_TEXT(SECOND_MENU_ROW, 0, "Hold ~Ctrl~ or ~Alt~ for more commands")
+      MENU_TEXT(SECOND_MENU_ROW, SPEC_COLUMN, "~F~ilespec: " + FILESPEC)
       MENU_TEXT(SECOND_MENU_ROW, QUIT_COLUMN, "~Q~uit")
   END SELECT
 END SUB
 
-#INCLUDE "XTFILE.UXI"
-#INCLUDE "XTTREE.UXI"
+#INCLUDE "XTHIST.UXI"
 
-' Draws the whole screen. Nothing on it is kept: a child program can leave it in any state.
-SUB DRAW_ALL()
-  DRAW_TITLE()
-  DRAW_FRAME()
-  DRAW_TREE()
-  DRAW_FILES()
+#REGION_SLOT 6
+
+' Writes LABEL$ at the start of row 28, NOTE$ at the start of row 29, and ANSWERS$, which takes
+' MENU_TEXT's marks, at ANSWER_COLUMN of row 29. NOTE$ ends before ANSWER_COLUMN, and can hold a
+' file's name, so it takes no marks.
+SUB DRAW_PROMPT(LABEL$ AS CONST, NOTE$ AS CONST, ANSWERS$ AS CONST)
+  VERA.FILL(MENU_ROW, 0, SCREEN_COLUMNS, 2, ASC(" "), MENU_COLOR)
+  MENU_TEXT(MENU_ROW, 0, "~" + LABEL$ + "~")
+  VERA.PRINTAT(SECOND_MENU_ROW, 0, NOTE$, MENU_COLOR)
+  MENU_TEXT(SECOND_MENU_ROW, ANSWER_COLUMN, ANSWERS$)
+END SUB
+
+' Edits TARGET$ in a field of WIDTH cells after LABEL$, with NOTE$ under it, and writes the menu
+' again. HISTORY$ names the prompt's file in XTHIST.UXI, whose answers fit TARGET$. Up lists them, and
+' the one picked goes in the field. Enter adds the answer to them, unless it is empty or over
+' HISTORY_CHARS. Returns an ASK_END: ENTERED, ESCAPED, or, with CAN_POINT not 0, POINTING for F2,
+' which leaves the menu unwritten. TARGET$ has no meaning after ESCAPED. Every other key that ends
+' INPUT2 does nothing. The field ends before column 79. NOTE$ ends before HIST_KEYS_COLUMN, or
+' PICK_KEYS_COLUMN with CAN_POINT not 0.
+FUNCT ASK_TEXT(LABEL$ AS CONST, NOTE$ AS CONST, TARGET$, WIDTH AS UBYTE, HISTORY$ AS CONST, CAN_POINT AS UBYTE = 0) AS UBYTE
+  DIM ENDING AS UWORD, PICKED AS UBYTE
+  OPEN_HISTORY(HISTORY$)
+  DRAW_PROMPT(LABEL$, NOTE$, "")
+  IF CAN_POINT <> 0 THEN
+    MENU_TEXT(SECOND_MENU_ROW, PICK_KEYS_COLUMN, "~Up~ hist  ~F2~ tree  ~Enter~ ok  ~Esc~ cancel")
+  ELSE
+    MENU_TEXT(SECOND_MENU_ROW, HIST_KEYS_COLUMN, "~Up~ hist  ~Enter~ ok  ~Esc~ cancel")
+  END IF
+  DO
+    DOS.SET_COLOR(MENU_COLOR)
+    ENDING = GUI.INPUT2(MENU_ROW, LEN(LABEL$) + 1, TARGET$, WIDTH)
+    IF ENDING = KEYS.ENTER OR ENDING = KEYS.ESC THEN EXIT DO
+    IF ENDING = KEY_F2 AND CAN_POINT <> 0 THEN
+      CURSOR OFF
+      RETURN ASK_END.POINTING
+    END IF
+    IF ENDING = KEYS.KEY_UP AND HISTORY_COUNT <> 0 THEN
+      PICKED = PICK_HISTORY()
+      IF PICKED <> 0 THEN
+        HISTORY_RECORD(PICKED)
+        TARGET$ = HISTORY_TEXT
+      END IF
+    END IF
+  LOOP
+  CURSOR OFF
+  IF ENDING = KEYS.ENTER AND LEN(TARGET$) <> 0 AND LEN(TARGET$) <= HISTORY_CHARS THEN
+    HISTORY_TEXT = TARGET$
+    REMEMBER_TEXT()
+  END IF
+  DRAW_MENU()
+  IF ENDING = KEYS.ENTER THEN RETURN ASK_END.ENTERED
+  RETURN ASK_END.ESCAPED
+END FUNCT
+
+' Asks NOTE$ under LABEL$, with ANSWERS$ as DRAW_PROMPT takes it, and writes the menu again. Returns
+' KEYS.ENTER, KEYS.ESC, or the capital of a letter in ALLOWED$, which holds capitals. Every other key
+' does nothing.
+FUNCT ASK_KEY(LABEL$ AS CONST, NOTE$ AS CONST, ANSWERS$ AS CONST, ALLOWED$ AS CONST) AS UBYTE
+  DIM ANSWER AS UWORD, PICKED AS UBYTE, SPOT AS UBYTE
+  DRAW_PROMPT(LABEL$, NOTE$, ANSWERS$)
+  CURSOR OFF
+  DO
+    ANSWER = WAITKEY()
+    IF ANSWER = KEYS.ENTER OR ANSWER = KEYS.ESC THEN
+      PICKED = ANSWER
+      EXIT DO
+    END IF
+    PICKED = 0
+    IF ANSWER < 256 THEN
+      SPOT = LEN(ALLOWED$)
+      DO WHILE SPOT <> 0
+        SPOT = SPOT - 1
+        IF ContentsAt(@ALLOWED$ + 2 + SPOT) = (ANSWER AND $DF) THEN PICKED = ANSWER AND $DF
+      LOOP
+    END IF
+    IF PICKED <> 0 THEN EXIT DO
+  LOOP
+  DRAW_MENU()
+  RETURN PICKED
+END FUNCT
+
+' Asks NOTE$ under LABEL$, and writes the menu again. Returns 1 for Y, 0 for N or Esc, and
+' ENTER_ANSWER for Enter, whose answer shows in brackets. Every other key does nothing.
+FUNCT ASK_YES(LABEL$ AS CONST, NOTE$ AS CONST, ENTER_ANSWER AS UBYTE) AS UBYTE
+  DIM PICKED AS UBYTE
+  IF ENTER_ANSWER <> 0 THEN
+    PICKED = ASK_KEY(LABEL$, NOTE$, "[~Y~es]  ~N~o", "YN")
+  ELSE
+    PICKED = ASK_KEY(LABEL$, NOTE$, "~Y~es  [~N~o]", "YN")
+  END IF
+  IF PICKED = KEYS.ENTER THEN RETURN ENTER_ANSWER
+  RETURN PICKED = ASC("Y")
+END FUNCT
+
+' Shows NOTE$ under LABEL$ for NOTICE_TICKS or until a key is pressed, and writes the menu again.
+SUB NOTICE(LABEL$ AS CONST, NOTE$ AS CONST)
+  DIM START AS UWORD
+  DRAW_PROMPT(LABEL$, NOTE$, "")
+  START = DOS.TICKS()
+  DO WHILE DOS.TICKS() - START < NOTICE_TICKS
+    IF GETEXTKEY() <> 0 THEN EXIT DO
+  LOOP
   DRAW_MENU()
 END SUB
 
-' Runs HELP XT, draws the screen again, and shows why when HELP did not run or had no topic.
-SUB RUN_HELP()
-  DOS.EXEC("C:\sys\HELP.COM", "XT")
-  EXEC_ERROR = DOS.ERROR
-  HELP_EXIT = 0
-  IF EXEC_ERROR = 0 THEN HELP_EXIT = DOS.EXITCODE()
-  DRAW_ALL()
-  IF EXEC_ERROR <> 0 THEN
-    GUI.MSGBOX("Help", DOS.ERRMSG(EXEC_ERROR))
-  ELSEIF HELP_EXIT <> 0 THEN
-    GUI.MSGBOX("Help", "No help for XT")
-  END IF
+' Shows NOTE$ under LABEL$ until a key is pressed, and writes the menu again.
+SUB TELL(LABEL$ AS CONST, NOTE$ AS CONST)
+  DIM ANSWER AS UWORD
+  DRAW_PROMPT(LABEL$, NOTE$, "Any key")
+  CURSOR OFF
+  ANSWER = WAITKEY()
+  DRAW_MENU()
 END SUB
+
+#REGION_SLOT 0
+
+#INCLUDE "XTFILE.UXI"
+#INCLUDE "XTTREE.UXI"
+#INCLUDE "XTOPS.UXI"
+#INCLUDE "XTFIND.UXI"
+#INCLUDE "XTRUN.UXI"
+
+#REGION_SLOT 9
+#INCLUDE "INI.UXI"
+#REGION_SLOT 0
+
+#INCLUDE "XTSET.UXI"
 
 HELP_SWITCH("XT")
 DOS.STOP_KEY(DOS.STOP.OFF)
 START_COLOR = DOS.GET_COLOR()
+START_FOLDER = "C:\" + DOS.GETCWD(3)
+START_DRIVE = DOS.GETDRIVE()
 NAMES_BANK = TAKE_BANKS(1)
 EXTRAS_BANK = TAKE_BANKS(1)
 INDEX_BANK = TAKE_BANKS(2)
+COPY_BANK = TAKE_BANKS(1)
 ARENA_BANK = TAKE_BANKS(1)
 ARENA_PLACE = ARENA_START
-THEME_PATH = "C:\sys\themes\" + DOS.REG_GET("THEME", "DARK") + ".GTH"
-GUI.THEME_FILE(THEME_PATH)
-TITLE_COLOR = COLOR_OF(GUI.ROLE.STATUS)
-MENU_COLOR = COLOR_OF(GUI.ROLE.MENU)
-HOT_COLOR = (MENU_COLOR AND $F0) OR (COLOR_OF(GUI.ROLE.HOT_KEY) AND 15)
+FILE_COLUMN = NARROW_COLUMN
+FILE_COLUMNS = NARROW_COLUMNS
+FILESPEC = "*.*"
+MATCH_ALL = 1
+LOAD_SETTINGS()
 START_TREE()
 DRAW_ALL()
 DO
@@ -213,16 +395,77 @@ DO
     SHOWN_MENU = WANTED_MENU
     DRAW_MENU()
   END IF
-  ' ELAPSED is a UWORD, so the count's wrap at 65535 gives the right difference.
-  ELAPSED = DOS.TICKS() - CLOCK_TICK
-  IF ELAPSED >= TICKS_A_SECOND THEN DRAW_CLOCK()
+  IF SORT_WAITING <> 0 AND SHOWN_MENU <> MENU_STATE.WITH_ALT THEN
+    SORT_WAITING = 0
+    RESHOW_FILES()
+  END IF
   SELECT CASE PRESSED
     CASE KEYS.KEY_F1
       RUN_HELP()
-    CASE ASC("Q"), ASC("q")
-      IF GUI.YESNO("Quit", "Quit XT?") <> 0 THEN EXIT DO
-    CASE ELSE
+    CASE ASC("A"), ASC("a")
+      ABOUT_KEY()
+    CASE KEYS.KEY_ALT_F10
+      SETTINGS_KEY()
+    CASE KEYS.KEY_ALT_S
+      SORT_BY = (SORT_BY + 1) AND 3
+      SORT_WAITING = 1
+      DRAW_MENU()
+    CASE CTRL_T, CTRL_U, CTRL_N, CTRL_W, KEYS.KEY_ALT_T, KEYS.KEY_ALT_U
+      TAG_KEY(PRESSED)
+    CASE KEYS.KEY_ALT_R
+      RELEASE_KEY()
+    CASE KEYS.KEY_ALT_P
+      PRUNE_KEY()
+    CASE KEY_ALT_F3
+      RELOG_KEY()
+    CASE KEYS.KEY_ALT_J
+      JUMP_KEY()
+    CASE ASC("F"), ASC("f")
+      IF ASK_FILESPEC() <> 0 THEN
+        RESHOW_FILES()
+        DRAW_MENU()
+      END IF
+    CASE ASC("D"), ASC("d")
+      DELETE_KEY()
+    CASE ASC("R"), ASC("r")
+      RENAME_KEY()
+    CASE ASC("M"), ASC("m")
       IF FOCUS = PANE.TREE THEN
+        MAKE_FOLDER_KEY()
+      ELSE
+        COPY_MOVE_KEY(1, 0)
+      END IF
+    CASE ASC("C"), ASC("c")
+      IF FOCUS = PANE.FILES THEN COPY_MOVE_KEY(0, 0)
+    CASE CTRL_C
+      COPY_MOVE_KEY(0, 1)
+    CASE CTRL_O
+      COPY_MOVE_KEY(1, 1)
+    CASE CTRL_D, CTRL_X
+      DELETE_TAGS_KEY()
+    CASE CTRL_F, CTRL_G
+      FIND_KEY()
+    CASE CTRL_S, CTRL_E
+      SEARCH_KEY()
+    CASE CTRL_V
+      VIEW_TAGS_KEY()
+    CASE ASC("V"), ASC("v")
+      IF FOCUS = PANE.FILES THEN RUN_ON_FILE("VIEW.COM", "VIEW:")
+    CASE ASC("E"), ASC("e")
+      IF FOCUS = PANE.FILES THEN RUN_ON_FILE("EDIT.COM", "EDIT:")
+    CASE KEYS.KEY_ALT_X
+      IF FOCUS = PANE.FILES THEN RUN_PROGRAM_KEY()
+    CASE ASC("Q"), ASC("q")
+      IF ASK_YES("QUIT:", "Quit XT?", 1) <> 0 THEN EXIT DO
+    CASE KEYS.KEY_ALT_Q
+      IF ASK_YES("QUIT:", "Quit XT in this folder?", 1) <> 0 THEN
+        GO_TO_SELECTED()
+        EXIT DO
+      END IF
+    CASE ELSE
+      IF PRESSED = KEYS.ENTER AND OLD_FILESPEC <> "" THEN
+        JUMP_TO_HIT()
+      ELSEIF FOCUS = PANE.TREE THEN
         TREE_KEY(PRESSED)
       ELSE
         FILES_KEY(PRESSED)

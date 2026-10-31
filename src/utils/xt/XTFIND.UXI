@@ -1,0 +1,193 @@
+' XTFIND.UXI: XT's Find, which searches the whole disk for a filespec, and its Search, which narrows
+' the tagged files to those that hold a text.
+' Include it in XT.UXB, after XTOPS.UXI.
+'
+' A crawl keeps GO_PATH as WALK_PATH takes it: the folder it has reached, from C:\, with a \ at its
+' end and no C:\ at its start. PATH_PART holds the folder it has just come up from.
+
+CONST SCAN_BYTES AS UWORD = 1024
+
+' How a scan of a file ended.
+ENUM SCAN_END
+  ABSENT, PRESENT, STOPPED
+END ENUM
+
+' Scans the open file HANDLE through COPY_BANK, SCAN_BYTES at a time, for NEW_NAME, which is folded and
+' not empty, in either case. Returns a SCAN_END: Esc gives STOPPED. A failed read gives ABSENT, with
+' DOS.ERROR set. The last bytes of a block stay for the next, so that a match across its edge shows.
+FUNCT SCAN_FILE(HANDLE AS UWORD) AS UBYTE
+  DIM HELD AS UWORD, COUNT AS UWORD, PLACE AS UWORD, PAST_LAST AS UWORD
+  DIM LENGTH AS UBYTE, SPOT AS UBYTE, CODE AS UBYTE, FIRST_CAPITAL AS UBYTE, FIRST_SMALL AS UBYTE
+  LENGTH = LEN(NEW_NAME)
+  FIRST_CAPITAL = ContentsAt(@NEW_NAME + 2)
+  FIRST_SMALL = FIRST_CAPITAL
+  IF FIRST_CAPITAL >= ASC("A") AND FIRST_CAPITAL <= ASC("Z") THEN FIRST_SMALL = FIRST_CAPITAL + 32
+  HELD = 0
+  DO
+    IF GETEXTKEY() = KEYS.ESC THEN RETURN SCAN_END.STOPPED
+    BANK.USE(COPY_BANK)
+    COUNT = DOS.READ_FILE(HANDLE, COPY_START + HELD, SCAN_BYTES)
+    IF DOS.ERROR <> 0 OR COUNT = 0 THEN RETURN SCAN_END.ABSENT
+    HELD = HELD + COUNT
+    IF HELD >= LENGTH THEN
+      PAST_LAST = COPY_START + HELD - LENGTH + 1
+      PLACE = COPY_START
+      DO WHILE PLACE <> PAST_LAST
+        CODE = ContentsAt(PLACE)
+        IF CODE = FIRST_CAPITAL OR CODE = FIRST_SMALL THEN
+          SPOT = 1
+          DO WHILE SPOT < LENGTH
+            IF FOLDED(ContentsAt(PLACE + SPOT)) <> ContentsAt(@NEW_NAME + 2 + SPOT) THEN EXIT DO
+            SPOT = SPOT + 1
+          LOOP
+          IF SPOT = LENGTH THEN RETURN SCAN_END.PRESENT
+        END IF
+        PLACE = PLACE + 1
+      LOOP
+      HELD = LENGTH - 1
+      SPOT = 0
+      DO WHILE SPOT < LENGTH - 1
+        ContentsAt(COPY_START + SPOT) = ContentsAt(PAST_LAST + SPOT)
+        SPOT = SPOT + 1
+      LOOP
+    END IF
+  LOOP
+END FUNCT
+
+#REGION_SLOT 8
+
+' Moves GO_PATH to the next folder of a walk of the disk, each parent before its children. Returns 0
+' past the last. Only one search runs at a time, so coming up reads the parent again, as far as the
+' folder after the one left. A disk error ends a read as the end of the folder does.
+FUNCT CRAWL_NEXT() AS UBYTE
+  DIM PASSED AS UBYTE, SPOT AS UBYTE
+  PATH_PART = ""
+  DO
+    PASSED = PATH_PART = ""
+    DOS.FINDFIRST("C:\" + GO_PATH, DOS.ATTR_DIRECTORY OR DOS.ATTR_HIDDEN OR DOS.ATTR_SYSTEM)
+    DO WHILE DOS.ERROR = 0
+      IF (DOS.FOUND_ATTRIBUTES AND DOS.ATTR_DIRECTORY) <> 0 AND DOS.FOUND_NAME <> "." AND DOS.FOUND_NAME <> ".." THEN
+        IF PASSED <> 0 THEN
+          GO_PATH = GO_PATH + DOS.FOUND_NAME + "\"
+          RETURN 1
+        END IF
+        PASSED = DOS.FOUND_NAME = PATH_PART
+      END IF
+      DOS.FINDNEXT()
+    LOOP
+    IF GO_PATH = "" THEN RETURN 0
+    SPOT = LEN(GO_PATH) - 1
+    DO WHILE SPOT <> 0
+      IF ContentsAt(@GO_PATH + 1 + SPOT) = ASC("\") THEN EXIT DO
+      SPOT = SPOT - 1
+    LOOP
+    PATH_PART = MID$(GO_PATH, SPOT + 1, LEN(GO_PATH) - SPOT - 1)
+    GO_PATH = LEFT$(GO_PATH, SPOT)
+  LOOP
+END FUNCT
+
+' Walks the disk, and logs and expands each folder that holds a name matching SPEC_TEXT, with the folders
+' above it. A logged folder is not read again. Esc stops the walk, and so does a full tree, which a
+' message says. The count of folders shows on the menu's row.
+SUB CRAWL_DISK()
+  DIM FOLDERS AS UWORD
+  FOLDERS = 0
+  GO_PATH = ""
+  KEEP_LOGGED = 1
+  DRAW_PROMPT("FIND:", "", "~Esc~ stop")
+  DO
+    FOLDERS = FOLDERS + 1
+    VERA.PRINTAT(SECOND_MENU_ROW, 0, DIGITS$(FOLDERS) + " folders", MENU_COLOR)
+    DOS.FINDFIRST("C:\" + GO_PATH + SPEC_TEXT, DOS.ATTR_HIDDEN OR DOS.ATTR_SYSTEM)
+    IF DOS.ERROR = 0 THEN WALK_PATH()
+    IF NODE_COUNT = NODE_MAX THEN
+      TELL("FIND:", "The tree is full: the list is partial")
+      EXIT DO
+    END IF
+    IF GETEXTKEY() = KEYS.ESC THEN EXIT DO
+    IF CRAWL_NEXT() = 0 THEN EXIT DO
+  LOOP
+  KEEP_LOGGED = 0
+END SUB
+
+' Acts on Ctrl-F: asks for a filespec, walks the disk for it, and lists every logged file that matches
+' across the whole screen. Leaving the list brings the old filespec back, unless Enter jumps to a file.
+SUB FIND_KEY()
+  DIM START_NODE AS UBYTE
+  SPEC_TEXT = ""
+  IF ASK_TEXT("FIND:", "Find the files that match", SPEC_TEXT, 12, "FIND") = 0 OR SPEC_TEXT = "" THEN RETURN
+  IF WIDE_VIEW <> 0 THEN LEAVE_WIDE()
+  START_NODE = VISIBLE_NODES(TREE_CURSOR)
+  CRAWL_DISK()
+  HIGHLIGHT_NODE(START_NODE)
+  OLD_FILESPEC = FILESPEC
+  SET_FILESPEC(SPEC_TEXT)
+  ENTER_WIDE(ROOT_NODE)
+END SUB
+
+' Acts on Enter in Find's list: goes to the two panes, with the highlighted row's folder highlighted in
+' the tree and the focus on its file. The list's filespec stays, so that the file window holds the file.
+SUB JUMP_TO_HIT()
+  DIM NODE AS UBYTE, ROW AS UWORD
+  LOAD_ROW_NAME(FILE_CURSOR)
+  BUILT_NAME = ROW_NAME
+  NODE = ROW_OWNER_NODE(FILE_CURSOR)
+  OLD_FILESPEC = ""
+  HIGHLIGHT_NODE(NODE)
+  LEAVE_WIDE()
+  ROW = 0
+  DO WHILE ROW < ROW_COUNT - 1
+    LOAD_ROW_NAME(ROW)
+    IF ROW_NAME = BUILT_NAME THEN EXIT DO
+    ROW = ROW + 1
+  LOOP
+  SET_FOCUS(PANE.FILES)
+  MOVE_FILE_CURSOR(ROW)
+END SUB
+
+' Acts on Ctrl-S: asks for a text, and untags each tagged file of the file window that does not hold
+' it, in either case. The highlight walks the files and the title's count falls. Esc stops, and the
+' files not yet reached stay tagged. A file that cannot be read stays tagged, and a message says so.
+SUB SEARCH_KEY()
+  DIM ROW AS UWORD, HANDLE AS UWORD, RESULT AS UBYTE, CODE AS UBYTE
+  BATCH_LABEL = "SEARCH:"
+  BATCH_PAST = "Found in"
+  IF TAGGED_ROWS() = 0 THEN
+    TELL(BATCH_LABEL, "no tagged files")
+    RETURN
+  END IF
+  NEW_NAME = ""
+  IF ASK_TEXT(BATCH_LABEL, "Keep the tagged files that hold", NEW_NAME, 32, "SEARCH") = 0 OR NEW_NAME = "" THEN RETURN
+  NEW_NAME = UCASE$(NEW_NAME)
+  CLEAR_RESULTS()
+  DRAW_PROMPT(BATCH_LABEL, "Looking for " + NEW_NAME, "~Esc~ stop")
+  ROW = 0
+  DO WHILE ROW < ROW_COUNT
+    IF ROW_TAGGED(ROW) <> 0 THEN
+      MOVE_FILE_CURSOR(ROW)
+      IF WIDE_VIEW <> 0 THEN FOLLOW_ROW()
+      LOAD_ROW_NAME(ROW)
+      RESULT = SCAN_END.ABSENT
+      HANDLE = DOS.OPEN_FILE(FOLDER_PATH + ROW_NAME, DOS.ACCESS_READ)
+      CODE = DOS.ERROR
+      IF CODE = 0 THEN
+        RESULT = SCAN_FILE(HANDLE)
+        CODE = DOS.ERROR
+        DOS.CLOSE_FILE(HANDLE)
+      END IF
+      IF RESULT = SCAN_END.STOPPED THEN EXIT DO
+      IF RESULT = SCAN_END.ABSENT AND CODE = 0 THEN
+        TAG_ROW(ROW, TAG_CHANGE.UNTAGGED)
+        DRAW_FILE_ROW(ROW)
+        DRAW_TITLE()
+      ELSE
+        COUNT_RESULT(CODE)
+      END IF
+    END IF
+    ROW = ROW + 1
+  LOOP
+  DRAW_MENU()
+  SHOW_RESULT()
+END SUB
+
+#REGION_SLOT 0

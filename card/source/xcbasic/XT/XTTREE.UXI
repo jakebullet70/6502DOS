@@ -1,6 +1,7 @@
 ' XTTREE.UXI: XT's tree of folders, anchored at C:\, and its pane in columns 0 to 26.
 ' Include it in XT.UXB, after DOS.UXI, BANK.UXI, VERA.UXI, GUI.UXI and XTFILE.UXI, and after
-' NAMES_BANK, FOLDER_PATH, FOCUS, COLOR_OF, DRAW_TITLE, DRAW_MENU and the screen's CONSTs.
+' NAMES_BANK, FOLDER_PATH, TAG_COUNT, FOCUS, WIDE_VIEW, WIDE_TOP, COLOR_OF, DRAW_TITLE, DRAW_FRAME,
+' DRAW_MENU, ASK_TEXT, TELL, the CTRL_ keys and the screen's CONSTs.
 '
 ' A node is a number, 0 to 253, and node 0 is C:\. Its links and flags are in low RAM. Its name
 ' is in the names bank, at NAMES_START + node * 32, zero-padded. Nodes are never freed. Children
@@ -14,6 +15,11 @@ CONST ROW_START AS UBYTE = 1, LEVEL_CELLS AS UBYTE = 2
 ' The codes of the tree's lines in CP437.
 CONST LINE_ACROSS AS UBYTE = 196, LINE_BRANCH AS UBYTE = 195, LINE_LAST AS UBYTE = 192
 
+' What a read of a folder takes from the disk. FOLDERS_ONLY keeps the files and their tags.
+ENUM READ_PARTS
+  WHOLE_FOLDER, FOLDERS_ONLY, FILES_ONLY
+END ENUM
+
 DIM FIRST_CHILD(NODE_MAX) AS UBYTE, NEXT_SIBLING(NODE_MAX) AS UBYTE, PARENT_NODE(NODE_MAX) AS UBYTE
 DIM NODE_FLAGS(NODE_MAX) AS UBYTE
 ' The nodes the pane can show, from the top. BUILD_VISIBLE fills it.
@@ -21,8 +27,13 @@ DIM VISIBLE_NODES(NODE_MAX) AS UBYTE
 DIM NODE_COUNT AS UBYTE, VISIBLE_COUNT AS UBYTE
 ' Positions in VISIBLE_NODES: the highlighted row, and the pane's first row.
 DIM TREE_CURSOR AS UBYTE, TREE_TOP AS UBYTE
+' The folder FOLDER_PATH names while the file window fills the screen.
+DIM PATH_OWNER AS UBYTE
+' 1 while OPEN_LEVEL leaves a logged folder unread, for Find's walk.
+DIM KEEP_LOGGED AS UBYTE
 DIM NAME_TEXT AS STRING * 32, ROW_TEXT AS STRING * 27
-DIM LAUNCH_PATH AS STRING * 255, PATH_PART AS STRING * 32
+' The path WALK_PATH follows: parts from C:\, each ending in \.
+DIM GO_PATH AS STRING * 255, PATH_PART AS STRING * 32
 
 ' Puts the name of NODE in NAME_TEXT. Selects the names bank; a region's bank comes back when
 ' the call returns.
@@ -163,14 +174,40 @@ SUB DRAW_TREE()
   END IF
 END SUB
 
-' Fills the index from NODE, when it is logged, and writes the file window.
-SUB SHOW_FILES(NODE AS UBYTE)
+' Fills the index from NODE, when it is logged.
+SUB FILL_FILES(NODE AS UBYTE)
   IF (NODE_FLAGS(NODE) AND FLAG_LOGGED) <> 0 THEN
     BUILD_INDEX(NODE)
   ELSE
     CLEAR_INDEX()
   END IF
+END SUB
+
+' Fills the index from NODE, when it is logged, and writes the file window.
+SUB SHOW_FILES(NODE AS UBYTE)
+  FILL_FILES(NODE)
   DRAW_FILES()
+END SUB
+
+' Draws the whole screen. Nothing on it is kept: a child program can leave it in any state.
+SUB DRAW_ALL()
+  DRAW_TITLE()
+  DRAW_FRAME()
+  IF WIDE_VIEW = 0 THEN DRAW_TREE()
+  DRAW_FILES()
+  DRAW_MENU()
+END SUB
+
+' Points the title at the folder of the highlighted row, which exists, when PATH_OWNER is another
+' folder.
+SUB FOLLOW_ROW()
+  DIM PLACE AS UWORD, OWNER AS UBYTE
+  PLACE = ROW_PLACE(FILE_CURSOR)
+  OWNER = ContentsAt(PLACE + ROW_OWNER)
+  IF OWNER = PATH_OWNER THEN RETURN
+  PATH_OWNER = OWNER
+  BUILD_PATH(OWNER)
+  DRAW_TITLE()
 END SUB
 
 ' Gives the focus to NEW_FOCUS, a PANE. The file window holds a row.
@@ -181,8 +218,97 @@ SUB SET_FOCUS(NEW_FOCUS AS UBYTE)
   DRAW_MENU()
 END SUB
 
-' Highlights position SPOT of VISIBLE_NODES, shows its files, and shows its path in the title.
-SUB MOVE_TREE_CURSOR(SPOT AS UBYTE)
+#REGION_SLOT 6
+
+' The node after NODE in a walk of the branch at TOP, each parent before its children, or NODE_NONE
+' past the last.
+FUNCT NEXT_IN_BRANCH(NODE AS UBYTE, TOP AS UBYTE) AS UBYTE
+  IF FIRST_CHILD(NODE) <> NODE_NONE THEN RETURN FIRST_CHILD(NODE)
+  DO WHILE NODE <> TOP
+    IF NEXT_SIBLING(NODE) <> NODE_NONE THEN RETURN NEXT_SIBLING(NODE)
+    NODE = PARENT_NODE(NODE)
+  LOOP
+  RETURN NODE_NONE
+END FUNCT
+
+' Fills the index from the logged folders of the branch at WIDE_TOP, and sorts it.
+SUB FILL_WIDE()
+  DIM NODE AS UBYTE
+  CLEAR_INDEX()
+  FILES_READ = 1
+  NODE = WIDE_TOP
+  DO WHILE NODE <> NODE_NONE
+    IF (NODE_FLAGS(NODE) AND FLAG_LOGGED) <> 0 THEN ADD_ROWS(NODE)
+    NODE = NEXT_IN_BRANCH(NODE, WIDE_TOP)
+  LOOP
+  SORT_INDEX()
+END SUB
+
+' Goes back to the two panes, with the focus on the tree, and with the filespec that Find's list
+' replaced.
+SUB LEAVE_WIDE()
+  IF OLD_FILESPEC <> "" THEN
+    SET_FILESPEC(OLD_FILESPEC)
+    OLD_FILESPEC = ""
+  END IF
+  WIDE_VIEW = 0
+  FILE_COLUMN = NARROW_COLUMN
+  FILE_COLUMNS = NARROW_COLUMNS
+  FOCUS = PANE.TREE
+  BUILD_PATH(VISIBLE_NODES(TREE_CURSOR))
+  FILL_FILES(VISIBLE_NODES(TREE_CURSOR))
+  DRAW_ALL()
+END SUB
+
+' Fills the screen with the files of the branch at TOP, and gives them the focus. With no file to
+' show, a message says so and the two panes stay.
+SUB ENTER_WIDE(TOP AS UBYTE)
+  VERA.FILL(MENU_ROW, 0, SCREEN_COLUMNS, 2, ASC(" "), MENU_COLOR)
+  VERA.PRINTAT(MENU_ROW, 0, "Working...", MENU_COLOR)
+  WIDE_VIEW = 1
+  WIDE_TOP = TOP
+  FILE_COLUMN = 0
+  FILE_COLUMNS = SCREEN_COLUMNS
+  FILL_WIDE()
+  IF ROW_COUNT = 0 THEN
+    LEAVE_WIDE()
+    TELL("FILES:", "No logged file matches the filespec")
+    RETURN
+  END IF
+  FOCUS = PANE.FILES
+  PATH_OWNER = NODE_NONE
+  FOLLOW_ROW()
+  DRAW_ALL()
+END SUB
+
+#REGION_SLOT 0
+
+' Fills the index again for a new sort, filespec or read, with its first row highlighted, and writes
+' the file window and the title. A window left with no row gives the focus to the tree, and with the
+' whole screen goes back to the two panes.
+SUB RESHOW_FILES()
+  IF WIDE_VIEW <> 0 THEN
+    FILL_WIDE()
+    IF ROW_COUNT = 0 THEN
+      LEAVE_WIDE()
+      RETURN
+    END IF
+    PATH_OWNER = NODE_NONE
+    FOLLOW_ROW()
+  ELSE
+    FILL_FILES(VISIBLE_NODES(TREE_CURSOR))
+  END IF
+  DRAW_FILES()
+  DRAW_TITLE()
+  IF ROW_COUNT = 0 AND FOCUS = PANE.FILES THEN
+    FOCUS = PANE.TREE
+    DRAW_TREE_ROW(TREE_CURSOR)
+    DRAW_MENU()
+  END IF
+END SUB
+
+' Highlights position SPOT of VISIBLE_NODES, and writes the rows that change.
+SUB SHOW_TREE_CURSOR(SPOT AS UBYTE)
   DIM OLD_CURSOR AS UBYTE, OLD_TOP AS UBYTE
   OLD_CURSOR = TREE_CURSOR
   OLD_TOP = TREE_TOP
@@ -194,6 +320,11 @@ SUB MOVE_TREE_CURSOR(SPOT AS UBYTE)
     DRAW_TREE_ROW(OLD_CURSOR)
     DRAW_TREE_ROW(TREE_CURSOR)
   END IF
+END SUB
+
+' Highlights position SPOT of VISIBLE_NODES, shows its files, and shows its path in the title.
+SUB MOVE_TREE_CURSOR(SPOT AS UBYTE)
+  SHOW_TREE_CURSOR(SPOT)
   BUILD_PATH(VISIBLE_NODES(TREE_CURSOR))
   SHOW_FILES(VISIBLE_NODES(TREE_CURSOR))
   DRAW_TITLE()
@@ -201,49 +332,74 @@ END SUB
 
 #REGION_SLOT 5
 
-' Reads FOLDER from disk: its folders become its children, and its files become records. Sets
-' FOLDER_PATH to the path of FOLDER. A full tree drops the folders past it and keeps reading the
-' files. No free bank stops the read. Each shows a dialog after the read. A disk error ends the
-' read as the end of the folder does.
-SUB LOG_FOLDER(FOLDER AS UBYTE)
-  DIM NODE AS UBYTE, LAST_CHILD AS UBYTE, TREE_FULL AS UBYTE, BANKS_FULL AS UBYTE
+' Returns 1 when FOLDER's children up to LAST_OLD hold DOS.FOUND_NAME, and 0 when they do not.
+' LAST_OLD is NODE_NONE for no children.
+FUNCT KNOWN_CHILD(FOLDER AS UBYTE, LAST_OLD AS UBYTE) AS UBYTE
+  DIM CHILD AS UBYTE
+  IF LAST_OLD = NODE_NONE THEN RETURN 0
+  CHILD = FIRST_CHILD(FOLDER)
+  DO
+    LOAD_NAME(CHILD)
+    IF NAME_TEXT = DOS.FOUND_NAME THEN RETURN 1
+    IF CHILD = LAST_OLD THEN RETURN 0
+    CHILD = NEXT_SIBLING(CHILD)
+  LOOP
+END FUNCT
+
+' Reads the PARTS, a READ_PARTS, of FOLDER from disk: folders that are not children yet become its
+' last children, and files become a new run of records with no tags. The old run stays as dead
+' space. A child gone from the disk stays. Sets FOLDER_PATH to the path of FOLDER. A full tree drops
+' the folders past it and keeps reading the files. No free bank stops the read. Each shows a message
+' after the read. A disk error ends the read as the end of the folder does.
+SUB LOG_FOLDER(FOLDER AS UBYTE, PARTS AS UBYTE)
+  DIM NODE AS UBYTE, LAST_CHILD AS UBYTE, LAST_OLD AS UBYTE, TREE_FULL AS UBYTE, BANKS_FULL AS UBYTE
   NODE_FLAGS(FOLDER) = NODE_FLAGS(FOLDER) OR FLAG_LOGGED
-  LAST_CHILD = NODE_NONE
+  LAST_CHILD = FIRST_CHILD(FOLDER)
+  IF LAST_CHILD <> NODE_NONE THEN
+    DO WHILE NEXT_SIBLING(LAST_CHILD) <> NODE_NONE
+      LAST_CHILD = NEXT_SIBLING(LAST_CHILD)
+    LOOP
+  END IF
+  LAST_OLD = LAST_CHILD
   TREE_FULL = 0
   BANKS_FULL = 0
   BUILD_PATH(FOLDER)
-  START_FILE_LOG()
+  IF PARTS <> READ_PARTS.FOLDERS_ONLY THEN START_FILE_LOG()
   DOS.FINDFIRST(FOLDER_PATH, DOS.ATTR_DIRECTORY OR DOS.ATTR_HIDDEN OR DOS.ATTR_SYSTEM)
   DO WHILE DOS.ERROR = 0
     IF (DOS.FOUND_ATTRIBUTES AND DOS.ATTR_DIRECTORY) = 0 THEN
-      IF ADD_FILE() = 0 THEN
-        BANKS_FULL = 1
-        EXIT DO
-      END IF
-    ELSEIF DOS.FOUND_NAME <> "." AND DOS.FOUND_NAME <> ".." THEN
-      IF NODE_COUNT = NODE_MAX THEN
-        TREE_FULL = 1
-      ELSE
-        NODE = NODE_COUNT
-        NODE_COUNT = NODE_COUNT + 1
-        STORE_NAME(NODE, DOS.FOUND_NAME)
-        PARENT_NODE(NODE) = FOLDER
-        FIRST_CHILD(NODE) = NODE_NONE
-        NEXT_SIBLING(NODE) = NODE_NONE
-        NODE_FLAGS(NODE) = 0
-        IF LAST_CHILD = NODE_NONE THEN
-          FIRST_CHILD(FOLDER) = NODE
-        ELSE
-          NEXT_SIBLING(LAST_CHILD) = NODE
+      IF PARTS <> READ_PARTS.FOLDERS_ONLY THEN
+        IF ADD_FILE() = 0 THEN
+          BANKS_FULL = 1
+          EXIT DO
         END IF
-        LAST_CHILD = NODE
+      END IF
+    ELSEIF PARTS <> READ_PARTS.FILES_ONLY AND DOS.FOUND_NAME <> "." AND DOS.FOUND_NAME <> ".." THEN
+      IF KNOWN_CHILD(FOLDER, LAST_OLD) = 0 THEN
+        IF NODE_COUNT = NODE_MAX THEN
+          TREE_FULL = 1
+        ELSE
+          NODE = NODE_COUNT
+          NODE_COUNT = NODE_COUNT + 1
+          STORE_NAME(NODE, DOS.FOUND_NAME)
+          PARENT_NODE(NODE) = FOLDER
+          FIRST_CHILD(NODE) = NODE_NONE
+          NEXT_SIBLING(NODE) = NODE_NONE
+          NODE_FLAGS(NODE) = 0
+          IF LAST_CHILD = NODE_NONE THEN
+            FIRST_CHILD(FOLDER) = NODE
+          ELSE
+            NEXT_SIBLING(LAST_CHILD) = NODE
+          END IF
+          LAST_CHILD = NODE
+        END IF
       END IF
     END IF
     DOS.FINDNEXT()
   LOOP
-  END_FILE_LOG(FOLDER)
-  IF TREE_FULL <> 0 THEN GUI.MSGBOX("Log", "The tree holds 254 folders")
-  IF BANKS_FULL <> 0 THEN GUI.MSGBOX("Log", "No free RAM bank for more files")
+  IF PARTS <> READ_PARTS.FOLDERS_ONLY THEN END_FILE_LOG(FOLDER)
+  IF TREE_FULL <> 0 THEN TELL("LOG:", "The tree holds 254 folders")
+  IF BANKS_FULL <> 0 THEN TELL("LOG:", "No free RAM bank for more files")
 END SUB
 
 ' Logs and expands the highlighted folder, and redraws the panes. Its row keeps its position, as
@@ -252,7 +408,7 @@ SUB OPEN_FOLDER()
   DIM NODE AS UBYTE
   NODE = VISIBLE_NODES(TREE_CURSOR)
   IF (NODE_FLAGS(NODE) AND FLAG_LOGGED) = 0 THEN
-    LOG_FOLDER(NODE)
+    LOG_FOLDER(NODE, READ_PARTS.WHOLE_FOLDER)
     SHOW_FILES(NODE)
     DRAW_TITLE()
   END IF
@@ -261,24 +417,26 @@ SUB OPEN_FOLDER()
   DRAW_TREE()
 END SUB
 
-' Makes the root, logs it, and logs and expands each folder of C:'s current directory, down as
-' far as the tree holds it. Highlights the last of them. FOLDER_PATH holds its path, and the index
-' its files.
-SUB START_TREE()
-  DIM NODE AS UBYTE, CHILD AS UBYTE, PLACE AS UBYTE, SEPARATOR AS UBYTE
-  NODE_COUNT = 1
-  STORE_NAME(ROOT_NODE, "C:\")
-  PARENT_NODE(ROOT_NODE) = NODE_NONE
-  FIRST_CHILD(ROOT_NODE) = NODE_NONE
-  NEXT_SIBLING(ROOT_NODE) = NODE_NONE
-  NODE = ROOT_NODE
-  LOG_FOLDER(NODE)
+' Expands NODE, and reads it: all of it when it is not logged, or for new folders when it is and
+' KEEP_LOGGED is 0.
+SUB OPEN_LEVEL(NODE AS UBYTE)
+  DIM PARTS AS UBYTE
+  PARTS = READ_PARTS.WHOLE_FOLDER
+  IF (NODE_FLAGS(NODE) AND FLAG_LOGGED) <> 0 THEN PARTS = READ_PARTS.FOLDERS_ONLY
+  IF PARTS = READ_PARTS.WHOLE_FOLDER OR KEEP_LOGGED = 0 THEN LOG_FOLDER(NODE, PARTS)
   NODE_FLAGS(NODE) = NODE_FLAGS(NODE) OR FLAG_EXPANDED
-  LAUNCH_PATH = DOS.GETCWD(DOS.DRIVE_C + 1) + "\"
+END SUB
+
+' Opens the root and each folder of GO_PATH, down as far as the path and the tree go. Returns the
+' last of them. FOLDER_PATH holds its path.
+FUNCT WALK_PATH() AS UBYTE
+  DIM NODE AS UBYTE, CHILD AS UBYTE, PLACE AS UBYTE, SEPARATOR AS UBYTE
+  NODE = ROOT_NODE
+  OPEN_LEVEL(NODE)
   PLACE = 1
-  SEPARATOR = INSTR(LAUNCH_PATH, "\", PLACE)
+  SEPARATOR = INSTR(GO_PATH, "\", PLACE)
   DO WHILE SEPARATOR <> 0
-    PATH_PART = UCASE$(MID$(LAUNCH_PATH, PLACE, SEPARATOR - PLACE))
+    PATH_PART = UCASE$(MID$(GO_PATH, PLACE, SEPARATOR - PLACE))
     CHILD = FIRST_CHILD(NODE)
     DO WHILE CHILD <> NODE_NONE
       LOAD_NAME(CHILD)
@@ -287,10 +445,20 @@ SUB START_TREE()
     LOOP
     IF CHILD = NODE_NONE THEN EXIT DO
     NODE = CHILD
-    LOG_FOLDER(NODE)
-    NODE_FLAGS(NODE) = NODE_FLAGS(NODE) OR FLAG_EXPANDED
+    OPEN_LEVEL(NODE)
     PLACE = SEPARATOR + 1
-    SEPARATOR = INSTR(LAUNCH_PATH, "\", PLACE)
+    SEPARATOR = INSTR(GO_PATH, "\", PLACE)
+  LOOP
+  RETURN NODE
+END FUNCT
+
+' Expands each folder above NODE, fills VISIBLE_NODES, and highlights NODE.
+SUB HIGHLIGHT_NODE(NODE AS UBYTE)
+  DIM WALK AS UBYTE
+  WALK = PARENT_NODE(NODE)
+  DO WHILE WALK <> NODE_NONE
+    NODE_FLAGS(WALK) = NODE_FLAGS(WALK) OR FLAG_EXPANDED
+    WALK = PARENT_NODE(WALK)
   LOOP
   BUILD_VISIBLE()
   TREE_CURSOR = 0
@@ -298,33 +466,123 @@ SUB START_TREE()
     TREE_CURSOR = TREE_CURSOR + 1
   LOOP
   SCROLL_TO_CURSOR()
+END SUB
+
+' Makes the root, and opens it and each folder of C:'s current directory. Highlights the last of
+' them. FOLDER_PATH holds its path, and the index its files.
+SUB START_TREE()
+  DIM NODE AS UBYTE
+  NODE_COUNT = 1
+  STORE_NAME(ROOT_NODE, "C:\")
+  PARENT_NODE(ROOT_NODE) = NODE_NONE
+  FIRST_CHILD(ROOT_NODE) = NODE_NONE
+  NEXT_SIBLING(ROOT_NODE) = NODE_NONE
+  GO_PATH = DOS.GETCWD(DOS.DRIVE_C + 1) + "\"
+  NODE = WALK_PATH()
+  HIGHLIGHT_NODE(NODE)
   BUILD_INDEX(NODE)
+END SUB
+
+' Forgets NODE's children and files, gives the focus to the tree, and draws the screen. The children's
+' nodes and the records stay as dead space.
+SUB FORGET_FOLDER(NODE AS UBYTE)
+  FIRST_CHILD(NODE) = NODE_NONE
+  NODE_FLAGS(NODE) = 0
+  BUILD_VISIBLE()
+  FOCUS = PANE.TREE
+  FILL_FILES(NODE)
+  DRAW_ALL()
+END SUB
+
+' Forgets the highlighted folder's children and files, and leaves the whole screen first.
+SUB RELEASE_KEY()
+  DIM NODE AS UBYTE
+  IF WIDE_VIEW <> 0 THEN LEAVE_WIDE()
+  NODE = VISIBLE_NODES(TREE_CURSOR)
+  IF (NODE_FLAGS(NODE) AND FLAG_LOGGED) = 0 THEN
+    TELL("RELEASE:", "The folder is not logged")
+    RETURN
+  END IF
+  FORGET_FOLDER(NODE)
+END SUB
+
+' Reads a folder from disk again. A folder that is not logged is read whole. The tree's focus reads
+' the highlighted folder's new folders. The file window's reads the files of its folder, or across
+' the whole screen the files of the highlighted row's folder.
+SUB RELOG_KEY()
+  DIM NODE AS UBYTE, PARTS AS UBYTE
+  NODE = VISIBLE_NODES(TREE_CURSOR)
+  IF WIDE_VIEW <> 0 THEN NODE = PATH_OWNER
+  PARTS = READ_PARTS.WHOLE_FOLDER
+  IF (NODE_FLAGS(NODE) AND FLAG_LOGGED) <> 0 THEN
+    PARTS = READ_PARTS.FOLDERS_ONLY
+    IF FOCUS = PANE.FILES THEN PARTS = READ_PARTS.FILES_ONLY
+  END IF
+  LOG_FOLDER(NODE, PARTS)
+  IF PARTS <> READ_PARTS.FILES_ONLY THEN
+    NODE_FLAGS(NODE) = NODE_FLAGS(NODE) OR FLAG_EXPANDED
+    BUILD_VISIBLE()
+    DRAW_TREE()
+  END IF
+  RESHOW_FILES()
+END SUB
+
+' Takes a C:\ or \ from the start of GO_PATH, and ends it with a \ unless it is empty.
+SUB TRIM_GO_PATH()
+  IF UCASE$(LEFT$(GO_PATH, 3)) = "C:\" THEN
+    GO_PATH = MID$(GO_PATH, 4)
+  ELSEIF LEFT$(GO_PATH, 1) = "\" THEN
+    GO_PATH = MID$(GO_PATH, 2)
+  END IF
+  IF GO_PATH <> "" AND RIGHT$(GO_PATH, 1) <> "\" THEN GO_PATH = GO_PATH + "\"
+END SUB
+
+' Asks for a path from C:\, with or without its C:\ or \, and opens each folder down to it, with the
+' focus on the tree. A part that no folder has stops there, and a message says so.
+SUB JUMP_KEY()
+  DIM NODE AS UBYTE
+  IF WIDE_VIEW <> 0 THEN LEAVE_WIDE()
+  GO_PATH = ""
+  IF ASK_TEXT("JUMP:", "Go to the folder", GO_PATH, 64, "JUMP") = 0 THEN RETURN
+  TRIM_GO_PATH()
+  NODE = WALK_PATH()
+  HIGHLIGHT_NODE(NODE)
+  FOCUS = PANE.TREE
+  FILL_FILES(NODE)
+  DRAW_ALL()
+  IF UCASE$(FOLDER_PATH) <> UCASE$("C:\" + GO_PATH) THEN TELL("JUMP:", "No such folder")
 END SUB
 
 #REGION_SLOT 0
 
-' Acts on a key for the tree's pane. Any other key does nothing.
-SUB TREE_KEY(KEY AS UWORD)
-  DIM NODE AS UBYTE, LAST_SPOT AS UBYTE
+' The position of VISIBLE_NODES that KEY, one of Up, Down, PgUp and PgDn, moves the highlight to. It
+' is TREE_CURSOR when the highlight cannot move.
+FUNCT TREE_SPOT_FOR(KEY AS UWORD) AS UBYTE
+  DIM LAST_SPOT AS UBYTE
   LAST_SPOT = VISIBLE_COUNT - 1
-  NODE = VISIBLE_NODES(TREE_CURSOR)
   SELECT CASE KEY
     CASE KEYS.KEY_UP
-      IF TREE_CURSOR > 0 THEN MOVE_TREE_CURSOR(TREE_CURSOR - 1)
+      IF TREE_CURSOR > 0 THEN RETURN TREE_CURSOR - 1
     CASE KEYS.KEY_DOWN
-      IF TREE_CURSOR < LAST_SPOT THEN MOVE_TREE_CURSOR(TREE_CURSOR + 1)
+      IF TREE_CURSOR < LAST_SPOT THEN RETURN TREE_CURSOR + 1
     CASE KEYS.KEY_PGUP
-      IF TREE_CURSOR > PANE_ROWS THEN
-        MOVE_TREE_CURSOR(TREE_CURSOR - PANE_ROWS)
-      ELSE
-        MOVE_TREE_CURSOR(0)
-      END IF
+      IF TREE_CURSOR > PANE_ROWS THEN RETURN TREE_CURSOR - PANE_ROWS
+      RETURN 0
     CASE KEYS.KEY_PGDN
-      IF LAST_SPOT - TREE_CURSOR > PANE_ROWS THEN
-        MOVE_TREE_CURSOR(TREE_CURSOR + PANE_ROWS)
-      ELSE
-        MOVE_TREE_CURSOR(LAST_SPOT)
-      END IF
+      IF LAST_SPOT - TREE_CURSOR > PANE_ROWS THEN RETURN TREE_CURSOR + PANE_ROWS
+      RETURN LAST_SPOT
+  END SELECT
+  RETURN TREE_CURSOR
+END FUNCT
+
+' Acts on a key for the tree's pane. Any other key does nothing.
+SUB TREE_KEY(KEY AS UWORD)
+  DIM NODE AS UBYTE, SPOT AS UBYTE
+  NODE = VISIBLE_NODES(TREE_CURSOR)
+  SELECT CASE KEY
+    CASE KEYS.KEY_UP, KEYS.KEY_DOWN, KEYS.KEY_PGUP, KEYS.KEY_PGDN
+      SPOT = TREE_SPOT_FOR(KEY)
+      IF SPOT <> TREE_CURSOR THEN MOVE_TREE_CURSOR(SPOT)
     CASE KEYS.ENTER
       IF (NODE_FLAGS(NODE) AND FLAG_LOGGED) <> 0 AND FIRST_CHILD(NODE) = NODE_NONE THEN
         IF ROW_COUNT <> 0 THEN SET_FOCUS(PANE.FILES)
@@ -344,15 +602,98 @@ SUB TREE_KEY(KEY AS UWORD)
       NODE_FLAGS(NODE) = NODE_FLAGS(NODE) AND FLAG_LOGGED
       BUILD_VISIBLE()
       DRAW_TREE()
+    CASE ASC("S"), ASC("s"), ASC("G"), ASC("g")
+      ENTER_WIDE(ROOT_NODE)
+    CASE ASC("B"), ASC("b")
+      ENTER_WIDE(NODE)
   END SELECT
 END SUB
 
-' Acts on a key for the file window, which holds a row.
+' Acts on a key for the file window, which holds a row. Across the whole screen, the title follows
+' the highlighted row.
 SUB FILES_KEY(KEY AS UWORD)
   SELECT CASE KEY
-    CASE KEYS.TAB, KEYS.ENTER, KEYS.KEY_LEFT
-      SET_FOCUS(PANE.TREE)
+    CASE KEYS.TAB, KEYS.ENTER, KEYS.KEY_LEFT, KEYS.ESC
+      IF WIDE_VIEW <> 0 THEN
+        LEAVE_WIDE()
+      ELSE
+        SET_FOCUS(PANE.TREE)
+      END IF
     CASE ELSE
       FILE_KEY(KEY)
+      IF WIDE_VIEW <> 0 THEN FOLLOW_ROW()
   END SELECT
 END SUB
+
+#REGION_SLOT 6
+
+' Applies CHANGE to the files that SCOPE reaches in each logged folder from TOP down.
+SUB TAG_BRANCH(TOP AS UBYTE, CHANGE AS UBYTE, SCOPE AS UBYTE)
+  DIM NODE AS UBYTE
+  NODE = TOP
+  DO WHILE NODE <> NODE_NONE
+    IF (NODE_FLAGS(NODE) AND FLAG_LOGGED) <> 0 THEN TAG_FOLDER(NODE, CHANGE, SCOPE)
+    NODE = NEXT_IN_BRANCH(NODE, TOP)
+  LOOP
+END SUB
+
+' Applies CHANGE to the files that SCOPE reaches in the file window's folder or, across the whole
+' screen, in the logged folders of its branch.
+SUB TAG_WINDOW(CHANGE AS UBYTE, SCOPE AS UBYTE)
+  IF WIDE_VIEW <> 0 THEN
+    TAG_BRANCH(WIDE_TOP, CHANGE, SCOPE)
+  ELSE
+    TAG_FOLDER(VISIBLE_NODES(TREE_CURSOR), CHANGE, SCOPE)
+  END IF
+END SUB
+
+' Sets TAG_COUNT to the tags of the file window's folders. A folder that is not logged has none.
+SUB COUNT_SHOWN_TAGS()
+  DIM NODE AS UBYTE
+  TAG_COUNT = 0
+  IF WIDE_VIEW <> 0 THEN
+    NODE = WIDE_TOP
+    DO WHILE NODE <> NODE_NONE
+      IF (NODE_FLAGS(NODE) AND FLAG_LOGGED) <> 0 THEN
+        START_WALK(NODE)
+        TAG_COUNT = TAG_COUNT + FOLDER_TAGS
+      END IF
+      NODE = NEXT_IN_BRANCH(NODE, WIDE_TOP)
+    LOOP
+  ELSEIF FILES_READ <> 0 THEN
+    START_WALK(VISIBLE_NODES(TREE_CURSOR))
+    TAG_COUNT = FOLDER_TAGS
+  END IF
+END SUB
+
+' Acts on a key that tags many files, and writes the file window and the title. Each Ctrl key does
+' nothing on a folder that is not logged.
+SUB TAG_KEY(KEY AS UWORD)
+  DIM NODE AS UBYTE
+  NODE = VISIBLE_NODES(TREE_CURSOR)
+  SELECT CASE KEY
+    CASE KEYS.KEY_ALT_T
+      TAG_BRANCH(NODE, TAG_CHANGE.TAGGED, TAG_SCOPE.SHOWN)
+    CASE KEYS.KEY_ALT_U
+      TAG_BRANCH(ROOT_NODE, TAG_CHANGE.UNTAGGED, TAG_SCOPE.EVERY)
+    CASE ELSE
+      IF FILES_READ = 0 THEN RETURN
+      SELECT CASE KEY
+        CASE CTRL_T
+          TAG_WINDOW(TAG_CHANGE.TAGGED, TAG_SCOPE.SHOWN)
+        CASE CTRL_U
+          TAG_WINDOW(TAG_CHANGE.UNTAGGED, TAG_SCOPE.SHOWN)
+        CASE CTRL_N
+          TAG_WINDOW(TAG_CHANGE.FLIPPED, TAG_SCOPE.SHOWN)
+        CASE CTRL_W
+          SPEC_TEXT = ""
+          IF ASK_TEXT("TAG:", "Tag the files that match", SPEC_TEXT, 12, "TAG") = 0 THEN RETURN
+          TAG_WINDOW(TAG_CHANGE.TAGGED, TAG_SCOPE.ASKED)
+      END SELECT
+  END SELECT
+  COUNT_SHOWN_TAGS()
+  DRAW_FILES()
+  DRAW_TITLE()
+END SUB
+
+#REGION_SLOT 0

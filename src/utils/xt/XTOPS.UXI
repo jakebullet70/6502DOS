@@ -1,0 +1,815 @@
+' XTOPS.UXI: XT's commands that change the disk: delete, rename, make a folder, copy, move and prune.
+' Include it in XT.UXB, after XTFILE.UXI and XTTREE.UXI, and after ASK_TEXT, ASK_KEY, ASK_YES, TELL,
+' NOTICE, COPY_BANK and the CTRL_ keys.
+'
+' FOLDER_PATH holds the path of the highlighted folder or, across the whole screen, of the highlighted
+' row's folder, each with a \ at its end. GO_PATH holds a rename's new path, the path a copy or a move
+' writes, or the folder a prune has reached. DEST_PATH holds the folder a copy or a move goes to, with
+' a \ at its end.
+'
+' A batch of tagged files acts on the index's rows: a tagged file that the filespec hides, or that is
+' past the 2048 rows, stays. It writes the gone flag and fills the index again at its end, so its rows
+' do not move while it runs.
+
+CONST COPY_START AS UWORD = $A000, COPY_BYTES AS UWORD = 8192
+' The column of the prune prompt's field, after its label.
+CONST PRUNE_COLUMN AS UBYTE = 30
+
+' What a name that exists in the destination does.
+ENUM OVERWRITE
+  ASK_EACH, REPLACE_ALL, SKIP_ALL
+END ENUM
+
+' The prompt's note. The highlighted file's name. The prompt's answer. The name a rename gives, which
+' a pattern can make longer than a name, until the DOS refuses it.
+DIM NOTE_TEXT AS STRING * 50, ROW_NAME AS STRING * 32, NEW_NAME AS STRING * 32
+DIM BUILT_NAME AS STRING * 64
+DIM DEST_PATH AS STRING * 255
+' A batch's label and the word for its result. 1 for a move and 0 for a copy. 1 once it made the
+' destination, and 1 when the file at GO_PATH exists. The OVERWRITE in force.
+DIM BATCH_LABEL AS STRING * 7, BATCH_PAST AS STRING * 8
+DIM BATCH_MOVE AS UBYTE, DEST_MADE AS UBYTE, TARGET_THERE AS UBYTE, OVERWRITE_MODE AS UBYTE
+' A batch's rows, the rows it has reached, its results, and the last error.
+DIM BATCH_TOTAL AS UWORD, BATCH_SPOT AS UWORD, DONE_COUNT AS UWORD, FAIL_COUNT AS UWORD
+DIM SKIP_COUNT AS UWORD, LAST_ERROR AS UBYTE
+' What a prune has deleted.
+DIM PRUNED_FOLDERS AS UWORD, PRUNED_FILES AS UWORD
+
+' Puts the name of ROW's file in ROW_NAME.
+SUB LOAD_ROW_NAME(ROW AS UWORD)
+  DIM PLACE AS UWORD, RECORD_PLACE AS UWORD, RECORD_BANK AS UBYTE, LENGTH AS UBYTE, CODE AS UBYTE
+  PLACE = ROW_PLACE(ROW)
+  RECORD_BANK = ContentsAt(PLACE + ROW_RECORD_BANK)
+  RECORD_PLACE = ContentsAtW(PLACE + ROW_RECORD_PLACE) + RECORD_NAME
+  BANK.USE(RECORD_BANK)
+  LENGTH = 0
+  DO
+    CODE = ContentsAt(RECORD_PLACE + LENGTH)
+    IF CODE = 0 THEN EXIT DO
+    ContentsAt(@ROW_NAME + 2 + LENGTH) = CODE
+    LENGTH = LENGTH + 1
+  LOOP
+  ContentsAt(@ROW_NAME + 1) = LENGTH
+END SUB
+
+' Writes BUILT_NAME as the name of ROW's file, and returns 1. Returns 0 when it does not fit the
+' record, which never grows.
+FUNCT STORE_ROW_NAME(ROW AS UWORD) AS UBYTE
+  DIM PLACE AS UWORD, RECORD_PLACE AS UWORD, RECORD_BANK AS UBYTE, LENGTH AS UBYTE, SPOT AS UBYTE
+  PLACE = ROW_PLACE(ROW)
+  RECORD_BANK = ContentsAt(PLACE + ROW_RECORD_BANK)
+  RECORD_PLACE = ContentsAtW(PLACE + ROW_RECORD_PLACE)
+  LENGTH = LEN(BUILT_NAME)
+  BANK.USE(RECORD_BANK)
+  IF LENGTH + RECORD_FIXED > ContentsAt(RECORD_PLACE) THEN RETURN 0
+  RECORD_PLACE = RECORD_PLACE + RECORD_NAME
+  SPOT = 0
+  DO WHILE SPOT < LENGTH
+    ContentsAt(RECORD_PLACE + SPOT) = ContentsAt(@BUILT_NAME + 2 + SPOT)
+    SPOT = SPOT + 1
+  LOOP
+  ContentsAt(RECORD_PLACE + LENGTH) = 0
+  RETURN 1
+END FUNCT
+
+' Marks ROW's file gone, and takes its tag from the counts.
+SUB HIDE_ROW(ROW AS UWORD)
+  DIM PLACE AS UWORD, RECORD_PLACE AS UWORD, RECORD_BANK AS UBYTE
+  TAG_ROW(ROW, TAG_CHANGE.UNTAGGED)
+  PLACE = ROW_PLACE(ROW)
+  RECORD_BANK = ContentsAt(PLACE + ROW_RECORD_BANK)
+  RECORD_PLACE = ContentsAtW(PLACE + ROW_RECORD_PLACE) + RECORD_FLAGS
+  BANK.USE(RECORD_BANK)
+  ContentsAt(RECORD_PLACE) = ContentsAt(RECORD_PLACE) OR RECORD_GONE
+END SUB
+
+' Takes ROW out of the index, which keeps its order.
+SUB DROP_ROW(ROW AS UWORD)
+  ROW_COUNT = ROW_COUNT - 1
+  FILE_COUNT = FILE_COUNT - 1
+  DO WHILE ROW < ROW_COUNT
+    READ_ROW(ROW + 1, @MOVING_ROW)
+    WRITE_ROW(@MOVING_ROW, ROW)
+    ROW = ROW + 1
+  LOOP
+END SUB
+
+' Returns other than 0 when ROW's file is tagged, and 0 when it is not.
+FUNCT ROW_TAGGED(ROW AS UWORD) AS UBYTE
+  DIM PLACE AS UWORD, RECORD_PLACE AS UWORD, RECORD_BANK AS UBYTE
+  PLACE = ROW_PLACE(ROW)
+  RECORD_BANK = ContentsAt(PLACE + ROW_RECORD_BANK)
+  RECORD_PLACE = ContentsAtW(PLACE + ROW_RECORD_PLACE) + RECORD_FLAGS
+  BANK.USE(RECORD_BANK)
+  RETURN ContentsAt(RECORD_PLACE) AND RECORD_TAGGED
+END FUNCT
+
+' The folder of ROW's file.
+FUNCT ROW_OWNER_NODE(ROW AS UWORD) AS UBYTE
+  DIM PLACE AS UWORD
+  PLACE = ROW_PLACE(ROW)
+  RETURN ContentsAt(PLACE + ROW_OWNER)
+END FUNCT
+
+' Copies the open file FROM_HANDLE to the open file TO_HANDLE, 8 KB at a time through COPY_BANK.
+' Returns 0, or the error, which is DOS.DISK_FULL when the target took fewer bytes than it was given.
+FUNCT PUMP_FILE(FROM_HANDLE AS UWORD, TO_HANDLE AS UWORD) AS UBYTE
+  DIM COUNT AS UWORD
+  BANK.USE(COPY_BANK)
+  DO
+    COUNT = DOS.READ_FILE(FROM_HANDLE, COPY_START, COPY_BYTES)
+    IF DOS.ERROR <> 0 THEN RETURN DOS.ERROR
+    IF COUNT = 0 THEN RETURN 0
+    IF DOS.WRITE_FILE(TO_HANDLE, COPY_START, COUNT) < COUNT THEN
+      IF DOS.ERROR <> 0 THEN RETURN DOS.ERROR
+      RETURN DOS.DISK_FULL
+    END IF
+  LOOP
+END FUNCT
+
+#REGION_SLOT 7
+
+' Returns 0 when the last DOS call worked. Shows its error under LABEL$ and returns 1 when it did
+' not.
+FUNCT DISK_FAILED(LABEL$ AS CONST) AS UBYTE
+  IF DOS.ERROR = 0 THEN RETURN 0
+  TELL(LABEL$, DOS.ERRMSG(DOS.ERROR))
+  RETURN 1
+END FUNCT
+
+' Asks for a name in NEW_NAME, with HISTORY$ as ASK_TEXT takes it. Returns 1 for a name, and 0 for
+' Esc, for an empty answer, and for a path, which a message refuses.
+FUNCT ASK_NAME(LABEL$ AS CONST, HISTORY$ AS CONST) AS UBYTE
+  NEW_NAME = ""
+  IF ASK_TEXT(LABEL$, NOTE_TEXT, NEW_NAME, 32, HISTORY$) = 0 OR NEW_NAME = "" THEN RETURN 0
+  IF INSTR(NEW_NAME, "\", 1) = 0 AND INSTR(NEW_NAME, "/", 1) = 0 AND INSTR(NEW_NAME, ":", 1) = 0 THEN RETURN 1
+  TELL(LABEL$, "A name, not a path")
+  RETURN 0
+END FUNCT
+
+' Writes the file window and the title after the index has changed, with ROW highlighted and TOP
+' first when they still can be. A window left with no row gives the focus to the tree, and with the
+' whole screen goes back to the two panes.
+SUB SETTLE_WINDOW(ROW AS UWORD, TOP AS UWORD)
+  IF ROW_COUNT = 0 THEN
+    IF WIDE_VIEW <> 0 THEN
+      LEAVE_WIDE()
+      RETURN
+    END IF
+    FOCUS = PANE.TREE
+    DRAW_TREE_ROW(TREE_CURSOR)
+    DRAW_MENU()
+    ROW = 0
+    TOP = 0
+  ELSE
+    IF ROW >= ROW_COUNT THEN ROW = ROW_COUNT - 1
+    IF ROW_COUNT <= PANE_ROWS THEN
+      TOP = 0
+    ELSEIF TOP > ROW_COUNT - PANE_ROWS THEN
+      TOP = ROW_COUNT - PANE_ROWS
+    END IF
+  END IF
+  FILE_CURSOR = ROW
+  FILE_TOP = TOP
+  DRAW_FILES()
+  IF WIDE_VIEW <> 0 THEN FOLLOW_ROW()
+  DRAW_TITLE()
+END SUB
+
+' Fills the index again, keeps the highlight on the same row, and writes the window.
+SUB REFILL_WINDOW()
+  DIM ROW AS UWORD, TOP AS UWORD
+  ROW = FILE_CURSOR
+  TOP = FILE_TOP
+  IF WIDE_VIEW <> 0 THEN
+    FILL_WIDE()
+  ELSE
+    FILL_FILES(VISIBLE_NODES(TREE_CURSOR))
+  END IF
+  SETTLE_WINDOW(ROW, TOP)
+END SUB
+
+' Returns the place of TEXT$'s last dot, or its length when it has none.
+FUNCT LAST_DOT(TEXT$ AS CONST) AS UBYTE
+  DIM SPOT AS UBYTE
+  SPOT = LEN(TEXT$)
+  DO WHILE SPOT <> 0
+    SPOT = SPOT - 1
+    IF ContentsAt(@TEXT$ + 2 + SPOT) = ASC(".") THEN RETURN SPOT
+  LOOP
+  RETURN LEN(TEXT$)
+END FUNCT
+
+' Adds to BUILT_NAME the part of NEW_NAME from PLACE up to PAST_END, merged with the part of ROW_NAME
+' from OLD_PLACE up to OLD_END. * takes the rest of the old part and ends the part, ? takes one old
+' character, and any other character stands for itself and uses up one.
+SUB MERGE_PART(PLACE AS UBYTE, PAST_END AS UBYTE, OLD_PLACE AS UBYTE, OLD_END AS UBYTE)
+  DIM CODE AS UBYTE
+  DO WHILE PLACE < PAST_END
+    CODE = ContentsAt(@NEW_NAME + 2 + PLACE)
+    IF CODE = ASC("*") THEN
+      IF OLD_PLACE < OLD_END THEN BUILT_NAME = BUILT_NAME + MID$(ROW_NAME, OLD_PLACE + 1, OLD_END - OLD_PLACE)
+      RETURN
+    END IF
+    IF CODE <> ASC("?") THEN
+      BUILT_NAME = BUILT_NAME + MID$(NEW_NAME, PLACE + 1, 1)
+    ELSEIF OLD_PLACE < OLD_END THEN
+      BUILT_NAME = BUILT_NAME + MID$(ROW_NAME, OLD_PLACE + 1, 1)
+    END IF
+    IF OLD_PLACE < OLD_END THEN OLD_PLACE = OLD_PLACE + 1
+    PLACE = PLACE + 1
+  LOOP
+END SUB
+
+' Sets BUILT_NAME from the pattern in NEW_NAME and the name in ROW_NAME, as the DOS's RENAME pattern
+' goes: *.BAK makes FOO.TXT FOO.BAK. With a dot in the pattern, the parts before and after each last
+' dot merge apart. A dot left at the end goes.
+SUB EXPAND_NAME()
+  DIM PATTERN_DOT AS UBYTE, OLD_DOT AS UBYTE, OLD_LENGTH AS UBYTE
+  BUILT_NAME = ""
+  OLD_LENGTH = LEN(ROW_NAME)
+  PATTERN_DOT = LAST_DOT(NEW_NAME)
+  IF PATTERN_DOT = LEN(NEW_NAME) THEN
+    MERGE_PART(0, PATTERN_DOT, 0, OLD_LENGTH)
+    RETURN
+  END IF
+  OLD_DOT = LAST_DOT(ROW_NAME)
+  MERGE_PART(0, PATTERN_DOT, 0, OLD_DOT)
+  BUILT_NAME = BUILT_NAME + "."
+  IF OLD_DOT < OLD_LENGTH THEN OLD_DOT = OLD_DOT + 1
+  MERGE_PART(PATTERN_DOT + 1, LEN(NEW_NAME), OLD_DOT, OLD_LENGTH)
+  IF RIGHT$(BUILT_NAME, 1) = "." THEN BUILT_NAME = LEFT$(BUILT_NAME, LEN(BUILT_NAME) - 1)
+END SUB
+
+' Deletes the highlighted file after a prompt, and highlights the row that takes its place.
+SUB DELETE_FILE()
+  LOAD_ROW_NAME(FILE_CURSOR)
+  NOTE_TEXT = "Delete " + ROW_NAME + "?"
+  IF ASK_YES("DELETE:", NOTE_TEXT, 0) = 0 THEN RETURN
+  DOS.DELETE(FOLDER_PATH + ROW_NAME)
+  IF DISK_FAILED("DELETE:") <> 0 THEN RETURN
+  HIDE_ROW(FILE_CURSOR)
+  DROP_ROW(FILE_CURSOR)
+  SETTLE_WINDOW(FILE_CURSOR, FILE_TOP)
+END SUB
+
+' Takes NODE from its parent's children. Its name, links and records stay as dead space.
+SUB UNLINK_NODE(NODE AS UBYTE)
+  DIM PARENT AS UBYTE, WALK AS UBYTE
+  PARENT = PARENT_NODE(NODE)
+  IF FIRST_CHILD(PARENT) = NODE THEN
+    FIRST_CHILD(PARENT) = NEXT_SIBLING(NODE)
+    RETURN
+  END IF
+  WALK = FIRST_CHILD(PARENT)
+  DO WHILE NEXT_SIBLING(WALK) <> NODE
+    WALK = NEXT_SIBLING(WALK)
+  LOOP
+  NEXT_SIBLING(WALK) = NEXT_SIBLING(NODE)
+END SUB
+
+' Takes NODE, which is highlighted, from the tree, and highlights the row above it.
+SUB DROP_TREE_ROW(NODE AS UBYTE)
+  UNLINK_NODE(NODE)
+  BUILD_VISIBLE()
+  TREE_CURSOR = TREE_CURSOR - 1
+  MOVE_TREE_CURSOR(TREE_CURSOR)
+  DRAW_TREE()
+END SUB
+
+' Deletes the highlighted folder, which must be empty, after a prompt, and highlights the row above
+' it. The root and the current directory stay.
+SUB DELETE_FOLDER()
+  DIM NODE AS UBYTE
+  NODE = VISIBLE_NODES(TREE_CURSOR)
+  IF NODE = ROOT_NODE THEN
+    TELL("DELETE:", "can't delete the drive root")
+    RETURN
+  END IF
+  IF (NODE_FLAGS(NODE) AND FLAG_LOGGED) = 0 THEN
+    TELL("DELETE:", "folder not logged - log it first")
+    RETURN
+  END IF
+  LOAD_NAME(NODE)
+  NOTE_TEXT = "Delete folder " + NAME_TEXT + "?"
+  IF ASK_YES("DELETE:", NOTE_TEXT, 0) = 0 THEN RETURN
+  DOS.RMDIR(LEFT$(FOLDER_PATH, LEN(FOLDER_PATH) - 1))
+  IF DOS.ERROR = DOS.ERR_ACCESS THEN
+    TELL("DELETE:", "The folder is not empty")
+    RETURN
+  END IF
+  IF DISK_FAILED("DELETE:") <> 0 THEN RETURN
+  DROP_TREE_ROW(NODE)
+END SUB
+
+' Renames the highlighted file. * and ? in the new name take from the old one. The highlight stays
+' on the same row. A new name longer than the old one reads the folder's files again, which clears
+' their tags.
+SUB RENAME_FILE()
+  DIM NODE AS UBYTE
+  LOAD_ROW_NAME(FILE_CURSOR)
+  NOTE_TEXT = "* and ? take from " + ROW_NAME
+  IF ASK_NAME("RENAME:", "RENAME") = 0 THEN RETURN
+  EXPAND_NAME()
+  IF BUILT_NAME = ROW_NAME THEN RETURN
+  GO_PATH = FOLDER_PATH + BUILT_NAME
+  DOS.RENAME(FOLDER_PATH + ROW_NAME, GO_PATH)
+  IF DISK_FAILED("RENAME:") <> 0 THEN RETURN
+  IF STORE_ROW_NAME(FILE_CURSOR) = 0 THEN
+    NODE = VISIBLE_NODES(TREE_CURSOR)
+    IF WIDE_VIEW <> 0 THEN NODE = PATH_OWNER
+    LOG_FOLDER(NODE, READ_PARTS.FILES_ONLY)
+  END IF
+  REFILL_WINDOW()
+END SUB
+
+' Renames the highlighted folder. The root stays.
+SUB RENAME_FOLDER()
+  DIM NODE AS UBYTE
+  NODE = VISIBLE_NODES(TREE_CURSOR)
+  IF NODE = ROOT_NODE THEN
+    TELL("RENAME:", "can't rename the drive root")
+    RETURN
+  END IF
+  LOAD_NAME(NODE)
+  NOTE_TEXT = "New name for " + NAME_TEXT
+  IF ASK_NAME("RENAME:", "RENAME") = 0 THEN RETURN
+  GO_PATH = LEFT$(FOLDER_PATH, LEN(FOLDER_PATH) - LEN(NAME_TEXT) - 1) + NEW_NAME
+  DOS.RENAME(LEFT$(FOLDER_PATH, LEN(FOLDER_PATH) - 1), GO_PATH)
+  IF DISK_FAILED("RENAME:") <> 0 THEN RETURN
+  STORE_NAME(NODE, NEW_NAME)
+  BUILD_PATH(NODE)
+  DRAW_TREE_ROW(TREE_CURSOR)
+  DRAW_TITLE()
+END SUB
+
+' Acts on D for the pane with the focus. The file window holds a row.
+SUB DELETE_KEY()
+  IF FOCUS = PANE.FILES THEN
+    DELETE_FILE()
+  ELSE
+    DELETE_FOLDER()
+  END IF
+END SUB
+
+' Acts on R for the pane with the focus. The file window holds a row.
+SUB RENAME_KEY()
+  IF FOCUS = PANE.FILES THEN
+    RENAME_FILE()
+  ELSE
+    RENAME_FOLDER()
+  END IF
+END SUB
+
+' Makes a folder in the highlighted one, reads the new folder into the tree, and expands the
+' highlighted one.
+SUB MAKE_FOLDER_KEY()
+  NOTE_TEXT = "New folder in this one"
+  IF ASK_NAME("MKDIR:", "MKDIR") = 0 THEN RETURN
+  DOS.MKDIR(FOLDER_PATH + NEW_NAME)
+  IF DISK_FAILED("MKDIR:") <> 0 THEN RETURN
+  RELOG_KEY()
+END SUB
+
+' Returns other than 0 when DEST_PATH names a folder, and 0 when it does not.
+FUNCT DEST_IS_FOLDER() AS UBYTE
+  IF LEN(DEST_PATH) = 3 THEN RETURN 1
+  DOS.FINDFIRST(LEFT$(DEST_PATH, LEN(DEST_PATH) - 1), DOS.ATTR_DIRECTORY OR DOS.ATTR_HIDDEN OR DOS.ATTR_SYSTEM)
+  IF DOS.ERROR <> 0 THEN RETURN 0
+  RETURN DOS.FOUND_ATTRIBUTES AND DOS.ATTR_DIRECTORY
+END FUNCT
+
+' Makes each folder of DEST_PATH. One that exists gives an error, which stays unread: DEST_IS_FOLDER
+' tells whether the last of them is there.
+SUB MAKE_DEST_PATH()
+  DIM SEPARATOR AS UBYTE
+  SEPARATOR = INSTR(DEST_PATH, "\", 4)
+  DO WHILE SEPARATOR <> 0
+    DOS.MKDIR(LEFT$(DEST_PATH, SEPARATOR - 1))
+    SEPARATOR = INSTR(DEST_PATH, "\", SEPARATOR + 1)
+  LOOP
+END SUB
+
+#REGION_SLOT 8
+
+' Shows the tree in its pane for F2 in ASK_DEST. Up, Down, PgUp and PgDn move, + and Right log and
+' expand, and - and Left collapse. Enter puts the highlighted folder's path in GO_PATH. Esc and Q leave
+' GO_PATH. A collapse or an expand stays. The highlight and FOLDER_PATH come back, each folder above
+' the highlight expands, and the whole screen is written again.
+SUB PICK_FOLDER()
+  DIM START_NODE AS UBYTE, START_TOP AS UBYTE, START_FOCUS AS UBYTE, NODE AS UBYTE, KEY AS UWORD
+  START_NODE = VISIBLE_NODES(TREE_CURSOR)
+  START_TOP = TREE_TOP
+  START_FOCUS = FOCUS
+  FOCUS = PANE.TREE
+  IF WIDE_VIEW <> 0 THEN
+    WIDE_VIEW = 0
+    DRAW_FRAME()
+    WIDE_VIEW = 1
+  END IF
+  DRAW_TREE()
+  DRAW_PROMPT(BATCH_LABEL, "Point at the folder", "~Enter~ pick  ~Esc~ back")
+  DO
+    KEY = WAITKEY()
+    NODE = VISIBLE_NODES(TREE_CURSOR)
+    SELECT CASE KEY
+      CASE KEYS.ENTER
+        BUILD_PATH(NODE)
+        GO_PATH = FOLDER_PATH
+        EXIT DO
+      CASE KEYS.ESC, ASC("Q"), ASC("q")
+        EXIT DO
+      CASE KEYS.KEY_UP, KEYS.KEY_DOWN, KEYS.KEY_PGUP, KEYS.KEY_PGDN
+        SHOW_TREE_CURSOR(TREE_SPOT_FOR(KEY))
+      CASE ASC("+"), KEYS.KEY_RIGHT
+        OPEN_LEVEL(NODE)
+        BUILD_VISIBLE()
+        DRAW_TREE()
+        ' A read's message writes the menu.
+        DRAW_PROMPT(BATCH_LABEL, "Point at the folder", "~Enter~ pick  ~Esc~ back")
+      CASE ASC("-"), KEYS.KEY_LEFT
+        NODE_FLAGS(NODE) = NODE_FLAGS(NODE) AND FLAG_LOGGED
+        BUILD_VISIBLE()
+        DRAW_TREE()
+    END SELECT
+  LOOP
+  TREE_TOP = START_TOP
+  HIGHLIGHT_NODE(START_NODE)
+  FOCUS = START_FOCUS
+  IF WIDE_VIEW <> 0 THEN START_NODE = PATH_OWNER
+  BUILD_PATH(START_NODE)
+  DRAW_ALL()
+END SUB
+
+' Returns 1 when the word prune is typed, under NOTE_TEXT. Returns 0 for Esc, and for any other answer,
+' which a message says. The prompt has no history, so that Up and Enter cannot answer it.
+FUNCT ASK_PRUNE() AS UBYTE
+  DIM ENDING AS UWORD
+  NEW_NAME = ""
+  DRAW_PROMPT("PRUNE: type prune to confirm:", NOTE_TEXT, "~Enter~ ok  ~Esc~ cancel")
+  DO
+    DOS.SET_COLOR(MENU_COLOR)
+    ENDING = GUI.INPUT2(MENU_ROW, PRUNE_COLUMN, NEW_NAME, 8)
+    IF ENDING = KEYS.ENTER OR ENDING = KEYS.ESC THEN EXIT DO
+  LOOP
+  CURSOR OFF
+  DRAW_MENU()
+  IF ENDING = KEYS.ESC THEN RETURN 0
+  IF NEW_NAME = "prune" THEN RETURN 1
+  TELL("PRUNE:", "not confirmed - prune cancelled")
+  RETURN 0
+END FUNCT
+
+' Sets NOTE_TEXT to what the prune has deleted.
+SUB SET_PRUNE_NOTE()
+  NOTE_TEXT = DIGITS$(PRUNED_FOLDERS) + " folders  " + DIGITS$(PRUNED_FILES) + " files deleted"
+END SUB
+
+' Deletes the folder at FOLDER_PATH and all under it from the disk, deepest folder first, with the
+' counts on the menu's rows. GO_PATH is the walk's only state: each pass reads the first name of its
+' folder, then goes into a folder, deletes a file, or, with no name left, removes the folder and goes
+' up. Returns 0, or the error, which stops the walk and leaves the rest.
+FUNCT PRUNE_BRANCH() AS UBYTE
+  DIM SPOT AS UBYTE
+  PRUNED_FOLDERS = 0
+  PRUNED_FILES = 0
+  GO_PATH = LEFT$(FOLDER_PATH, LEN(FOLDER_PATH) - 1)
+  DRAW_PROMPT("PRUNE:", "", "")
+  DO
+    DOS.FINDFIRST(GO_PATH + "\", DOS.ATTR_DIRECTORY OR DOS.ATTR_HIDDEN OR DOS.ATTR_SYSTEM)
+    DO WHILE DOS.ERROR = 0
+      IF DOS.FOUND_NAME <> "." AND DOS.FOUND_NAME <> ".." THEN EXIT DO
+      DOS.FINDNEXT()
+    LOOP
+    IF DOS.ERROR <> 0 THEN
+      DOS.RMDIR(GO_PATH)
+      IF DOS.ERROR <> 0 THEN RETURN DOS.ERROR
+      PRUNED_FOLDERS = PRUNED_FOLDERS + 1
+      IF LEN(GO_PATH) = LEN(FOLDER_PATH) - 1 THEN RETURN 0
+      SPOT = LEN(GO_PATH)
+      DO
+        SPOT = SPOT - 1
+        IF ContentsAt(@GO_PATH + 2 + SPOT) = ASC("\") THEN EXIT DO
+      LOOP
+      ContentsAt(@GO_PATH + 1) = SPOT
+    ELSEIF (DOS.FOUND_ATTRIBUTES AND DOS.ATTR_DIRECTORY) <> 0 THEN
+      GO_PATH = GO_PATH + "\" + DOS.FOUND_NAME
+    ELSE
+      DOS.DELETE(GO_PATH + "\" + DOS.FOUND_NAME)
+      IF DOS.ERROR <> 0 THEN RETURN DOS.ERROR
+      PRUNED_FILES = PRUNED_FILES + 1
+    END IF
+    SET_PRUNE_NOTE()
+    VERA.PRINTAT(SECOND_MENU_ROW, 0, NOTE_TEXT, MENU_COLOR)
+  LOOP
+END FUNCT
+
+' Acts on Alt-P in the tree: deletes the highlighted folder and all under it, after the word prune is
+' typed, and highlights the row above it. The root and a branch that holds C:'s current directory stay.
+' After an error, the tree forgets the folder's children and files until it is logged again.
+SUB PRUNE_KEY()
+  DIM NODE AS UBYTE, CODE AS UBYTE
+  IF FOCUS <> PANE.TREE THEN RETURN
+  NODE = VISIBLE_NODES(TREE_CURSOR)
+  IF NODE = ROOT_NODE THEN
+    TELL("PRUNE:", "can't prune the drive root")
+    RETURN
+  END IF
+  GO_PATH = "C:\" + DOS.GETCWD(DOS.DRIVE_C + 1) + "\"
+  IF UCASE$(LEFT$(GO_PATH, LEN(FOLDER_PATH))) = UCASE$(FOLDER_PATH) THEN
+    TELL("PRUNE:", "The current directory is in this branch")
+    RETURN
+  END IF
+  LOAD_NAME(NODE)
+  NOTE_TEXT = "Deletes all of " + NAME_TEXT
+  IF ASK_PRUNE() = 0 THEN RETURN
+  CODE = PRUNE_BRANCH()
+  SET_PRUNE_NOTE()
+  IF CODE = 0 THEN
+    DROP_TREE_ROW(NODE)
+    NOTICE("PRUNE:", NOTE_TEXT)
+  ELSE
+    FORGET_FOLDER(NODE)
+    TELL("PRUNE: " + DOS.ERRMSG(CODE), NOTE_TEXT)
+  END IF
+END SUB
+
+#REGION_SLOT 7
+
+' Asks for the folder a batch goes to, with NOTE_TEXT under the prompt, and offers to make it when it
+' is missing. F2 points at it in the tree. Returns 1 with DEST_PATH set. Returns 0 for Esc, for an empty
+' answer, for No, for the folder in the file window, and for a folder that cannot be made, which a
+' message says.
+FUNCT ASK_DEST() AS UBYTE
+  DIM ENDED AS UBYTE
+  DEST_MADE = 0
+  GO_PATH = ""
+  DO
+    ENDED = ASK_TEXT(BATCH_LABEL, NOTE_TEXT, GO_PATH, 64, "COPYMOVE", 1)
+    IF ENDED <> ASK_END.POINTING THEN EXIT DO
+    PICK_FOLDER()
+  LOOP
+  IF ENDED = ASK_END.ESCAPED OR GO_PATH = "" THEN RETURN 0
+  TRIM_GO_PATH()
+  DEST_PATH = "C:\" + GO_PATH
+  IF WIDE_VIEW = 0 AND UCASE$(FOLDER_PATH) = UCASE$(DEST_PATH) THEN
+    TELL(BATCH_LABEL, "source and dest are the same dir")
+    RETURN 0
+  END IF
+  IF DEST_IS_FOLDER() <> 0 THEN RETURN 1
+  IF ASK_YES(BATCH_LABEL, "Destination dir missing. Create?", 1) = 0 THEN RETURN 0
+  MAKE_DEST_PATH()
+  DEST_MADE = 1
+  IF DEST_IS_FOLDER() <> 0 THEN RETURN 1
+  TELL(BATCH_LABEL, "could not create dest folder")
+  RETURN 0
+END FUNCT
+
+' The rows of the index whose files are tagged.
+FUNCT TAGGED_ROWS() AS UWORD
+  DIM ROW AS UWORD, COUNT AS UWORD
+  ROW = 0
+  COUNT = 0
+  DO WHILE ROW < ROW_COUNT
+    IF ROW_TAGGED(ROW) <> 0 THEN COUNT = COUNT + 1
+    ROW = ROW + 1
+  LOOP
+  RETURN COUNT
+END FUNCT
+
+' Starts a batch with no results.
+SUB CLEAR_RESULTS()
+  BATCH_SPOT = 0
+  DONE_COUNT = 0
+  FAIL_COUNT = 0
+  SKIP_COUNT = 0
+END SUB
+
+' Puts ROW's name in ROW_NAME and its folder in FOLDER_PATH, and shows how far the batch has reached.
+SUB START_ROW(ROW AS UWORD)
+  LOAD_ROW_NAME(ROW)
+  IF WIDE_VIEW <> 0 THEN BUILD_PATH(ROW_OWNER_NODE(ROW))
+  BATCH_SPOT = BATCH_SPOT + 1
+  DRAW_PROMPT(BATCH_LABEL, DIGITS$(BATCH_SPOT) + " of " + DIGITS$(BATCH_TOTAL) + " " + ROW_NAME, "")
+END SUB
+
+' Counts a row's result: CODE is 0, or its error.
+SUB COUNT_RESULT(CODE AS UBYTE)
+  IF CODE = 0 THEN
+    DONE_COUNT = DONE_COUNT + 1
+  ELSE
+    FAIL_COUNT = FAIL_COUNT + 1
+    LAST_ERROR = CODE
+  END IF
+END SUB
+
+' Shows a batch's results: for a moment with nothing failed or skipped, and until a key with the last
+' error above them when not.
+SUB SHOW_RESULT()
+  NOTE_TEXT = BATCH_PAST + " " + DIGITS$(DONE_COUNT) + " file(s)"
+  IF FAIL_COUNT = 0 AND SKIP_COUNT = 0 THEN
+    NOTICE(BATCH_LABEL, NOTE_TEXT)
+    RETURN
+  END IF
+  NOTE_TEXT = NOTE_TEXT + "  " + DIGITS$(FAIL_COUNT) + " failed  " + DIGITS$(SKIP_COUNT) + " skipped"
+  IF FAIL_COUNT = 0 THEN
+    TELL(BATCH_LABEL, NOTE_TEXT)
+  ELSEIF LAST_ERROR = DOS.DISK_FULL THEN
+    TELL(BATCH_LABEL + " Disk full", NOTE_TEXT)
+  ELSE
+    TELL(BATCH_LABEL + " " + DOS.ERRMSG(LAST_ERROR), NOTE_TEXT)
+  END IF
+END SUB
+
+' Returns 1 when the batch writes GO_PATH, with TARGET_THERE set, and 0 when it skips the name. A name
+' that exists asks, unless OVERWRITE_MODE says: Y and A write, N and Enter skip, S and Esc skip it and
+' the rest, and A writes the rest.
+FUNCT TARGET_ALLOWED() AS UBYTE
+  DIM PICKED AS UBYTE
+  TARGET_THERE = 0
+  DOS.FINDFIRST(GO_PATH, DOS.ATTR_DIRECTORY OR DOS.ATTR_HIDDEN OR DOS.ATTR_SYSTEM)
+  IF DOS.ERROR <> 0 THEN RETURN 1
+  TARGET_THERE = 1
+  IF OVERWRITE_MODE = OVERWRITE.REPLACE_ALL THEN RETURN 1
+  IF OVERWRITE_MODE = OVERWRITE.SKIP_ALL THEN RETURN 0
+  NOTE_TEXT = "Overwrite " + ROW_NAME + "?"
+  PICKED = ASK_KEY(BATCH_LABEL, NOTE_TEXT, "~Y~es [~N~o] ~A~ll ~S~kip all", "YNAS")
+  IF PICKED = ASC("Y") THEN RETURN 1
+  IF PICKED = ASC("A") THEN
+    OVERWRITE_MODE = OVERWRITE.REPLACE_ALL
+    RETURN 1
+  END IF
+  IF PICKED = ASC("S") OR PICKED = KEYS.ESC THEN OVERWRITE_MODE = OVERWRITE.SKIP_ALL
+  RETURN 0
+END FUNCT
+
+' Copies FOLDER_PATH + ROW_NAME to GO_PATH, which is created, or emptied when it exists. Returns 0, or
+' the error. A copy that fails deletes GO_PATH.
+FUNCT COPY_ONE_FILE() AS UBYTE
+  DIM FROM_HANDLE AS UWORD, TO_HANDLE AS UWORD, CODE AS UBYTE
+  FROM_HANDLE = DOS.OPEN_FILE(FOLDER_PATH + ROW_NAME, DOS.ACCESS_READ)
+  IF DOS.ERROR <> 0 THEN RETURN DOS.ERROR
+  TO_HANDLE = DOS.CREATE_FILE(GO_PATH, 0)
+  CODE = DOS.ERROR
+  IF CODE = 0 THEN
+    CODE = PUMP_FILE(FROM_HANDLE, TO_HANDLE)
+    DOS.CLOSE_FILE(TO_HANDLE)
+    IF CODE = 0 THEN CODE = DOS.ERROR
+    IF CODE <> 0 THEN DOS.DELETE(GO_PATH)
+  END IF
+  DOS.CLOSE_FILE(FROM_HANDLE)
+  RETURN CODE
+END FUNCT
+
+' Copies or moves ROW's file to DEST_PATH. A file already in DEST_PATH counts as skipped.
+SUB COPY_MOVE_ROW(ROW AS UWORD)
+  DIM CODE AS UBYTE
+  START_ROW(ROW)
+  IF UCASE$(FOLDER_PATH) = UCASE$(DEST_PATH) THEN
+    SKIP_COUNT = SKIP_COUNT + 1
+    RETURN
+  END IF
+  GO_PATH = DEST_PATH + ROW_NAME
+  IF TARGET_ALLOWED() = 0 THEN
+    SKIP_COUNT = SKIP_COUNT + 1
+    RETURN
+  END IF
+  IF BATCH_MOVE <> 0 THEN
+    IF TARGET_THERE <> 0 THEN DOS.DELETE(GO_PATH)
+    DOS.RENAME(FOLDER_PATH + ROW_NAME, GO_PATH)
+    CODE = DOS.ERROR
+    IF CODE = 0 THEN HIDE_ROW(ROW)
+  ELSE
+    CODE = COPY_ONE_FILE()
+  END IF
+  COUNT_RESULT(CODE)
+END SUB
+
+' Brings the tree up to DEST_PATH after a batch. A destination it made joins the tree, with each
+' logged folder above it expanded. A logged destination that took a file reads its files again, which
+' clears their tags. A folder that is not logged stops the walk, as its next log reads the disk.
+' FOLDER_PATH holds some other path after it.
+SUB SYNC_DEST()
+  DIM NODE AS UBYTE, PLACE AS UBYTE, SEPARATOR AS UBYTE
+  NODE = ROOT_NODE
+  PLACE = 4
+  SEPARATOR = INSTR(DEST_PATH, "\", PLACE)
+  DO WHILE SEPARATOR <> 0
+    IF (NODE_FLAGS(NODE) AND FLAG_LOGGED) = 0 THEN RETURN
+    IF DEST_MADE <> 0 THEN
+      LOG_FOLDER(NODE, READ_PARTS.FOLDERS_ONLY)
+      NODE_FLAGS(NODE) = NODE_FLAGS(NODE) OR FLAG_EXPANDED
+    END IF
+    PATH_PART = UCASE$(MID$(DEST_PATH, PLACE, SEPARATOR - PLACE))
+    NODE = FIRST_CHILD(NODE)
+    DO WHILE NODE <> NODE_NONE
+      LOAD_NAME(NODE)
+      IF UCASE$(NAME_TEXT) = PATH_PART THEN EXIT DO
+      NODE = NEXT_SIBLING(NODE)
+    LOOP
+    IF NODE = NODE_NONE THEN RETURN
+    PLACE = SEPARATOR + 1
+    SEPARATOR = INSTR(DEST_PATH, "\", PLACE)
+  LOOP
+  IF DONE_COUNT <> 0 AND (NODE_FLAGS(NODE) AND FLAG_LOGGED) <> 0 THEN LOG_FOLDER(NODE, READ_PARTS.FILES_ONLY)
+END SUB
+
+' Copies or moves files to a folder that a prompt asks for: the highlighted file, or the file window's
+' tagged files when USE_TAGS is not 0. IS_MOVE is 1 for a move. The highlighted file needs the focus
+' on the file window.
+SUB COPY_MOVE_KEY(IS_MOVE AS UBYTE, USE_TAGS AS UBYTE)
+  DIM ROW AS UWORD, NODE AS UBYTE
+  BATCH_MOVE = IS_MOVE
+  IF IS_MOVE <> 0 THEN
+    BATCH_LABEL = "MOVE:"
+    BATCH_PAST = "Moved"
+    NOTE_TEXT = "Move "
+  ELSE
+    BATCH_LABEL = "COPY:"
+    BATCH_PAST = "Copied"
+    NOTE_TEXT = "Copy "
+  END IF
+  IF USE_TAGS <> 0 THEN
+    BATCH_TOTAL = TAGGED_ROWS()
+    IF BATCH_TOTAL = 0 THEN
+      TELL(BATCH_LABEL, "no tagged files")
+      RETURN
+    END IF
+    NOTE_TEXT = NOTE_TEXT + DIGITS$(BATCH_TOTAL) + " tagged files to"
+  ELSE
+    BATCH_TOTAL = 1
+    LOAD_ROW_NAME(FILE_CURSOR)
+    NOTE_TEXT = NOTE_TEXT + ROW_NAME + " to"
+  END IF
+  IF ASK_DEST() = 0 THEN RETURN
+  CLEAR_RESULTS()
+  OVERWRITE_MODE = OVERWRITE.ASK_EACH
+  IF USE_TAGS <> 0 THEN
+    ROW = 0
+    DO WHILE ROW < ROW_COUNT
+      IF ROW_TAGGED(ROW) <> 0 THEN COPY_MOVE_ROW(ROW)
+      ROW = ROW + 1
+    LOOP
+  ELSE
+    COPY_MOVE_ROW(FILE_CURSOR)
+  END IF
+  NODE = VISIBLE_NODES(TREE_CURSOR)
+  SYNC_DEST()
+  IF DEST_MADE <> 0 THEN
+    HIGHLIGHT_NODE(NODE)
+    IF WIDE_VIEW = 0 THEN DRAW_TREE()
+  END IF
+  BUILD_PATH(NODE)
+  PATH_OWNER = NODE_NONE
+  IF IS_MOVE <> 0 OR WIDE_VIEW <> 0 THEN REFILL_WINDOW()
+  DRAW_MENU()
+  SHOW_RESULT()
+END SUB
+
+' Deletes the file window's tagged files, after a prompt that asks whether each gets its own. In each
+' prompt, Y deletes, N and Enter keep, A deletes the rest with no more prompts, and Esc stops.
+SUB DELETE_TAGS_KEY()
+  DIM ROW AS UWORD, PICKED AS UBYTE, ASKING AS UBYTE, CODE AS UBYTE
+  BATCH_LABEL = "DELETE:"
+  BATCH_PAST = "Deleted"
+  BATCH_TOTAL = TAGGED_ROWS()
+  IF BATCH_TOTAL = 0 THEN
+    TELL(BATCH_LABEL, "no tagged files")
+    RETURN
+  END IF
+  NOTE_TEXT = "Delete " + DIGITS$(BATCH_TOTAL) + " tagged files: confirm each?"
+  PICKED = ASK_KEY(BATCH_LABEL, NOTE_TEXT, "[~Y~es] ~N~o  ~Esc~ cancel", "YN")
+  IF PICKED = KEYS.ESC THEN RETURN
+  ASKING = PICKED <> ASC("N")
+  CLEAR_RESULTS()
+  ROW = 0
+  DO WHILE ROW < ROW_COUNT
+    IF ROW_TAGGED(ROW) <> 0 THEN
+      START_ROW(ROW)
+      PICKED = ASC("Y")
+      IF ASKING <> 0 THEN
+        NOTE_TEXT = "Delete " + ROW_NAME + "?"
+        PICKED = ASK_KEY(BATCH_LABEL, NOTE_TEXT, "~Y~es [~N~o] ~A~ll ~Esc~ stop", "YNA")
+        IF PICKED = KEYS.ESC THEN EXIT DO
+        IF PICKED = ASC("A") THEN
+          ASKING = 0
+          PICKED = ASC("Y")
+        END IF
+      END IF
+      IF PICKED = ASC("Y") THEN
+        DOS.DELETE(FOLDER_PATH + ROW_NAME)
+        CODE = DOS.ERROR
+        IF CODE = 0 THEN HIDE_ROW(ROW)
+        COUNT_RESULT(CODE)
+      END IF
+    END IF
+    ROW = ROW + 1
+  LOOP
+  BUILD_PATH(VISIBLE_NODES(TREE_CURSOR))
+  PATH_OWNER = NODE_NONE
+  REFILL_WINDOW()
+  DRAW_MENU()
+  SHOW_RESULT()
+END SUB
+
+#REGION_SLOT 0

@@ -1,0 +1,168 @@
+==============================================================================
+ XT - an XTree-style file manager for 6502DOS
+==============================================================================
+
+ The tree of folders is at the left, and the files of the selected folder at
+ the right. Row 0 holds the path and the counts. The bottom two rows hold the
+ commands. Hold Ctrl for the Ctrl commands and Alt for the Alt commands. The
+ plain commands change with the pane. Prompts and messages use the same rows.
+
+------------------------------------------------------------------------------
+ Navigation
+------------------------------------------------------------------------------
+   Up, Down    Move one row in the pane
+   PgUp, PgDn  Move one page in the pane
+   Tab         Move between the panes
+   Right       Tree: move to the files, and log a folder that is not logged.
+               A folder with no files to show expands.
+   Left        Tree: collapse the folder. Files: move to the tree.
+   F1          Show this help
+   Q           Quit in the folder XT started in, after a prompt
+   Alt-Q       Quit in the selected folder, after a prompt
+
+------------------------------------------------------------------------------
+ Tree pane
+------------------------------------------------------------------------------
+   Enter       Log and expand the folder, or collapse it
+   +           Log and expand the folder
+   -           Collapse the folder
+   M           Make a folder in the selected folder
+   R           Rename the folder. The drive root is refused.
+   D           Delete the folder, after a prompt. It must be logged and empty.
+               The drive root is refused.
+   S, G        Show the files of every logged folder
+   B           Show the files of the logged folders of the branch
+
+------------------------------------------------------------------------------
+ File pane
+------------------------------------------------------------------------------
+   T           Flip the file's tag, and move down
+   U           Clear the file's tag, and move down
+   V           Run VIEW on the file
+   E           Run EDIT on the file
+   C           Copy the file to a folder
+   M           Move the file to a folder
+   R           Rename the file. * and ? in the new name take from the old one.
+   D           Delete the file, after a prompt
+   Enter, Esc  Move to the tree
+   Alt-X       Ask for parameters, and run the .COM file from its folder.
+               A key returns to XT.
+
+------------------------------------------------------------------------------
+ Either pane
+------------------------------------------------------------------------------
+   A           Show the DOS version, the free RAM banks and the free KB of C:
+   F           Set the filespec, which selects the files shown. An empty
+               answer is *.*
+
+------------------------------------------------------------------------------
+ Showall and Branch: S, G and B
+------------------------------------------------------------------------------
+ The file window fills the screen with the files of many folders. All the file
+ commands work, and each acts on the file in its own folder. Ctrl-C and Ctrl-O
+ gather tagged files from many folders into one.
+
+ The path in row 0 follows the highlighted file. Only logged folders show, so
+ logging more folders widens the list. The filespec still applies.
+
+ The list holds 2048 files. The count in row 0 includes the ones past that.
+
+ Tab, Enter, Left or Esc returns to the two panes.
+
+------------------------------------------------------------------------------
+ Ctrl commands
+------------------------------------------------------------------------------
+   Ctrl-T      Tag the files that match the filespec
+   Ctrl-U      Untag them
+   Ctrl-N      Flip their tags
+   Ctrl-W      Ask for a wildcard, and tag those of them that match it
+   Ctrl-C      Copy the file window's tagged files to a folder
+   Ctrl-O      Move them to a folder
+   Ctrl-D, Ctrl-X
+               Delete them. A prompt asks whether to confirm each. In each
+               prompt, A deletes the rest and Esc stops.
+   Ctrl-V      Run VIEW on them in turn. Q or Esc in VIEW goes to the next.
+   Ctrl-S, Ctrl-E
+               Ask for a text, and untag those that do not hold it, in either
+               case. Esc stops, and the files not reached stay tagged.
+   Ctrl-F, Ctrl-G
+               Ask for a filespec, log the folders of the disk that hold a
+               match, and list the matches across the screen. Esc stops the
+               walk. In the list, Enter goes to the highlighted file and keeps
+               that filespec. Leaving another way brings the old one back.
+
+ A working loop: tag the files of interest, narrow them with Ctrl-S, then read
+ what is left with Ctrl-V.
+
+------------------------------------------------------------------------------
+ Alt commands
+------------------------------------------------------------------------------
+   Alt-J       Ask for a path from C:\, and log and expand each folder down to
+               it. This reaches a folder that was never logged.
+   Alt-R       Forget the folder's files and subfolders until it is logged
+               again
+   Alt-T       Tag the files that match the filespec in the logged folders of
+               the branch
+   Alt-U       Untag every file of every logged folder, whatever the filespec
+   Alt-S       Pick the next sort: name, extension, size, date. It runs when
+               Alt is released.
+   Alt-F3      Read the disk again: new subfolders in the tree, the files in
+               the file window. The files' tags clear.
+   Alt-P       Delete the highlighted folder and all under it, after the word
+               prune is typed in lower case. It reads the disk, so a folder
+               that is not logged prunes too. The drive root and a branch that
+               holds the current directory are refused.
+   Alt-F10     Settings, below
+
+------------------------------------------------------------------------------
+ Copy and move
+------------------------------------------------------------------------------
+ The destination is a path from C:\. A folder that does not exist is made,
+ after a prompt. A name that exists asks Yes, No, All or Skip all. Move takes
+ files only. A copy takes today's date.
+
+------------------------------------------------------------------------------
+ In a prompt for text
+------------------------------------------------------------------------------
+   Up          List the prompt's last 8 answers. Up and Down move, Enter takes
+               one and Esc goes back. An answer over 64 characters is not kept.
+   F2          Copy and move: point at the folder in the tree. Up, Down, PgUp
+               and PgDn move, + or Right opens a folder, - or Left collapses
+               it, Enter picks it, and Esc or Q goes back.
+   Enter       Accept
+   Esc         Cancel
+
+------------------------------------------------------------------------------
+ In VIEW: V, Ctrl-V and this help
+------------------------------------------------------------------------------
+   Up, Down    Move one line
+   PgUp, PgDn  Move one page. Space moves a page down.
+   Home, End   Go to the first line, or the last page
+   Left, Right Move the view 8 columns sideways
+   W           Turn wrap on and off
+   F, /        Ask for a text, and find it from the top line down, in any case
+   N           Find it again
+   Q, Esc      End
+
+------------------------------------------------------------------------------
+ Settings: Alt-F10
+------------------------------------------------------------------------------
+   T           Pick the next theme of C:\sys\themes, which shows at once
+   S           Pick the next sort, which runs at the end
+   Enter       Save both in the section [XT] of C:\6502DOS.INI
+   Esc         Bring back the old ones
+
+ With no theme in [XT], the registry key THEME names it.
+
+------------------------------------------------------------------------------
+ Limits and files
+------------------------------------------------------------------------------
+   Folders     The tree holds 254. Find stops at that, with a message.
+   Files       A list holds 2048. The file records fill the free RAM banks.
+   History     C:\sys\xt holds a .HIS file for each prompt.
+   This help   XT.HLP, beside XT.COM
+   HELP XT     A short list of the keys, for the shell
+
+==============================================================================
+ A port of XFMGR2, (c) 2025-26 sadLogic, JakeInErope, to UXCBASIC.
+==============================================================================
