@@ -22,6 +22,7 @@ from uxc_code import cb_get, cb_put, emit, fx_add
 from uxc_defs import K_EK_ADDR, K_EK_CMP, K_EK_CONST, K_EK_JMP, K_EO_LAND, K_F_ABS, K_JP_CODE, \
     K_JP_LABEL, K_JP_LIST, K_OP_GE, K_OP_NE, K_SEC_CODE, K_SEC_CONST, K_SEC_LABEL, K_TT_EOL, \
     K_TT_NAME, K_TT_OP, K_TY_BYTE
+import uxc_branch
 import uxc_expr
 import uxc_lex
 import uxc_tpl as T
@@ -39,9 +40,11 @@ def jp_br():
             g.sl_s[0] = K_SEC_CONST
             g.sl_v[0] = g.jp_d
             emit(g.jp_b)
+            uxc_branch.br_short()
             return
     if g.jp_b != T.T_BRA:
         jp_inv()
+        uxc_branch.br_long()
         g.sl_s[0] = K_SEC_CONST
         g.sl_v[0] = 3
         emit(g.jp_ib)
@@ -161,6 +164,7 @@ def jp_fwd():
     g.sl_s[0] = K_SEC_CONST
     g.sl_v[0] = 0
     emit(g.jp_b)
+    uxc_branch.br_short()
     g.jp_at = g.cb_n - 1
 
 

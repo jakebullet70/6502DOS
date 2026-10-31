@@ -22,6 +22,7 @@ from uxc_code import emit
 from uxc_defs import K_EK_CONST, K_JP_CODE, K_JP_LABEL, K_JP_LIST, K_NS_CASE, K_NS_DO, \
     K_NS_FOR, K_NS_IFB, K_NS_IFL, K_NS_MAX, K_NS_REP, K_NS_SEL, K_SEC_CONST, K_SEC_VAR, K_SK_LABEL, \
     K_TT_EOL, K_TT_NAME, K_TY_BYTE, K_TY_WORD
+import uxc_branch
 import uxc_cond
 import uxc_expr
 import uxc_fold
@@ -338,6 +339,7 @@ def ct_do():
         uxc_cond.cn_jt()
         g.cb_n = g.ct_cb
         g.fx_n = g.ct_fx
+        uxc_branch.br_rewind()
     g.ns_top[g.ct_i] = g.cb_n
 
 

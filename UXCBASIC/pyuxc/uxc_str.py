@@ -27,6 +27,7 @@ from uxc_defs import K_EK_ADDR, K_EK_CMP, K_EK_CONST, K_EK_MEM, K_EK_REG, K_EO_A
     K_SEC_BSS, K_SEC_CONST, K_SEC_STR, K_SEC_TEMP, K_SEC_VAR, K_SK_ARRAY, K_SK_VAR, K_SY_READ_ONLY, K_SY_TEMP, \
     K_TEMP_PRINTED, K_TT_EOL, K_TT_NAME, K_TT_NUM, K_TT_OP, K_TT_STR, K_TY_BYTE, K_TY_LONG, \
     K_TY_RECORD, K_TY_STR, K_TY_WORD
+import uxc_branch
 import uxc_expr
 import uxc_fold
 import uxc_lex
@@ -181,6 +182,7 @@ def sg_print_item():
             and g.cb_n == g.sg_chr_end:
         g.cb_n = g.sg_chr_start
         g.fx_n = g.sg_chr_fixups
+        uxc_branch.br_rewind()
         g.ex_vn = g.ex_vn - 1
         emit(T.T_PRCHR)
         return

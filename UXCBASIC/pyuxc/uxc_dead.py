@@ -53,6 +53,7 @@ from uxc_defs import K_DD_MAX, K_DS_MAX, K_DV_MAX, K_FRAME_BASE, K_RT_LIST, K_SE
     K_SEC_CODE, K_SEC_LABEL, K_SEC_REC, K_SEC_STR, K_SEC_VAR, K_SK_ARRAY, K_SK_CALL, K_SK_DEAD, K_SK_LABEL, K_SK_SUB, \
     K_SK_VAR, K_SY_BLOCK, K_SY_FIXED, K_SY_LIVE, K_SY_TEMP, K_TT_EOL, K_TT_NAME, \
     K_TP_DATA, K_TT_NUM, K_TT_OP, K_TY_STR
+import uxc_branch
 import uxc_lex
 import uxc_name
 import uxc_ramreg
@@ -74,6 +75,7 @@ def dd_strip():
     g.dd_runtime_before = g.dd_runtime
     dd_fixups()
     dd_records()
+    uxc_branch.br_moved()
     dd_code()
     dd_runtime()
     dd_runtime_bytes()

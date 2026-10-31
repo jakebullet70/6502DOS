@@ -145,8 +145,11 @@ K_TP_DATA = 254
 K_SY_HEADS = 512
 K_SY_MAX = 4080
 
-# The most SUBs UXC-DEAD.BL can leave out of one program.
-K_DD_MAX = 512
+# The most ranges UXC-DEAD.BL's cut holds: SUBs left out, or jumps uxc_branch makes short.
+K_DD_MAX = 8192
+# The most long jumps, and the most short branches, uxc_branch logs. A program with more keeps its
+# long jumps.
+K_BR_MAX = 8192
 # The most global variables UXC-DEAD.BL logs in each of the variables and the array space.
 # A program with more keeps every variable.
 K_DV_MAX = 1024

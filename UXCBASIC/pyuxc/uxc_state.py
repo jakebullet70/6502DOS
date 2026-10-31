@@ -15,7 +15,7 @@ er_stop is ER.STOP: it raises Stop, and pyuxc.compile_file reports the error. Th
 rewrite reports the error and ENDs at the same point.
 """
 
-from uxc_defs import K_ALIASES, K_ASM_LABELS, K_DD_MAX, K_DS_MAX, K_DV_MAX, K_EX_MAX, K_NS_MAX, \
+from uxc_defs import K_ALIASES, K_ASM_LABELS, K_BR_MAX, K_DD_MAX, K_DS_MAX, K_DV_MAX, K_EX_MAX, K_NS_MAX, \
     K_RAM_BANKS, K_SB_DEFAULTS, K_SB_DEPTH, K_SYM_BANKS
 
 
@@ -78,6 +78,10 @@ def dim():
     g.dd_from = [0] * K_DD_MAX
     g.dd_to = [0] * K_DD_MAX
     g.dd_sum = [0] * K_DD_MAX
+    g.br_at = [0] * K_BR_MAX
+    g.br_to = [0] * K_BR_MAX
+    g.br_go = [0] * K_BR_MAX
+    g.br_byte = [0] * K_BR_MAX
     g.dv_at = [0] * (2 * K_DV_MAX)
     g.dv_cut = [0] * (2 * K_DV_MAX)
     g.dv_used = [0] * (2 * K_DV_MAX)
@@ -94,7 +98,8 @@ def dim():
                  "sg_chr_temp", "sg_chr_start", "sg_chr_fixups", "cs_jo", "sm_last_jump",
                  "dd_keep_subs", "dd_region_line", "dv_keep_vars", "dv_full", "ex_const_record",
                  "nm_type_enum", "sb_enum", "sb_default_count", "sb_filling", "sb_read_only",
-                 "sg_read_only", "nm_type_sig", "sb_sig", "sb_pointer_at", "sg_direct_on"):
+                 "sg_read_only", "nm_type_sig", "sb_sig", "sb_pointer_at", "sg_direct_on",
+                 "br_n", "br_byte_n", "br_full"):
         setattr(g, name, 0)
     g.sg_last_text = ""
     g.dd_region_text = ""
