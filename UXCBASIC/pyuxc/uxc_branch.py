@@ -48,6 +48,7 @@ def br_short():
 
 
 def br_rewind():
+    g.em_end = -1
     while g.br_n > 0 and g.br_at[g.br_n - 1] >= g.cb_n:
         g.br_n = g.br_n - 1
     while g.br_byte_n > 0 and g.br_byte[g.br_byte_n - 1] >= g.cb_n:

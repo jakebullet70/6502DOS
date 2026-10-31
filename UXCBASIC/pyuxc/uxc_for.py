@@ -130,6 +130,7 @@ def ct_for():
     g.ns_sn[g.ct_i] = g.fr_up
     g.ns_nb[g.ct_i] = g.fr_nb
     g.ns_ha[g.ct_i] = g.fr_hv
+    g.em_end = -1
     g.ns_top[g.ct_i] = g.cb_n
 
 

@@ -91,6 +91,7 @@ def jp_send():
 
 
 def jp_here():
+    g.em_end = -1
     g.jp_fs = K_SEC_CODE
     g.jp_fv = g.cb_n
     jp_fix()
@@ -169,6 +170,7 @@ def jp_fwd():
 
 
 def jp_land():
+    g.em_end = -1
     g.cb_at = g.jp_at
     g.cb_b = g.cb_n - g.jp_at - 1
     if g.cb_b > 127:

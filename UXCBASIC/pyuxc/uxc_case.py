@@ -85,6 +85,7 @@ def cs_case():
     if g.sm_skip == 0:
         cs_body_end()
     g.cs_wait = 0
+    g.em_end = -1
     g.ns_p[g.ct_i] = g.ns_p[g.ct_i] + 1
     uxc_lex.lx_next()
     if g.tk_t == K_TT_NAME and g.tk_s == "ELSE":

@@ -10,6 +10,7 @@
     fx_read()  in  g.fx_i              out g.fx_at g.fx_k g.fx_s g.fx_v g.fx_ow
     fx_put()   in  g.fx_i g.fx_at g.fx_k g.fx_s g.fx_v g.fx_ow    overwrite fixup g.fx_i
     emit(id)                           copy record id into the code, with slots g.sl_s g.sl_v
+    em_rts()                           a SUB's return: an RTS, or the JSR before it turned to a JMP
     rt_use()   in  g.rt_id             the runtime routine is needed at the end of the program
     rt_clear()                         no runtime routine is needed yet
     rt_close()                         every record the used ones name is used, and the bytes
@@ -165,6 +166,23 @@ def emit(record_id):
     for g.em_i in range(g.em_len):
         g.cb_b = g.em_b[g.em_i]
         cb_add()
+    g.em_end = g.cb_n
+
+
+def em_rts():
+    """EM.RTS. A SUB's return. A T_JSR that ended at g.cb_n, with no jump landing there, becomes a
+    JMP and no RTS follows: 1 byte and 9 cycles less. rb_label and rg_label take that JMP to a
+    veneer as they take a JSR.
+
+    Trap: every place that sets a jump's target to g.cb_n must set g.em_end to -1. A return left
+    out there would make the jump land on the code after it."""
+    if g.em_id == T.T_JSR and g.em_end == g.cb_n:
+        g.cb_at = g.cb_n - 3
+        g.cb_b = 0x4C
+        cb_put()
+        g.em_end = -1
+        return
+    emit(T.T_RTS)
 
 
 def em_fix():

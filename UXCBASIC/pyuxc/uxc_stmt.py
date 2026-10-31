@@ -367,6 +367,7 @@ def sm_label():
     SUB belongs to the SUB, so no GOTO crosses into or out of one."""
     if g.tk_m != 0:
         er_syntax()
+    g.em_end = -1
     g.sm_n = g.sm_w
     uxc_name.nm_reserved()
     g.sy_name = g.sm_n

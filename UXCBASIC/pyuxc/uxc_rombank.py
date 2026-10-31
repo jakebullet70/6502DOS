@@ -324,8 +324,8 @@ def rb_fixups():
 
 
 def rb_label(bank, at):
-    """RB.LABEL. A K_SEC_LABEL fixup read, at code offset at before the cut, in bank. A JSR
-    to a SUB in another bank goes to its veneer, a K_SEC_CODE fixup in this bank. @ of a SUB
+    """RB.LABEL. A K_SEC_LABEL fixup read, at code offset at before the cut, in bank. A JSR or
+    JMP to a SUB in another bank goes to its veneer, a K_SEC_CODE fixup in this bank. @ of a SUB
     in a later bank, a LO or HI fixup in any bank, goes to its veneer in the first; all banks
     run at one address."""
     g.sy_r = g.fx_v
@@ -341,7 +341,7 @@ def rb_label(bank, at):
         return
     g.cb_at = at - 1
     cb_get()
-    if g.sy_kind != K_SK_SUB or g.fx_k != K_F_ABS or g.cb_b != 0x20:
+    if g.sy_kind != K_SK_SUB or g.fx_k != K_F_ABS or (g.cb_b != 0x20 and g.cb_b != 0x4C):
         er_stop("GOTO ACROSS ROM BANKS")
     rb_veneer_to(bank)
 

@@ -37,6 +37,10 @@ import uxc_sym
 import uxc_tpl as T
 from uxc_state import er_mismatch, er_stop, er_syntax, g
 
+_Z_FROM_A = (T.T_LDB_C, T.T_LDB_V, T.T_LDB_AY, T.T_PEEK, T.T_SLEN, T.T_ADDB, T.T_SUBB, T.T_ANDB,
+             T.T_ORB, T.T_XORB, T.T_ADDB_C, T.T_SUBB_C, T.T_NOTB, T.T_CTRUE, T.T_CFALSE, T.T_ZTRUE,
+             T.T_ZFALSE)
+
 _OPERAND = 1
 _OPERATOR = 2
 _DONE = 3
@@ -742,9 +746,21 @@ def ex_test():
         g.ex_wd = 1
     ex_load()
     if g.ex_wd == 0:
-        emit(T.T_TSTB)
+        ex_z_set()
+        if g.ex_zs == 0:
+            emit(T.T_TSTB)
         return
     emit(T.T_TSTW)
+
+
+def ex_z_set():
+    """EX.Z.SET. g.ex_zs = 1 when Z already says whether A is 0, so a CMP #0 can go: the last
+    record ended at g.cb_n, its last instruction set Z from A, and no jump lands here. Trap: C
+    is not set as CMP #0 sets it, so only a test of Z may use this. A record added to _Z_FROM_A
+    must end in an instruction that sets Z from A."""
+    g.ex_zs = 0
+    if g.em_end == g.cb_n and g.em_id in _Z_FROM_A:
+        g.ex_zs = 1
 
 
 def ex_flip():
@@ -943,7 +959,10 @@ def ex_fast_cmp():
             g.ex_tp = T.T_CMPW_EQV
     if g.ex_g == 1 and g.ex_qe == 0:
         ex_fast_signed()
-    emit(g.ex_tp)
+    ex_z_set()
+    if g.ex_zs == 0 or g.ex_tp != T.T_CMPB_C or g.ex_qe == 0 or g.ex_vk[g.ex_ir] != K_EK_CONST or \
+            g.ex_vv[g.ex_ir] != 0:
+        emit(g.ex_tp)
     g.ex_rk = K_EK_CMP
     g.ex_rt = K_TY_BYTE
     g.ex_rg = 0

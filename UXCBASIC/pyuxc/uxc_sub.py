@@ -16,7 +16,7 @@
     sb_pool_of()  in  g.fx_ow    out g.sb_pool, the offset of that SUB's pool
 """
 
-from uxc_code import emit
+from uxc_code import em_rts, emit
 from uxc_defs import K_EK_ADDR, K_EK_CONST, K_EK_REG, K_EX_DEPTH, K_FRAME_MAX, K_JP_LIST, K_NS_IFL, K_NS_MAX, \
     K_SB_DEFAULTS, K_SB_DEPTH, K_SEC_BSS, K_SEC_CONST, K_SEC_LABEL, K_SEC_VAR, K_SK_ARRAY, K_SK_CALL, K_SK_SIG, \
     K_SK_SUB, K_SK_TARGET, K_SK_VAR, K_SY_ENUM_PARAMETER, K_SY_ENUM_TYPE, K_SY_SIGNATURE, \
@@ -371,7 +371,7 @@ def sb_fall_out():
         uxc_ramreg.rg_pin_from()
         uxc_str.sg_return_empty()
         uxc_ramreg.rg_pin_to(0)
-    emit(T.T_RTS)
+    em_rts()
 
 
 def sb_return():
@@ -386,7 +386,7 @@ def sb_return():
         g.sb_called_name = g.sb_sub_name
         if g.tk_t != K_TT_EOL:
             sb_error_no_value()
-        emit(T.T_RTS)
+        em_rts()
         return
     if g.tk_t == K_TT_EOL:
         er_stop("RETURN NEEDS A VALUE")
@@ -402,7 +402,7 @@ def sb_return():
         uxc_str.sg_tos()
         uxc_ramreg.rg_pin_to(0)
     g.sb_has_value = 1
-    emit(T.T_RTS)
+    em_rts()
 
 
 # Calls

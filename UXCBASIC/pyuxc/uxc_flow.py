@@ -340,6 +340,7 @@ def ct_do():
         g.cb_n = g.ct_cb
         g.fx_n = g.ct_fx
         uxc_branch.br_rewind()
+    g.em_end = -1
     g.ns_top[g.ct_i] = g.cb_n
 
 
@@ -425,6 +426,7 @@ def ct_repeat():
     uxc_lex.lx_next()
     if g.tk_t != K_TT_EOL:
         rp_count()
+    g.em_end = -1
     g.ns_top[g.ct_i] = g.cb_n
 
 

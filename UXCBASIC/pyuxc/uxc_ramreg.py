@@ -507,8 +507,8 @@ def rg_fixups():
 
 
 def rg_label(side, at):
-    """RG.LABEL. A K_SEC_LABEL fixup read, at code offset at before the cut, on side. A JSR to
-    a SUB on another side goes to its veneer, a K_SEC_CODE fixup on this side. The veneer goes
+    """RG.LABEL. A K_SEC_LABEL fixup read, at code offset at before the cut, on side. A JSR or JMP
+    to a SUB on another side goes to its veneer, a K_SEC_CODE fixup on this side. The veneer goes
     through the gate of the SUB's region, or of the caller's when the SUB is in low RAM. @ of a
     SUB in a region, a LO or HI fixup, goes to its veneer in low RAM, a K_SEC_LOW fixup in a
     region."""
@@ -528,7 +528,7 @@ def rg_label(side, at):
         return
     g.cb_at = at - 1
     cb_get()
-    if g.sy_kind != K_SK_SUB or g.fx_k != K_F_ABS or g.cb_b != 0x20:
+    if g.sy_kind != K_SK_SUB or g.fx_k != K_F_ABS or (g.cb_b != 0x20 and g.cb_b != 0x4C):
         er_stop("GOTO ACROSS THE REGION")
     gate = target_side
     if gate == 0:

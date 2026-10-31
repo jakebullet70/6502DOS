@@ -542,6 +542,7 @@ def as_label_define():
         as_error_duplicate()
     if g.as_label_count == K_ASM_LABELS:
         as_error_labels()
+    g.em_end = -1
     g.as_label_name[g.as_label_count] = g.as_name
     g.as_label_at[g.as_label_count] = g.cb_n
     g.as_label_count = g.as_label_count + 1
