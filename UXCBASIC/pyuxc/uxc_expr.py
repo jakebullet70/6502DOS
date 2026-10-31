@@ -542,10 +542,12 @@ def ex_load():
         return
     if g.ex_lk == K_EK_MEM:
         if g.ex_wd == 0:
-            emit(T.T_LDB_V)
+            if not ex_held(T.T_STB_V):
+                emit(T.T_LDB_V)
             return
         if g.ex_lt != K_TY_BYTE:
-            emit(T.T_LDW_V)
+            if not ex_held(T.T_STW_V):
+                emit(T.T_LDW_V)
             return
         if g.ex_vg[g.ex_i] == 0:
             emit(T.T_LDW_B)
@@ -563,6 +565,17 @@ def ex_load():
         emit(T.T_WIDEN)
     if g.ex_vg[g.ex_i] == 1:
         emit(T.T_SWIDEN)
+
+
+def ex_held(store):
+    """EX.HELD. True when the last record was store, to the variable in slot 0, it ended at g.cb_n,
+    and no jump lands here: A, or A/Y, already holds that variable, so its load can go.
+
+    Trap: a DIM ... AT address, K_SEC_CONST, stays out. It can be a port such as VERA's data port,
+    where a read does not give back what was written. The flags are not the load's, and g.em_id stays
+    the store, so ex_z_set does not take them for it."""
+    return g.em_id == store and g.em_end == g.cb_n and g.em_s == g.sl_s[0] and g.em_v == g.sl_v[0] \
+        and g.em_s != K_SEC_CONST
 
 
 def ex_spill():
