@@ -88,6 +88,29 @@ SUB DO_INDEX()
   TOP_OF_ORDER()
 END SUB
 
+' Reads field names with commas between them, all of REST, and puts their numbers in the bytes
+' at LIST from LIST + COUNT. Returns COUNT and the names read, or reports the error and gives 0.
+FUNCT READ_FIELD_LIST(LIST AS UWORD, COUNT AS UBYTE) AS UBYTE
+  DIM FIELD AS UBYTE
+  CURSOR = 1
+  DO
+    SKIP_SPACES()
+    FIELD = DB.FIELD_NUMBER(NAME_AT())
+    IF FIELD = 0
+      REPORT_ERROR("Field not found")
+      RETURN 0
+    ENDIF
+    ContentsAt(LIST + COUNT) = FIELD
+    COUNT = COUNT + 1
+    SKIP_SPACES()
+    IF CURRENT_CHAR() <> 44 THEN EXIT DO
+    CURSOR = CURSOR + 1
+  LOOP
+  IF CURRENT_CHAR() = 0 THEN RETURN COUNT
+  SYNTAX_ERROR()
+  RETURN 0
+END FUNCT
+
 ' SET INDEX TO names: closes the open indexes, then opens names, as OPEN_INDEXES. SET INDEX TO
 ' alone leaves the record order. SET PATH TO dirs: USE, the index names and DO look for a
 ' name in dirs, apart by ;, as FIND_FILE. SET PATH TO alone clears dirs. SET FILTER TO condition:
@@ -96,7 +119,10 @@ END SUB
 ' clear it. SET REVERSE ON, or SET REV ON: what prints after shows in reverse video. SET
 ' REVERSE OFF: the default colors again. SET DELETED ON: GO TOP, GO BOTTOM, SKIP, the scopes and
 ' BROWSE pass over deleted records, in both areas, across USE. SET DELETED OFF ends it.
+' SET FIELDS TO names: adds names to the fields a BROWSE alone shows, at most 32 for the area; a
+' bad name adds none. SET FIELDS TO alone clears them. USE and CREATE clear them.
 SUB DO_SET()
+  DIM COUNT AS UBYTE
   NEXT_WORD()
   IF TOKEN = "PATH"
     NEXT_WORD()
@@ -149,6 +175,18 @@ SUB DO_SET()
       RETURN
     ELSEIF TOKEN = "OFF"
       SKIP_DELETED = 0
+      RETURN
+    ENDIF
+  ELSEIF IS("FIELDS")
+    NEXT_WORD()
+    IF TOKEN = "TO"
+      IF IN_USE() = 0 THEN RETURN
+      IF REST = ""
+        SET_FIELD_COUNT(AREA) = 0
+        RETURN
+      ENDIF
+      COUNT = READ_FIELD_LIST(@SET_FIELD + AREA * 32, SET_FIELD_COUNT(AREA))
+      IF COUNT THEN SET_FIELD_COUNT(AREA) = COUNT
       RETURN
     ENDIF
   ENDIF

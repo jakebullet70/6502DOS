@@ -46,6 +46,8 @@ DIM SEARCH_PATH AS STRING * 80      ' the directories of SET PATH TO, apart by ;
 DIM FILTER AS STRING * 128          ' the condition of SET FILTER TO, "" for none
 DIM OTHER_FILTER AS STRING * 128    ' FILTER of the other area
 DIM SKIP_DELETED AS UBYTE           ' 1 after SET DELETED ON
+DIM SET_FIELD(64) AS UBYTE          ' SET FIELDS TO's field numbers, 32 from AREA * 32
+DIM SET_FIELD_COUNT(2) AS UBYTE     ' how many each area has, 0 for none
 CONST PUSH_LIMIT AS UBYTE = 4       ' the levels of PUSH
 DIM PUSH_DEPTH AS UBYTE             ' the levels PUSH has saved and POP not taken back
 DIM PUSHED_AREA(4) AS UBYTE         ' AREA of each level
@@ -173,6 +175,7 @@ SUB NEW_TABLE(PATH AS STRING)
   ENDIF
   TABLE_NAME = WITH_EXTENSION(PATH, ".DB")
   FILTER = ""
+  SET_FIELD_COUNT(AREA) = 0
 END SUB
 
 SUB SYNTAX_ERROR()
@@ -665,6 +668,8 @@ SEARCH_PATH = ""
 FILTER = ""
 OTHER_FILTER = ""
 SKIP_DELETED = 0
+SET_FIELD_COUNT(0) = 0
+SET_FIELD_COUNT(1) = 0
 CALLER_BANK = ContentsAt(DB.RAM_BANK)
 VARIABLE_BANK = DB.TAKE_BANK()
 IF VARIABLE_BANK = 0

@@ -189,12 +189,17 @@ SUB FLIP_PICKED()
   FLIP_CELLS(PICKED_ROW + 2, COLUMN, SHOWN_COLUMN(PICKED_FIELD + 1) - COLUMN - 1)
 END SUB
 
-' Sets SHOWN_COUNT and BROWSE_FIELD from REST: "" for every field of the table, or FIELDS and
-' names with commas between them, at most 32, in the order to show. 1 when they are good, else
-' reports the error and gives 0.
+' Sets SHOWN_COUNT and BROWSE_FIELD from REST: "" for the area's SET FIELDS TO list, or every field
+' of the table when it has none, or FIELDS and names with commas between them, at most 32, in the
+' order to show. Not 0 when they are good, else reports the error and gives 0.
 FUNCT READ_SHOWN() AS UBYTE
   DIM FIELD AS UBYTE
   IF REST = ""
+    SHOWN_COUNT = SET_FIELD_COUNT(AREA)
+    IF SHOWN_COUNT
+      COPY_BYTES(@BROWSE_FIELD, @SET_FIELD + AREA * 32, SHOWN_COUNT)
+      RETURN 1
+    ENDIF
     SHOWN_COUNT = DB.FIELD_COUNT()
     FOR FIELD = 1 TO SHOWN_COUNT
       BROWSE_FIELD(FIELD - 1) = FIELD
@@ -206,24 +211,8 @@ FUNCT READ_SHOWN() AS UBYTE
     SYNTAX_ERROR()
     RETURN 0
   ENDIF
-  SHOWN_COUNT = 0
-  CURSOR = 1
-  DO
-    SKIP_SPACES()
-    FIELD = DB.FIELD_NUMBER(NAME_AT())
-    IF FIELD = 0
-      REPORT_ERROR("Field not found")
-      RETURN 0
-    ENDIF
-    BROWSE_FIELD(SHOWN_COUNT) = FIELD
-    SHOWN_COUNT = SHOWN_COUNT + 1
-    SKIP_SPACES()
-    IF CURRENT_CHAR() <> 44 THEN EXIT DO
-    CURSOR = CURSOR + 1
-  LOOP
-  IF CURRENT_CHAR() = 0 THEN RETURN 1
-  SYNTAX_ERROR()
-  RETURN 0
+  SHOWN_COUNT = READ_FIELD_LIST(@BROWSE_FIELD, 0)
+  RETURN SHOWN_COUNT
 END FUNCT
 
 ' BROWSE, or BROWSE FIELDS name, name, ...: shows the records that meet FILTER along the order,
