@@ -2,6 +2,10 @@
 ' -- TED file, the Tiny Editor
 ' -- edits a text file on the full screen: 29 rows of text and a status row with the file name,
 ' -- the line and the column of the cursor, and F1 Help. For the command line, not for scripts.
+' -- The registry key THEME names the theme: THEME = DARK reads C:\sys\themes\DARK.GTH. A missing
+' -- key reads DARK. The text takes the theme's CONSOLE color and the status row its STATUS color.
+' -- With no theme file, the text keeps the console's color and the status row is black on light
+' -- grey. The console's color comes back at the end.
 ' -- Left and Right move the cursor one character, Up and Down one line. Up and Down keep the
 ' -- column the cursor came from. Home and End go to the start and the end of the line. PgUp
 ' -- and PgDn move 29 lines. The view moves sideways 8 columns at a time to keep the cursor
@@ -52,8 +56,11 @@
 #INCLUDE "HELPSW.UXI"
 CONST SLOT_P1 AS UBYTE = 0, SLOT_P2 AS UBYTE = 1
 
-' The status row's colors, black on light grey.
-CONST STATUS_COLORS$ = "{BLACK}{ON WHITE}"
+' A theme file's bytes, and the places of STATUS and CONSOLE in them. NO_THEME_STATUS is black on
+' light grey.
+' Checklist: the size of COLORS$ and the places in ENUM ROLE in lib/GUI.UXI.
+CONST THEME_SIZE AS UBYTE = 15, STATUS_BYTE AS UBYTE = 12, CONSOLE_BYTE AS UBYTE = 14
+CONST NO_THEME_STATUS AS UBYTE = $F0
 CONST TEXT_ROWS AS UBYTE = 29, STATUS_ROW AS UBYTE = 29
 CONST COLUMNS AS UBYTE = 80
 CONST SHIFT_STEP AS UBYTE = 8, NO_MARK AS UBYTE = 255
@@ -72,6 +79,9 @@ CONST DOS_INDEX_NAME$ = "C:\sys\HELP.IDX"
 
 DIM FILE_NAME AS STRING * 80, STATUS AS STRING * 120, MESSAGE AS STRING * 40
 DIM EDITED_FILE AS UWORD
+' Each color is background times 16 plus foreground. CONSOLE_COLOR is the console's at the start.
+DIM THEME_COLORS(THEME_SIZE) AS UBYTE
+DIM CONSOLE_COLOR AS UBYTE, TEXT_COLOR AS UBYTE, STATUS_COLOR AS UBYTE
 ' The text is a gap buffer of ROOM bytes in BANK_COUNT RAM banks. Byte PLACE of the buffer is
 ' at WINDOW_START + PLACE MOD 8192 in bank PAGE_BANK(PLACE >> 8). Positions 0 to TEXT_LENGTH
 ' count the text's bytes. The bytes from GAP_POSITION on lie GAP_SIZE bytes further on.
@@ -534,6 +544,26 @@ END SUB
 
 
 
+' Sets TEXT_COLOR and STATUS_COLOR from the theme file REG THEME names, and sets the console to
+' TEXT_COLOR.
+SUB READ_THEME()
+  DIM THEME_PATH AS STRING * 50, THEME_FILE AS UWORD, COUNT AS UWORD
+  CONSOLE_COLOR = DOS.GET_COLOR()
+  TEXT_COLOR = CONSOLE_COLOR
+  STATUS_COLOR = NO_THEME_STATUS
+  THEME_PATH = "C:\sys\themes\" + DOS.REG_GET("THEME", "DARK") + ".GTH"
+  THEME_FILE = DOS.OPEN_FILE(THEME_PATH, DOS.ACCESS_READ)
+  IF DOS.ERROR = 0 THEN
+    COUNT = DOS.READ_FILE(THEME_FILE, @THEME_COLORS, THEME_SIZE)
+    DOS.CLOSE_FILE(THEME_FILE)
+    TEXT_COLOR = THEME_COLORS(CONSOLE_BYTE)
+    STATUS_COLOR = THEME_COLORS(STATUS_BYTE)
+  END IF
+  DOS.SET_COLOR(TEXT_COLOR)
+END SUB
+
+
+
 ' Shows the status row: the file name, the line and the column, F1 Help, and MESSAGE. It stays
 ' under 80 characters, so the screen does not scroll.
 SUB SHOW_STATUS()
@@ -545,9 +575,11 @@ SUB SHOW_STATUS()
   STATUS = STATUS + LEFT$(FILE_NAME, 24) + "  Ln" + STR$(CURSOR_LINE + 1)
   STATUS = STATUS + "  Col" + STR$(CURSOR_COLUMN + 1) + "  " + MESSAGE
   CONS.LOCATE(STATUS_ROW, 0)
-  PRINT STATUS_COLORS$; LEFT$(STATUS, COLUMNS - 9); CONS.CLEAR_EOL$;
+  DOS.SET_COLOR(STATUS_COLOR)
+  PRINT LEFT$(STATUS, COLUMNS - 9); CONS.CLEAR_EOL$;
   CONS.LOCATE(STATUS_ROW, COLUMNS - 9)
-  PRINT "F1 Help"; CONS.NORMAL$;
+  PRINT "F1 Help";
+  DOS.SET_COLOR(TEXT_COLOR)
 END SUB
 
 
@@ -760,9 +792,10 @@ SUB SHOW_DOS_HELP()
     START = START + 1
   LOOP
   CONS.LOCATE(STATUS_ROW, 0)
-  PRINT STATUS_COLORS$; "DOS help on: "; CONS.CLEAR_EOL$;
+  DOS.SET_COLOR(STATUS_COLOR)
+  PRINT "DOS help on: "; CONS.CLEAR_EOL$;
   KEY = DOS.CON_EDIT(TOPIC)
-  PRINT CONS.NORMAL$;
+  DOS.SET_COLOR(TEXT_COLOR)
   NEED_PAGE = 1
   IF KEY = KEYS.ENTER THEN SHOW_TEXT(1)
 END SUB
@@ -1022,6 +1055,7 @@ IF HEAP.SYS_STRINGS_GET(SLOT_P2) <> "" THEN
 END IF
 QUIT = LOAD()
 IF QUIT <> 0 THEN END QUIT
+READ_THEME()
 GAP_POSITION = TEXT_LENGTH
 GAP_SIZE = ROOM - TEXT_LENGTH
 DOS.STOP_KEY(DOS.STOP.OFF)
@@ -1163,5 +1197,6 @@ DO
   SYS DOS.API_CON_STATUS
   IF DOS.REG_A = 0 AND QUIT = 0 THEN DRAW()
 LOOP UNTIL QUIT = 1
-PRINT CONS.NORMAL$; CONS.CLEAR_SCREEN$; "TED - The Tiny Editor... Bye!"
+DOS.SET_COLOR(CONSOLE_COLOR)
+PRINT CONS.CLEAR_SCREEN$; "TED - The Tiny Editor... Bye!"
 END 0
