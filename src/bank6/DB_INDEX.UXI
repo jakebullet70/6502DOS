@@ -119,14 +119,15 @@ END FUNCT
 ' name in dirs, apart by ;, as FIND_FILE. SET PATH TO alone clears dirs. SET FILTER TO condition:
 ' GO TOP, GO BOTTOM, SKIP, the scopes and COPY TO pass over the records that do not meet the
 ' logical condition; the current record stays. SET FILTER TO alone clears it. USE and CREATE
-' clear it. SET REVERSE ON, or SET REV ON: what prints after shows in reverse video. SET
+' clear it. SET VALID TO condition: BROWSE and READ write no record that does not meet the logical
+' condition. SET VALID TO alone clears it. USE and CREATE clear it. SET REVERSE ON, or SET REV ON: what prints after shows in reverse video. SET
 ' REVERSE OFF: the default colors again. SET DELETED ON: GO TOP, GO BOTTOM, SKIP, the scopes and
 ' BROWSE pass over deleted records, in both areas, across USE. SET DELETED OFF ends it.
 ' SET FIELDS TO names: adds names to the fields a BROWSE alone shows, at most 32 for the area,
 ' RECNO() among them for the record's number; a bad name adds none. SET FIELDS TO alone clears
 ' them. USE and CREATE clear them.
 SUB DO_SET()
-  DIM COUNT AS UBYTE
+  DIM COUNT AS UBYTE, VALIDATING AS UBYTE
   NEXT_WORD()
   IF TOKEN = "PATH"
     NEXT_WORD()
@@ -134,7 +135,8 @@ SUB DO_SET()
       SEARCH_PATH = REST
       RETURN
     ENDIF
-  ELSEIF IS("FILTER")
+  ELSEIF IS("FILTER") OR IS("VALID")
+    VALIDATING = IS("VALID")
     NEXT_WORD()
     IF TOKEN = "TO"
       IF IN_USE() = 0 THEN RETURN
@@ -152,7 +154,11 @@ SUB DO_SET()
           RETURN
         ENDIF
       ENDIF
-      FILTER = REST
+      IF VALIDATING
+        VALID_RULE = REST
+      ELSE
+        FILTER = REST
+      ENDIF
       RETURN
     ENDIF
   ELSEIF IS("INDEX")

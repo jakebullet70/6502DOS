@@ -1,7 +1,7 @@
 ' XBASE.UXB -- DB, the dot prompt over the table library (docs/DB.PLAN.md). Reads a command at
 ' the prompt ". " and runs it: USE, CREATE, LIST, DISPLAY, GO or GOTO, SKIP, LOCATE, CONTINUE, DISPLAY
 ' STRUCTURE, ?, STORE, name = value, RELEASE, DISPLAY MEMORY, COUNT, SUM, APPEND, APPEND BLANK,
-' EDIT, BROWSE, REPLACE, DELETE, RECALL, PACK, INDEX ON, SET INDEX TO, SET PATH TO, SET FILTER TO, SET DELETED, FIND, REINDEX, SELECT PRIMARY,
+' EDIT, BROWSE, REPLACE, DELETE, RECALL, PACK, INDEX ON, SET INDEX TO, SET PATH TO, SET FILTER TO, SET VALID TO, SET DELETED, FIND, REINDEX, SELECT PRIMARY,
 ' SELECT SECONDARY, PUSH, POP, DO, RETURN, CANCEL, IF, ELSE, ENDIF, DO WHILE, ENDDO, ACCEPT, INPUT, WAIT,
 ' MODIFY COMMAND, @ ... SAY ... GET, READ, @ ... PROMPT, MENU TO, CLEAR, CLS, SAVE SCREEN TO, RESTORE SCREEN FROM, HELP, REG and QUIT. A command word may be cut to
 ' its first 4 letters, as DISP STRU. LIST, DISPLAY, LOCATE, COUNT, SUM, REPLACE, DELETE and
@@ -47,6 +47,8 @@ DIM OTHER_DELETED AS UBYTE          ' DB.DELETED of the other area
 DIM SEARCH_PATH AS STRING * 80      ' the directories of SET PATH TO, apart by ;
 DIM FILTER AS STRING * 128          ' the condition of SET FILTER TO, "" for none
 DIM OTHER_FILTER AS STRING * 128    ' FILTER of the other area
+DIM VALID_RULE AS STRING * 128      ' the condition of SET VALID TO, "" for none
+DIM OTHER_VALID AS STRING * 128     ' VALID_RULE of the other area
 DIM SKIP_DELETED AS UBYTE           ' 1 after SET DELETED ON
 DIM KEY_PRESSED AS UWORD            ' the last key WAIT_FOR_KEY read, 0 for none
 DIM SET_FIELD(64) AS UBYTE          ' SET FIELDS TO's field numbers, 32 from AREA * 32
@@ -178,6 +180,7 @@ SUB NEW_TABLE(PATH AS STRING)
   ENDIF
   TABLE_NAME = WITH_EXTENSION(PATH, ".DB")
   FILTER = ""
+  VALID_RULE = ""
   SET_FIELD_COUNT(AREA) = 0
 END SUB
 
@@ -244,23 +247,28 @@ END SUB
 #INCLUDE "DB_FUNC.UXI"
 #INCLUDE "DB_MEM.UXI"
 
-' 1 past the last, else 0 when SKIP_DELETED is set and the current record is deleted, else 1 when
-' it meets FILTER or FILTER is "". Else 0. REST and CURSOR are kept. On an error it sets FAILED
-' and gives 1.
-FUNCT IN_FILTER() AS UBYTE
+' 1 when the current record meets the logical condition RULE, or RULE is "". Else 0. REST and
+' CURSOR are kept. On an error it sets FAILED and gives 1.
+FUNCT MEETS_RULE(RULE AS STRING) AS UBYTE
   DIM KEPT_REST AS STRING * 128, KEPT_CURSOR AS UBYTE, MEETS AS UBYTE
-  IF PAST_LAST() THEN RETURN 1
-  IF SKIP_DELETED AND DB.DELETED THEN RETURN 0
-  IF FILTER = "" THEN RETURN 1
+  IF RULE = "" THEN RETURN 1
   KEPT_REST = REST
   KEPT_CURSOR = CURSOR
-  REST = FILTER
+  REST = RULE
   CURSOR = 1
   EVALUATE()
   MEETS = FAILED OR VALUE_STACK(0)
   REST = KEPT_REST
   CURSOR = KEPT_CURSOR
   RETURN MEETS
+END FUNCT
+
+' 1 past the last, else 0 when SKIP_DELETED is set and the current record is deleted, else
+' MEETS_RULE of FILTER.
+FUNCT IN_FILTER() AS UBYTE
+  IF PAST_LAST() THEN RETURN 1
+  IF SKIP_DELETED AND DB.DELETED THEN RETURN 0
+  RETURN MEETS_RULE(FILTER)
 END FUNCT
 
 ' Makes current RECORD, as REACHED, then the first record from it along the order that meets
@@ -273,7 +281,7 @@ SUB REACH_FILTERED(RECORD AS UWORD)
 END SUB
 
 ' Makes the other work area the one in use: its table, path, current record, BEFORE_FIRST,
-' DB.DELETED and FILTER change places with the area's, and DB.WORKSPACE follows.
+' DB.DELETED, FILTER and VALID_RULE change places with the area's, and DB.WORKSPACE follows.
 ' Checklist: a new state of the area gets an OTHER_ copy, swapped here.
 SUB SWAP_AREA()
   DIM KEPT AS UWORD, KEPT_NAME AS STRING * 128
@@ -283,6 +291,9 @@ SUB SWAP_AREA()
   KEPT_NAME = FILTER
   FILTER = OTHER_FILTER
   OTHER_FILTER = KEPT_NAME
+  KEPT_NAME = VALID_RULE
+  VALID_RULE = OTHER_VALID
+  OTHER_VALID = KEPT_NAME
   KEPT = TABLE
   TABLE = OTHER_TABLE
   OTHER_TABLE = KEPT
@@ -383,10 +394,9 @@ END FUNCT
 
 ' Reads an expression in REST at CURSOR into value 0 of the value stack: numbers, text,
 ' logicals, fields and functions, with brackets and, first to last, a unary minus, * /, + -,
-' the compares = # < > <= >= $, .NOT., .AND., .OR.. Text takes + and the compares; $ is text
-' in text. It stops at the first character that cannot go on the expression. UXCBASIC has no
-' recursion, so the brackets, the function calls and the order of the operators are worked
-' with the two stacks.
+' the compares = # < > <= >=, .NOT., .AND., .OR.. Text takes + and the compares. It stops at the
+' first character that cannot go on the expression. UXCBASIC has no recursion, so the brackets,
+' the function calls and the order of the operators are worked with the two stacks.
 SUB EVALUATE()
   DIM CODE AS UBYTE, NEW_PRIORITY AS UBYTE, OPERATOR AS UBYTE, LENGTH AS UBYTE
   DIM DOTTED AS STRING * 20

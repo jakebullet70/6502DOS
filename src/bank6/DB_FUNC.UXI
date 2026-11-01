@@ -4,12 +4,12 @@
 ' The functions. The codes start at 7, above OPERATION's, and stay below 32.
 ' Checklist: FUNCTION_NUMBER's names are in this order. TEXT_LENGTH is the first that takes
 ' arguments. NUMBER_TEXT is the first that takes more than one. PART_TEXT is the first that needs
-' more than one.
+' more than one. TEXT_CENTER is the first that takes at most two.
 ENUM BUILT_IN
   NONE = 0
   RECORD_NUMBER = 7, END_OF_FILE, START_OF_FILE, IS_DELETED, TODAY, LAST_KEY, TEXT_LENGTH
-  UPPER_CASE, TRIM_END, TEXT_VALUE, WHOLE_PART, FILE_EXISTS, REGISTRY_VALUE, NUMBER_TEXT, PART_TEXT, TEXT_CENTER
-  MENU_PICK
+  UPPER_CASE, TRIM_END, TEXT_VALUE, WHOLE_PART, FILE_EXISTS, REGISTRY_VALUE, NUMBER_TEXT, PART_TEXT, MENU_PICK
+  TEXT_CENTER, TEXT_PLACE, IN_LIST
 END ENUM
 
 ' The last two digits of NUMBER.
@@ -22,7 +22,7 @@ FUNCT FUNCTION_NUMBER(NAME AS STRING) AS ENUM.BUILT_IN
   DIM PLACE AS UBYTE
   IF LEN(NAME) > 8 THEN RETURN BUILT_IN.NONE
   ' 8 characters a name. A name padded with spaces can only match at the start of one.
-  PLACE = INSTR("RECNO   EOF     BOF     DELETED DATE    LASTKEY LEN     UPPER   TRIM    VAL     INT     FILE    REG     STR     SUBSTR  CENTER  MENU    ",LEFT$(NAME + "        ", 8))
+  PLACE = INSTR("RECNO   EOF     BOF     DELETED DATE    LASTKEY LEN     UPPER   TRIM    VAL     INT     FILE    REG     STR     SUBSTR  MENU    CENTER  INSTR   INLIST  ",LEFT$(NAME + "        ", 8))
   IF PLACE = 0 THEN RETURN BUILT_IN.NONE
   RETURN PLACE / 8 + BUILT_IN.RECORD_NUMBER
 END FUNCT
@@ -100,15 +100,17 @@ END FUNCT
 ' right-aligned in length characters, 10 and 0 when left out; a longer one comes back whole.
 ' SUBSTR(text, start, count) is count characters from start, all the rest when count is left
 ' out. CENTER(text, width) is text centered in width characters, at most 82; a longer one comes
-' back whole. FILE(text) is .T. when a file or folder matches the path text. REG(text) is the
-' value of the key text in the settings store C:\6502DOS.REG, "" when it is missing. MENU(row,
-' column, items) is MENU_FUNCTION's.
+' back whole. INSTR(text, part) is where part starts in text, from 1; 0 when it is not there or
+' is "". INLIST(list, text) is .T. when text, without its trailing spaces, is one of the items of
+' list, apart by ;. A list that ends in ; has a blank item. FILE(text) is .T. when a file or folder matches the path text. REG(text) is the value of
+' the key text in the settings store C:\6502DOS.REG, "" when it is missing. MENU(row, column,
+' items) is MENU_FUNCTION's.
 SUB APPLY_FUNCTION(ROUTINE AS ENUM.BUILT_IN, ARGUMENTS AS UBYTE)
   DIM SLOT AS UBYTE, VALUE AS UWORD, START AS UBYTE, LENGTH AS UBYTE, KIND AS ENUM.VALUE_KIND
   DIM NEGATIVE AS UBYTE, MOST AS UBYTE, SECOND AS UBYTE, THIRD AS UBYTE, TEXT AS STRING * 255
   MOST = 1
   IF ROUTINE >= BUILT_IN.NUMBER_TEXT THEN MOST = 3
-  IF ARGUMENTS = 0 OR ARGUMENTS > MOST OR (ROUTINE >= BUILT_IN.PART_TEXT AND ARGUMENTS = 1) OR (ROUTINE = BUILT_IN.TEXT_CENTER AND ARGUMENTS = 3)
+  IF ARGUMENTS = 0 OR ARGUMENTS > MOST OR (ROUTINE >= BUILT_IN.PART_TEXT AND ARGUMENTS = 1) OR (ROUTINE >= BUILT_IN.TEXT_CENTER AND ARGUMENTS = 3)
     SYNTAX_ERROR()
     RETURN
   ENDIF
@@ -118,6 +120,26 @@ SUB APPLY_FUNCTION(ROUTINE AS ENUM.BUILT_IN, ARGUMENTS AS UBYTE)
       MENU_FUNCTION(SLOT)
     ELSE
       SYNTAX_ERROR()
+    ENDIF
+    RETURN
+  ENDIF
+  IF ROUTINE >= BUILT_IN.TEXT_PLACE
+    IF VALUE_TYPE(SLOT) <> VALUE_KIND.TEXT OR VALUE_TYPE(SLOT + 1) <> VALUE_KIND.TEXT
+      TYPE_MISMATCH()
+      RETURN
+    ENDIF
+    IF ROUTINE = BUILT_IN.TEXT_PLACE
+      START = INSTR(TEXT_OF(SLOT), TEXT_OF(SLOT + 1))
+    ELSE
+      START = INSTR(";" + TEXT_OF(SLOT) + ";", ";" + RTRIM$(TEXT_OF(SLOT + 1)) + ";")
+    ENDIF
+    ' The two texts are the last of TEXT_BUFFER, and are spent.
+    TEXT_BUFFER = LEFT$(TEXT_BUFFER, ContentsAt(VALUE_AT(SLOT)) - 1)
+    VALUE_COUNT = SLOT
+    IF ROUTINE = BUILT_IN.TEXT_PLACE
+      PUSH_WHOLE(START)
+    ELSE
+      PUSH_LOGICAL(START <> 0)
     ENDIF
     RETURN
   ENDIF

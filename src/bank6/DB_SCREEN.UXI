@@ -582,8 +582,9 @@ END SUB
 
 ' Puts the text of each GET in its field or variable, first to last: a text as it is, a number
 ' read as a number expression, a blank one 0, a logical true for T or Y. A field takes it as
-' REPLACE does, and a record with a GET's field is written. A wrong value prints its error
-' and the GETs after it are not stored; the record is then read again.
+' REPLACE does, and a record with a GET's field is written when it meets VALID_RULE, else Invalid
+' value. A wrong value prints its error and the GETs after it are not stored; the record is then
+' read again.
 SUB STORE_GETS()
   DIM NUMBER AS UBYTE, FIELD AS UBYTE, WRITING AS UBYTE, KIND AS ENUM.VALUE_KIND
   DIM NAME AS STRING * 10, TEXT_AT AS UWORD
@@ -622,6 +623,9 @@ SUB STORE_GETS()
     NUMBER = NUMBER + 1
   LOOP
   IF WRITING = 0 THEN RETURN
+  IF FAILED = 0
+    IF MEETS_RULE(VALID_RULE) = 0 THEN REPORT_ERROR("Invalid value")
+  ENDIF
   IF FAILED
     MOVE_TO(CURRENT)
     RETURN
