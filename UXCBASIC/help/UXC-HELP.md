@@ -433,9 +433,10 @@ The functions:
 - STR.name is the same function as name: STR.MID$ is MID$. STR.UXI in the
   6502DOS library binds them in NAMESPACE STR.
 - STR.PADL(s, width) is s with spaces in front, width characters in all, and
-  STR.PADR(s, width) is s with spaces after it: STR.PADL("7", 3) is "  7". A
-  text of width characters or more comes back whole. Width and the length of s
-  are at most 82. Both are in STR.UXI.
+  STR.PADR(s, width) is s with spaces after it: STR.PADL("7", 3) is "  7".
+  STR.PADC(s, width) is s centered, the odd space after it. A text of width
+  characters or more comes back whole. Width and the length of s are at most
+  82. All three are in STR.UXI.
 - INSTR(s, find, start) is the position of the first find in s at or after
   position start, a UBYTE. It is 0 when there is none, or when find is empty.
   Without start, the search starts at 1, and 0 is the same as 1.

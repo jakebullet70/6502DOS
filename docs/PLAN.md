@@ -666,7 +666,8 @@ Short names:
 - `COLOR foreground[,background]` sets the color of the characters written after it:
   `COLOR WHITE, BLUE`. Each value runs 0 to 15 (Variables, below). With no background, the
   current background stays. A value out of range gives `Syntax error`.
-- `BEEP` prints the BEL, `CHR$(7)`. The console makes no sound for it yet.
+- `BEEP` prints the BEL, `CHR$(7)`. The console plays 880 Hz on PSG voice 15 for about 98 ms, and
+  waits for it.
 - `PAUSE` waits for a key and drops it. It prints nothing. The key comes from the keyboard, even
   under `FROM`. Ctrl+C ends it too.
 - `WAIT seconds` waits that many seconds, 60 VSYNCs each. Only Ctrl+C ends it, checked once a

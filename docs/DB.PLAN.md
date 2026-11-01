@@ -211,8 +211,8 @@ ROM bank 5 has 16,384 bytes. `$D9C8–$FF9F`, 9,688 bytes, are free.
 
 `XBASE.COM` is a stub that starts the program in ROM banks 6 to 8, as `ROMSHELL.COM` starts the
 shell. The program is UXCBASIC, `src/bank6/XBASE.UXB` and the files it includes: `DB_EXPR.UXI`,
-`DB_FUNC.UXI`, `DB_MEM.UXI`, `DB_SCOPE.UXI`, `DB_CHANGE.UXI`, `DB_INDEX.UXI`, `DB_DO.UXI` and
-`DB_SCREEN.UXI`. It is compiled with `#ROMBANKS 6, 7, 8`. It calls the library through
+`DB_FUNC.UXI`, `DB_MEM.UXI`, `DB_SCOPE.UXI`, `DB_CHANGE.UXI`, `DB_INDEX.UXI`, `DB_DO.UXI`,
+`DB_SCREEN.UXI`, `DB_BROWSE.UXI` and `DB_LINE.UXI`. It is compiled with `#ROMBANKS 6, 7, 8`. It calls the library through
 `lib/DB.UXI` and the float through `lib/FLOAT.UXI`.
 
 `XBASE` with no command file clears the screen and prints `C:\sys\xbase\splash.dot`, CP437 text,
@@ -227,10 +227,10 @@ A command word may be cut to its first 4 letters, as `DISP STRU`.
 
 | Group | Commands |
 |---|---|
-| Tables | `USE`, `CREATE`, `COPY TO`, `DISPLAY STRUCTURE` |
+| Tables | `USE`, `CLOSE`, `CREATE`, `COPY TO`, `DISPLAY STRUCTURE` |
 | Work areas | `SELECT PRIMARY`, `SELECT SECONDARY`, `PUSH`, `POP` |
 | Moving | `GO`, `GOTO`, `GO TOP`, `GO BOTTOM`, `SKIP`, `LOCATE`, `CONTINUE`, `FIND` |
-| Showing | `LIST`, `DISPLAY`, `?`, `COUNT`, `SUM` |
+| Showing | `LIST`, `DISPLAY`, `BROWSE`, `?`, `COUNT`, `SUM` |
 | Changing | `APPEND`, `APPEND BLANK`, `EDIT`, `REPLACE ... WITH`, `DELETE`, `RECALL`, `PACK`, `ZAP` |
 | Indexes | `INDEX ON ... TO`, `SET INDEX TO`, `USE ... INDEX`, `FIND`, `REINDEX` |
 | Variables | `STORE ... TO`, `name = expression`, `RELEASE`, `DISPLAY MEMORY`, `REG ... TO` |
@@ -238,7 +238,7 @@ A command word may be cut to its first 4 letters, as `DISP STRU`.
 | Menus | `@ ... PROMPT`, `MENU TO`, the function `MENU()` |
 | Screen files | `SAVE SCREEN TO`, `RESTORE SCREEN FROM` |
 | Command files | `DO`, `IF`, `ELSE`, `ENDIF`, `DO WHILE`, `ENDDO`, `RETURN`, `CANCEL`, `ACCEPT`, `INPUT`, `WAIT`, `MODIFY COMMAND`, `QUIT` |
-| Settings | `SET INDEX TO`, `SET PATH TO`, `SET FILTER TO`, `SET REVERSE` |
+| Settings | `SET INDEX TO`, `SET PATH TO`, `SET FILTER TO`, `SET VALID TO`, `SET DELETED`, `SET FIELDS TO`, `SET REVERSE` |
 | Other programs | `HELP`, `!`, `RUN`, `SHELL` |
 
 #### Scopes
@@ -265,6 +265,9 @@ the order.
 - `USE path` closes the table in use, then opens `path`, with `.DB` added when it has no
   extension. `USE` alone only closes. `USE path INDEX names` opens the indexes too, as
   `SET INDEX TO`. Another word after the path is `Syntax error`, and no table is in use.
+- `CLOSE` closes the table in use and its indexes, as `USE` alone does. The other area's table
+  stays open. The filter and the `SET FIELDS TO` list are cleared, and the `LOCATE` ends. Words
+  after it are ignored.
 - `CREATE path` prints `Name,type,length,decimals`, then asks `Field  n: ` for each field, one
   a line, as `NAME,C,20`, `BAL,N,8,2`, `MEMBER,L` or `JOINED,D`, spaces allowed, in either
   case.
@@ -353,6 +356,18 @@ the order.
   records that do not meet it. `GO n` and the first record of `RECORD n` and `NEXT n` are not
   checked. The current record stays. Each area keeps its own filter. `SET FILTER TO` alone
   clears it, and `USE` and `CREATE` clear it.
+- `SET VALID TO condition` takes a logical condition, at most 240 characters, and is checked as
+  `SET FILTER TO` is. `BROWSE` and `READ` check it after the GETs are stored and before the record
+  is written. A false condition beeps, the record is not written, and it is read again. `READ` then
+  prints `Invalid value`. `REPLACE` and `APPEND` do not check it. Each area keeps its own condition,
+  and the `.DB` file does not hold it. `SET VALID TO` alone clears it, and `USE` and `CREATE` clear
+  it.
+- `SET DELETED ON` makes `GO TOP`, `GO BOTTOM`, `SKIP`, the scopes and `BROWSE` pass over deleted
+  records, in both areas and across `USE`. `GO n`, `RECORD n` and `FIND` do not check it. `SET
+  DELETED OFF`, the default, ends it.
+- `SET FIELDS TO names` adds names to the fields `BROWSE` alone shows, at most 32 an area, not
+  checked. `RECNO()` among them shows the record's number there. A bad name adds none, and gives
+  `Field not found`. `SET FIELDS TO` alone clears them, and `USE`, `CREATE` and `CLOSE` clear them.
 - `SET REVERSE ON` prints `ESC[7m`, and what prints after it shows in reverse video.
   `SET REVERSE OFF` prints `ESC[0m`, the default colors. `SET REV` is the same command.
 
@@ -370,8 +385,12 @@ the order.
   `Too many DO levels`.
 - `RETURN` ends the innermost file, and its caller goes on. The end of a file does the same.
   `CANCEL` ends every file, and so does `QUIT`. At the prompt `RETURN` does nothing.
-- A line ends in LF; a CR is dropped. A last line with no LF runs. A line is cut at 128
+- A line ends in LF; a CR is dropped. A last line with no LF runs. A line is cut at 240
   characters. A command file is under 64 KB.
+- A line that ends in a space and `_` joins the next. The `_` goes, the space stays, and the next
+  line loses its leading spaces. Joined lines count together toward the 240 characters and toward
+  the 256 bytes of a `DO WHILE` line. An error names the last line joined. A comment joins too. The
+  prompt has no joining.
 - An error in a file prints `Line n: text` and ends every file. A read error prints its error
   and ends every file.
 - `IF condition`, `ELSE`, `ENDIF`: when the condition is false, the lines up to the `ELSE` or
@@ -417,9 +436,9 @@ the order.
     memory variable that exists, else `Variable not found`.
   - The width is the picture's length. Without a picture it is the field's length, a text
     variable's length, 10 or more for a number variable, or 1 for a logical.
-  - Without a picture the mask is all `#` for a number, `L` for a logical, else all `X`. A
-    number is right-aligned, other values left-aligned, cut to the width. A GET must fit on its
-    row.
+  - Without a picture the mask is all `#` for a number, `L` for a logical, `99999999` for a
+    `D` field, else all `X`. A number is right-aligned, other values left-aligned, cut to the
+    width. A GET must fit on its row.
 - `PICTURE` takes a text expression, a mask of one character a place:
 
 | Character | Takes |
@@ -444,6 +463,7 @@ the order.
 | Up | the GET before |
 | Enter, Tab or Down at the last GET, PgDn, Ctrl+W | end, and store every GET |
 | Esc | end, and store none |
+| Ctrl+U | the start of the same GET |
 
 - Stored, a text is put as it is, a number read as a number expression, blank as 0, and a
   logical true for `T` or `Y`. A field takes it as `REPLACE` does, and the record is written.
@@ -451,6 +471,39 @@ the order.
   again. A variable takes it as `STORE` does.
 - Then the GETs are dropped, and the cursor goes to column 0 of the row after the last GET.
   `READ` with no GETs does nothing; a word after it is `Syntax error`.
+
+#### BROWSE
+
+- `BROWSE [FIELDS names] [@ row, column TO row, column] [DOUBLE] [TITLE expression] [FOOTER
+  expression]` shows a page of records from the current one, one a row, and picks a cell. The
+  clauses come in any order. The record picked at the end is current. Records that `SET FILTER TO`
+  and `SET DELETED ON` hide are passed over. `BROWSE` drops the pending GETs.
+- With no `FIELDS` it shows the `SET FIELDS TO` list. With no list it shows the record's number and
+  every field. `FIELDS` names at most 32 fields, not checked. `RECNO()` in a list shows the record's
+  number there. A row has `*` at its left on a deleted record.
+- `@` draws a box from the top left corner to the bottom right corner, and `BROWSE` stays inside it.
+  What was under the box comes back at the end. `DOUBLE` gives it double lines. A box is at least 5
+  rows by 19 columns, and does not end at row 29, column 79. That is not checked.
+- `TITLE` and `FOOTER` are centered on the box's top and bottom lines, or on rows 0 and 29, in place
+  of the table's name and the keys. Each fits between the sides of the box. That is not checked.
+
+| Key | In `BROWSE` |
+|---|---|
+| Up, Down, PgUp, PgDn | move through the records |
+| Ctrl+Home, Ctrl+End | the first and last record |
+| Left, Ctrl+Left | the field before |
+| Right, Ctrl+Right, Tab, Enter | the next field |
+| Ctrl+Enter | edit the picked cell |
+| Ctrl+U | delete the picked record, or recall it when it is deleted, and write it |
+| Ctrl+W, Esc | end |
+
+- An edit is a GET on the cell. `RECNO()` and a field wider than the page are not edited. Esc ends
+  it with the old value back. Any other key that leaves the cell writes it, then acts. Left and
+  Right stay in the cell. A wrong value shows its error on the names' row until a key. After that,
+  or after a record that breaks `SET VALID TO`, the page is drawn again with the record unchanged.
+- An edited or marked record stays on its row until the page is drawn again.
+- Trap: `Ctrl+Home` or `Ctrl+End` with no record left that qualifies leaves no row on the page, and
+  the keys that follow use rows that hold no record.
 
 #### Menus
 
@@ -499,9 +552,26 @@ MENU TO CHOICE
 ### The expressions
 
 - Types: text, number, logical and date.
-- Operators: `+ - * /`, `( )`, `= # < > <= >=`, `$` (text in text), `.AND.`, `.OR.`, `.NOT.`.
+- Operators: `+ - * /`, `( )`, `= # < > <= >=`, `.AND.`, `.OR.`, `.NOT.`.
 - Functions: `RECNO()`, `EOF()`, `BOF()`, `DELETED()`, `STR()`, `VAL()`, `SUBSTR()`, `TRIM()`,
-  `LEN()`, `INT()`, `UPPER()`, `DATE()`, `FILE()`, `REG()`, `MENU()`.
+  `LEN()`, `INT()`, `UPPER()`, `DATE()`, `FILE()`, `REG()`, `MENU()`, `LASTKEY()`, `CENTER()`,
+  `INSTR()`, `INLIST()`, `POPUP()`.
+- `LASTKEY()` is the last key `BROWSE`, `READ`, `MENU()` or `WAIT` read, as `WAITKEY()` gives it, 0
+  before the first.
+- `CENTER(text, width)` is text centered in width characters, at most 82, the odd space after it. A
+  longer text comes back whole.
+- `INSTR(text, part)` is the place where part starts in text, from 1. It is 0 when part is absent or
+  `""`.
+- `INLIST(list, text)` is `.T.` when text, without trailing spaces and in either case, is an item of
+  list. The items are apart by `;`. A list that ends in `;` has a blank item.
+- `POPUP(list, text)` is `INLIST()`, with a list to pick from when it is in `SET VALID TO`:
+  - The field is text, and the list must not be the field read last.
+  - In `READ`, a miss shows the list under the field's GET when the GETs are stored. The box stays
+    on the screen.
+  - In `BROWSE`, Ctrl+Enter on the field shows the list inside the page, hit or miss, and the field
+    cannot be typed into. The page is drawn again after it. The check on leaving a cell shows no box.
+  - The bar starts on the first item. The item picked goes in the field, cut to its length, and
+    `POPUP()` is `.T.`. Esc makes it `.F.`.
 - Numbers are MSBASIC's 5-byte float: a 32-bit mantissa, about 9 significant digits. A
   field's text becomes a number through `FIN`, and a number becomes text through `FOUT`.
 
@@ -530,8 +600,8 @@ The float code is a copy of MSBASIC's `src/float.s` in ROM bank 5, `src/asm/fp.s
 ### Sizes
 
 ROM banks 6 to 8 have 49,152 bytes. Each bank's code runs from `$C000` to `$FF9F`, 16,288
-bytes, and ends with the 43-byte `T_FAR`. The bytes free, the `$FF` bytes of each bank: bank 6
-755, bank 7 158, bank 8 6,303. The compiler moves the SUBs at the program's tail from bank 6 to
+bytes, and ends with the 43-byte `T_FAR`. The bytes free up to `K_FAR`: bank 6 2,555, bank 7 119,
+bank 8 106. The compiler moves the SUBs at the program's tail from bank 6 to
 banks 7 and 8 by itself.
 
 ## Cmdlets
@@ -738,7 +808,7 @@ written. Every step below is done.
 - A key is at most 100 bytes, of at most 4 fields.
 - An `N` field holds at most 10 characters. A number holds about 9 significant digits.
 - Two programs that open one table at once each keep their own copy of its header.
-- A command line is cut at 128 characters.
+- A command line is cut at 240 characters; the prompt takes 239.
 - Command files nest 8 deep, and `DO WHILE` loops 8 deep. `PUSH` holds 4 levels.
 - At most 32 GETs in 2048 bytes, 16 prompts, and 16 items in `MENU()`.
 - The screen files are 80 by 30.
@@ -753,6 +823,7 @@ written. Every step below is done.
 - A `COLOR` statement.
 - A second kind of `CONST`, kept like a `.MEM` file, in the memory-variable bank. That bank has
   about 7K free.
-- `SET TALK` and `SET DELETED`.
+- `SET TALK`.
+- `REG key TO expression` and `REG(key)` use a private `.REG` file.
 - Check the handling of `D` fields, and add date functions with date arithmetic.
 - The help says what form a `D` field is typed in.
