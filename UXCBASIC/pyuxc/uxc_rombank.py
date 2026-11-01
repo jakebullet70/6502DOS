@@ -239,7 +239,8 @@ def rb_uses():
 
 def rb_bank_size(bank):
     """RB.BANK.SIZE. The bytes bank holds with the SUBs split at g.rb_k and g.rb_k2: its code,
-    its veneers, its runtime and T_FAR; the first bank adds the strings."""
+    its veneers, its runtime and T_FAR; the first bank adds the strings, or with #STRINGFILE the
+    path's length byte and text."""
     veneers = 0
     body = 0
     for t in range(g.rb_n):
@@ -253,6 +254,8 @@ def rb_bank_size(bank):
     if bank == 0:
         # The main code, and each SUB kept with its JMP around.
         body = g.cb_n + g.sp_n
+        if g.lk_strfile != "":
+            body = g.cb_n + len(g.lk_strfile) + 1
         for t in range(g.rb_k, g.rb_n):
             body = body - (g.rb_to[t] - g.rb_from[t])
     return body + veneers * g.rb_veneer_length + rb_runtime(bank) + g.rb_far_length
