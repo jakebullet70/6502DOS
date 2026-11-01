@@ -389,9 +389,12 @@ END FUNCT
 ' box is at least 5 rows by 19 columns, and does not end at row 29, column 79. TITLE and FOOTER are
 ' expressions, centered on the box's top and bottom lines or on rows 0 and 29, in place of the
 ' table's name and the keys. Ctrl+Enter edits the picked cell. Esc ends the edit with the old value
-' back, and any other key that leaves the cell writes it and then acts. BROWSE drops the pending GETs.
-' An edited record stays on its row until the page is drawn again, even when its key or FILTER would
-' move it. An error wider than the box runs over its side.
+' back, and any other key that leaves the cell writes it and then acts. Ctrl+U deletes the picked
+' record, or recalls it when it is deleted, and writes it. BROWSE drops the pending GETs. An edited or
+' marked record stays on its row until the page is drawn again, even when its key, FILTER or SET
+' DELETED would move it. An error wider than the box runs over its side.
+' Trap: Ctrl+Home or Ctrl+End with no record left that meets FILTER and SET DELETED leaves PAGE_COUNT
+' 0, and the keys that follow use rows that hold no record.
 SUB DO_BROWSE()
   DIM SHOWN AS UBYTE, PRESSED AS UWORD, KEPT_ROW AS UBYTE, KEPT_COLUMN AS UBYTE
   IF IN_USE() = 0 THEN RETURN
@@ -463,6 +466,26 @@ SUB DO_BROWSE()
         IF PICKED_FIELD > 0 THEN PICK_FIELD(PICKED_FIELD - 1)
       CASE KEYS.KEY_RIGHT, KEYS.KEY_CTRL_RIGHT, KEYS.TAB, KEYS.ENTER
         IF PICKED_FIELD + 1 < SHOWN_COUNT THEN PICK_FIELD(PICKED_FIELD + 1)
+      CASE 21
+        MOVE_TO(BROWSE_RECORD(PICKED_ROW))
+        IF DB.DELETED
+          DB.RECALL()
+        ELSE
+          DB.DELETE()
+        ENDIF
+        DB.WRITE_RECORD()
+        IF DOS.ERROR <> 0
+          POS(1) = BROWSE_TOP - 1
+          POS(0) = BROWSE_LEFT
+          FILE_ERROR()
+          PRESSED = WAIT_FOR_KEY()
+          FAILED = 0
+          MOVE_TO(BROWSE_RECORD(0))
+          DRAW_PAGE()
+        ELSE
+          BLANK_ROW(PICKED_ROW + BROWSE_TOP)
+          DRAW_RECORD(PICKED_ROW)
+        ENDIF
       CASE 23, KEYS.ESC
         EXIT DO
     END SELECT

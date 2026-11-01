@@ -616,6 +616,48 @@ takes 140 bytes of ROM and 6 bytes of low RAM. A cmdlet itself takes no ROM.
 - Whether `MODIFY STRUCTURE` and `APPEND FROM` forward to a cmdlet. Both act on the table in use,
   and that table must be closed while a `.COM` cmdlet rewrites it.
 
+### The date check, planned
+
+This is not built. The GET of a `D` field checks that each place holds a digit, so month 45 is
+stored.
+
+`DATECHK.COM` is a `.COM` cmdlet in `C:\sys\xbase\`:
+
+- It reads the typed text from `P1$`. It writes the cleaned date to `P1$` and ends with exit code
+  0, or ends with exit code 1 for a bad date. `src/scom/DISKINFO.UXB` reads and writes its strings
+  the same way.
+- It takes `20261101`, `11/1/26` and `11-01-26`. A date with a separator is month, day, year, and a
+  2-digit year is 20xx. `11/1/2026` does not fit an 8-character cell.
+- It checks month 1 to 12, the day limit of the month, and leap years. A blank date is valid.
+- It is not named `DATE`, as `DATE` at the prompt would run it as a cmdlet.
+
+The ROM side:
+
+- `STORE_GETS` runs it for each GET of a `D` field, before `PUSH_TEXT` in the text branch. Exit code
+  0 stores `P1$`. Exit code 1 gives `Invalid value`, and the error path leaves the record unchanged.
+- A missing `DATECHK.COM` stores the date unchecked, with no error.
+- A `D` field's mask goes back to all `X`, as `99999999` blocks `/`, and `DATE_MASK$` goes. Letters
+  are rejected on save, not on the keypress.
+- `PICTURE "@NAME"` names another cmdlet: `@ 5,10 GET BORN PICTURE "@FISCAL"` runs `FISCAL.COM`.
+  `BROWSE` has no `PICTURE`, so it needs the default for `D` fields.
+
+Limits:
+
+- `EDIT`, `APPEND` and `REPLACE` do not use GET, so a bad date still gets in through them.
+- `READ` checks on save, not on leaving the field. A bad date drops all pending GETs.
+- Each date save loads a `.COM` and swaps XBASE's RAM to banks. The time is not measured.
+
+The cost is estimated, and the placement is not checked. The fixed `DATECHK` takes 100 to 150 bytes
+of ROM. `PICTURE "@NAME"` takes 200 to 300, plus name storage for each GET. `DATECHK.COM` takes no
+ROM.
+
+The steps:
+
+1. `DATECHK.COM` and the fixed hook on `D` fields.
+2. `PICTURE "@NAME"`.
+
+A popup calendar can also be a cmdlet. It needs a key to open it and a redraw of the page after it.
+
 ## The steps
 
 D1 to D7 are the library and its UXCBASIC face; A1 to A7 are the program; B1 and B2 its help;

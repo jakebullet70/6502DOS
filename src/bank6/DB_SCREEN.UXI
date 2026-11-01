@@ -8,6 +8,8 @@
 ' next GET's pair starts at GET_END. The text is the value as typed so far.
 CONST GET_LIMIT AS UBYTE = 32
 CONST GET_POOL_SIZE AS UWORD = 2048
+' The mask of a GET of a date field that has no picture. A date field holds 8 characters.
+CONST DATE_MASK$ = "99999999"
 DIM GET_COUNT AS UBYTE, GET_END AS UWORD
 ' Set to 1 by EDIT_GET when it changes a text. BROWSE clears and reads it.
 DIM GET_EDITED AS UBYTE
@@ -50,7 +52,7 @@ END SUB
 ' Edits GET NUMBER's text in place, after GUI.INPUT2's masked field: a typed character types
 ' over the one at the cursor when its mask character takes it, Delete puts a space, Backspace
 ' moves left and puts a space. Left, Right, Home and End move, and the cursor skips the mask's
-' fixed characters. Enter, Tab, Esc, Ctrl+W and every extended key but those four end the edit,
+' fixed characters. Enter, Tab, Esc, Ctrl+U, Ctrl+W and every extended key but those four end the edit,
 ' and the key is returned as WAITKEY() gives it.
 FUNCT EDIT_GET(NUMBER AS UBYTE) AS UWORD
   DIM SPOT AS UBYTE, WIDTH AS UBYTE, BACKWARD AS UBYTE, MASK_CHAR AS UBYTE, TYPED AS UBYTE
@@ -107,7 +109,7 @@ FUNCT EDIT_GET(NUMBER AS UBYTE) AS UWORD
         GET_EDITED = 1
         IF PRESSED < 256 THEN SPOT = SPOT + 1
       CASE ELSE
-        IF PRESSED > 255 OR PRESSED = KEYS.ENTER OR PRESSED = KEYS.TAB OR PRESSED = KEYS.ESC OR PRESSED = 23 THEN RETURN PRESSED
+        IF PRESSED > 255 OR PRESSED = KEYS.ENTER OR PRESSED = KEYS.TAB OR PRESSED = KEYS.ESC OR PRESSED = 21 OR PRESSED = 23 THEN RETURN PRESSED
     END SELECT
   LOOP
 END FUNCT
@@ -116,7 +118,7 @@ END FUNCT
 ' variable and kind; GET_COUNT is not changed. name is a field of the current record, or else a
 ' memory variable. The width is the picture's length, else the field's length, a text
 ' variable's length, 10 or more for a number variable, 1 for a logical. With no picture the
-' mask is all # for a number, L for a logical, else all X. A number is right-aligned in the
+' mask is all # for a number, L for a logical, DATE_MASK$ for a date field, else all X. A number is right-aligned in the
 ' text, other values left-aligned; a value is cut to the width. The mask's fixed characters
 ' replace the value's characters in their places. A GET must fit on its row.
 SUB READ_GET()
@@ -132,6 +134,7 @@ SUB READ_GET()
     RETURN
   ENDIF
   FIELD = 0
+  MASK = ""
   IF TABLE <> 0 THEN FIELD = DB.FIELD_NUMBER(NAME)
   IF FIELD <> 0
     IF PAST_LAST()
@@ -144,6 +147,7 @@ SUB READ_GET()
     KIND = VALUE_KIND.TEXT
     IF FIELD_KIND = DB.FIELD_KIND.NUMBER THEN KIND = VALUE_KIND.NUMBER
     IF FIELD_KIND = DB.FIELD_KIND.LOGICAL THEN KIND = VALUE_KIND.LOGICAL
+    IF FIELD_KIND = DB.FIELD_KIND.DATE THEN MASK = DATE_MASK$
   ELSE
     NUMBER = FIND_VARIABLE(NAME)
     IF NUMBER = VARIABLE_LIMIT
@@ -165,7 +169,6 @@ SUB READ_GET()
     IF KIND = VALUE_KIND.NUMBER AND WIDTH < 10 THEN WIDTH = 10
   ENDIF
   IF KIND = VALUE_KIND.NUMBER THEN TEXT = TRIM$(TEXT)
-  MASK = ""
   SKIP_SPACES()
   IF CURRENT_CHAR() <> 0
     TOKEN = NAME_AT()
