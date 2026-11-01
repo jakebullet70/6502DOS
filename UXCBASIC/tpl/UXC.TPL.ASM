@@ -231,6 +231,9 @@ API_R1  = $04
 API_BANK_ALLOC = 0
 API_BANK_CALL = 0
 API_EXEC_REST = 0
+API_OPEN = 0
+API_READ = 0
+API_CLOSE = 0
         .endif
 ; The end of low RAM: exec loads a program up to here, and exec_rest reads the rest of the file.
 LOW_END = $9f00
@@ -451,6 +454,39 @@ T_RGEND .block
         stz API_R1
         stz API_R1+1
         jsr API_EXEC_REST
+        #endtpl
+        .endblock
+
+; At startup, with #STRINGFILE: read S2 bytes of string literals from a file to S1. S0 is the path
+; in the file, a length byte and S3 bytes, S3 below 128. The path goes to S1 first, as the kernel
+; reads no ROM bank of the program, and the read writes over it. Keeps X.
+T_LITFILE .block
+        #tpl
+        #lo ldy, S3
+path    #aby lda, S0
+        #aby sta, S1
+        dey
+        bpl path
+        #lo lda, S1
+        sta API_R0
+        #hi lda, S1
+        sta API_R0+1
+        phx
+        lda #0                  ; access 0: read
+        jsr API_OPEN            ; X = the handle
+        #lo lda, S1
+        sta API_R0
+        #hi lda, S1
+        sta API_R0+1
+        #lo lda, S2
+        sta API_R1
+        #hi lda, S2
+        sta API_R1+1
+        phx
+        jsr API_READ
+        plx
+        jsr API_CLOSE
+        plx
         #endtpl
         .endblock
 

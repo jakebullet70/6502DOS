@@ -29,6 +29,9 @@ A SUB kept has K_SY_LIVE set before the link step.
     #DATA address   the variables, then the array space, start at the address, outside the
                     file, and the startup clears both: g.lk_apart is 1, g.lk_data the address.
     #ROMBANKS a, b [, c] [, name]  the program runs from ROM banks a, b and c (uxc_rombank).
+    #STRINGFILE "path"  with #DATA: the string literals go to a file, and the startup reads them
+                    from the path on the card: g.lk_strfile (uxc_link). The file is the path's
+                    last part in g.out_folder. The startup does not check the read.
 Each is allowed once. The first pass reads them, so they hold for the whole source wherever
 they stand.
 
@@ -52,7 +55,7 @@ from uxc_code import cb_get, cb_put, fx_put, fx_read, rt_clear, rt_use
 from uxc_defs import K_DD_MAX, K_DS_MAX, K_DV_MAX, K_FRAME_BASE, K_RT_LIST, K_SEC_BSS, \
     K_SEC_CODE, K_SEC_LABEL, K_SEC_REC, K_SEC_STR, K_SEC_VAR, K_SK_ARRAY, K_SK_CALL, K_SK_DEAD, K_SK_LABEL, K_SK_SUB, \
     K_SK_VAR, K_SY_BLOCK, K_SY_FIXED, K_SY_LIVE, K_SY_TEMP, K_TT_EOL, K_TT_NAME, \
-    K_TP_DATA, K_TT_NUM, K_TT_OP, K_TY_STR
+    K_TP_DATA, K_TT_NUM, K_TT_OP, K_TT_STR, K_TY_STR
 import uxc_branch
 import uxc_lex
 import uxc_name
@@ -279,7 +282,7 @@ def dd_keep_line():
     if g.tk_s == "REGION_SLOT":
         uxc_ramreg.rg_line()
         return
-    if g.tk_s == "ORG" or g.tk_s == "DATA" or g.tk_s == "ROMBANKS":
+    if g.tk_s == "ORG" or g.tk_s == "DATA" or g.tk_s == "ROMBANKS" or g.tk_s == "STRINGFILE":
         while g.tk_t != K_TT_EOL:
             uxc_lex.lx_next()
         return
@@ -310,6 +313,9 @@ def dd_place_scan():
     if g.tk_t == K_TT_NAME and g.tk_s == "ROMBANKS":
         dd_rombanks_scan()
         return
+    if g.tk_t == K_TT_NAME and g.tk_s == "STRINGFILE":
+        dd_stringfile_scan()
+        return
     if g.tk_t != K_TT_NAME or (g.tk_s != "ORG" and g.tk_s != "DATA"):
         return
     g.dd_place = g.tk_s
@@ -326,6 +332,20 @@ def dd_place_scan():
             er_stop("#DATA TWICE")
         g.lk_apart = 1
         g.lk_data = g.tk_v
+    uxc_lex.lx_next()
+    if g.tk_t != K_TT_EOL:
+        er_syntax()
+
+
+def dd_stringfile_scan():
+    """DD.STRINGFILE.SCAN. #STRINGFILE "path", with the token at STRINGFILE: g.lk_strfile, 1 to 127
+    characters."""
+    if g.lk_strfile != "":
+        er_stop("#STRINGFILE TWICE")
+    uxc_lex.lx_next()
+    if g.tk_t != K_TT_STR or g.tk_s == "" or len(g.tk_s) > 127:
+        er_syntax()
+    g.lk_strfile = g.tk_s
     uxc_lex.lx_next()
     if g.tk_t != K_TT_EOL:
         er_syntax()

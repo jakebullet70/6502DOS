@@ -9,6 +9,7 @@
 UXC-LINK.BL has the order of the routines and why a forward call needs nothing special.
 """
 
+import ntpath
 import os
 
 import uxc_branch
@@ -124,7 +125,10 @@ def lk_link():
         g.sy_val = g.cb_n
         g.sy_flags = 1
         uxc_sym.sy_set()
-    uxc_code.sp_copy()
+    if g.lk_strfile == "":
+        uxc_code.sp_copy()
+    else:
+        lk_strs_file()
     if g.rb_on != 0:
         uxc_rombank.rb_end()
     # The variables, all 0, in the file or after the strings at #DATA's address.
@@ -154,7 +158,8 @@ def lk_link():
 
 def lk_strs_copy():
     """LK.STRS.COPY. At startup, with #DATA: copy the g.sp_n bytes of strings from the file,
-    at the label %STRS, which lk_link places, to the data area."""
+    at the label %STRS, which lk_link places, to the data area. With #STRINGFILE, %STRS is the
+    path, and T_LITFILE copies it to the data area and reads the strings there."""
     g.sy_name = "%STRS"
     g.sy_ow = 0
     g.sy_kind = K_SK_LABEL
@@ -171,7 +176,29 @@ def lk_strs_copy():
     g.sl_v[1] = 0
     g.sl_s[2] = K_SEC_CONST
     g.sl_v[2] = g.sp_n
-    emit(T.T_LITCOPY)
+    if g.lk_strfile == "":
+        emit(T.T_LITCOPY)
+        return
+    g.sl_s[3] = K_SEC_CONST
+    g.sl_v[3] = len(g.lk_strfile)
+    emit(T.T_LITFILE)
+
+
+def lk_strs_file():
+    """LK.STRS.FILE. With #STRINGFILE: write the strings to the path's last part in g.out_folder,
+    and put the path in the code as a length byte and its text. T_LITFILE copies the path over the
+    start of the data area, so the strings must not be shorter."""
+    if g.lk_apart == 0:
+        er_stop("#STRINGFILE NEEDS #DATA")
+    if g.sp_n <= len(g.lk_strfile):
+        er_stop("#STRINGFILE PATH LONGER THAN THE STRINGS")
+    with open(os.path.join(g.out_folder, ntpath.basename(g.lk_strfile)), "wb") as strings:
+        strings.write(bytes(g.sp_bank[:g.sp_n]))
+    g.cb_b = len(g.lk_strfile)
+    cb_add()
+    for character in g.lk_strfile:
+        g.cb_b = ord(character)
+        cb_add()
 
 
 def lk_fix():

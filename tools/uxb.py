@@ -34,13 +34,24 @@ def includes(source):
     return paths
 
 
+def string_file(source):
+    """Where the string file of source's #STRINGFILE "C:\\path" goes in the folder card, or None."""
+    found = re.search(r'^\s*#STRINGFILE\s+"C:\\([^"]+)"', open(source, encoding="latin-1").read(),
+                      re.IGNORECASE | re.MULTILINE)
+    return os.path.join(ROOT, "card", *found.group(1).split("\\")) if found else None
+
+
 def compile(source, program, second=None, third=None):
     """Compile source to program when program is missing or older than source, than the template
     table, than a file that source includes or than a file of pyuxc. Print the time a compile
     took, and exit on a compile error. second and third are where the second and third ROM
-    banks' files of a #ROMBANKS source go; a compile without one removes it."""
+    banks' files of a #ROMBANKS source go; a compile without one removes it. A #STRINGFILE
+    source's file goes to the card with the program."""
     inputs = [source, TABLE] + includes(source) + glob.glob(os.path.join(PYUXC, "*.py"))
     outputs = [program]
+    strings = string_file(source)
+    if strings is not None:
+        outputs.append(strings)
     if second is not None and re.search(r"^\s*#ROMBANKS\b", open(source, encoding="latin-1").read(),
                                          re.IGNORECASE | re.MULTILINE):
         outputs.append(second)
@@ -61,6 +72,8 @@ def compile(source, program, second=None, third=None):
         sys.exit("%s did not compile: %s" % (os.path.basename(source), result))
     os.makedirs(os.path.dirname(program), exist_ok=True)
     shutil.copyfile(os.path.join(OUT, fields[1]), program)
+    if strings is not None:
+        shutil.copyfile(os.path.join(OUT, os.path.basename(strings)), strings)
     for path, field in ((second, "SECOND "), (third, "THIRD ")):
         if path is None:
             continue

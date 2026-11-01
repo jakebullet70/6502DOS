@@ -46,6 +46,7 @@ def start(tpl_folder):
     g.lk_raw = 0
     g.lk_apart = 0
     g.lk_data = 0
+    g.lk_strfile = ""
     g.lk_strs_n = 0
     g.lk_strs_record = 0
     g.rb_on = 0
