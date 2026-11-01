@@ -21,7 +21,7 @@ Remind the user to `/compact` when a change is done.
 
 Resume here (2026-11-01), `XBASE.COM`, `BROWSE` and cmdlets:
 
-- State: `main` is local only. Every `XBASE.COM` entry below is committed, through cmdlet steps 1 and 2. The user's own, kept out of commits: `card/source/xBASE/bugs/BUGSMENU.PRG` (deleted), `card/source/xBASE/bugs/BUGS.DB`, `card/source/xBASE/bugs/mmenu.prg`. Left by the cmdlet runs, also kept out: `card/6502DOS.INI`, `card/sys/xt/COPYMOVE.HIS`, `card/sys/xt/RENAME.HIS`.
+- State: `main` is local only. Every `XBASE.COM` entry below is committed, through cmdlet steps 1 and 2. Left by the cmdlet runs, kept out of commits: `card/6502DOS.INI`, `card/sys/xt/COPYMOVE.HIS`, `card/sys/xt/RENAME.HIS`.
 - Space: free up to `K_FAR` is 2482 bytes in bank 6, 167 in bank 7 and 2352 in bank 8, total 5001. Low RAM ends at `$424D`, worked out from the growth of `XBASE.STR`. Build 3.20 s, outer 3355 ms, the baseline.
 - `BROWSE` is read-only. Built and working: B1 draw and move, B2 `FIELDS`, `SET FIELDS TO`, `RECNO()` in a list, the window with `@`, `DOUBLE`, `TITLE` and `FOOTER`, `CENTER()`, `LASTKEY()`. Steps left, agreed, in order:
   - B3: cell edit on GET 0, saved on leaving the cell, with `READ_GET`, `EDIT_GET` and `STORE_GETS` in `DB_SCREEN.UXI`. The pending GETs drop. The code goes in `DB_BROWSE.UXI`, which calls none of the three yet.
