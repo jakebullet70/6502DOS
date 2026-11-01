@@ -81,8 +81,18 @@ BROWSE [FIELDS name [, name ...]] [@ row, column TO row, column] [DOUBLE]
   on rows 0 and 29 with no box, in place of the table's name and the keys.
   Each fits between the sides of the box.
   Up, Down, PgUp and PgDn move through the records. Ctrl+Home and Ctrl+End go
-  to the first and last. Ctrl+Left goes to the field before. Ctrl+Right, Tab
-  and Enter go to the next. Ctrl+W or Esc ends BROWSE.
+  to the first and last. Left and Ctrl+Left go to the field before. Right,
+  Ctrl+Right, Tab and Enter go to the next. Ctrl+W or Esc ends BROWSE.
+  Ctrl+Enter edits the picked cell, as a GET with the field's mask. Esc puts
+  the old value back. Any other key that leaves the cell writes it, then
+  acts. In a cell Left and Right stay in the cell. RECNO() and a field wider
+  than the page are not edited. A wrong value shows its error until a key.
+  A record that breaks SET VALID beeps and keeps its old value. The page is
+  then drawn again.
+  Ctrl+U deletes the picked record, or recalls it when it is deleted, and
+  writes it.
+  An edited or marked record stays on its row until the page is drawn again.
+  HELPDB POPUP gives a list to pick a cell's value from.
   BROWSE FIELDS RECNO(), NAME, CITY
   BROWSE @ 5, 10 TO 20, 70 DOUBLE TITLE "Parts" FOOTER DATE()
 :CANCEL
@@ -273,8 +283,8 @@ FIND key
   FIND compares key as typed.
   FIND Smith
 :FUNCTIONS
-RECNO EOF BOF DELETED DATE LEN UPPER TRIM VAL INT FILE REG STR SUBSTR CENTER
-MENU
+RECNO EOF BOF DELETED DATE LASTKEY LEN UPPER TRIM VAL INT FILE REG STR SUBSTR
+CENTER INSTR INLIST POPUP MENU
   A function name is typed whole, with its ( right after it, no space
   between. An unknown name gives Unknown function. A wrong number of
   arguments gives Syntax error, and an argument of the wrong kind Type
@@ -329,12 +339,23 @@ INDEX  SET INDEX  USE ... INDEX  FIND  REINDEX
   GO TOP, GO BOTTOM, SKIP, FIND and the scopes ALL and NEXT follow the
   order. GO n and RECORD n take the record's number in the file.
   HELPDB name gives each of INDEX, SET, USE, FIND and REINDEX.
+:INLIST
+INLIST(list, text)
+  .T. when text, without its trailing spaces and in either case, is an item
+  of list. The items are apart by ;, and a list that ends in ; has a blank
+  item. Two text arguments.
+  ? INLIST("N;L;M;H", PRIORITY)
 :INPUT
 INPUT [prompt] TO name
   Prints prompt, a text, then stores the value of the expression typed in
   the memory variable name: a number, a text in quotes, or a logical. name
   is made when it is new.
   INPUT "Age? " TO AGE
+:INSTR
+INSTR(text, part)
+  The place in text where part starts, from 1. 0 when it is not there, or
+  when part is "". Two text arguments.
+  ? INSTR(NAME, "SMI") > 0
 :INT
 INT(number)
   number cut to a whole number toward 0. INT(-2.7) is -2.
@@ -350,6 +371,11 @@ READ's keys
   Up goes to the GET before.
   PgDn and Ctrl+W end READ and store the GETs.
   Esc ends READ and stores none.
+  Ctrl+U puts the cursor at the start of the same GET.
+:LASTKEY
+LASTKEY()
+  The last key BROWSE, READ, MENU() or WAIT read, as a number, 0 before the
+  first. A character key is its code. Esc is 27, Ctrl+W is 23.
 :LEN
 LEN(text)
   The number of characters of text. A C field counts its padding spaces.
@@ -398,19 +424,18 @@ GO  GOTO  SKIP  LOCATE  CONTINUE  FIND
   plus 1.
   HELPDB name gives each command.
 :OPERATORS
-+ - * / ( ) = # < > <= >= $ .NOT. .AND. .OR.
++ - * / ( ) = # < > <= >= .NOT. .AND. .OR.
   + - * / work on numbers. + joins two texts. A - before a value changes
   its sign.
   = # < > <= >= compare two numbers or two texts and give a logical. # is
   not equal. Two texts compare over the length of the right one: "ABC" =
   "AB" is .T., "AB" = "ABC" .F.. Logicals do not compare.
-  a $ b is .T. when the text a is in the text b.
   .NOT. .AND. .OR. work on logicals.
   The order, first to last: - before a value, * /, + -, the compares,
   .NOT., .AND., .OR.. Brackets go first.
   A division by 0 gives Division by zero. A number too large gives Number
   out of range.
-  ? "SMI" $ NAME .AND. AGE >= 21
+  ? INSTR(NAME, "SMI") > 0 .AND. AGE >= 21
 :PACK
 PACK
   Removes the deleted records and prints "n records left". The first record
@@ -426,8 +451,9 @@ PICTURE text
   X takes any character.
   ! takes any character, a letter made a capital.
   Any other character is fixed: it shows in its place, and the cursor skips
-  it. With no PICTURE the mask is all # for a number, L for a logical, else
-  all X.
+  it. With no PICTURE the mask is all # for a number, L for a logical, all 9
+  for a D field, else all X. A D field's value is not checked, so month 45
+  is stored.
   @ 5, 0 GET PHONE PICTURE "(999) 999-9999"
 :POP
 POP
@@ -435,6 +461,19 @@ POP
   current, and BOF() is as it was. A record past the last of the table now
   in use is the place past the last. POP ends the LOCATE. Without a PUSH
   it gives Stack empty.
+:POPUP
+POPUP(list, text)
+  INLIST, with a list to pick from when it is in SET VALID. text is a text
+  field, and list is not the field read last.
+  In READ, a value not in the list shows the list under the field's GET when
+  the GETs are stored. The box stays on the screen.
+  In BROWSE, Ctrl+Enter on the field shows the list, inside the page, whatever
+  the value, and the field cannot be typed into. The bar starts on the first
+  item.
+  Enter or an item's first character puts that item in the field, cut to its
+  length, and POPUP is .T.. Esc makes it .F.. Up, Down, Left and Right move.
+  Elsewhere POPUP is INLIST.
+  SET VALID TO POPUP("open;closed;hold", STATUS)
 :PROGRAMS
 DO IF ELSE ENDIF DO WHILE ENDDO RETURN CANCEL ACCEPT INPUT WAIT MODIFY !
   A command file is a text file with the extension .PRG, under 64 KB. DO
@@ -442,6 +481,10 @@ DO IF ELSE ENDIF DO WHILE ENDDO RETURN CANCEL ACCEPT INPUT WAIT MODIFY !
   prompt.
   A line ends in LF, and a CR is dropped. A line is cut at 240 characters.
   A DO WHILE line, its line end included, is under 256 bytes.
+  A line that ends in a space and _ joins the next. The _ goes, the space
+  stays, and the next line loses its leading spaces. Joined lines count
+  together toward both limits, and an error names the last line joined. A
+  comment joins too. The prompt has no joining.
   An error in a command file prints "Line n: " and the line, and ends every
   command file.
   HELPDB name gives each command.
@@ -469,7 +512,8 @@ READ
   for T or Y. A field takes the value as REPLACE does, and the record is
   written.
   A wrong value prints its error. The GETs after it are not stored, and no
-  field of the record changes.
+  field of the record changes. A record that breaks SET VALID beeps and
+  prints Invalid value, and no field of the record changes.
   Then the GETs are dropped, and the cursor goes to column 0 of the row
   after the last GET's row.
 :RECALL
@@ -570,6 +614,7 @@ SELECT PRIMARY | SELECT SECONDARY
 SET INDEX TO [name [, name ...]]
 SET PATH TO [folder [; folder ...]]
 SET FILTER TO [condition]
+SET VALID TO [condition]
 SET REVERSE ON | SET REVERSE OFF
 SET DELETED ON | SET DELETED OFF
 SET FIELDS TO [name [, name ...]]
@@ -584,6 +629,11 @@ SET FIELDS TO [name [, name ...]]
   over the records where condition, a logical, is false. The current record
   stays. GO n does not check it. SET FILTER TO alone clears it, and USE and
   CREATE clear it. Each work area keeps its own filter.
+  SET VALID TO keeps a condition, a logical, that BROWSE and READ check
+  before they write a record. A record that breaks it beeps and is not
+  written. REPLACE and APPEND do not check it. It is at most 240 characters,
+  for each work area, and is not kept in the table. SET VALID TO alone clears
+  it, and USE and CREATE clear it.
   SET REVERSE ON, or SET REV ON, shows what prints after in reverse video.
   SET REVERSE OFF gives the usual colors back.
   SET DELETED ON makes GO TOP, GO BOTTOM, SKIP, the scopes and BROWSE pass
@@ -596,6 +646,7 @@ SET FIELDS TO [name [, name ...]]
   SET INDEX TO NAMES, CITIES
   SET PATH TO C:\DATA; C:\OLD
   SET FILTER TO AGE > 30
+  SET VALID TO INLIST("N;L;M;H", PRIORITY)
   SET DELETED ON
   SET FIELDS TO RECNO(), NAME, CITY
 :SHELL
