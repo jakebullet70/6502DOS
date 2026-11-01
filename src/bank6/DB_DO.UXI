@@ -282,6 +282,12 @@ SUB DO_ACCEPT(EVALUATED AS UBYTE)
   ENDIF
 END SUB
 
+' Waits for a key and gives it as WAITKEY() does. LASTKEY() reads it from KEY_PRESSED.
+FUNCT WAIT_FOR_KEY() AS UWORD
+  KEY_PRESSED = WAITKEY()
+  RETURN KEY_PRESSED
+END FUNCT
+
 ' WAIT [TO name]: prints WAITING and waits for a key. TO stores the key as a text of 1
 ' character, or "" for an extended key.
 SUB DO_WAIT()
@@ -298,7 +304,7 @@ SUB DO_WAIT()
     ENDIF
   ENDIF
   PRINT "WAITING ";
-  PRESSED = WAITKEY()
+  PRESSED = WAIT_FOR_KEY()
   PRINT
   IF NAME = "" THEN RETURN
   IF PRESSED < 256

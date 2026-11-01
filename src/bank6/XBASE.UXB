@@ -47,6 +47,7 @@ DIM SEARCH_PATH AS STRING * 80      ' the directories of SET PATH TO, apart by ;
 DIM FILTER AS STRING * 128          ' the condition of SET FILTER TO, "" for none
 DIM OTHER_FILTER AS STRING * 128    ' FILTER of the other area
 DIM SKIP_DELETED AS UBYTE           ' 1 after SET DELETED ON
+DIM KEY_PRESSED AS UWORD            ' the last key WAIT_FOR_KEY read, 0 for none
 DIM SET_FIELD(64) AS UBYTE          ' SET FIELDS TO's field numbers, 32 from AREA * 32
 DIM SET_FIELD_COUNT(2) AS UBYTE     ' how many each area has, 0 for none
 CONST PUSH_LIMIT AS UBYTE = 4       ' the levels of PUSH
@@ -669,6 +670,7 @@ SEARCH_PATH = ""
 FILTER = ""
 OTHER_FILTER = ""
 SKIP_DELETED = 0
+KEY_PRESSED = 0
 SET_FIELD_COUNT(0) = 0
 SET_FIELD_COUNT(1) = 0
 CALLER_BANK = ContentsAt(DB.RAM_BANK)
