@@ -534,6 +534,88 @@ bytes, and ends with the 43-byte `T_FAR`. The bytes free, the `$FF` bytes of eac
 755, bank 7 158, bank 8 6,303. The compiler moves the SUBs at the program's tail from bank 6 to
 banks 7 and 8 by itself.
 
+## Cmdlets
+
+Steps 1 and 2 are built. A cmdlet is a command that is a file in `C:\sys\xbase\`, not in the ROM, and that
+is typed as an internal command.
+
+```
+. MODSTRU PEOPLE        runs C:\sys\xbase\MODSTRU.COM, with the tail " PEOPLE"
+. TOOLS PEOPLE          runs C:\sys\xbase\TOOLS.CMD through the shell, with P1$ = "PEOPLE"
+. BIRTHDAYS 11          runs C:\sys\xbase\BIRTHDAYS.PRG, with ARGS = "11"
+. MODSTRX               no such file exists, and gives Unknown command
+```
+
+### The lookup
+
+- The lookup is in the last `ELSE` of the command loop in `XBASE.UXB`, in place of
+  `REPORT_ERROR("Unknown command")`. An internal command and `name = expression` come first.
+- The name is the first word of the line. `name.COM` is tried first, then `name.CMD`, then
+  `name.PRG`.
+- The lookup reads `C:\sys\xbase\` only. It does not read the current folder or `SET PATH`.
+- A file that exists and fails to start gives its file error, not `Unknown command`.
+
+### A .COM cmdlet
+
+- It is a UXCBASIC program of at most 38,655 bytes, `$0801` to `$9EFF`.
+- `DOS.EXEC` runs it, as `HELP` runs `HELPXBASE.COM`. XBASE's RAM is saved to banks and restored.
+- The text after the command word is the tail and `P1$`.
+- It gives back an exit code, a system string, or a `REG` key.
+- It does not see the open tables, the memory variables, or the expression code. It has no `FOR`
+  conditions.
+- It carries its own copy of `DB.UXI` to read a table. That costs disk and its own RAM, not ROM.
+  The size is not measured.
+- Each table, index and command file XBASE holds open takes one of the 16 system file table
+  entries. The cmdlet needs one for its program file and one for each file it opens.
+
+WARNING: XBASE's copy of a table goes stale when a `.COM` cmdlet rewrites it. The contract is that
+the user runs `CLOSE` first. Nothing checks this.
+
+### A .CMD cmdlet
+
+- `DOS.EXEC` runs `C:\sys\ROMSHELL.COM` with `-C`, as `!` does, and the shell runs the script.
+- The words after the command word are `P1$` to `P9$`, by the shell's rules for arguments.
+- The script runs a `.COM` in any folder by its full path, or a bare name from the current folder
+  or `PATH$`, and goes on when the child ends. A `.CMD` it runs ends it.
+- It does not see the open tables or the memory variables. The `CLOSE` contract of a `.COM`
+  cmdlet applies.
+- The command tail holds at most 126 characters. The shell's switch and the path take 22 and the
+  length of the name.
+- At most 4 programs run one inside another, and the shell takes a level.
+
+### A .PRG cmdlet
+
+- It runs as `DO` runs a file, and counts against the 8 levels of `DO`.
+- The text after the command word is the character memory variable `ARGS`. `ARGS` takes one of
+  the 64 memory variables, and a value already in it is lost.
+- It sees the open tables and the memory variables, and gives back memory variables.
+- It does only what the language does.
+
+### Limits
+
+- `MODIFY` and `APPEND` are internal, so `MODIFY STRUCTURE` and `APPEND FROM` do not reach the
+  lookup. Each takes a line in its internal command, or a cmdlet of its own name.
+- The list for Tab in `DB_LINE.UXI` is fixed, so a cmdlet name does not complete.
+- A cmdlet has a `HELP` topic only if `HELPXBASE.HLP` holds one.
+
+### Cost
+
+The `.COM` and `.CMD` lookup takes 249 bytes of ROM and 40 bytes of low RAM. The `.PRG` lookup
+takes 140 bytes of ROM and 6 bytes of low RAM. A cmdlet itself takes no ROM.
+
+### Steps
+
+1. The `.COM` and `.CMD` lookup.
+2. The `.PRG` lookup and `ARGS`.
+3. `MODSTRU.COM`, which changes a table's fields and keeps its records, matched by field name.
+4. An `APPEND FROM` cmdlet, which adds the records of one table to another.
+5. Rare commands such as `PACK` and `COPY TO` move out of the ROM. The bytes saved are not measured.
+
+### Still to decide
+
+- Whether `MODIFY STRUCTURE` and `APPEND FROM` forward to a cmdlet. Both act on the table in use,
+  and that table must be closed while a `.COM` cmdlet rewrites it.
+
 ## The steps
 
 D1 to D7 are the library and its UXCBASIC face; A1 to A7 are the program; B1 and B2 its help;

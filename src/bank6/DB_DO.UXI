@@ -92,7 +92,6 @@ END FUNCT
 ' DO name: runs the command file name, with .PRG added when it has no extension. Its lines run
 ' as if typed at the prompt. The file stays open while it runs. Files nest DO_LIMIT deep.
 SUB DO_DO()
-  DIM HANDLE AS UBYTE, BACK AS UWORD
   IF REST = ""
     SYNTAX_ERROR()
     RETURN
@@ -103,6 +102,13 @@ SUB DO_DO()
     RETURN
   ENDIF
   REST = TRIM$(MID$(TRIM$(COMMAND_LINE), 3))
+  RUN_COMMAND_FILE()
+END SUB
+
+' Runs the command file named in REST, with .PRG added when it has no extension. Its caller goes
+' on when it ends. An error is reported, and nothing runs.
+SUB RUN_COMMAND_FILE()
+  DIM HANDLE AS UBYTE, BACK AS UWORD
   IF DO_DEPTH = DO_LIMIT
     REPORT_ERROR("Too many DO levels")
     RETURN

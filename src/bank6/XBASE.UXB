@@ -25,6 +25,7 @@
 #INCLUDE "KEYS.UXI"
 
 CONST COMMAND_TAIL AS UWORD = $0780 ' the text after DB on its command line
+CONST CMDLET_FOLDER$ = "C:\sys\xbase\"
 DIM COMMAND_LINE AS STRING * 128    ' the line typed at the prompt
 DIM REST AS STRING * 128            ' the line after the words read
 DIM TOKEN AS STRING * 43            ' the word NEXT_WORD read, in capitals; a key of 4 fields
@@ -853,7 +854,24 @@ DO WHILE RUNNING
       EVALUATE()
       IF FAILED = 0 THEN ASSIGN(TOKEN, 0)
     ELSE
-      REPORT_ERROR("Unknown command")
+      ' name [tail] runs name.COM, else name.CMD through the shell, else name.PRG with the tail in
+      ' ARGS, in CMDLET_FOLDER$.
+      ' Trap: the program reads P1$ or the tail. DOS.EXISTS sets DOS.ERROR when it finds nothing.
+      NEXT_WORD()
+      HEAP.SYS_STRINGS_SET(0, REST)
+      DOS.EXEC(CMDLET_FOLDER$ + TOKEN + ".COM", " " + REST)
+      IF DOS.ERROR = DOS.ERR_NOT_FOUND
+        IF DOS.EXISTS(CMDLET_FOLDER$ + TOKEN + ".CMD")
+          DOS.EXEC("C:\sys\ROMSHELL.COM", " -C " + CMDLET_FOLDER$ + TOKEN + ".CMD " + REST)
+        ELSEIF DOS.EXISTS(CMDLET_FOLDER$ + TOKEN + ".PRG")
+          STORE_TEXT("ARGS", REST)
+          REST = CMDLET_FOLDER$ + TOKEN + ".PRG"
+          IF FAILED = 0 THEN RUN_COMMAND_FILE()
+        ELSE
+          REPORT_ERROR("Unknown command")
+        ENDIF
+      ENDIF
+      IF DOS.ERROR AND FAILED = 0 THEN FILE_ERROR()
     ENDIF
   ENDIF
   ' An error in a command file shows its line, and ends every file.
