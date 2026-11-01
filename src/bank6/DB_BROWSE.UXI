@@ -237,44 +237,65 @@ SUB FLIP_PICKED()
   FLIP_CELLS(PICKED_ROW + BROWSE_TOP, COLUMN, SHOWN_COLUMN(PICKED_FIELD + 1) - COLUMN - 1)
 END SUB
 
-' Edits the picked cell as GET 0 until a key leaves it, and gives the key. Esc puts the old value
-' back and gives 0. RECNO() and a field wider than CELL_LIMIT give 0 at once. Any other key stores an
-' edited cell and writes its record. A wrong value shows its error on the names' row until a key, the
-' page is drawn again with the record unchanged, and 0 is given.
+' Edits the picked cell, and gives the key that left it. RECNO() and a field wider than CELL_LIMIT
+' give 0 at once. A POPUP on the field in VALID_RULE shows its list first: an item picked is stored
+' and written, and Esc gives 0 with the old value. Else the cell is GET 0 until a key leaves it. Esc
+' puts the old value back and gives 0, and any other key stores an edited cell and writes its record.
+' A wrong value shows its error on the names' row until a key, and a record that breaks VALID_RULE
+' beeps. After either, the page is drawn again with the record unchanged, and 0 is given. After a
+' POPUP's box the page is drawn again too. The box stays inside the page's rows and columns, so a
+' list needs that room. The check of VALID_RULE on leaving the cell shows no box.
 ' Trap: PRINT writes the console's color, so the console is reversed while the flipped cell is edited.
 FUNCT EDIT_CELL() AS UWORD
   DIM FIELD AS UBYTE, PRESSED AS UWORD
   FIELD = BROWSE_FIELD(PICKED_FIELD)
   IF FIELD = 0 OR DB.FIELD_LENGTH(FIELD) > CELL_LIMIT THEN RETURN 0
   MOVE_TO(BROWSE_RECORD(PICKED_ROW))
-  REST = DB.FIELD_NAME(FIELD)
-  CURSOR = 1
-  READ_GET()
   GET_ROW(0) = PICKED_ROW + BROWSE_TOP
   GET_COLUMN(0) = SHOWN_COLUMN(PICKED_FIELD)
-  GET_EDITED = 0
-  FLIP_PICKED()
-  PRINT "{REVERSE}";
-  CURSOR ON
-  PRESSED = EDIT_GET(0)
-  CURSOR OFF
-  PRINT "{REVERSE}";
-  FLIP_PICKED()
-  IF PRESSED = KEYS.ESC
-    PRESSED = 0
-  ELSEIF GET_EDITED
-    POS(1) = BROWSE_TOP - 1
-    POS(0) = BROWSE_LEFT
-    GET_COUNT = 1
-    STORE_GETS()
-    GET_COUNT = 0
-    IF FAILED
-      FAILED = 0
-      PRESSED = WAIT_FOR_KEY()
-      MOVE_TO(BROWSE_RECORD(0))
-      DRAW_PAGE()
-      RETURN 0
+  POS(1) = BROWSE_TOP - 1
+  POS(0) = BROWSE_LEFT
+  LIST_SHOWN = 0
+  LIST_FIELD = FIELD
+  LIST_BOTTOM = BROWSE_TOP + PAGE_ROWS
+  LIST_RIGHT = BROWSE_RIGHT
+  PRESSED = MEETS_RULE(VALID_RULE)
+  LIST_FIELD = 0
+  LIST_BOTTOM = 0
+  PRESSED = 0
+  IF FAILED = 0 AND LIST_SHOWN <> 1
+    REST = DB.FIELD_NAME(FIELD)
+    CURSOR = 1
+    READ_GET()
+    GET_EDITED = 1
+    IF LIST_SHOWN = 0
+      GET_EDITED = 0
+      FLIP_PICKED()
+      PRINT "{REVERSE}";
+      CURSOR ON
+      PRESSED = EDIT_GET(0)
+      CURSOR OFF
+      PRINT "{REVERSE}";
+      FLIP_PICKED()
     ENDIF
+    IF PRESSED = KEYS.ESC
+      PRESSED = 0
+    ELSEIF GET_EDITED
+      POS(1) = BROWSE_TOP - 1
+      POS(0) = BROWSE_LEFT
+      GET_COUNT = 1
+      STORE_GETS(0, 0)
+      GET_COUNT = 0
+    ENDIF
+  ENDIF
+  IF FAILED OR LIST_SHOWN
+    IF FAILED = FAILURE.ERROR_SHOWN THEN PRESSED = WAIT_FOR_KEY()
+    IF FAILED THEN PRESSED = 0
+    FAILED = 0
+    CURSOR OFF
+    MOVE_TO(BROWSE_RECORD(0))
+    DRAW_PAGE()
+    RETURN PRESSED
   ENDIF
   POS(1) = GET_ROW(0)
   POS(0) = GET_COLUMN(0)

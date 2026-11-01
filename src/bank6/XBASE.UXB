@@ -26,8 +26,8 @@
 
 CONST COMMAND_TAIL AS UWORD = $0780 ' the text after DB on its command line
 CONST CMDLET_FOLDER$ = "C:\sys\xbase\"
-DIM COMMAND_LINE AS STRING * 128    ' the line typed at the prompt
-DIM REST AS STRING * 128            ' the line after the words read
+DIM COMMAND_LINE AS STRING * 240    ' the line typed at the prompt
+DIM REST AS STRING * 240            ' the line after the words read
 DIM TOKEN AS STRING * 43            ' the word NEXT_WORD read, in capitals; a key of 4 fields
 DIM TABLE_NAME AS STRING * 80       ' the path of the table in use
 DIM TABLE AS UBYTE                  ' the table's workspace, 0 for none
@@ -36,7 +36,11 @@ DIM BEFORE_FIRST AS UBYTE           ' 1 after SKIP has stopped at record 1 on it
 DIM RUNNING AS UBYTE
 DIM TAIL_INDEX AS UBYTE
 DIM CURSOR AS UBYTE                 ' the character of REST an expression reads, from 1
-DIM FAILED AS UBYTE                 ' 1 once a command has printed an error
+' What FAILED holds after a failure. RULE_BROKEN: STORE_GETS beeped and printed no message.
+ENUM FAILURE
+  ERROR_SHOWN = 1, RULE_BROKEN
+END ENUM
+DIM FAILED AS UBYTE                 ' 0, or a FAILURE once a command has failed
 DIM PART_LINE AS UBYTE              ' 1 while ? has printed part of a line
 DIM AREA AS UBYTE                   ' the work area in use: 0 PRIMARY, 1 SECONDARY
 DIM OTHER_NAME AS STRING * 80       ' TABLE_NAME of the other area
@@ -45,10 +49,15 @@ DIM OTHER_CURRENT AS UWORD          ' CURRENT of the other area
 DIM OTHER_BEFORE AS UBYTE     ' BEFORE_FIRST of the other area
 DIM OTHER_DELETED AS UBYTE          ' DB.DELETED of the other area
 DIM SEARCH_PATH AS STRING * 80      ' the directories of SET PATH TO, apart by ;
-DIM FILTER AS STRING * 128          ' the condition of SET FILTER TO, "" for none
-DIM OTHER_FILTER AS STRING * 128    ' FILTER of the other area
-DIM VALID_RULE AS STRING * 128      ' the condition of SET VALID TO, "" for none
-DIM OTHER_VALID AS STRING * 128     ' VALID_RULE of the other area
+DIM FILTER AS STRING * 240          ' the condition of SET FILTER TO, "" for none
+DIM OTHER_FILTER AS STRING * 240    ' FILTER of the other area
+DIM VALID_RULE AS STRING * 240      ' the condition of SET VALID TO, "" for none
+DIM OTHER_VALID AS STRING * 240     ' VALID_RULE of the other area
+DIM RULE_FIELD AS UBYTE             ' the field read last since a function opened, in this area, or 0
+DIM LIST_BOTTOM AS UBYTE            ' a POPUP's box ends before this row; 0 when POPUP shows no box
+DIM LIST_RIGHT AS UBYTE             ' a POPUP's box ends before this column
+DIM LIST_SHOWN AS UBYTE             ' set when a POPUP shows its box, 2 for an item picked, else 1; BROWSE clears and reads it
+DIM LIST_FIELD AS UBYTE             ' the field whose POPUP shows its box whatever its value, or 0 for each POPUP on a miss
 DIM SKIP_DELETED AS UBYTE           ' 1 after SET DELETED ON
 DIM KEY_PRESSED AS UWORD            ' the last key WAIT_FOR_KEY read, 0 for none
 DIM SET_FIELD(64) AS UBYTE          ' SET FIELDS TO's field numbers, 32 from AREA * 32
@@ -136,7 +145,7 @@ END SUB
 SUB REPORT_ERROR(MESSAGE AS STRING)
   IF PART_LINE THEN PRINT
   PRINT MESSAGE
-  FAILED = 1
+  FAILED = FAILURE.ERROR_SHOWN
 END SUB
 
 ' Prints the message of DOS.ERROR as REPORT_ERROR does.
@@ -250,7 +259,7 @@ END SUB
 ' 1 when the current record meets the logical condition RULE, or RULE is "". Else 0. REST and
 ' CURSOR are kept. On an error it sets FAILED and gives 1.
 FUNCT MEETS_RULE(RULE AS STRING) AS UBYTE
-  DIM KEPT_REST AS STRING * 128, KEPT_CURSOR AS UBYTE, MEETS AS UBYTE
+  DIM KEPT_REST AS STRING * 240, KEPT_CURSOR AS UBYTE, MEETS AS UBYTE
   IF RULE = "" THEN RETURN 1
   KEPT_REST = REST
   KEPT_CURSOR = CURSOR
@@ -284,7 +293,7 @@ END SUB
 ' DB.DELETED, FILTER and VALID_RULE change places with the area's, and DB.WORKSPACE follows.
 ' Checklist: a new state of the area gets an OTHER_ copy, swapped here.
 SUB SWAP_AREA()
-  DIM KEPT AS UWORD, KEPT_NAME AS STRING * 128
+  DIM KEPT AS UWORD, KEPT_NAME AS STRING * 240
   KEPT_NAME = TABLE_NAME
   TABLE_NAME = OTHER_NAME
   OTHER_NAME = KEPT_NAME
@@ -332,6 +341,7 @@ FUNCT READ_NAME() AS UBYTE
     ENDIF
     PUSH_OPERATOR(ROUTINE)
     IF FAILED THEN RETURN 0
+    RULE_FIELD = 0
     CALL_BASE(OPERATOR_COUNT - 1) = VALUE_COUNT
     CURSOR = CURSOR + 1
     RETURN 1
@@ -356,6 +366,7 @@ FUNCT READ_NAME() AS UBYTE
     ENDIF
   ENDIF
   IF FIELD = 0 AND TABLE <> 0 THEN FIELD = DB.FIELD_NUMBER(NAME)
+  RULE_FIELD = FIELD
   IF FIELD = 0
     NUMBER = FIND_VARIABLE(LEFT$(NAME, 10))
     IF NUMBER = VARIABLE_LIMIT
@@ -388,7 +399,10 @@ FUNCT READ_NAME() AS UBYTE
     ENDIF
     PUSH_TEXT(TEXT)
   ENDIF
-  IF OTHER THEN SWAP_AREA()
+  IF OTHER
+    SWAP_AREA()
+    RULE_FIELD = 0
+  ENDIF
   RETURN 0
 END FUNCT
 

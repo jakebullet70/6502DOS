@@ -447,15 +447,75 @@ SUB ADD_PROMPT(ROW AS UBYTE, COLUMN AS UBYTE)
   BAR_COUNT = BAR_COUNT + 1
 END SUB
 
+' Draws a box of single lines, its top left corner at ROW and COLUMN, from 0, with ITEMS inside,
+' one a row, and gives the number of the one picked, as PICK_BAR. ITEMS has a ; after each item, at
+' most BAR_LIMIT of them. The box moves up and left as far as ends it before row ROW_END and column
+' COLUMN_END. It is as wide as the widest item, and each bar is that wide. The box stays on the
+' screen. The prompts of @ ... PROMPT are dropped.
+FUNCT PICK_ITEM(ROW AS UBYTE, COLUMN AS UBYTE, ROW_END AS UBYTE, COLUMN_END AS UBYTE, ITEMS AS STRING) AS UBYTE
+  DIM WIDTH AS UBYTE, START AS UBYTE, ENDING AS UBYTE, NUMBER AS UBYTE
+  ' The bars are counted and measured first, as the box clears its inside.
+  WIDTH = 0
+  BAR_COUNT = 0
+  START = 1
+  DO WHILE START <= LEN(ITEMS)
+    ENDING = INSTR(ITEMS, ";", START)
+    IF ENDING - START > WIDTH THEN WIDTH = ENDING - START
+    BAR_COUNT = BAR_COUNT + 1
+    START = ENDING + 1
+  LOOP
+  IF ROW + BAR_COUNT + 2 > ROW_END THEN ROW = ROW_END - BAR_COUNT - 2
+  IF COLUMN + WIDTH + 2 > COLUMN_END THEN COLUMN = COLUMN_END - WIDTH - 2
+  BOX(ROW, COLUMN, WIDTH + 2, BAR_COUNT + 2, LINES.SINGLE)
+  START = 1
+  FOR NUMBER = 0 TO BAR_COUNT - 1
+    ENDING = INSTR(ITEMS, ";", START)
+    BAR_ROW(NUMBER) = ROW + 1 + NUMBER
+    POS(1) = BAR_ROW(NUMBER)
+    POS(0) = COLUMN + 1
+    PRINT MID$(ITEMS, START, ENDING - START);
+    BAR_COLUMN(NUMBER) = COLUMN + 1
+    BAR_WIDTH(NUMBER) = WIDTH
+    START = ENDING + 1
+  NEXT
+  NUMBER = PICK_BAR()
+  BAR_COUNT = 0
+  RETURN NUMBER
+END FUNCT
+
+' POPUP's list, text value SLOT, as a box under the GET of RULE_FIELD, or under the last GET when
+' none has it, inside LIST_BOTTOM and LIST_RIGHT. The item picked goes in RULE_FIELD, a text field,
+' cut to its length, it gives 1 and LIST_SHOWN is 2. Esc gives 0 and LIST_SHOWN is 1. The cursor
+' stays where it was.
+' The box stays on the screen, and PICK_BAR leaves the cursor on.
+FUNCT POPUP_LIST(SLOT AS UBYTE) AS UBYTE
+  DIM NUMBER AS UBYTE, START AS UBYTE, KEPT_ROW AS UBYTE, KEPT_COLUMN AS UBYTE, ITEMS AS STRING * 255
+  KEPT_ROW = POS(1)
+  KEPT_COLUMN = POS(0)
+  LIST_SHOWN = 1
+  ITEMS = TEXT_OF(SLOT) + ";"
+  NUMBER = 0
+  DO WHILE NUMBER + 1 < GET_COUNT AND GET_FIELD(NUMBER) <> RULE_FIELD
+    NUMBER = NUMBER + 1
+  LOOP
+  NUMBER = PICK_ITEM(GET_ROW(NUMBER) + 1, GET_COLUMN(NUMBER), LIST_BOTTOM, LIST_RIGHT, ITEMS)
+  POS(1) = KEPT_ROW
+  POS(0) = KEPT_COLUMN
+  IF NUMBER = 0 THEN RETURN 0
+  START = 1
+  REPEAT NUMBER - 1
+    START = INSTR(ITEMS, ";", START) + 1
+  END REPEAT
+  DB.PUT(RULE_FIELD, LEFT$(MID$(ITEMS, START, INSTR(ITEMS, ";", START) - START), DB.FIELD_LENGTH(RULE_FIELD)))
+  LIST_SHOWN = 2
+  RETURN 1
+END FUNCT
+
 ' MENU(row, column, items), the function, with its arguments at SLOT of the value stack and
-' after: draws a box of single lines, its top left corner at row and column, from 0, with the
-' items inside, one a row, and gives the number of the one picked, as PICK_BAR. items is a
-' text of at most 254 characters, the items apart by ;, at most BAR_LIMIT of them. The box is
-' as wide as the widest item, and each bar is that wide. The box stays on the screen. The
-' prompts of @ ... PROMPT are dropped.
+' after: gives PICK_ITEM's number for items at row and column. items is a text of at most 254
+' characters, the items apart by ;. The box is not moved.
 SUB MENU_FUNCTION(SLOT AS UBYTE)
-  DIM ROW AS UBYTE, COLUMN AS UBYTE, WIDTH AS UBYTE, START AS UBYTE, ENDING AS UBYTE
-  DIM NUMBER AS UBYTE, ITEMS AS STRING * 255
+  DIM ROW AS UBYTE, COLUMN AS UBYTE, START AS UBYTE, ITEMS AS STRING * 255
   IF VALUE_TYPE(SLOT + 2) <> VALUE_KIND.TEXT
     TYPE_MISMATCH()
     RETURN
@@ -467,31 +527,8 @@ SUB MENU_FUNCTION(SLOT AS UBYTE)
   START = ContentsAt(VALUE_AT(SLOT + 2))
   ITEMS = MID$(TEXT_BUFFER, START) + ";"
   TEXT_BUFFER = LEFT$(TEXT_BUFFER, START - 1)
-  ' The bars are counted and measured first, as the box clears its inside.
-  WIDTH = 0
-  BAR_COUNT = 0
-  START = 1
-  DO WHILE START <= LEN(ITEMS)
-    ENDING = INSTR(ITEMS, ";", START)
-    IF ENDING - START > WIDTH THEN WIDTH = ENDING - START
-    BAR_ROW(BAR_COUNT) = ROW + 1 + BAR_COUNT
-    BAR_COUNT = BAR_COUNT + 1
-    START = ENDING + 1
-  LOOP
-  BOX(ROW, COLUMN, WIDTH + 2, BAR_COUNT + 2, LINES.SINGLE)
-  START = 1
-  FOR NUMBER = 0 TO BAR_COUNT - 1
-    ENDING = INSTR(ITEMS, ";", START)
-    POS(1) = BAR_ROW(NUMBER)
-    POS(0) = COLUMN + 1
-    PRINT MID$(ITEMS, START, ENDING - START);
-    BAR_COLUMN(NUMBER) = COLUMN + 1
-    BAR_WIDTH(NUMBER) = WIDTH
-    START = ENDING + 1
-  NEXT
   VALUE_COUNT = SLOT
-  PUSH_WHOLE(PICK_BAR())
-  BAR_COUNT = 0
+  PUSH_WHOLE(PICK_ITEM(ROW, COLUMN, 255, 255, ITEMS))
 END SUB
 
 ' MENU TO name: shows the prompts of @ ... PROMPT picked one at a time, as PICK_BAR, and stores
@@ -582,10 +619,11 @@ END SUB
 
 ' Puts the text of each GET in its field or variable, first to last: a text as it is, a number
 ' read as a number expression, a blank one 0, a logical true for T or Y. A field takes it as
-' REPLACE does, and a record with a GET's field is written when it meets VALID_RULE, else Invalid
-' value. A wrong value prints its error and the GETs after it are not stored; the record is then
-' read again.
-SUB STORE_GETS()
+' REPLACE does, and a record with a GET's field is written when it meets VALID_RULE, else it beeps
+' and sets FAILED to RULE_BROKEN, with no message. A wrong value prints its error and the GETs after
+' it are not stored. After either, the record is read again. A POPUP in VALID_RULE ends its box
+' before row ROW_END and column COLUMN_END, and shows no box when ROW_END is 0.
+SUB STORE_GETS(ROW_END AS UBYTE, COLUMN_END AS UBYTE)
   DIM NUMBER AS UBYTE, FIELD AS UBYTE, WRITING AS UBYTE, KIND AS ENUM.VALUE_KIND
   DIM NAME AS STRING * 10, TEXT_AT AS UWORD
   WRITING = 0
@@ -624,7 +662,13 @@ SUB STORE_GETS()
   LOOP
   IF WRITING = 0 THEN RETURN
   IF FAILED = 0
-    IF MEETS_RULE(VALID_RULE) = 0 THEN REPORT_ERROR("Invalid value")
+    LIST_BOTTOM = ROW_END
+    LIST_RIGHT = COLUMN_END
+    IF MEETS_RULE(VALID_RULE) = 0
+      PRINT CHR$(7);
+      FAILED = FAILURE.RULE_BROKEN
+    ENDIF
+    LIST_BOTTOM = 0
   ENDIF
   IF FAILED
     MOVE_TO(CURRENT)
@@ -636,8 +680,9 @@ END SUB
 
 ' READ: edits the pending GETs in turn, from the first, with EDIT_GET. Enter, Tab and Down go to
 ' the next GET, Up to the one before. Enter, Tab or Down at the last GET, PgDn and Ctrl+W end
-' READ and store the GETs with STORE_GETS; Esc ends it and stores none. Then the GETs are
-' dropped, and the cursor goes to column 0 of the row after the last GET's row.
+' READ and store the GETs with STORE_GETS, and a record that breaks VALID_RULE prints Invalid value;
+' Esc ends it and stores none. Then the GETs are dropped, and the cursor goes to column 0 of the row
+' after the last GET's row.
 SUB DO_READ()
   DIM NUMBER AS UBYTE, PRESSED AS UWORD
   IF REST <> ""
@@ -658,7 +703,11 @@ SUB DO_READ()
   POS(1) = GET_ROW(GET_COUNT - 1)
   POS(0) = 0
   PRINT
-  IF PRESSED <> KEYS.ESC THEN STORE_GETS()
+  IF PRESSED <> KEYS.ESC
+    ' Trap: a box that ends in the screen's last column on its last row scrolls the screen.
+    STORE_GETS(30, 79)
+    IF FAILED = FAILURE.RULE_BROKEN THEN REPORT_ERROR("Invalid value")
+  ENDIF
   GET_COUNT = 0
 END SUB
 

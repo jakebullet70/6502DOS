@@ -65,6 +65,12 @@ KBD_EXTENDED  = $E0             ; in KBD_QUEUE: the scan code of an extended key
 ANSI_ESC      = 1               ; ansi_state after Esc
 ANSI_CSI      = 2               ; ansi_state after Esc [
 ANSI_PARAMS   = 4               ; the parameters kept; more add into the last
+BELL_HZ       = 880
+BELL_FREQUENCY = BELL_HZ * 2684 / 1000 ; a PSG frequency step is 0.3725 Hz
+BELL_LAST     = $1F9FF          ; the wave register of PSG voice 15, after frequency and volume
+BELL_WAVE     = $3F             ; pulse, 50% duty
+BELL_VOLUME   = $C0 | 63        ; left and right, of 63
+BELL_LOOPS    = 0               ; passes of 256 of bell's wait; 0 means 256
 
 .segment "KERNELZP" : zeropage
 
@@ -194,8 +200,9 @@ write:
         beq tab
         cmp #$0C
         beq clear
-        cmp #$07                ; BEL: no sound yet
+        cmp #$07
         bne put
+        bra bell
 @done:
         rts
 @ansi:
@@ -228,6 +235,37 @@ tab:
         lda con_col
         and #7
         bne tab
+        rts
+
+; bell: plays BELL_HZ on PSG voice 15 for about 100 ms at 8 MHz, then silences the voice. Changes
+; A, X, Y and the VERA address.
+; The wait is a counted loop, so it ends with interrupts off.
+bell:
+        lda #<BELL_LAST
+        sta VERA_ADDR_L
+        lda #>BELL_LAST
+        sta VERA_ADDR_M
+        lda #$18 | ^BELL_LAST   ; increment 1, down
+        sta VERA_ADDR_H
+        lda #BELL_WAVE
+        sta VERA_DATA0
+        lda #BELL_VOLUME
+        sta VERA_DATA0
+        lda #>BELL_FREQUENCY
+        sta VERA_DATA0
+        lda #<BELL_FREQUENCY
+        sta VERA_DATA0
+        ldx #BELL_LOOPS
+@wait:
+        pha                     ; 12 cycles a pass with the pla, dey and bne
+        pla
+        dey
+        bne @wait
+        dex
+        bne @wait
+        lda #<BELL_LAST - 1     ; the volume
+        sta VERA_ADDR_L
+        stz VERA_DATA0
         rts
 
 ; put: shows the glyph of A at the cursor and moves the cursor on, to the next line after the

@@ -12,6 +12,7 @@ DIM READ_AHEAD(255) AS UBYTE
 DIM AHEAD_COUNT AS UBYTE
 DIM AHEAD_INDEX AS UBYTE
 DIM LINE_BYTES AS UBYTE            ' the bytes of the line READ_DO_LINE read, with its CR and LF
+DIM LINES_JOINED AS UBYTE          ' the lines READ_DO_LINE joined to its first
 ' The IFs open in the lines being skipped, 0 when lines run. An IF has at most one ELSE.
 DIM SKIP_DEPTH AS UBYTE
 DIM SKIP_LOOP AS UBYTE             ' 1 while SKIP_DEPTH counts DO WHILEs, not IFs
@@ -45,15 +46,19 @@ SUB CANCEL_DO()
 END SUB
 
 ' Copies the next line of the innermost command file into COMMAND_LINE and counts it in DO_LINE.
-' A line ends in LF; a CR is dropped. A line is cut at 128 characters; a DO WHILE line is under
-' 256 bytes. Returns 1, or 0 at the
+' A line ends in LF; a CR is dropped. A line that ends in a space and _ joins the next, which loses
+' its leading spaces. A line is cut at 240 characters, joined lines counted together; a DO WHILE
+' line is under 256 bytes, joined lines counted together. Returns 1, or 0 at the
 ' end of the file, which ends the file as RETURN does. A read error is reported, and ends every
 ' file.
+' Trap: a comment that ends in a space and _ joins the next line to the comment.
 FUNCT READ_DO_LINE() AS UBYTE
-  DIM CODE AS UBYTE, LENGTH AS UBYTE
+  DIM CODE AS UBYTE, LENGTH AS UBYTE, LEADING AS UBYTE
   LENGTH = 0
   CODE = 0
+  LEADING = 0
   LINE_BYTES = 0
+  LINES_JOINED = 0
   DO
     IF AHEAD_INDEX = AHEAD_COUNT
       AHEAD_INDEX = 0
@@ -78,8 +83,15 @@ FUNCT READ_DO_LINE() AS UBYTE
     CODE = READ_AHEAD(AHEAD_INDEX)
     AHEAD_INDEX = AHEAD_INDEX + 1
     LINE_BYTES = LINE_BYTES + 1
-    IF CODE = 10 THEN EXIT DO
-    IF CODE <> 13 AND LENGTH < 128
+    IF CODE = 10
+      IF LENGTH < 2 THEN EXIT DO
+      IF ContentsAt(@COMMAND_LINE + 1 + LENGTH) <> 95 OR ContentsAt(@COMMAND_LINE + LENGTH) <> 32 THEN EXIT DO
+      LENGTH = LENGTH - 1
+      LEADING = 1
+      DO_LINE = DO_LINE + 1
+      LINES_JOINED = LINES_JOINED + 1
+    ELSEIF CODE <> 13 AND LENGTH < 240 AND (LEADING = 0 OR CODE <> 32)
+      LEADING = 0
       ContentsAt(@COMMAND_LINE + 2 + LENGTH) = CODE
       LENGTH = LENGTH + 1
     ENDIF
@@ -193,7 +205,7 @@ SUB DO_WHILE()
   DOS.R1 = 0
   SYS DOS.API_SEEK
   LOOP_SPOT(LOOP_DEPTH) = DOS.R0 - AHEAD_COUNT + AHEAD_INDEX - LINE_BYTES
-  LOOP_LINE(LOOP_DEPTH) = DO_LINE
+  LOOP_LINE(LOOP_DEPTH) = DO_LINE - LINES_JOINED
   LOOP_DEPTH = LOOP_DEPTH + 1
 END SUB
 

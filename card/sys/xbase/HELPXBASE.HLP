@@ -440,7 +440,7 @@ DO IF ELSE ENDIF DO WHILE ENDDO RETURN CANCEL ACCEPT INPUT WAIT MODIFY !
   A command file is a text file with the extension .PRG, under 64 KB. DO
   runs it, and MODIFY COMMAND edits it. Its lines run as if typed at the
   prompt.
-  A line ends in LF, and a CR is dropped. A line is cut at 128 characters.
+  A line ends in LF, and a CR is dropped. A line is cut at 240 characters.
   A DO WHILE line, its line end included, is under 256 bytes.
   An error in a command file prints "Line n: " and the line, and ends every
   command file.

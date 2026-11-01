@@ -11,7 +11,7 @@ DIM SUM_START(8) AS UBYTE           ' the character of REST each SUM expression 
 DIM SUM_VALUES(40) AS UBYTE         ' the sums of SUM, FP.SIZE bytes each
 ' The LOCATE that CONTINUE goes on with. LOCATE_ACTIVE is 0 before the first LOCATE and after
 ' USE.
-DIM LOCATE_LINE AS STRING * 128     ' its REST
+DIM LOCATE_LINE AS STRING * 240     ' its REST
 DIM LOCATE_CONDITION AS UBYTE       ' its CONDITION
 DIM LOCATE_LEFT AS UWORD            ' its SCOPE_LEFT
 DIM LOCATE_ACTIVE AS UBYTE
