@@ -51,11 +51,13 @@ def lk_link():
     that order: the startup copies the strings there and one clear covers the rest. The data records follow the pools; the startup sets the first byte
     of those that ask for it to 0. For 6502DOS it also stores the page of the program's end in
     PSP_TOP. The SUBs nothing calls are left out first, then the global variables nothing
-    names, then the string literals nothing names. Then the long jumps in reach go short."""
+    names, then the string literals nothing names. Then the long jumps in reach go short, and
+    the JMP around each SUB straight after a SUB goes."""
     uxc_dead.dd_strip()
     uxc_dead.dv_strip()
     uxc_dead.ds_strip()
     uxc_branch.br_relax()
+    uxc_branch.br_around()
     uxc_ramreg.rg_ranges()
     if g.rg_on != 0:
         uxc_ramreg.rg_data()

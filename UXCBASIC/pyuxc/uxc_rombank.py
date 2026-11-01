@@ -46,8 +46,9 @@ from uxc_state import er_stop, g
 
 
 def rb_ranges():
-    """RB.RANGES. g.rb_record, g.rb_from and g.rb_to: each SUB left in, in code order, from its
-    JMP around to its end. g.rb_start: the first SUB that must move, g.rb_n when none must."""
+    """RB.RANGES. g.rb_record, g.rb_from, g.rb_body and g.rb_to: each SUB left in, in code order,
+    from its JMP around, from its value, to its end. A SUB straight after a SUB has no JMP around,
+    so g.rb_from is g.rb_body. g.rb_start: the first SUB that must move, g.rb_n when none must."""
     if g.lk_raw == 0 or g.lk_apart == 0:
         er_stop("#ROMBANKS NEEDS #ORG AND #DATA")
     if g.lk_org >= K_FAR:
@@ -58,12 +59,15 @@ def rb_ranges():
         uxc_sym.sy_get()
         if g.sy_kind == K_SK_SUB and (g.sy_flags & 1) != 0:
             uxc_sym.sy_end_get()
-            ranges.append((g.sy_val - 3, g.sy_end, g.rb_r))
+            ranges.append((g.sy_val, g.sy_end, g.rb_r))
     ranges.sort()
-    g.rb_from = [r[0] for r in ranges]
+    g.rb_body = [r[0] for r in ranges]
+    g.rb_from = [r[0] - 3 for r in ranges]
     g.rb_to = [r[1] for r in ranges]
     g.rb_record = [r[2] for r in ranges]
     for i in range(1, len(ranges)):
+        if g.rb_body[i] == g.rb_to[i - 1]:
+            g.rb_from[i] = g.rb_body[i]
         if g.rb_from[i] < g.rb_to[i - 1]:
             er_stop("SUBS OVERLAP")
     g.rb_n = len(g.rb_record)
@@ -108,8 +112,8 @@ def rb_bank_of(at):
     bank) inside the body of a SUB moved, else (0, its offset in the first bank after the cut).
     The JMP around a SUB moved is not in its body: the code after the cut lands there."""
     j = rb_find(at)
-    if j >= g.rb_k and at >= g.rb_from[j] + 3 and at < g.rb_to[j]:
-        return rb_bank_index(j), at - g.rb_from[j] - 3 + g.rb_at[j]
+    if j >= g.rb_k and at >= g.rb_body[j] and at < g.rb_to[j]:
+        return rb_bank_index(j), at - g.rb_body[j] + g.rb_at[j]
     g.dd_at = at
     uxc_dead.dd_shift()
     return 0, g.dd_at
@@ -185,7 +189,7 @@ def rb_split():
     for i in range(g.rb_k, g.rb_n):
         code = g.rb_code[rb_bank_index(i)]
         g.rb_at[i] = len(code)
-        for g.cb_at in range(g.rb_from[i] + 3, g.rb_to[i]):
+        for g.cb_at in range(g.rb_body[i], g.rb_to[i]):
             cb_get()
             code.append(g.cb_b)
         cut = cut + g.rb_to[i] - g.rb_from[i]
@@ -240,7 +244,7 @@ def rb_bank_size(bank):
     body = 0
     for t in range(g.rb_n):
         if rb_bank_index(t) == bank:
-            body = body + g.rb_to[t] - g.rb_from[t] - 3
+            body = body + g.rb_to[t] - g.rb_body[t]
         else:
             for j in g.rb_callers[t]:
                 if rb_bank_index(j) == bank:
@@ -299,7 +303,7 @@ def rb_fixups():
         g.fx_i = i
         fx_read()
         j = g.rb_in[i]
-        if j >= g.rb_k and g.fx_at < g.rb_from[j] + 3:
+        if j >= g.rb_k and g.fx_at < g.rb_body[j]:
             continue
         at = g.fx_at
         bank, g.fx_at = rb_bank_of(at)

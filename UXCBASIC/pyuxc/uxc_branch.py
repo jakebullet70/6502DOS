@@ -5,6 +5,7 @@
     br_rewind()   after the code buffer goes back: drop what the log holds past g.cb_n
     br_moved()    in dd_strip, after the cut's tables are set: drop what was cut, move the rest
     br_relax()    in the link step, after ds_strip. Out: g.br_bytes, the bytes saved
+    br_around()   in the link step, after br_relax: cut the JMP around each SUB straight after a SUB
 
 jp_br's long form is 5 bytes: a branch over the jump on the opposite flag, then a JMP. The short
 form is 2: that branch with its flag turned, to the target. It saves 3 bytes, 2 cycles when the
@@ -24,7 +25,7 @@ main code with no SUB between them. Trap: g.rg_pins holds offsets into a SUB, so
 #REGION_SLOT keeps its long jumps. A full log keeps them too.
 """
 
-from uxc_code import cb_get, cb_put, fx_read
+from uxc_code import cb_get, cb_put, fx_put, fx_read
 from uxc_defs import K_BR_MAX, K_F_ABS, K_SEC_CODE, K_SEC_LABEL, K_SK_LABEL, K_SK_SUB
 import uxc_dead
 import uxc_sym
@@ -92,10 +93,55 @@ def br_relax():
         return
     br_write()
     br_offsets()
+    br_moved()
     uxc_dead.dd_fixups()
     uxc_dead.dd_records()
     uxc_dead.dd_code()
     g.br_bytes = g.dd_n * 3
+
+
+def br_around():
+    """BR.AROUND. A SUB never runs off its end, so only a jump reaches the JMP around the SUB
+    after it. Each jump or label there goes where that JMP goes, and the JMP is cut. A short
+    branch has no fixup to move, so a JMP one lands on stays. A SUB left with no JMP has its value
+    at the end of the SUB before it; rb_ranges reads that. Trap: past this call, code that takes 3
+    from a SUB's value must allow for it. A program with #REGION_SLOT, or a full log, keeps its
+    JMPs."""
+    if g.br_full != 0 or len(g.rg_subs) != 0:
+        return
+    br_subs()
+    short = set()
+    for g.br_i in range(g.br_byte_n):
+        g.cb_at = g.br_byte[g.br_i]
+        cb_get()
+        short.add(g.cb_at + 1 + (g.cb_b ^ 128) - 128)
+    land = {}
+    for k in range(len(g.br_from) - 1, 0, -1):
+        if g.br_from[k] == g.br_end[k - 1] and g.br_from[k] not in short:
+            land[g.br_from[k]] = land.get(g.br_end[k], g.br_end[k])
+    if len(land) == 0:
+        return
+    for g.fx_i in range(g.fx_n):
+        fx_read()
+        if g.fx_s == K_SEC_CODE and g.fx_v in land:
+            g.fx_v = land[g.fx_v]
+            fx_put()
+    for g.br_r in range(1, g.sy_n + 1):
+        g.sy_r = g.br_r
+        uxc_sym.sy_get()
+        if g.sy_kind == K_SK_LABEL and (g.sy_flags & 1) != 0 and g.sy_val in land:
+            g.sy_val = land[g.sy_val]
+            uxc_sym.sy_set()
+    g.dd_n = 0
+    for at in sorted(land):
+        g.dd_from[g.dd_n] = at
+        g.dd_to[g.dd_n] = at + 3
+        g.dd_sum[g.dd_n] = (g.dd_n + 1) * 3
+        g.dd_n = g.dd_n + 1
+    br_offsets()
+    uxc_dead.dd_fixups()
+    uxc_dead.dd_records()
+    uxc_dead.dd_code()
 
 
 def br_subs():
