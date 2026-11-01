@@ -687,6 +687,9 @@ def sb_call_pass():
     if g.sb_parameter_type != K_TY_BYTE and g.sb_parameter_type != K_TY_LONG:
         emit(T.T_STW_V)
     g.sb_current = g.sb_caller
+    # Trap: this offset is in the called SUB's frame. A load next of the caller's local at the same
+    # offset is not this variable, so ex_held must not take it for the store.
+    g.em_end = -1
 
 
 def sb_call_pop():
