@@ -328,17 +328,17 @@ SUB COPY_BYTES(TARGET AS UWORD, SOURCE AS UWORD, COUNT AS UWORD)
   LOOP
 END SUB
 
-' Prints value 0 with no line end: its text, its number, or .T. or .F..
-SUB SHOW_VALUE()
-  IF VALUE_TYPE(0) = VALUE_KIND.TEXT
-    PRINT TEXT_OF(0);
-  ELSEIF VALUE_TYPE(0) = VALUE_KIND.LOGICAL
-    IF VALUE_STACK(0) = 1
-      PRINT ".T.";
-    ELSE
-      PRINT ".F.";
-    ENDIF
-  ELSE
-    PRINT FP.TO_TEXT(VALUE_AT(0));
+' Value 0 as text: its text, its number, or .T. or .F..
+FUNCT VALUE_TEXT() AS STRING
+  IF VALUE_TYPE(0) = VALUE_KIND.TEXT THEN RETURN TEXT_OF(0)
+  IF VALUE_TYPE(0) = VALUE_KIND.LOGICAL
+    IF VALUE_STACK(0) = 1 THEN RETURN ".T."
+    RETURN ".F."
   ENDIF
+  RETURN FP.TO_TEXT(VALUE_AT(0))
+END FUNCT
+
+' Prints value 0 with no line end.
+SUB SHOW_VALUE()
+  PRINT VALUE_TEXT();
 END SUB

@@ -86,4 +86,11 @@ done:
     END ASM
     RETURN RESULT$
   END FUNCTION
+
+  ' TEXT$ with spaces each side, WIDTH characters in all: centered, the odd space after it. A
+  ' TEXT$ of WIDTH characters or more comes back whole. WIDTH is at most 82.
+  FUNCTION PADC(TEXT$, WIDTH AS UBYTE) AS STRING
+    IF LEN(TEXT$) >= WIDTH THEN RETURN TEXT$
+    RETURN PADR(PADL(TEXT$, (WIDTH + LEN(TEXT$)) / 2), WIDTH)
+  END FUNCTION
 END NAMESPACE

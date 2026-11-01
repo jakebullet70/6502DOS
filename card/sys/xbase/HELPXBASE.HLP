@@ -64,10 +64,37 @@ BOX row, column, width, height [DOUBLE]
   A box that ends in the screen's last column moves the cursor to the next
   row, and on the last row that scrolls the screen.
   BOX 2, 10, 30, 6 DOUBLE
+:BROWSE
+BROWSE [FIELDS name [, name ...]] [@ row, column TO row, column] [DOUBLE]
+       [TITLE expression] [FOOTER expression]
+  Shows a page of records, one to a row, from the current record, and picks
+  a cell. The clauses come in any order. The record picked at the end is
+  current. BROWSE passes over the records SET FILTER and SET DELETED hide.
+  With no FIELDS it shows the SET FIELDS list, or else the record's number
+  and every field. FIELDS names at most 32 fields. RECNO() in the list shows
+  the record's number there. A row starts with * on a deleted record.
+  @ draws a box from the top left corner to the bottom right corner, and
+  BROWSE stays inside it. What was under the box comes back at the end. The
+  box is at least 5 rows by 19 columns, and does not end at row 29, column
+  79. DOUBLE gives it double lines.
+  TITLE and FOOTER are centered on the top and bottom lines of the box, or
+  on rows 0 and 29 with no box, in place of the table's name and the keys.
+  Each fits between the sides of the box.
+  Up, Down, PgUp and PgDn move through the records. Ctrl+Home and Ctrl+End go
+  to the first and last. Ctrl+Left goes to the field before. Ctrl+Right, Tab
+  and Enter go to the next. Ctrl+W or Esc ends BROWSE.
+  BROWSE FIELDS RECNO(), NAME, CITY
+  BROWSE @ 5, 10 TO 20, 70 DOUBLE TITLE "Parts" FOOTER DATE()
 :CANCEL
 CANCEL
   Ends every command file running. DB goes back to the dot prompt. At the
   prompt CANCEL does nothing.
+:CENTER
+CENTER(text, width)
+  text with spaces each side, width characters in all. An odd space goes
+  after text. A text of width characters or more comes back whole. width is
+  at most 82, else Number out of range.
+  ? "[" + CENTER("abc", 8) + "]"
 :CHANGING
 APPEND  EDIT  REPLACE  DELETE  RECALL  PACK  ZAP
   The commands that add and change records. A change to a record is written
@@ -78,6 +105,12 @@ APPEND  EDIT  REPLACE  DELETE  RECALL  PACK  ZAP
 CLEAR [GETS]
   CLEAR blanks the screen, puts the cursor at row 0, column 0, and drops the
   pending GETs. CLEAR GETS only drops the pending GETs.
+:CLOSE
+CLOSE
+  Closes the table in use in the work area and its indexes, as USE alone
+  does. The table in the other work area stays open. The filter and the SET
+  FIELDS list are cleared, and the LOCATE ends. With no table in use CLOSE
+  does nothing.
 :CLS
 CLS
   Blanks the screen as CLEAR does, and keeps the pending GETs.
@@ -240,7 +273,8 @@ FIND key
   FIND compares key as typed.
   FIND Smith
 :FUNCTIONS
-RECNO EOF BOF DELETED DATE LEN UPPER TRIM VAL INT FILE REG STR SUBSTR MENU
+RECNO EOF BOF DELETED DATE LEN UPPER TRIM VAL INT FILE REG STR SUBSTR CENTER
+MENU
   A function name is typed whole, with its ( right after it, no space
   between. An unknown name gives Unknown function. A wrong number of
   arguments gives Syntax error, and an argument of the wrong kind Type
@@ -538,6 +572,7 @@ SET PATH TO [folder [; folder ...]]
 SET FILTER TO [condition]
 SET REVERSE ON | SET REVERSE OFF
 SET DELETED ON | SET DELETED OFF
+SET FIELDS TO [name [, name ...]]
   SET INDEX TO closes the open indexes, then opens each name, with .NDX
   added when it has no extension. The first is the order, and the first
   record of the order is current. SET INDEX TO alone leaves the record
@@ -554,15 +589,20 @@ SET DELETED ON | SET DELETED OFF
   SET DELETED ON makes GO TOP, GO BOTTOM, SKIP, the scopes and BROWSE pass
   over deleted records, in both work areas and across USE. GO n, RECORD n
   and FIND do not check it. SET DELETED OFF, the default, ends it.
+  SET FIELDS TO adds names to the fields BROWSE alone shows, at most 32 for
+  the work area. RECNO() among them shows the record's number there. A bad
+  name adds none. SET FIELDS TO alone clears them, and USE, CREATE and CLOSE
+  clear them.
   SET INDEX TO NAMES, CITIES
   SET PATH TO C:\DATA; C:\OLD
   SET FILTER TO AGE > 30
   SET DELETED ON
+  SET FIELDS TO RECNO(), NAME, CITY
 :SHELL
 SHELL [command line]
   The same as !. HELPDB ! gives !.
 :SHOWING
-LIST  DISPLAY  ?  COUNT  SUM
+LIST  DISPLAY  BROWSE  ?  COUNT  SUM
   The commands that print records and values.
   HELPDB name gives each command.
 :SKIP
@@ -602,14 +642,14 @@ SUM expression [, expression ...] [scope] [TO name [, name ...]]
   the sums in order, one name for each.
   SUM PRICE, PRICE * QTY FOR PAID TO TOTAL, VALUE
 :TABLES
-USE  CREATE  DISPLAY STRUCTURE  SELECT  PUSH  POP  COPY  SET
+USE  CLOSE  CREATE  DISPLAY STRUCTURE  SELECT  PUSH  POP  COPY  SET
   A table is a .DB file of records, each of the same fields. A field is C
   text, N a number, L a logical or D a date as text.
   DB has two work areas, PRIMARY and SECONDARY, each with a table of its
   own. A command works on the area in use. PUSH and POP save and take back
   the area in use and its record.
-  HELPDB name gives each of USE, CREATE, DISPLAY, SELECT, PUSH, POP, COPY
-  and SET.
+  HELPDB name gives each of USE, CLOSE, CREATE, DISPLAY, SELECT, PUSH, POP,
+  COPY and SET.
 :TRIM
 TRIM(text)
   text without its trailing spaces.

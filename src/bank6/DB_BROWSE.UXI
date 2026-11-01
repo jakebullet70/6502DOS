@@ -1,66 +1,84 @@
 ' DB_BROWSE.UXI -- BROWSE of XBASE.UXB: a page of records on the screen, one to a row, with a
 ' cell picked. XBASE.UXB includes it after DB_SCREEN.UXI.
 
-' A record takes 26 rows from row 2. Row 0 has the table, row 1 the field names and row 29 the
-' keys. Row 28 is left for messages.
-CONST PAGE_ROWS AS UBYTE = 26
+' The place of a BROWSE. PAGE_ROWS records from row BROWSE_TOP, the field names on the row above,
+' in columns BROWSE_LEFT to BROWSE_RIGHT - 1. FRAME_TOP has the title and FRAME_BOTTOM the footer.
+' Full screen: rows 2 to 27, row 0 the table and row 29 the keys, with row 28 left for messages.
+' In a window FRAME_TOP and FRAME_BOTTOM are the box's top and bottom, and FRAMED is 1.
+DIM PAGE_ROWS AS UBYTE, BROWSE_TOP AS UBYTE, BROWSE_LEFT AS UBYTE, BROWSE_RIGHT AS UBYTE
+DIM FRAME_TOP AS UBYTE, FRAME_BOTTOM AS UBYTE, FRAMED AS UBYTE, FRAME_STYLE AS ENUM.LINES
+' The character of REST each expression starts at, 0 for none.
+DIM TITLE_AT AS UBYTE, FOOTER_AT AS UBYTE
+' NUMBERED is 1 for the record's number in the fixed columns before START_COLUMN. CELL_LIMIT is the
+' widest a column can be.
+DIM NUMBERED AS UBYTE, START_COLUMN AS UBYTE, CELL_LIMIT AS UBYTE
+' The byte of a row COPY_ROW starts at, and how many it copies.
+DIM COPY_SPOT AS UBYTE, COPY_SIZE AS UBYTE
 
 ' VERA's data port 1, and the control register whose bit 0 selects the port $9F20 to $9F22 set.
 DIM VERA_DATA1 AS UBYTE AT $9F24, VERA_CONTROL AS UBYTE AT $9F25
 
-' The fields of the BROWSE, 0 to SHOWN_COUNT - 1, as field numbers, and the one picked. On the
-' screen are FIRST_SHOWN to END_SHOWN - 1. SHOWN_COLUMN has the column of each, and of END_SHOWN
-' as the end of the last.
+' The fields of the BROWSE, 0 to SHOWN_COUNT - 1, as field numbers, 0 for RECNO(), and the one
+' picked. On the screen are FIRST_SHOWN to END_SHOWN - 1. SHOWN_COLUMN has the column of each, and
+' of END_SHOWN as the end of the last.
 DIM SHOWN_COUNT AS UBYTE, FIRST_SHOWN AS UBYTE, END_SHOWN AS UBYTE, PICKED_FIELD AS UBYTE
 DIM BROWSE_FIELD(32) AS UBYTE, SHOWN_COLUMN(33) AS UBYTE
 
 ' The records on the page, 0 to PAGE_COUNT - 1, from the top row, and the one picked.
 DIM PAGE_COUNT AS UBYTE, PICKED_ROW AS UBYTE
-DIM BROWSE_RECORD(26) AS UWORD
+DIM BROWSE_RECORD(27) AS UWORD
 
 ' Sets END_SHOWN and SHOWN_COLUMN for the fields that fit from FIRST_SHOWN. A column is as wide as
-' its field or its name, at most 73, so one always fits.
+' its field or its name, at most CELL_LIMIT, so one always fits.
 SUB LAY_OUT_SHOWN()
   DIM COLUMN AS UBYTE, WIDTH AS UBYTE, NAME_WIDTH AS UBYTE, FIELD AS UBYTE
-  COLUMN = 7
+  COLUMN = START_COLUMN
   END_SHOWN = FIRST_SHOWN
   DO
     SHOWN_COLUMN(END_SHOWN) = COLUMN
     IF END_SHOWN = SHOWN_COUNT THEN EXIT DO
     FIELD = BROWSE_FIELD(END_SHOWN)
-    WIDTH = DB.FIELD_LENGTH(FIELD)
-    NAME_WIDTH = LEN(DB.FIELD_NAME(FIELD))
-    IF WIDTH < NAME_WIDTH THEN WIDTH = NAME_WIDTH
-    IF WIDTH > 73 THEN WIDTH = 73
-    IF COLUMN + WIDTH > 80 THEN EXIT DO
+    WIDTH = 5
+    IF FIELD
+      WIDTH = DB.FIELD_LENGTH(FIELD)
+      NAME_WIDTH = LEN(DB.FIELD_NAME(FIELD))
+      IF WIDTH < NAME_WIDTH THEN WIDTH = NAME_WIDTH
+    ENDIF
+    IF WIDTH > CELL_LIMIT THEN WIDTH = CELL_LIMIT
+    IF COLUMN + WIDTH > BROWSE_RIGHT THEN EXIT DO
     COLUMN = COLUMN + WIDTH + 1
     END_SHOWN = END_SHOWN + 1
   LOOP
 END SUB
 
-' Blanks screen row ROW, its colors kept.
+' Blanks the BROWSE's columns of screen row ROW, their colors kept.
 SUB BLANK_ROW(ROW AS UBYTE)
-  AIM_VERA(ROW, 0)
+  AIM_VERA(ROW, BROWSE_LEFT * 2)
   ' A step of 2 after each byte, over the colors.
   VERA_HIGH = $21
-  REPEAT 80
+  REPEAT BROWSE_RIGHT - BROWSE_LEFT
     VERA_DATA = 32
   END REPEAT
 END SUB
 
-' Prints the current record on page row SLOT, a blank row: its number, * when it is deleted, then
-' the fields on the screen.
+' Prints the current record on page row SLOT, a blank row: its number when NUMBERED, * when it is
+' deleted, then the fields on the screen.
 SUB DRAW_RECORD(SLOT AS UBYTE)
-  DIM SHOWN AS UBYTE
+  DIM SHOWN AS UBYTE, FIELD AS UBYTE
   BROWSE_RECORD(SLOT) = CURRENT
-  POS(1) = SLOT + 2
-  POS(0) = 0
-  PRINT RIGHT_ALIGN(CURRENT, 5);
+  POS(1) = SLOT + BROWSE_TOP
+  POS(0) = BROWSE_LEFT
+  IF NUMBERED THEN PRINT RIGHT_ALIGN(CURRENT, 5);
   IF DB.DELETED THEN PRINT "*";
   SHOWN = FIRST_SHOWN
   DO WHILE SHOWN < END_SHOWN
     POS(0) = SHOWN_COLUMN(SHOWN)
-    PRINT LEFT$(DB.GET(BROWSE_FIELD(SHOWN)), 73);
+    FIELD = BROWSE_FIELD(SHOWN)
+    IF FIELD
+      PRINT LEFT$(DB.GET(FIELD), CELL_LIMIT);
+    ELSE
+      PRINT RIGHT_ALIGN(CURRENT, 5);
+    ENDIF
     SHOWN = SHOWN + 1
   LOOP
 END SUB
@@ -68,15 +86,20 @@ END SUB
 ' Draws the field names and a page of records from the current one, which is a record, and sets
 ' PAGE_COUNT. The current record is then the last read.
 SUB DRAW_PAGE()
-  DIM ROW AS UBYTE, SHOWN AS UBYTE
-  FOR ROW = 1 TO PAGE_ROWS + 1
+  DIM ROW AS UBYTE, SHOWN AS UBYTE, FIELD AS UBYTE
+  FOR ROW = BROWSE_TOP - 1 TO BROWSE_TOP + PAGE_ROWS - 1
     BLANK_ROW(ROW)
   NEXT
-  POS(1) = 1
+  POS(1) = BROWSE_TOP - 1
   SHOWN = FIRST_SHOWN
   DO WHILE SHOWN < END_SHOWN
     POS(0) = SHOWN_COLUMN(SHOWN)
-    PRINT DB.FIELD_NAME(BROWSE_FIELD(SHOWN));
+    FIELD = BROWSE_FIELD(SHOWN)
+    IF FIELD
+      PRINT DB.FIELD_NAME(FIELD);
+    ELSE
+      PRINT "RECNO";
+    ENDIF
     SHOWN = SHOWN + 1
   LOOP
   PAGE_COUNT = 0
@@ -88,18 +111,43 @@ SUB DRAW_PAGE()
   LOOP
 END SUB
 
-' Copies screen row SOURCE's cells to row TARGET, through both of VERA's ports.
+' Copies COPY_SIZE bytes from COPY_SPOT of screen row SOURCE's cells to row TARGET, through both of
+' VERA's ports.
 ' Trap: the console needs port 0 selected.
 SUB COPY_ROW(SOURCE AS UBYTE, TARGET AS UBYTE)
   VERA_CONTROL = 1
-  AIM_VERA(SOURCE, 0)
+  AIM_VERA(SOURCE, COPY_SPOT)
   VERA_HIGH = $11
   VERA_CONTROL = 0
-  AIM_VERA(TARGET, 0)
+  AIM_VERA(TARGET, COPY_SPOT)
   VERA_HIGH = $11
-  REPEAT 160
+  REPEAT COPY_SIZE
     VERA_DATA = VERA_DATA1
   END REPEAT
+END SUB
+
+' Copies the whole rows FRAME_TOP to FRAME_BOTTOM from SOURCE rows below the screen's top to TARGET
+' rows below it. Row 30 and on are the map's, off the screen, and keep what is under a window.
+SUB COPY_FRAME(SOURCE AS UBYTE, TARGET AS UBYTE)
+  DIM ROW AS UBYTE
+  COPY_SPOT = 0
+  COPY_SIZE = 160
+  FOR ROW = FRAME_TOP TO FRAME_BOTTOM
+    COPY_ROW(ROW + SOURCE, ROW + TARGET)
+  NEXT
+END SUB
+
+' Prints the expression at character AT of REST centered on ROW between BROWSE_LEFT and
+' BROWSE_RIGHT, a space each side. It fits between them, and on row 29 ends before the last column.
+' Trap: padding it with spaces would wipe the box's line.
+SUB SHOW_LABEL(ROW AS UBYTE, AT AS UBYTE)
+  CURSOR = AT
+  EVALUATE()
+  POS(1) = ROW
+  POS(0) = BROWSE_LEFT + (BROWSE_RIGHT - BROWSE_LEFT - LEN(VALUE_TEXT()) - 2) / 2
+  PRINT " ";
+  SHOW_VALUE()
+  PRINT " ";
 END SUB
 
 ' Moves the pick down a row. From the last row of a full page, the rows go up one and the next
@@ -115,10 +163,10 @@ SUB BROWSE_DOWN()
   REACH_FILTERED(DB.NEXT_RECORD())
   IF PAST_LAST() THEN RETURN
   FOR SLOT = 0 TO PAGE_ROWS - 2
-    COPY_ROW(SLOT + 3, SLOT + 2)
+    COPY_ROW(BROWSE_TOP + SLOT + 1, BROWSE_TOP + SLOT)
     BROWSE_RECORD(SLOT) = BROWSE_RECORD(SLOT + 1)
   NEXT
-  BLANK_ROW(PAGE_ROWS + 1)
+  BLANK_ROW(BROWSE_TOP + PAGE_ROWS - 1)
   DRAW_RECORD(PAGE_ROWS - 1)
 END SUB
 
@@ -155,12 +203,12 @@ SUB BROWSE_UP()
   IF BACK_UP(1) = 0 THEN RETURN
   SLOT = PAGE_ROWS - 1
   DO WHILE SLOT > 0
-    COPY_ROW(SLOT + 1, SLOT + 2)
+    COPY_ROW(BROWSE_TOP + SLOT - 1, BROWSE_TOP + SLOT)
     BROWSE_RECORD(SLOT) = BROWSE_RECORD(SLOT - 1)
     SLOT = SLOT - 1
   LOOP
   IF PAGE_COUNT < PAGE_ROWS THEN PAGE_COUNT = PAGE_COUNT + 1
-  BLANK_ROW(2)
+  BLANK_ROW(BROWSE_TOP)
   DRAW_RECORD(0)
 END SUB
 
@@ -186,39 +234,97 @@ END SUB
 SUB FLIP_PICKED()
   DIM COLUMN AS UBYTE
   COLUMN = SHOWN_COLUMN(PICKED_FIELD)
-  FLIP_CELLS(PICKED_ROW + 2, COLUMN, SHOWN_COLUMN(PICKED_FIELD + 1) - COLUMN - 1)
+  FLIP_CELLS(PICKED_ROW + BROWSE_TOP, COLUMN, SHOWN_COLUMN(PICKED_FIELD + 1) - COLUMN - 1)
 END SUB
 
-' Sets SHOWN_COUNT and BROWSE_FIELD from REST: "" for the area's SET FIELDS TO list, or every field
-' of the table when it has none, or FIELDS and names with commas between them, at most 32, in the
-' order to show. Not 0 when they are good, else reports the error and gives 0.
+' Sets the place of the BROWSE, SHOWN_COUNT and BROWSE_FIELD from REST, its clauses in any order.
+' With no FIELDS, the area's SET FIELDS TO list, or every field of the table and NUMBERED when it
+' has none. Not 0 when they are good, else reports the error and gives 0.
 FUNCT READ_SHOWN() AS UBYTE
   DIM FIELD AS UBYTE
-  IF REST = ""
+  FRAMED = 0
+  FRAME_STYLE = LINES.SINGLE
+  FRAME_TOP = 0
+  FRAME_BOTTOM = 29
+  BROWSE_TOP = 2
+  BROWSE_LEFT = 0
+  BROWSE_RIGHT = 80
+  PAGE_ROWS = 26
+  TITLE_AT = 0
+  FOOTER_AT = 0
+  SHOWN_COUNT = 0
+  NUMBERED = 0
+  CURSOR = 1
+  DO
+    SKIP_SPACES()
+    IF CURRENT_CHAR() = 0 THEN EXIT DO
+    IF CURRENT_CHAR() = 64
+      CURSOR = CURSOR + 1
+      FRAME_TOP = SMALL_AT()
+      IF FAILED THEN RETURN 0
+      BROWSE_LEFT = COMMA_SMALL() + 1
+      IF FAILED THEN RETURN 0
+      SKIP_SPACES()
+      IF NAME_AT() <> "TO"
+        SYNTAX_ERROR()
+        RETURN 0
+      ENDIF
+      FRAME_BOTTOM = SMALL_AT()
+      IF FAILED THEN RETURN 0
+      BROWSE_RIGHT = COMMA_SMALL()
+      IF FAILED THEN RETURN 0
+      FRAMED = 1
+      BROWSE_TOP = FRAME_TOP + 2
+      PAGE_ROWS = FRAME_BOTTOM - BROWSE_TOP
+    ELSE
+      TOKEN = NAME_AT()
+      IF TOKEN = "DOUBLE"
+        FRAME_STYLE = LINES.DOUBLE
+      ELSEIF IS("FIELDS")
+        SHOWN_COUNT = READ_FIELD_LIST(@BROWSE_FIELD, 0)
+        IF SHOWN_COUNT = 0 THEN RETURN 0
+      ELSEIF IS("TITLE")
+        TITLE_AT = CURSOR
+        EVALUATE()
+        IF FAILED THEN RETURN 0
+      ELSEIF IS("FOOTER")
+        FOOTER_AT = CURSOR
+        EVALUATE()
+        IF FAILED THEN RETURN 0
+      ELSE
+        SYNTAX_ERROR()
+        RETURN 0
+      ENDIF
+    ENDIF
+  LOOP
+  IF SHOWN_COUNT = 0
     SHOWN_COUNT = SET_FIELD_COUNT(AREA)
     IF SHOWN_COUNT
       COPY_BYTES(@BROWSE_FIELD, @SET_FIELD + AREA * 32, SHOWN_COUNT)
-      RETURN 1
+    ELSE
+      NUMBERED = 1
+      SHOWN_COUNT = DB.FIELD_COUNT()
+      FOR FIELD = 1 TO SHOWN_COUNT
+        BROWSE_FIELD(FIELD - 1) = FIELD
+      NEXT
     ENDIF
-    SHOWN_COUNT = DB.FIELD_COUNT()
-    FOR FIELD = 1 TO SHOWN_COUNT
-      BROWSE_FIELD(FIELD - 1) = FIELD
-    NEXT
-    RETURN 1
   ENDIF
-  NEXT_WORD()
-  IF IS("FIELDS") = 0
-    SYNTAX_ERROR()
-    RETURN 0
-  ENDIF
-  SHOWN_COUNT = READ_FIELD_LIST(@BROWSE_FIELD, 0)
-  RETURN SHOWN_COUNT
+  START_COLUMN = BROWSE_LEFT + 1
+  IF NUMBERED THEN START_COLUMN = BROWSE_LEFT + 7
+  CELL_LIMIT = BROWSE_RIGHT - START_COLUMN
+  RETURN 1
 END FUNCT
 
-' BROWSE, or BROWSE FIELDS name, name, ...: shows the records that meet FILTER along the order,
-' from the current one, until Ctrl+W or Esc. The picked record is then current.
+' BROWSE [FIELDS name, name, ...] [@ row, column TO row, column [DOUBLE]] [TITLE text] [FOOTER text]:
+' shows the records that meet FILTER along the order, from the current one, until Ctrl+W or Esc.
+' The picked record is then current. A list names at most 32 fields, RECNO() among them for the
+' record's number; a list shows the number only there. @ draws a box from the first corner to the
+' second, the bottom right, and BROWSE stays inside it, with what was under it back at the end. A
+' box is at least 5 rows by 19 columns, and does not end at row 29, column 79. TITLE and FOOTER are
+' expressions, centered on the box's top and bottom lines or on rows 0 and 29, in place of the
+' table's name and the keys.
 SUB DO_BROWSE()
-  DIM SHOWN AS UBYTE, PRESSED AS UWORD
+  DIM SHOWN AS UBYTE, PRESSED AS UWORD, KEPT_ROW AS UBYTE, KEPT_COLUMN AS UBYTE
   IF IN_USE() = 0 THEN RETURN
   IF READ_SHOWN() = 0 THEN RETURN
   REACH_FILTERED(CURRENT)
@@ -231,12 +337,25 @@ SUB DO_BROWSE()
   PICKED_ROW = 0
   LAY_OUT_SHOWN()
   CURSOR OFF
-  PRINT "{CLS}";
-  PRINT LEFT$(TABLE_NAME, 60); " "; MID$(STR$(DB.RECORD_COUNT()), 2); " records";
-  ' Trap: a character in row 29's last column would scroll the screen.
-  POS(1) = 29
-  POS(0) = 0
-  PRINT "Up Down PgUp PgDn Ctrl+Home Ctrl+End Ctrl+Left Ctrl+Right Tab Ctrl+W Esc exit";
+  IF FRAMED
+    KEPT_ROW = POS(1)
+    KEPT_COLUMN = POS(0)
+    COPY_FRAME(0, 30)
+    BOX(FRAME_TOP, BROWSE_LEFT - 1, BROWSE_RIGHT - BROWSE_LEFT + 2, FRAME_BOTTOM - FRAME_TOP + 1, FRAME_STYLE)
+  ELSE
+    PRINT "{CLS}";
+    IF TITLE_AT = 0 THEN PRINT LEFT$(TABLE_NAME, 60); " "; MID$(STR$(DB.RECORD_COUNT()), 2); " records";
+    IF FOOTER_AT = 0
+      ' Trap: a character in row 29's last column would scroll the screen.
+      POS(1) = 29
+      POS(0) = 0
+      PRINT "Up Down PgUp PgDn Ctrl+Home Ctrl+End Ctrl+Left Ctrl+Right Tab Ctrl+W Esc exit";
+    ENDIF
+  ENDIF
+  IF TITLE_AT THEN SHOW_LABEL(FRAME_TOP, TITLE_AT)
+  IF FOOTER_AT THEN SHOW_LABEL(FRAME_BOTTOM, FOOTER_AT)
+  COPY_SPOT = BROWSE_LEFT * 2
+  COPY_SIZE = (BROWSE_RIGHT - BROWSE_LEFT) * 2
   DRAW_PAGE()
   DO
     FLIP_PICKED()
@@ -278,6 +397,12 @@ SUB DO_BROWSE()
     END SELECT
   LOOP
   MOVE_TO(BROWSE_RECORD(PICKED_ROW))
-  PRINT "{CLS}";
+  IF FRAMED
+    COPY_FRAME(30, 0)
+    POS(1) = KEPT_ROW
+    POS(0) = KEPT_COLUMN
+  ELSE
+    PRINT "{CLS}";
+  ENDIF
   CURSOR ON
 END SUB
