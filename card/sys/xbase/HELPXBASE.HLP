@@ -132,7 +132,7 @@ DB [file]
   DB prints the prompt ". " and runs each line typed. A command word may be
   cut to its first 4 letters or more, as DISP STRU for DISPLAY STRUCTURE.
   Small letters are the same as capitals.
-  A table is a .DB file, an index a .IDX file, a command file a .PRG file.
+  A table is a .DB file, an index a .NDX file, a command file a .PRG file.
   An error prints its message and stops the command. A command on a table
   with none in use gives No table in use. A line whose first word is no
   command gives Unknown command, unless it is name = value.
@@ -279,7 +279,7 @@ IF condition
   ENDIF
 :INDEX
 INDEX ON key TO name [UNIQUE]
-  Builds the index name, with .IDX added when it has no extension. key is 1
+  Builds the index name, with .NDX added when it has no extension. key is 1
   to 4 field names joined by +. With UNIQUE the index refuses two records
   with one key. UNIQUE is typed whole.
   The open indexes close first. The new index is the only one open, and the
@@ -538,7 +538,7 @@ SET PATH TO [folder [; folder ...]]
 SET FILTER TO [condition]
 SET REVERSE ON | SET REVERSE OFF
 SET DELETED ON | SET DELETED OFF
-  SET INDEX TO closes the open indexes, then opens each name, with .IDX
+  SET INDEX TO closes the open indexes, then opens each name, with .NDX
   added when it has no extension. The first is the order, and the first
   record of the order is current. SET INDEX TO alone leaves the record
   order. An index that fails to open prints its error, and the names after
@@ -620,7 +620,7 @@ UPPER(text)
 :USE
 USE [path [INDEX name [, name ...]]]
   Closes the table in use in the work area, then opens path, with .DB added
-  when it has no extension, and each index name, with .IDX added. The first
+  when it has no extension, and each index name, with .NDX added. The first
   index is the order, and the first record of the order is current. An
   index that fails to open prints its error, and the names after it are
   not opened. USE alone only closes the table. USE ends the LOCATE.

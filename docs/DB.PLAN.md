@@ -70,7 +70,7 @@ offset reaches.
 
 ## The index file
 
-An index is a file with the extension `.IDX`, of 512-byte pages. Page n starts at offset
+An index is a file with the extension `.NDX`, of 512-byte pages. Page n starts at offset
 512 × n. Page 0 is the index's header, and pages 1 and up are B-tree nodes.
 
 ### Page 0
@@ -306,12 +306,12 @@ the order.
 
 #### Indexes and the order
 
-- `INDEX ON key TO name [UNIQUE]` builds the index `name`, with `.IDX` added when it has no
+- `INDEX ON key TO name [UNIQUE]` builds the index `name`, with `.NDX` added when it has no
   extension, and prints `n records indexed`. The key is 1 to 4 field names joined by `+`,
   spaces allowed. The open indexes close first; the new index is the only one open, and the
   order. `UNIQUE` refuses two records with one key. A bad key field, or a key not unique,
   gives `Invalid data`, and the indexes stay closed.
-- `SET INDEX TO a, b, c` closes the open indexes and opens the names, with `.IDX` added when
+- `SET INDEX TO a, b, c` closes the open indexes and opens the names, with `.NDX` added when
   one has no extension. The first is the order. `SET INDEX TO` alone leaves the record order.
 - `INDEX ON`, `SET INDEX TO` and `USE ... INDEX` make the first record of the order current.
 - `GO TOP` and `GO BOTTOM` are the first and last records of the order. `GO n` is record n.

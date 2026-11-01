@@ -9,7 +9,7 @@ SUB CLOSE_INDEXES()
   NEXT
 END SUB
 
-' Opens each index named in REST, the names apart by commas, with .IDX added when one has no
+' Opens each index named in REST, the names apart by commas, with .NDX added when one has no
 ' extension. The first becomes the order, and its first record current. Stops at the first
 ' that fails, and prints its error.
 ' Trap: the indexes take the slots from 0, so slot 0 is the first only when none is open.
@@ -18,7 +18,7 @@ SUB OPEN_INDEXES()
   DO WHILE REST <> ""
     COMMA = INSTR(REST, ",")
     IF COMMA = 0 THEN COMMA = LEN(REST) + 1
-    IF DB.INDEX_OPEN(FIND_FILE(WITH_EXTENSION(TRIM$(LEFT$(REST, COMMA - 1)), ".IDX"))) = DB.RECORD_ORDER
+    IF DB.INDEX_OPEN(FIND_FILE(WITH_EXTENSION(TRIM$(LEFT$(REST, COMMA - 1)), ".NDX"))) = DB.RECORD_ORDER
       FILE_ERROR()
       EXIT DO
     ENDIF
@@ -52,7 +52,7 @@ SUB DO_USE()
   OPEN_INDEXES()
 END SUB
 
-' INDEX ON key TO name, or INDEX ON key TO name UNIQUE: builds the index name, with .IDX added
+' INDEX ON key TO name, or INDEX ON key TO name UNIQUE: builds the index name, with .NDX added
 ' when it has no extension, on key: 1 to 4 field names joined by +. UNIQUE refuses two records
 ' with one key. The open indexes close first; the new one is the only one open, and the order.
 ' Prints "n records indexed", and the first record of the order becomes current.
@@ -80,7 +80,7 @@ SUB DO_INDEX()
     RETURN
   ENDIF
   CLOSE_INDEXES()
-  IF DB.INDEX_CREATE(WITH_EXTENSION(REST, ".IDX"), KEY, UNIQUE) = DB.RECORD_ORDER
+  IF DB.INDEX_CREATE(WITH_EXTENSION(REST, ".NDX"), KEY, UNIQUE) = DB.RECORD_ORDER
     FILE_ERROR()
   ELSE
     PRINT RIGHT_ALIGN(DB.RECORD_COUNT(), 6); " records indexed"
