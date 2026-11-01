@@ -237,6 +237,51 @@ SUB FLIP_PICKED()
   FLIP_CELLS(PICKED_ROW + BROWSE_TOP, COLUMN, SHOWN_COLUMN(PICKED_FIELD + 1) - COLUMN - 1)
 END SUB
 
+' Edits the picked cell as GET 0 until a key leaves it, and gives the key. Esc puts the old value
+' back and gives 0. RECNO() and a field wider than CELL_LIMIT give 0 at once. Any other key stores an
+' edited cell and writes its record. A wrong value shows its error on the names' row until a key, the
+' page is drawn again with the record unchanged, and 0 is given.
+' Trap: PRINT writes the console's color, so the console is reversed while the flipped cell is edited.
+FUNCT EDIT_CELL() AS UWORD
+  DIM FIELD AS UBYTE, PRESSED AS UWORD
+  FIELD = BROWSE_FIELD(PICKED_FIELD)
+  IF FIELD = 0 OR DB.FIELD_LENGTH(FIELD) > CELL_LIMIT THEN RETURN 0
+  MOVE_TO(BROWSE_RECORD(PICKED_ROW))
+  REST = DB.FIELD_NAME(FIELD)
+  CURSOR = 1
+  READ_GET()
+  GET_ROW(0) = PICKED_ROW + BROWSE_TOP
+  GET_COLUMN(0) = SHOWN_COLUMN(PICKED_FIELD)
+  GET_EDITED = 0
+  FLIP_PICKED()
+  PRINT "{REVERSE}";
+  CURSOR ON
+  PRESSED = EDIT_GET(0)
+  CURSOR OFF
+  PRINT "{REVERSE}";
+  FLIP_PICKED()
+  IF PRESSED = KEYS.ESC
+    PRESSED = 0
+  ELSEIF GET_EDITED
+    POS(1) = BROWSE_TOP - 1
+    POS(0) = BROWSE_LEFT
+    GET_COUNT = 1
+    STORE_GETS()
+    GET_COUNT = 0
+    IF FAILED
+      FAILED = 0
+      PRESSED = WAIT_FOR_KEY()
+      MOVE_TO(BROWSE_RECORD(0))
+      DRAW_PAGE()
+      RETURN 0
+    ENDIF
+  ENDIF
+  POS(1) = GET_ROW(0)
+  POS(0) = GET_COLUMN(0)
+  PRINT DB.GET(FIELD);
+  RETURN PRESSED
+END FUNCT
+
 ' Sets the place of the BROWSE, SHOWN_COUNT and BROWSE_FIELD from REST, its clauses in any order.
 ' With no FIELDS, the area's SET FIELDS TO list, or every field of the table and NUMBERED when it
 ' has none. Not 0 when they are good, else reports the error and gives 0.
@@ -322,7 +367,10 @@ END FUNCT
 ' second, the bottom right, and BROWSE stays inside it, with what was under it back at the end. A
 ' box is at least 5 rows by 19 columns, and does not end at row 29, column 79. TITLE and FOOTER are
 ' expressions, centered on the box's top and bottom lines or on rows 0 and 29, in place of the
-' table's name and the keys.
+' table's name and the keys. Ctrl+Enter edits the picked cell. Esc ends the edit with the old value
+' back, and any other key that leaves the cell writes it and then acts. BROWSE drops the pending GETs.
+' An edited record stays on its row until the page is drawn again, even when its key or FILTER would
+' move it. An error wider than the box runs over its side.
 SUB DO_BROWSE()
   DIM SHOWN AS UBYTE, PRESSED AS UWORD, KEPT_ROW AS UBYTE, KEPT_COLUMN AS UBYTE
   IF IN_USE() = 0 THEN RETURN
@@ -332,6 +380,7 @@ SUB DO_BROWSE()
     RECORD_ERROR()
     RETURN
   ENDIF
+  GET_COUNT = 0
   FIRST_SHOWN = 0
   PICKED_FIELD = 0
   PICKED_ROW = 0
@@ -349,7 +398,7 @@ SUB DO_BROWSE()
       ' Trap: a character in row 29's last column would scroll the screen.
       POS(1) = 29
       POS(0) = 0
-      PRINT "Up Down PgUp PgDn Ctrl+Home Ctrl+End Ctrl+Left Ctrl+Right Tab Ctrl+W Esc exit";
+      PRINT "Ctrl+Home/End Left/Right Tab Ctrl+Enter edit Ctrl+W Esc exit";
     ENDIF
   ENDIF
   IF TITLE_AT THEN SHOW_LABEL(FRAME_TOP, TITLE_AT)
@@ -361,6 +410,7 @@ SUB DO_BROWSE()
     FLIP_PICKED()
     PRESSED = WAIT_FOR_KEY()
     FLIP_PICKED()
+    IF PRESSED = KEYS.ENTER AND (KEYMODS() AND KEYS.MOD_CTRL) <> 0 THEN PRESSED = EDIT_CELL()
     SELECT CASE PRESSED
       CASE KEYS.KEY_UP
         BROWSE_UP()
@@ -388,9 +438,9 @@ SUB DO_BROWSE()
         SHOWN = BACK_UP(PAGE_ROWS - 1)
         DRAW_PAGE()
         PICKED_ROW = PAGE_COUNT - 1
-      CASE KEYS.KEY_CTRL_LEFT
+      CASE KEYS.KEY_LEFT, KEYS.KEY_CTRL_LEFT
         IF PICKED_FIELD > 0 THEN PICK_FIELD(PICKED_FIELD - 1)
-      CASE KEYS.KEY_CTRL_RIGHT, KEYS.TAB, KEYS.ENTER
+      CASE KEYS.KEY_RIGHT, KEYS.KEY_CTRL_RIGHT, KEYS.TAB, KEYS.ENTER
         IF PICKED_FIELD + 1 < SHOWN_COUNT THEN PICK_FIELD(PICKED_FIELD + 1)
       CASE 23, KEYS.ESC
         EXIT DO
