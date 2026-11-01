@@ -1,5 +1,5 @@
 ' DB_DO.UXI -- the command files of XBASE.UXB: DO, RETURN, CANCEL, IF, ELSE, ENDIF, DO WHILE,
-' ENDDO, ACCEPT, INPUT, WAIT and MODIFY COMMAND. XBASE.UXB includes it after DB_INDEX.UXI. A command file is under 64 KB.
+' ENDDO, PROC, ENDPROC, GOSUB, ACCEPT, INPUT, WAIT and MODIFY COMMAND. XBASE.UXB includes it after DB_INDEX.UXI. A command file is under 64 KB.
 
 CONST DO_LIMIT AS UBYTE = 8
 DIM DO_DEPTH AS UBYTE               ' the command files running, 0 at the prompt
@@ -15,15 +15,20 @@ DIM LINE_BYTES AS UBYTE            ' the bytes of the line READ_DO_LINE read, wi
 DIM LINES_JOINED AS UBYTE          ' the lines READ_DO_LINE joined to its first
 ' The IFs open in the lines being skipped, 0 when lines run. An IF has at most one ELSE.
 DIM SKIP_DEPTH AS UBYTE
-DIM SKIP_LOOP AS UBYTE             ' 1 while SKIP_DEPTH counts DO WHILEs, not IFs
-' The DO WHILEs running, the outermost first, DO_LIMIT in all.
+' What the lines being skipped look for. IF_LINES and LOOP_LINES count in SKIP_DEPTH.
+ENUM SKIP_KIND
+  IF_LINES, LOOP_LINES, PROC_BODY, PROC_SEARCH
+END ENUM
+DIM SKIP_MODE AS UBYTE             ' a SKIP_KIND
+DIM WANTED_PROC AS STRING * 43     ' the name PROC_SEARCH looks for, as TOKEN holds it
+' The DO WHILEs and GOSUBs running, the outermost first, DO_LIMIT in all.
 DIM LOOP_DEPTH AS UBYTE
-DIM LOOP_SPOT(8) AS UWORD           ' where its line starts in its file
-DIM LOOP_LINE(8) AS UWORD           ' its line number
+DIM LOOP_SPOT(8) AS UWORD           ' where the line to go back to starts in its file
+DIM LOOP_LINE(8) AS UWORD           ' that line's number
+DIM LOOP_IS_GOSUB(8) AS UBYTE       ' 1 when a GOSUB pushed it, 0 for a DO WHILE
 DIM CALLER_LOOPS(8) AS UBYTE        ' LOOP_DEPTH of each caller
 
-' RETURN: ends the innermost command file, and its caller goes on. At the prompt it does
-' nothing.
+' Ends the innermost command file, and its caller goes on. At the prompt it does nothing.
 SUB END_DO()
   IF DO_DEPTH = 0 THEN RETURN
   DOS.REG_X = DO_FILE
@@ -33,7 +38,7 @@ SUB END_DO()
   DO_LINE = CALLER_LINE(DO_DEPTH)
   LOOP_DEPTH = CALLER_LOOPS(DO_DEPTH)
   SKIP_DEPTH = 0
-  SKIP_LOOP = 0
+  SKIP_MODE = SKIP_KIND.IF_LINES
   AHEAD_COUNT = 0
   AHEAD_INDEX = 0
 END SUB
@@ -46,7 +51,7 @@ SUB CANCEL_DO()
 END SUB
 
 ' Copies the next line of the innermost command file into COMMAND_LINE and counts it in DO_LINE.
-' A line ends in LF; a CR is dropped. A line that ends in a space and _ joins the next, which loses
+' A line ends in LF; a CR is dropped. A tab reads as a space, in quoted text too. A line that ends in a space and _ joins the next, which loses
 ' its leading spaces. A line is cut at 240 characters, joined lines counted together; a DO WHILE
 ' line is under 256 bytes, joined lines counted together. Returns 1, or 0 at the
 ' end of the file, which ends the file as RETURN does. A read error is reported, and ends every
@@ -76,11 +81,17 @@ FUNCT READ_DO_LINE() AS UBYTE
       IF AHEAD_COUNT = 0
         ' The last line has no LF when bytes were read.
         IF CODE <> 0 THEN EXIT DO
+        IF SKIP_MODE = SKIP_KIND.PROC_SEARCH
+          REPORT_ERROR("Proc not found: " + WANTED_PROC)
+          CANCEL_DO()
+          RETURN 0
+        ENDIF
         END_DO()
         RETURN 0
       ENDIF
     ENDIF
     CODE = READ_AHEAD(AHEAD_INDEX)
+    IF CODE = 9 THEN CODE = 32
     AHEAD_INDEX = AHEAD_INDEX + 1
     LINE_BYTES = LINE_BYTES + 1
     IF CODE = 10
@@ -158,12 +169,16 @@ END SUB
 ' skipped. An ELSE run skips up to its ENDIF; an ENDIF run does nothing. At the prompt IF is an
 ' error, and ELSE does nothing.
 SUB DO_IF()
-  IF DO_DEPTH = 0
-    REPORT_ERROR("Only in a command file")
-  ELSEIF TEST_CONDITION() = 0
-    SKIP_DEPTH = 1
-  ENDIF
+  IF AT_PROMPT() THEN RETURN
+  IF TEST_CONDITION() = 0 THEN SKIP_DEPTH = 1
 END SUB
+
+' 1 at the prompt, with the error printed; 0 in a command file.
+FUNCT AT_PROMPT() AS UBYTE
+  IF DO_DEPTH THEN RETURN 0
+  REPORT_ERROR("Only in a command file")
+  RETURN 1
+END FUNCT
 
 ' The logical in REST: 1 when true or after an error, 0 when false.
 FUNCT TEST_CONDITION() AS UBYTE
@@ -184,16 +199,19 @@ END FUNCT
 ' DO WHILE condition: when the condition is true, the lines up to its ENDDO run, and ENDDO goes
 ' back to the DO WHILE. When false, they are skipped. At the prompt DO WHILE is an error.
 SUB DO_WHILE()
-  IF DO_DEPTH = 0
-    REPORT_ERROR("Only in a command file")
-    RETURN
-  ENDIF
+  IF AT_PROMPT() THEN RETURN
   IF TEST_CONDITION() = 0
     SKIP_DEPTH = 1
-    SKIP_LOOP = 1
+    SKIP_MODE = SKIP_KIND.LOOP_LINES
     RETURN
   ENDIF
   IF FAILED THEN RETURN
+  PUSH_FRAME(LINE_BYTES, DO_LINE - LINES_JOINED, 0)
+END SUB
+
+' Pushes the place BYTES_BACK before the next line to read, numbered LINE_NUMBER, for ENDDO or
+' ENDPROC to go back to. More than DO_LIMIT is an error.
+SUB PUSH_FRAME(BYTES_BACK AS UBYTE, LINE_NUMBER AS UWORD, IS_GOSUB AS UBYTE)
   IF LOOP_DEPTH = DO_LIMIT
     REPORT_ERROR("Too many DO levels")
     RETURN
@@ -204,35 +222,89 @@ SUB DO_WHILE()
   DOS.R0 = 0
   DOS.R1 = 0
   SYS DOS.API_SEEK
-  LOOP_SPOT(LOOP_DEPTH) = DOS.R0 - AHEAD_COUNT + AHEAD_INDEX - LINE_BYTES
-  LOOP_LINE(LOOP_DEPTH) = DO_LINE - LINES_JOINED
+  LOOP_SPOT(LOOP_DEPTH) = DOS.R0 - AHEAD_COUNT + AHEAD_INDEX - BYTES_BACK
+  LOOP_LINE(LOOP_DEPTH) = LINE_NUMBER
+  LOOP_IS_GOSUB(LOOP_DEPTH) = IS_GOSUB
   LOOP_DEPTH = LOOP_DEPTH + 1
+END SUB
+
+' Makes the innermost command file read next the line at SPOT, numbered LINE_NUMBER + 1.
+SUB GO_TO_LINE(SPOT AS UWORD, LINE_NUMBER AS UWORD)
+  DOS.REG_X = DO_FILE
+  DOS.REG_A = 0
+  DOS.R0 = SPOT
+  DOS.R1 = 0
+  SYS DOS.API_SEEK
+  AHEAD_COUNT = 0
+  AHEAD_INDEX = 0
+  DO_LINE = LINE_NUMBER
 END SUB
 
 ' ENDDO: goes back to the DO WHILE of the innermost loop running. Without one it does nothing.
 SUB END_LOOP()
   IF LOOP_DEPTH = 0 THEN RETURN
+  IF LOOP_IS_GOSUB(LOOP_DEPTH - 1) THEN RETURN
   LOOP_DEPTH = LOOP_DEPTH - 1
-  DOS.REG_X = DO_FILE
-  DOS.REG_A = 0
-  DOS.R0 = LOOP_SPOT(LOOP_DEPTH)
-  DOS.R1 = 0
-  SYS DOS.API_SEEK
-  AHEAD_COUNT = 0
-  AHEAD_INDEX = 0
-  DO_LINE = LOOP_LINE(LOOP_DEPTH) - 1
+  GO_TO_LINE(LOOP_SPOT(LOOP_DEPTH), LOOP_LINE(LOOP_DEPTH) - 1)
 END SUB
 
-' Takes the line in TOKEN that SKIP_DEPTH skips: only IF, ELSE and ENDIF count, or with
-' SKIP_LOOP only DO WHILE and ENDDO.
+' PROC name: a line that runs skips to its ENDPROC, so a PROC runs only by GOSUB. A PROC is not
+' inside an IF, a DO WHILE or a PROC. At the prompt PROC is an error.
+SUB DO_PROC()
+  IF AT_PROMPT() THEN RETURN
+  SKIP_DEPTH = 1
+  SKIP_MODE = SKIP_KIND.PROC_BODY
+END SUB
+
+' GOSUB name: runs the first PROC name of this command file, then goes on at the next line. The
+' search reads the file from its first line, and a name not found prints Proc not found and ends
+' every file. GOSUBs and DO WHILEs nest DO_LIMIT deep. At the prompt GOSUB is an error.
+SUB DO_GOSUB()
+  IF AT_PROMPT() THEN RETURN
+  NEXT_WORD()
+  WANTED_PROC = TOKEN
+  PUSH_FRAME(0, DO_LINE + 1, 1)
+  IF FAILED THEN RETURN
+  GO_TO_LINE(0, 0)
+  SKIP_DEPTH = 1
+  SKIP_MODE = SKIP_KIND.PROC_SEARCH
+END SUB
+
+' RETURN or ENDPROC: goes back after the innermost GOSUB running in this file, and ends the DO
+' WHILEs since it. With no GOSUB it ends the innermost command file, and its caller goes on. At
+' the prompt it does nothing.
+SUB DO_RETURN()
+  DIM FRAME AS UBYTE
+  IF DO_DEPTH = 0 THEN RETURN
+  FRAME = LOOP_DEPTH
+  DO WHILE FRAME > CALLER_LOOPS(DO_DEPTH - 1)
+    FRAME = FRAME - 1
+    IF LOOP_IS_GOSUB(FRAME)
+      LOOP_DEPTH = FRAME
+      GO_TO_LINE(LOOP_SPOT(FRAME), LOOP_LINE(FRAME) - 1)
+      RETURN
+    ENDIF
+  LOOP
+  END_DO()
+END SUB
+
+' Takes the line in TOKEN that SKIP_DEPTH skips, by SKIP_MODE: IF_LINES counts IF, ELSE and ENDIF,
+' LOOP_LINES counts DO WHILE and ENDDO, PROC_BODY ends at ENDPROC and PROC_SEARCH at PROC WANTED_PROC.
 SUB SKIP_LINE()
-  IF SKIP_LOOP
+  IF SKIP_MODE = SKIP_KIND.PROC_BODY
+    IF IS("ENDPROC") THEN END_SKIP()
+  ELSEIF SKIP_MODE = SKIP_KIND.PROC_SEARCH
+    IF IS("PROC")
+      NEXT_WORD()
+      IF TOKEN = WANTED_PROC THEN END_SKIP()
+    ENDIF
+  ELSEIF SKIP_MODE = SKIP_KIND.LOOP_LINES
     IF TOKEN = "DO"
       NEXT_WORD()
       IF IS("WHILE") THEN SKIP_DEPTH = SKIP_DEPTH + 1
     ELSEIF IS("ENDDO")
       SKIP_DEPTH = SKIP_DEPTH - 1
-      IF SKIP_DEPTH = 0 THEN SKIP_LOOP = 0
+      IF SKIP_DEPTH = 0 THEN SKIP_MODE = SKIP_KIND.IF_LINES
     ENDIF
   ELSEIF TOKEN = "IF"
     SKIP_DEPTH = SKIP_DEPTH + 1
@@ -241,6 +313,12 @@ SUB SKIP_LINE()
   ELSEIF TOKEN = "ELSE" AND SKIP_DEPTH = 1
     SKIP_DEPTH = 0
   ENDIF
+END SUB
+
+' Runs the lines again from the next one.
+SUB END_SKIP()
+  SKIP_DEPTH = 0
+  SKIP_MODE = SKIP_KIND.IF_LINES
 END SUB
 
 ' Reads [prompt] TO name in REST, for ACCEPT and INPUT. Prints the prompt, a text, and returns
