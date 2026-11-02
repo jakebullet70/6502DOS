@@ -1,7 +1,7 @@
 ' XBASE.UXB -- DB, the dot prompt over the table library (docs/DB.PLAN.md). Reads a command at
 ' the prompt ". " and runs it: USE, CREATE, LIST, DISPLAY, GO or GOTO, SKIP, LOCATE, CONTINUE, DISPLAY
 ' STRUCTURE, ?, STORE, name = value, RELEASE, DISPLAY MEMORY, COUNT, SUM, APPEND, APPEND BLANK,
-' EDIT, BROWSE, SBROWSE, REPLACE, DELETE, RECALL, PACK, INDEX ON, SET INDEX TO, SET PATH TO, SET FILTER TO, SET VALID TO, SET DELETED, FIND, REINDEX, SELECT PRIMARY,
+' EDIT, BROWSE, REPLACE, DELETE, RECALL, PACK, INDEX ON, SET INDEX TO, SET PATH TO, SET FILTER TO, SET VALID TO, SET DELETED, FIND, REINDEX, SELECT PRIMARY,
 ' SELECT SECONDARY, PUSH, POP, DO, RETURN, CANCEL, IF, ELSE, ENDIF, DO WHILE, ENDDO, ACCEPT, INPUT, WAIT,
 ' MODIFY COMMAND, @ ... SAY ... GET, READ, @ ... PROMPT, MENU TO, CLEAR, CLS, SAVE SCREEN TO, RESTORE SCREEN FROM, HELP, REG and QUIT. A command word may be cut to
 ' its first 4 letters, as DISP STRU. LIST, DISPLAY, LOCATE, COUNT, SUM, REPLACE, DELETE and
@@ -60,7 +60,12 @@ DIM LIST_SHOWN AS UBYTE             ' set when a POPUP shows its box, 2 for an i
 DIM LIST_FIELD AS UBYTE             ' the field whose POPUP shows its box whatever its value, or 0 for each POPUP on a miss
 DIM SKIP_DELETED AS UBYTE           ' 1 after SET DELETED ON
 DIM KEY_PRESSED AS UWORD            ' the last key WAIT_FOR_KEY read, 0 for none
-DIM SET_FIELD(64) AS UBYTE          ' SET FIELDS TO's field numbers, 32 from AREA * 32
+' The field lists, 32 places each: SET FIELDS TO's from AREA * 32, and a BROWSE's own from 64.
+DIM SET_FIELD(96) AS UBYTE          ' field numbers, 0 for RECNO()
+DIM SET_WIDTH(96) AS UBYTE          ' the column's width, 0 for none given
+DIM SET_ALIAS(96) AS UBYTE          ' the place in ALIAS_POOL of the column's name, 0 for none
+DIM ALIAS_POOL(256) AS UBYTE        ' string blocks, 85 bytes a list, from 1 + list * 85
+DIM ALIAS_END(3) AS UBYTE           ' the next free place of ALIAS_POOL for each list
 DIM SET_FIELD_COUNT(2) AS UBYTE     ' how many each area has, 0 for none
 CONST PUSH_LIMIT AS UBYTE = 4       ' the levels of PUSH
 DIM PUSH_DEPTH AS UBYTE             ' the levels PUSH has saved and POP not taken back
@@ -689,7 +694,7 @@ ENUM COMMAND
   ON_WORD, IF_WORD, ELSE_WORD, WAIT_WORD, AT_WORD, BOX_WORD, READ_WORD, MENU_WORD, CLS_WORD
   BANG_WORD, RUN_WORD, HELP_WORD, SAVE_WORD, QUIT_WORD
   CLOSE_WORD, INDEX_WORD, SELECT_WORD, REINDEX_WORD, DISPLAY_WORD, STORE_WORD, RELEASE_WORD
-  LOCATE_WORD, COUNT_WORD, CREATE_WORD, APPEND_WORD, BROWSE_WORD, SBROWSE_WORD, REPLACE_WORD
+  LOCATE_WORD, COUNT_WORD, CREATE_WORD, APPEND_WORD, BROWSE_WORD, REPLACE_WORD
   DELETE_WORD
   RECALL_WORD, RETURN_WORD, ENDPROC_WORD, GOSUB_WORD, CANCEL_WORD, ENDIF_WORD, ENDDO_WORD
   ACCEPT_WORD, INPUT_WORD, MODIFY_WORD, CLEAR_WORD, SHELL_WORD, RESTORE_WORD, CONTINUE_WORD
@@ -697,9 +702,9 @@ END ENUM
 
 ' 5 characters a word, a space first. The list ends in a space.
 CONST SHORT_LIST$ = " ?    USE  SET  PUSH POP  FIND LIST GOTO GO   SKIP REG  SUM  EDIT PACK ZAP  COPY DO   PROC ON   IF   ELSE WAIT @    BOX  READ MENU CLS  !    RUN  HELP SAVE QUIT "
-' 8 characters a word, a space first. CONTINUE is wider, so it goes last. Trap: the next line is at
-' the compiler's limit of 254 characters.
-CONST LONG_LIST$ = " CLOSE   INDEX   SELECT  REINDEX DISPLAY STORE   RELEASE LOCATE  COUNT   CREATE  APPEND  BROWSE  SBROWSE REPLACE DELETE  RECALL  RETURN  ENDPROC GOSUB   CANCEL  ENDIF   ENDDO   ACCEPT  INPUT   MODIFY  CLEAR   SHELL   RESTORE CONTINUE"
+' 8 characters a word, a space first. CONTINUE is wider, so it goes last. Trap: the compiler's limit
+' is 254 characters a line, and the next line has 246.
+CONST LONG_LIST$ = " CLOSE   INDEX   SELECT  REINDEX DISPLAY STORE   RELEASE LOCATE  COUNT   CREATE  APPEND  BROWSE  REPLACE DELETE  RECALL  RETURN  ENDPROC GOSUB   CANCEL  ENDIF   ENDDO   ACCEPT  INPUT   MODIFY  CLEAR   SHELL   RESTORE CONTINUE"
 
 ' The command word TOKEN is, in full or by its first 4 letters or more, or NOT_A_WORD. TOKEN is not "".
 FUNCT COMMAND_NUMBER() AS ENUM.COMMAND
@@ -830,10 +835,6 @@ DO WHILE RUNNING
       CASE COMMAND.EDIT_WORD
         DO_EDIT()
       CASE COMMAND.BROWSE_WORD
-        SB = 0
-        DO_BROWSE()
-      CASE COMMAND.SBROWSE_WORD
-        SB = 1
         DO_BROWSE()
       CASE COMMAND.REPLACE_WORD
         DO_REPLACE()

@@ -12,10 +12,9 @@ DIM TITLE_AT AS UBYTE, FOOTER_AT AS UBYTE
 ' NUMBERED is 1 for the record's number in the fixed columns before START_COLUMN. CELL_LIMIT is the
 ' widest a column can be.
 DIM NUMBERED AS UBYTE, START_COLUMN AS UBYTE, CELL_LIMIT AS UBYTE
-' NO_EDIT is 1 for the NOEDIT clause, and CAN_FIND for the FIND clause. SB is 1 for the word SBROWSE,
-' 0 for BROWSE. The first FROZEN_COUNT fields stay on the screen when the columns move, and FIRST_SHOWN
-' is not below it.
-DIM NO_EDIT AS UBYTE, CAN_FIND AS UBYTE, SB AS UBYTE, FROZEN_COUNT AS UBYTE
+' NO_EDIT is 1 for the NOEDIT clause, and CAN_FIND for the FIND clause. The first FROZEN_COUNT fields
+' stay on the screen when the columns move, and FIRST_SHOWN is not below it.
+DIM NO_EDIT AS UBYTE, CAN_FIND AS UBYTE, FROZEN_COUNT AS UBYTE
 ' Where the cursor goes back to after a BROWSE in a window, kept through the run of an ON KEY PROC.
 DIM KEPT_ROW AS UBYTE, KEPT_COLUMN AS UBYTE
 ' The byte of a row COPY_ROW starts at, and how many it copies.
@@ -24,20 +23,40 @@ DIM COPY_SPOT AS UBYTE, COPY_SIZE AS UBYTE
 ' VERA's data port 1, and the control register whose bit 0 selects the port $9F20 to $9F22 set.
 DIM VERA_DATA1 AS UBYTE AT $9F24, VERA_CONTROL AS UBYTE AT $9F25
 
-' The fields of the BROWSE, 0 to SHOWN_COUNT - 1, as field numbers, 0 for RECNO(), and the one
-' picked. On the screen are 0 to FROZEN_COUNT - 1 and FIRST_SHOWN to END_SHOWN - 1. SHOWN_COLUMN has
-' the column of each, of FROZEN_COUNT as the end of the last frozen, and of END_SHOWN as the end of
-' the last.
+' The fields of the BROWSE, 0 to SHOWN_COUNT - 1, at SHOWN_BASE in the lists of SET_FIELD, and the
+' one picked. On the screen are 0 to FROZEN_COUNT - 1 and FIRST_SHOWN to END_SHOWN - 1. SHOWN_COLUMN
+' has the column of each, of FROZEN_COUNT as the end of the last frozen, and of END_SHOWN as the end
+' of the last.
 DIM SHOWN_COUNT AS UBYTE, FIRST_SHOWN AS UBYTE, END_SHOWN AS UBYTE, PICKED_FIELD AS UBYTE
-DIM BROWSE_FIELD(32) AS UBYTE, SHOWN_COLUMN(33) AS UBYTE
+DIM SHOWN_BASE AS UBYTE, SHOWN_COLUMN(33) AS UBYTE
 
 ' The records on the page, 0 to PAGE_COUNT - 1, from the top row, and the one picked.
 DIM PAGE_COUNT AS UBYTE, PICKED_ROW AS UBYTE
 DIM BROWSE_RECORD(27) AS UWORD
 
+' The name at the top of column SHOWN: its column name, else the field's, else RECNO.
+FUNCT SHOWN_NAME(SHOWN AS UBYTE) AS STRING
+  SHOWN = SHOWN_BASE + SHOWN
+  IF SET_ALIAS(SHOWN) THEN RETURN StringAt(@ALIAS_POOL + SET_ALIAS(SHOWN))
+  IF SET_FIELD(SHOWN) THEN RETURN DB.FIELD_NAME(SET_FIELD(SHOWN))
+  RETURN "RECNO"
+END FUNCT
+
+' The characters column SHOWN prints: its :width, at most CELL_LIMIT, else CELL_LIMIT.
+FUNCT SHOWN_WIDTH(SHOWN AS UBYTE) AS UBYTE
+  SHOWN = SET_WIDTH(SHOWN_BASE + SHOWN)
+  IF SHOWN = 0 OR SHOWN > CELL_LIMIT THEN RETURN CELL_LIMIT
+  RETURN SHOWN
+END FUNCT
+
+' The field number of column SHOWN, 0 for RECNO().
+FUNCT SHOWN_FIELD(SHOWN AS UBYTE) AS UBYTE
+  RETURN SET_FIELD(SHOWN_BASE + SHOWN)
+END FUNCT
+
 ' Sets END_SHOWN and SHOWN_COLUMN for the frozen fields and those that fit from FIRST_SHOWN, and
-' CELL_LIMIT to the columns left after the frozen ones. A column is as wide as its field or its
-' name, at most CELL_LIMIT, so one always fits after them.
+' CELL_LIMIT to the columns left after the frozen ones. A column is its :width wide, else as wide as
+' its field or its name, at most CELL_LIMIT, so one always fits after them.
 SUB LAY_OUT_SHOWN()
   DIM COLUMN AS UBYTE, WIDTH AS UBYTE, NAME_WIDTH AS UBYTE, FIELD AS UBYTE
   COLUMN = START_COLUMN
@@ -51,11 +70,12 @@ SUB LAY_OUT_SHOWN()
       CELL_LIMIT = BROWSE_RIGHT - COLUMN
     ENDIF
     IF END_SHOWN = SHOWN_COUNT THEN EXIT DO
-    FIELD = BROWSE_FIELD(END_SHOWN)
-    WIDTH = 5
-    IF FIELD
-      WIDTH = DB.FIELD_LENGTH(FIELD)
-      NAME_WIDTH = LEN(DB.FIELD_NAME(FIELD))
+    WIDTH = SET_WIDTH(SHOWN_BASE + END_SHOWN)
+    IF WIDTH = 0
+      FIELD = SHOWN_FIELD(END_SHOWN)
+      WIDTH = 5
+      IF FIELD THEN WIDTH = DB.FIELD_LENGTH(FIELD)
+      NAME_WIDTH = LEN(SHOWN_NAME(END_SHOWN))
       IF WIDTH < NAME_WIDTH THEN WIDTH = NAME_WIDTH
     ENDIF
     IF WIDTH > CELL_LIMIT THEN WIDTH = CELL_LIMIT
@@ -78,21 +98,18 @@ END SUB
 ' Prints the fields on the screen on the cursor's row: their names when NAMES is 1, else the current
 ' record's values.
 SUB DRAW_CELLS(NAMES AS UBYTE)
-  DIM SHOWN AS UBYTE, FIELD AS UBYTE
+  DIM SHOWN AS UBYTE, FIELD AS UBYTE, WIDTH AS UBYTE
   SHOWN = 0
   DO
     IF SHOWN = FROZEN_COUNT THEN SHOWN = FIRST_SHOWN
     IF SHOWN >= END_SHOWN THEN EXIT DO
     POS(0) = SHOWN_COLUMN(SHOWN)
-    FIELD = BROWSE_FIELD(SHOWN)
+    FIELD = SHOWN_FIELD(SHOWN)
+    WIDTH = SHOWN_WIDTH(SHOWN)
     IF NAMES
-      IF FIELD
-        PRINT DB.FIELD_NAME(FIELD);
-      ELSE
-        PRINT "RECNO";
-      ENDIF
+      PRINT LEFT$(SHOWN_NAME(SHOWN), WIDTH);
     ELSEIF FIELD
-      PRINT LEFT$(DB.GET(FIELD), CELL_LIMIT);
+      PRINT LEFT$(DB.GET(FIELD), WIDTH);
     ELSE
       PRINT RIGHT_ALIGN(CURRENT, 5);
     ENDIF
@@ -267,8 +284,8 @@ END SUB
 ' Trap: PRINT writes the console's color, so the console is reversed while the flipped cell is edited.
 FUNCT EDIT_CELL() AS UWORD
   DIM FIELD AS UBYTE, PRESSED AS UWORD
-  FIELD = BROWSE_FIELD(PICKED_FIELD)
-  IF FIELD = 0 OR DB.FIELD_LENGTH(FIELD) > CELL_LIMIT THEN RETURN 0
+  FIELD = SHOWN_FIELD(PICKED_FIELD)
+  IF FIELD = 0 OR DB.FIELD_LENGTH(FIELD) > SHOWN_WIDTH(PICKED_FIELD) THEN RETURN 0
   MOVE_TO(BROWSE_RECORD(PICKED_ROW))
   GET_ROW(0) = PICKED_ROW + BROWSE_TOP
   GET_COLUMN(0) = SHOWN_COLUMN(PICKED_FIELD)
@@ -328,7 +345,7 @@ END FUNCT
 ' With no match it beeps and the pick stays. RECNO() does nothing, and Esc cannot stop a long search.
 SUB FIND_IN_FIELD()
   DIM FIELD AS UBYTE, WIDTH AS UBYTE, SPOT AS UBYTE, PRESSED AS UWORD, FIND_TEXT AS STRING * 73
-  FIELD = BROWSE_FIELD(PICKED_FIELD)
+  FIELD = SHOWN_FIELD(PICKED_FIELD)
   IF FIELD = 0 THEN RETURN
   ' Trap: a text that ends in the last column leaves the cursor on the next row.
   WIDTH = BROWSE_RIGHT - BROWSE_LEFT - 7
@@ -379,11 +396,11 @@ SUB FIND_IN_FIELD()
   PICKED_ROW = 0
 END SUB
 
-' Sets the place of the BROWSE, SHOWN_COUNT and BROWSE_FIELD from REST, its clauses in any order.
+' Sets the place of the BROWSE, SHOWN_COUNT and SHOWN_BASE from REST, its clauses in any order.
 ' With no FIELDS, the area's SET FIELDS TO list, or every field of the table and NUMBERED when it
 ' has none. Not 0 when they are good, else reports the error and gives 0.
 FUNCT READ_SHOWN() AS UBYTE
-  DIM FIELD AS UBYTE
+  DIM FIELD AS UBYTE, SPOT AS UBYTE
   FRAMED = 0
   FRAME_STYLE = LINES.SINGLE
   FRAME_TOP = 0
@@ -395,6 +412,7 @@ FUNCT READ_SHOWN() AS UBYTE
   TITLE_AT = 0
   FOOTER_AT = 0
   SHOWN_COUNT = 0
+  SHOWN_BASE = 64
   NUMBERED = 0
   NO_EDIT = 0
   CAN_FIND = 0
@@ -433,7 +451,7 @@ FUNCT READ_SHOWN() AS UBYTE
         FROZEN_COUNT = SMALL_AT()
         IF FAILED THEN RETURN 0
       ELSEIF IS("FIELDS")
-        SHOWN_COUNT = READ_FIELD_LIST(@BROWSE_FIELD, 0)
+        SHOWN_COUNT = READ_FIELD_LIST(2, 0)
         IF SHOWN_COUNT = 0 THEN RETURN 0
       ELSEIF IS("TITLE")
         TITLE_AT = CURSOR
@@ -452,12 +470,15 @@ FUNCT READ_SHOWN() AS UBYTE
   IF SHOWN_COUNT = 0
     SHOWN_COUNT = SET_FIELD_COUNT(AREA)
     IF SHOWN_COUNT
-      COPY_BYTES(@BROWSE_FIELD, @SET_FIELD + AREA * 32, SHOWN_COUNT)
+      SHOWN_BASE = AREA * 32
     ELSE
       NUMBERED = 1
       SHOWN_COUNT = DB.FIELD_COUNT()
       FOR FIELD = 1 TO SHOWN_COUNT
-        BROWSE_FIELD(FIELD - 1) = FIELD
+        SPOT = 63 + FIELD
+        SET_FIELD(SPOT) = FIELD
+        SET_WIDTH(SPOT) = 0
+        SET_ALIAS(SPOT) = 0
       NEXT
     ENDIF
   ENDIF
@@ -467,11 +488,14 @@ FUNCT READ_SHOWN() AS UBYTE
 END FUNCT
 
 ' BROWSE [FIELDS name, name, ...] [@ row, column TO row, column [DOUBLE]] [TITLE text] [FOOTER text]
-' [NOEDIT] [FREEZE n] [FIND]: shows the records that meet FILTER along the order, from the current one,
-' until Ctrl+W or Esc. SBROWSE takes the same clauses. With FIND, Ctrl+F searches the picked field, as
-' FIND_IN_FIELD. The picked record is then current. A list names at most 32 fields, RECNO() among them for the
-' record's number; a list shows the number only there. @ draws a box from the first corner to the
-' second, the bottom right, and BROWSE stays inside it, with what was under it back at the end. A
+' [NOEDIT] [FREEZE n] [FIND]: shows the records that meet FILTER along the order, from the current
+' one, until Ctrl+W or Esc. With FIND, Ctrl+F searches the picked field, as FIND_IN_FIELD. The picked
+' record is then current. A list names at most 32 fields, RECNO() among them for the
+' record's number; a list shows the number only there. A name's :width sets its column's width, cuts
+' its values and its column name there, and a field wider than that is not edited. A width on RECNO()
+' is at least 5, not checked. A quoted text after a name is the column's name, as READ_FIELD_LIST
+' reads it, and with no :width the column fits it in place of the field's name. @ draws a box from the first corner
+' to the second, the bottom right, and BROWSE stays inside it, with what was under it back at the end. A
 ' box is at least 5 rows by 19 columns, and does not end at row 29, column 79. TITLE and FOOTER are
 ' expressions, centered on the box's top and bottom lines or on rows 0 and 29, in place of the
 ' table's name and the keys. Ctrl+Enter edits the picked cell. Esc ends the edit with the old value
@@ -484,8 +508,8 @@ END FUNCT
 ' the picked one. The page stays on the screen while the PROC runs, and the return draws it again. A
 ' PROC that changes the table or the fields, or runs a BROWSE, loses them, and after a BROWSE the first
 ' box's lines can stay on the screen at its end. A PROC that fails leaves the page on the screen, and
-' what was under the box is not restored. NOEDIT changes no record: Ctrl+Enter acts as Enter, Ctrl+U
-' does nothing, and the keys row leaves out the edit. FREEZE keeps the first n fields on the screen
+' what was under the box is not restored. NOEDIT changes no record: Enter and Ctrl+Enter end the
+' BROWSE as Ctrl+W does, Ctrl+U does nothing, and the keys row leaves out the edit. FREEZE keeps the first n fields on the screen
 ' when the columns move. They fit, with a column left for the rest. A field wider than the columns
 ' left after them is cut, frozen or not, and is not edited.
 ' Trap: Ctrl+Home or Ctrl+End with no record left that meets FILTER and SET DELETED leaves PAGE_COUNT
@@ -544,6 +568,8 @@ SUB DO_BROWSE()
       IF PRESSED = KEYS.ENTER AND (KEYMODS() AND KEYS.MOD_CTRL) <> 0 THEN PRESSED = EDIT_CELL()
     ELSEIF PRESSED = 21
       PRESSED = 0
+    ELSEIF PRESSED = KEYS.ENTER
+      PRESSED = 23
     ENDIF
     SELECT CASE PRESSED
       CASE KEYS.KEY_UP

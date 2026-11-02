@@ -88,11 +88,15 @@ SUB DO_INDEX()
   TOP_OF_ORDER()
 END SUB
 
-' Reads field names with commas between them, at CURSOR, and puts their numbers in the bytes at
-' LIST from LIST + COUNT, 0 for RECNO(). CURSOR ends past the last name and its spaces. Returns
-' COUNT and the names read, or reports the error and gives 0.
-FUNCT READ_FIELD_LIST(LIST AS UWORD, COUNT AS UBYTE) AS UBYTE
-  DIM FIELD AS UBYTE
+' Reads field names with commas between them, at CURSOR, into list LIST of SET_FIELD from place
+' COUNT, 0 for RECNO(). Each name can have :width, an expression, and then a column name, an
+' expression that starts with a quote. The column names of a list fit in 85 bytes, each its length
+' and 2, not checked. CURSOR ends past the last name and its spaces. Returns COUNT and the names
+' read, or reports the error and gives 0.
+FUNCT READ_FIELD_LIST(LIST AS UBYTE, COUNT AS UBYTE) AS UBYTE
+  DIM FIELD AS UBYTE, SPOT AS UBYTE, ENDING AS UBYTE
+  ENDING = ALIAS_END(LIST)
+  IF COUNT = 0 THEN ENDING = LIST * 85 + 1
   DO
     SKIP_SPACES()
     TOKEN = NAME_AT()
@@ -106,10 +110,31 @@ FUNCT READ_FIELD_LIST(LIST AS UWORD, COUNT AS UBYTE) AS UBYTE
         RETURN 0
       ENDIF
     ENDIF
-    ContentsAt(LIST + COUNT) = FIELD
+    SPOT = LIST * 32 + COUNT
+    SET_FIELD(SPOT) = FIELD
+    SET_WIDTH(SPOT) = 0
+    SET_ALIAS(SPOT) = 0
     COUNT = COUNT + 1
     SKIP_SPACES()
-    IF CURRENT_CHAR() <> 44 THEN RETURN COUNT
+    IF CURRENT_CHAR() = 58
+      CURSOR = CURSOR + 1
+      SET_WIDTH(SPOT) = SMALL_AT()
+      IF FAILED THEN RETURN 0
+      SKIP_SPACES()
+    ENDIF
+    IF CURRENT_CHAR() = 34
+      EVALUATE()
+      IF FAILED THEN RETURN 0
+      TOKEN = TEXT_OF(0)
+      SET_ALIAS(SPOT) = ENDING
+      COPY_BYTES(@ALIAS_POOL + ENDING, @TOKEN, LEN(TOKEN) + 2)
+      ENDING = ENDING + LEN(TOKEN) + 2
+      SKIP_SPACES()
+    ENDIF
+    IF CURRENT_CHAR() <> 44
+      ALIAS_END(LIST) = ENDING
+      RETURN COUNT
+    ENDIF
     CURSOR = CURSOR + 1
   LOOP
 END FUNCT
@@ -124,8 +149,8 @@ END FUNCT
 ' REVERSE OFF: the default colors again. SET DELETED ON: GO TOP, GO BOTTOM, SKIP, the scopes and
 ' BROWSE pass over deleted records, in both areas, across USE. SET DELETED OFF ends it.
 ' SET FIELDS TO names: adds names to the fields a BROWSE alone shows, at most 32 for the area,
-' RECNO() among them for the record's number; a bad name adds none. SET FIELDS TO alone clears
-' them. USE and CREATE clear them.
+' RECNO() among them for the record's number; a bad name adds none. Each can have :width and a
+' column name, as READ_FIELD_LIST reads them. SET FIELDS TO alone clears them. USE and CREATE clear them.
 SUB DO_SET()
   DIM COUNT AS UBYTE, VALIDATING AS UBYTE
   NEXT_WORD()
@@ -196,7 +221,7 @@ SUB DO_SET()
         RETURN
       ENDIF
       CURSOR = 1
-      COUNT = READ_FIELD_LIST(@SET_FIELD + AREA * 32, SET_FIELD_COUNT(AREA))
+      COUNT = READ_FIELD_LIST(AREA, SET_FIELD_COUNT(AREA))
       IF COUNT = 0 THEN RETURN
       IF CURRENT_CHAR() = 0
         SET_FIELD_COUNT(AREA) = COUNT
