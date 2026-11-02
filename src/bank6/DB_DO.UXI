@@ -1,5 +1,5 @@
 ' DB_DO.UXI -- the command files of XBASE.UXB: DO, RETURN, CANCEL, IF, ELSE, ENDIF, DO WHILE,
-' ENDDO, PROC, ENDPROC, GOSUB, ACCEPT, INPUT, WAIT and MODIFY COMMAND. XBASE.UXB includes it after DB_INDEX.UXI. A command file is under 64 KB.
+' ENDDO, PROC, ENDPROC, GOSUB, ON KEY, ACCEPT, INPUT, WAIT and MODIFY COMMAND. XBASE.UXB includes it after DB_INDEX.UXI. A command file is under 64 KB.
 
 CONST DO_LIMIT AS UBYTE = 8
 DIM DO_DEPTH AS UBYTE               ' the command files running, 0 at the prompt
@@ -27,9 +27,15 @@ DIM LOOP_SPOT(8) AS UWORD           ' where the line to go back to starts in its
 DIM LOOP_LINE(8) AS UWORD           ' that line's number
 DIM LOOP_IS_GOSUB(8) AS UBYTE       ' 1 when a GOSUB pushed it, 0 for a DO WHILE
 DIM CALLER_LOOPS(8) AS UBYTE        ' LOOP_DEPTH of each caller
+' The PROC name ON KEY bound to each of F1 to F10: a length, 0 for none, and the text.
+CONST KEY_PROC_SIZE AS UBYTE = 11
+DIM KEY_PROCS(110) AS UBYTE
+DIM BROWSE_BACK AS UWORD            ' DO_LINE + 1 of the BROWSE an F key left, 0 for none
 
-' Ends the innermost command file, and its caller goes on. At the prompt it does nothing.
+' Ends the innermost command file, and its caller goes on. The last file's end drops every ON KEY.
+' At the prompt it does nothing.
 SUB END_DO()
+  DIM SLOT AS UBYTE
   IF DO_DEPTH = 0 THEN RETURN
   DOS.REG_X = DO_FILE
   SYS DOS.API_CLOSE
@@ -41,6 +47,12 @@ SUB END_DO()
   SKIP_MODE = SKIP_KIND.IF_LINES
   AHEAD_COUNT = 0
   AHEAD_INDEX = 0
+  IF DO_DEPTH = 0
+    BROWSE_BACK = 0
+    FOR SLOT = 0 TO 9
+      ContentsAt(@KEY_PROCS + SLOT * KEY_PROC_SIZE) = 0
+    NEXT
+  ENDIF
 END SUB
 
 ' CANCEL: ends every command file.
@@ -263,11 +275,61 @@ SUB DO_GOSUB()
   IF AT_PROMPT() THEN RETURN
   NEXT_WORD()
   WANTED_PROC = TOKEN
-  PUSH_FRAME(0, DO_LINE + 1, 1)
+  CALL_PROC(0, DO_LINE + 1)
+END SUB
+
+' Searches this command file for PROC WANTED_PROC, and pushes the place for its ENDPROC to go back
+' to, as PUSH_FRAME takes it.
+SUB CALL_PROC(BYTES_BACK AS UBYTE, LINE_NUMBER AS UWORD)
+  PUSH_FRAME(BYTES_BACK, LINE_NUMBER, 1)
   IF FAILED THEN RETURN
   GO_TO_LINE(0, 0)
   SKIP_DEPTH = 1
   SKIP_MODE = SKIP_KIND.PROC_SEARCH
+END SUB
+
+' ON KEY Fn GOSUB name: F1 to F10 in a BROWSE leaves it and runs PROC name of the file running the
+' BROWSE, and its ENDPROC runs the BROWSE line again. ON KEY Fn drops the key. A name is 10
+' characters at most. The last command file's end drops every key. At the prompt ON is an error.
+SUB DO_ON()
+  DIM SLOT AS UBYTE
+  IF AT_PROMPT() THEN RETURN
+  NEXT_WORD()
+  IF TOKEN = "KEY"
+    NEXT_WORD()
+    SLOT = VAL(MID$(TOKEN, 2)) - 1
+    IF ASC(TOKEN) = 70 AND SLOT < 10
+      IF REST <> ""
+        NEXT_WORD()
+        IF IS("GOSUB") = 0 OR REST = ""
+          SYNTAX_ERROR()
+          RETURN
+        ENDIF
+      ENDIF
+      NEXT_WORD()
+      COPY_BYTES(@KEY_PROCS + SLOT * KEY_PROC_SIZE, @TOKEN + 1, KEY_PROC_SIZE)
+      RETURN
+    ENDIF
+  ENDIF
+  SYNTAX_ERROR()
+END SUB
+
+' The place in KEY_PROCS of the key PRESSED, as WAITKEY() gives it, or 0 when ON KEY did not bind it.
+FUNCT BOUND_PROC(PRESSED AS UWORD) AS UWORD
+  DIM SLOT AS UBYTE, SPOT AS UWORD
+  SLOT = (PRESSED >> 8) - KEYS.SCAN_F1
+  IF SLOT >= 10 THEN RETURN 0
+  SPOT = @KEY_PROCS + SLOT * KEY_PROC_SIZE
+  IF ContentsAt(SPOT) = 0 THEN RETURN 0
+  RETURN SPOT
+END FUNCT
+
+' Runs the PROC bound to PRESSED, and its ENDPROC runs the line just read again. The line is under
+' 256 bytes, joined lines counted together.
+SUB GOSUB_KEY(PRESSED AS UWORD)
+  COPY_BYTES(@WANTED_PROC + 1, BOUND_PROC(PRESSED), KEY_PROC_SIZE)
+  BROWSE_BACK = DO_LINE + 1
+  CALL_PROC(LINE_BYTES, DO_LINE - LINES_JOINED)
 END SUB
 
 ' RETURN or ENDPROC: goes back after the innermost GOSUB running in this file, and ends the DO

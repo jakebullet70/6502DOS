@@ -1,7 +1,7 @@
 ' XBASE.UXB -- DB, the dot prompt over the table library (docs/DB.PLAN.md). Reads a command at
 ' the prompt ". " and runs it: USE, CREATE, LIST, DISPLAY, GO or GOTO, SKIP, LOCATE, CONTINUE, DISPLAY
 ' STRUCTURE, ?, STORE, name = value, RELEASE, DISPLAY MEMORY, COUNT, SUM, APPEND, APPEND BLANK,
-' EDIT, BROWSE, REPLACE, DELETE, RECALL, PACK, INDEX ON, SET INDEX TO, SET PATH TO, SET FILTER TO, SET VALID TO, SET DELETED, FIND, REINDEX, SELECT PRIMARY,
+' EDIT, BROWSE, SBROWSE, REPLACE, DELETE, RECALL, PACK, INDEX ON, SET INDEX TO, SET PATH TO, SET FILTER TO, SET VALID TO, SET DELETED, FIND, REINDEX, SELECT PRIMARY,
 ' SELECT SECONDARY, PUSH, POP, DO, RETURN, CANCEL, IF, ELSE, ENDIF, DO WHILE, ENDDO, ACCEPT, INPUT, WAIT,
 ' MODIFY COMMAND, @ ... SAY ... GET, READ, @ ... PROMPT, MENU TO, CLEAR, CLS, SAVE SCREEN TO, RESTORE SCREEN FROM, HELP, REG and QUIT. A command word may be cut to
 ' its first 4 letters, as DISP STRU. LIST, DISPLAY, LOCATE, COUNT, SUM, REPLACE, DELETE and
@@ -680,6 +680,39 @@ SUB SHOW_SPLASH()
   DOS.CLOSE_FILE(HANDLE)
 END SUB
 
+' The command words. Checklist: SHORT_LIST$ holds the words of at most 4 characters, from PRINT_WORD,
+' and LONG_LIST$ the rest, from CLOSE_WORD, each in this order.
+ENUM COMMAND
+  NOT_A_WORD = 0
+  PRINT_WORD = 1, USE_WORD, SET_WORD, PUSH_WORD, POP_WORD, FIND_WORD, LIST_WORD, GOTO_WORD, GO_WORD
+  SKIP_WORD, REG_WORD, SUM_WORD, EDIT_WORD, PACK_WORD, ZAP_WORD, COPY_WORD, DO_WORD, PROC_WORD
+  ON_WORD, IF_WORD, ELSE_WORD, WAIT_WORD, AT_WORD, BOX_WORD, READ_WORD, MENU_WORD, CLS_WORD
+  BANG_WORD, RUN_WORD, HELP_WORD, SAVE_WORD, QUIT_WORD
+  CLOSE_WORD, INDEX_WORD, SELECT_WORD, REINDEX_WORD, DISPLAY_WORD, STORE_WORD, RELEASE_WORD
+  LOCATE_WORD, COUNT_WORD, CREATE_WORD, APPEND_WORD, BROWSE_WORD, SBROWSE_WORD, REPLACE_WORD
+  DELETE_WORD
+  RECALL_WORD, RETURN_WORD, ENDPROC_WORD, GOSUB_WORD, CANCEL_WORD, ENDIF_WORD, ENDDO_WORD
+  ACCEPT_WORD, INPUT_WORD, MODIFY_WORD, CLEAR_WORD, SHELL_WORD, RESTORE_WORD, CONTINUE_WORD
+END ENUM
+
+' 5 characters a word, a space first. The list ends in a space.
+CONST SHORT_LIST$ = " ?    USE  SET  PUSH POP  FIND LIST GOTO GO   SKIP REG  SUM  EDIT PACK ZAP  COPY DO   PROC ON   IF   ELSE WAIT @    BOX  READ MENU CLS  !    RUN  HELP SAVE QUIT "
+' 8 characters a word, a space first. CONTINUE is wider, so it goes last. Trap: the next line is at
+' the compiler's limit of 254 characters.
+CONST LONG_LIST$ = " CLOSE   INDEX   SELECT  REINDEX DISPLAY STORE   RELEASE LOCATE  COUNT   CREATE  APPEND  BROWSE  SBROWSE REPLACE DELETE  RECALL  RETURN  ENDPROC GOSUB   CANCEL  ENDIF   ENDDO   ACCEPT  INPUT   MODIFY  CLEAR   SHELL   RESTORE CONTINUE"
+
+' The command word TOKEN is, in full or by its first 4 letters or more, or NOT_A_WORD. TOKEN is not "".
+FUNCT COMMAND_NUMBER() AS ENUM.COMMAND
+  DIM PLACE AS UBYTE
+  PLACE = INSTR(SHORT_LIST$, " " + TOKEN + " ")
+  IF PLACE THEN RETURN PLACE / 5 + COMMAND.PRINT_WORD
+  IF LEN(TOKEN) < 4 THEN RETURN COMMAND.NOT_A_WORD
+  PLACE = INSTR(LONG_LIST$, " " + TOKEN)
+  IF PLACE = 0 THEN RETURN COMMAND.NOT_A_WORD
+  RETURN PLACE / 8 + COMMAND.CLOSE_WORD
+END FUNCT
+
+DOS.STOP_KEY(DOS.STOP.OFF)
 ' The variables' bank. Without a free bank DB does not run.
 RUNNING = 0
 PUSH_DEPTH = 0
@@ -743,164 +776,171 @@ DO WHILE RUNNING
   ENDIF
   IF SKIP_DEPTH <> 0
     SKIP_LINE()
-  ELSEIF TOKEN = "?"
-    DO_PRINT()
-  ELSEIF TOKEN = ""
-    ' an empty line
-  ELSEIF IS("USE")
-    DO_USE()
-    LOCATE_ACTIVE = 0
-  ELSEIF IS("CLOSE")
-    NEW_TABLE("")
-    LOCATE_ACTIVE = 0
-  ELSEIF IS("INDEX")
-    DO_INDEX()
-  ELSEIF IS("SET")
-    DO_SET()
-  ELSEIF IS("SELECT")
-    DO_SELECT()
-  ELSEIF TOKEN = "PUSH"
-    DO_PUSH(0)
-  ELSEIF TOKEN = "POP"
-    DO_PUSH(1)
-  ELSEIF IS("FIND")
-    DO_FIND()
-  ELSEIF IS("REINDEX")
-    DO_REINDEX()
-  ELSEIF IS("LIST")
-    DO_LIST(SCOPE_KIND.ALL_RECORDS)
-  ELSEIF IS("GOTO") OR TOKEN = "GO"
-    DO_GO()
-  ELSEIF IS("SKIP")
-    DO_SKIP()
-  ELSEIF IS("DISPLAY")
-    DO_DISPLAY()
-  ELSEIF IS("STORE")
-    DO_STORE()
-  ELSEIF TOKEN = "REG"
-    DO_REG()
-  ELSEIF IS("RELEASE")
-    DO_RELEASE()
-  ELSEIF IS("LOCATE")
-    DO_LOCATE()
-  ELSEIF IS("CONTINUE")
-    DO_CONTINUE()
-  ELSEIF IS("COUNT")
-    DO_TOTAL(0)
-  ELSEIF IS("SUM")
-    DO_TOTAL(1)
-  ELSEIF IS("CREATE")
-    DO_CREATE()
-    LOCATE_ACTIVE = 0
-  ELSEIF IS("APPEND")
-    DO_APPEND()
-  ELSEIF IS("EDIT")
-    DO_EDIT()
-  ELSEIF IS("BROWSE")
-    DO_BROWSE()
-  ELSEIF IS("REPLACE")
-    DO_REPLACE()
-  ELSEIF IS("DELETE")
-    DO_MARK(1)
-  ELSEIF IS("RECALL")
-    DO_MARK(0)
-  ELSEIF IS("PACK")
-    DO_PACK(0)
-  ELSEIF TOKEN = "ZAP"
-    DO_PACK(1)
-  ELSEIF IS("COPY")
-    DO_COPY()
-  ELSEIF TOKEN = "DO"
-    DO_DO()
-  ELSEIF IS("RETURN") OR IS("ENDPROC")
-    DO_RETURN()
-  ELSEIF IS("GOSUB")
-    DO_GOSUB()
-  ELSEIF IS("PROC")
-    DO_PROC()
-  ELSEIF IS("CANCEL")
-    CANCEL_DO()
-  ELSEIF TOKEN = "IF"
-    DO_IF()
-  ELSEIF TOKEN = "ELSE"
-    IF DO_DEPTH THEN SKIP_DEPTH = 1
-  ELSEIF IS("ENDIF")
-    ' the end of an IF that ran
-  ELSEIF IS("ENDDO")
-    END_LOOP()
-  ELSEIF IS("ACCEPT")
-    DO_ACCEPT(0)
-  ELSEIF IS("INPUT")
-    DO_ACCEPT(1)
-  ELSEIF IS("WAIT")
-    DO_WAIT()
-  ELSEIF IS("MODIFY")
-    DO_MODIFY()
-  ELSEIF TOKEN = "@"
-    DO_AT()
-  ELSEIF TOKEN = "BOX"
-    DO_BOX()
-  ELSEIF IS("READ")
-    DO_READ()
-  ELSEIF IS("MENU")
-    DO_MENU()
-  ELSEIF IS("CLEAR")
-    DO_CLEAR(1)
-  ELSEIF TOKEN = "CLS"
-    DO_CLEAR(0)
-  ELSEIF TOKEN = "!" OR TOKEN = "RUN" OR IS("SHELL")
-    ' !, RUN and SHELL run C:\sys\ROMSHELL.COM without STARTUP.CMD. Alone, the shell's END comes back;
-    ' with a command line, the shell runs it and ends.
-    IF REST = ""
-      REST = "N"
-    ELSE
-      REST = "C " + REST
-    ENDIF
-    DOS.EXEC("C:\sys\ROMSHELL.COM", " -" + REST)
-    IF DOS.ERROR THEN FILE_ERROR()
-  ELSEIF IS("HELP")
-    ' HELP [topic] runs HELPXBASE.COM in the program's folder. Trap: HELPXBASE reads the topic from
-    ' P1$, not the tail.
-    HEAP.SYS_STRINGS_SET(0, REST)
-    DOS.EXEC(DOS.PROGRAM_FOLDER() + "HELPXBASE.COM", " " + REST)
-    IF DOS.ERROR THEN FILE_ERROR()
-  ELSEIF IS("SAVE")
-    DO_SCREEN_FILE(0)
-  ELSEIF IS("RESTORE")
-    DO_SCREEN_FILE(1)
-  ELSEIF IS("QUIT")
-    SAVE_HISTORY()
-    RUNNING = 0
-  ELSE
-    ' name = expression stores, as STORE does.
-    REST = TRIM$(COMMAND_LINE)
-    CURSOR = 1
-    TOKEN = VARIABLE_NAME()
-    SKIP_SPACES()
-    IF TOKEN <> "" AND CURRENT_CHAR() = 61
-      CURSOR = CURSOR + 1
-      EVALUATE()
-      IF FAILED = 0 THEN ASSIGN(TOKEN, 0)
-    ELSE
-      ' name [tail] runs name.COM, else name.CMD through the shell, else name.PRG with the tail in
-      ' ARGS, in CMDLET_FOLDER$.
-      ' Trap: the program reads P1$ or the tail. DOS.EXISTS sets DOS.ERROR when it finds nothing.
-      NEXT_WORD()
-      HEAP.SYS_STRINGS_SET(0, REST)
-      DOS.EXEC(CMDLET_FOLDER$ + TOKEN + ".COM", " " + REST)
-      IF DOS.ERROR = DOS.ERR_NOT_FOUND
-        IF DOS.EXISTS(CMDLET_FOLDER$ + TOKEN + ".CMD")
-          DOS.EXEC("C:\sys\ROMSHELL.COM", " -C " + CMDLET_FOLDER$ + TOKEN + ".CMD " + REST)
-        ELSEIF DOS.EXISTS(CMDLET_FOLDER$ + TOKEN + ".PRG")
-          STORE_TEXT("ARGS", REST)
-          REST = CMDLET_FOLDER$ + TOKEN + ".PRG"
-          IF FAILED = 0 THEN RUN_COMMAND_FILE()
+  ELSEIF TOKEN <> ""
+    ON CASE COMMAND_NUMBER()
+      CASE COMMAND.PRINT_WORD
+        DO_PRINT()
+      CASE COMMAND.USE_WORD
+        DO_USE()
+        LOCATE_ACTIVE = 0
+      CASE COMMAND.CLOSE_WORD
+        NEW_TABLE("")
+        LOCATE_ACTIVE = 0
+      CASE COMMAND.INDEX_WORD
+        DO_INDEX()
+      CASE COMMAND.SET_WORD
+        DO_SET()
+      CASE COMMAND.SELECT_WORD
+        DO_SELECT()
+      CASE COMMAND.PUSH_WORD
+        DO_PUSH(0)
+      CASE COMMAND.POP_WORD
+        DO_PUSH(1)
+      CASE COMMAND.FIND_WORD
+        DO_FIND()
+      CASE COMMAND.REINDEX_WORD
+        DO_REINDEX()
+      CASE COMMAND.LIST_WORD
+        DO_LIST(SCOPE_KIND.ALL_RECORDS)
+      CASE COMMAND.GOTO_WORD, COMMAND.GO_WORD
+        DO_GO()
+      CASE COMMAND.SKIP_WORD
+        DO_SKIP()
+      CASE COMMAND.DISPLAY_WORD
+        DO_DISPLAY()
+      CASE COMMAND.STORE_WORD
+        DO_STORE()
+      CASE COMMAND.REG_WORD
+        DO_REG()
+      CASE COMMAND.RELEASE_WORD
+        DO_RELEASE()
+      CASE COMMAND.LOCATE_WORD
+        DO_LOCATE()
+      CASE COMMAND.CONTINUE_WORD
+        DO_CONTINUE()
+      CASE COMMAND.COUNT_WORD
+        DO_TOTAL(0)
+      CASE COMMAND.SUM_WORD
+        DO_TOTAL(1)
+      CASE COMMAND.CREATE_WORD
+        DO_CREATE()
+        LOCATE_ACTIVE = 0
+      CASE COMMAND.APPEND_WORD
+        DO_APPEND()
+      CASE COMMAND.EDIT_WORD
+        DO_EDIT()
+      CASE COMMAND.BROWSE_WORD
+        SB = 0
+        DO_BROWSE()
+      CASE COMMAND.SBROWSE_WORD
+        SB = 1
+        DO_BROWSE()
+      CASE COMMAND.REPLACE_WORD
+        DO_REPLACE()
+      CASE COMMAND.DELETE_WORD
+        DO_MARK(1)
+      CASE COMMAND.RECALL_WORD
+        DO_MARK(0)
+      CASE COMMAND.PACK_WORD
+        DO_PACK(0)
+      CASE COMMAND.ZAP_WORD
+        DO_PACK(1)
+      CASE COMMAND.COPY_WORD
+        DO_COPY()
+      CASE COMMAND.DO_WORD
+        DO_DO()
+      CASE COMMAND.RETURN_WORD, COMMAND.ENDPROC_WORD
+        DO_RETURN()
+      CASE COMMAND.GOSUB_WORD
+        DO_GOSUB()
+      CASE COMMAND.PROC_WORD
+        DO_PROC()
+      CASE COMMAND.ON_WORD
+        DO_ON()
+      CASE COMMAND.CANCEL_WORD
+        CANCEL_DO()
+      CASE COMMAND.IF_WORD
+        DO_IF()
+      CASE COMMAND.ELSE_WORD
+        IF DO_DEPTH THEN SKIP_DEPTH = 1
+      CASE COMMAND.ENDIF_WORD
+        ' the end of an IF that ran
+      CASE COMMAND.ENDDO_WORD
+        END_LOOP()
+      CASE COMMAND.ACCEPT_WORD
+        DO_ACCEPT(0)
+      CASE COMMAND.INPUT_WORD
+        DO_ACCEPT(1)
+      CASE COMMAND.WAIT_WORD
+        DO_WAIT()
+      CASE COMMAND.MODIFY_WORD
+        DO_MODIFY()
+      CASE COMMAND.AT_WORD
+        DO_AT()
+      CASE COMMAND.BOX_WORD
+        DO_BOX()
+      CASE COMMAND.READ_WORD
+        DO_READ()
+      CASE COMMAND.MENU_WORD
+        DO_MENU()
+      CASE COMMAND.CLEAR_WORD
+        DO_CLEAR(1)
+      CASE COMMAND.CLS_WORD
+        DO_CLEAR(0)
+      CASE COMMAND.BANG_WORD, COMMAND.RUN_WORD, COMMAND.SHELL_WORD
+        ' !, RUN and SHELL run C:\sys\ROMSHELL.COM without STARTUP.CMD. Alone, the shell's END comes back;
+        ' with a command line, the shell runs it and ends.
+        IF REST = ""
+          REST = "N"
         ELSE
-          REPORT_ERROR("Unknown command")
+          REST = "C " + REST
         ENDIF
-      ENDIF
-      IF DOS.ERROR AND FAILED = 0 THEN FILE_ERROR()
-    ENDIF
+        DOS.EXEC("C:\sys\ROMSHELL.COM", " -" + REST)
+        IF DOS.ERROR THEN FILE_ERROR()
+      CASE COMMAND.HELP_WORD
+        ' HELP [topic] runs HELPXBASE.COM in the program's folder. Trap: HELPXBASE reads the topic from
+        ' P1$, not the tail.
+        HEAP.SYS_STRINGS_SET(0, REST)
+        DOS.EXEC(DOS.PROGRAM_FOLDER() + "HELPXBASE.COM", " " + REST)
+        IF DOS.ERROR THEN FILE_ERROR()
+      CASE COMMAND.SAVE_WORD
+        DO_SCREEN_FILE(0)
+      CASE COMMAND.RESTORE_WORD
+        DO_SCREEN_FILE(1)
+      CASE COMMAND.QUIT_WORD
+        SAVE_HISTORY()
+        RUNNING = 0
+      CASE ELSE
+        ' name = expression stores, as STORE does.
+        REST = TRIM$(COMMAND_LINE)
+        CURSOR = 1
+        TOKEN = VARIABLE_NAME()
+        SKIP_SPACES()
+        IF TOKEN <> "" AND CURRENT_CHAR() = 61
+          CURSOR = CURSOR + 1
+          EVALUATE()
+          IF FAILED = 0 THEN ASSIGN(TOKEN, 0)
+        ELSE
+          ' name [tail] runs name.COM, else name.CMD through the shell, else name.PRG with the tail in
+          ' ARGS, in CMDLET_FOLDER$.
+          ' Trap: the program reads P1$ or the tail. DOS.EXISTS sets DOS.ERROR when it finds nothing.
+          NEXT_WORD()
+          HEAP.SYS_STRINGS_SET(0, REST)
+          DOS.EXEC(CMDLET_FOLDER$ + TOKEN + ".COM", " " + REST)
+          IF DOS.ERROR = DOS.ERR_NOT_FOUND
+            IF DOS.EXISTS(CMDLET_FOLDER$ + TOKEN + ".CMD")
+              DOS.EXEC("C:\sys\ROMSHELL.COM", " -C " + CMDLET_FOLDER$ + TOKEN + ".CMD " + REST)
+            ELSEIF DOS.EXISTS(CMDLET_FOLDER$ + TOKEN + ".PRG")
+              STORE_TEXT("ARGS", REST)
+              REST = CMDLET_FOLDER$ + TOKEN + ".PRG"
+              IF FAILED = 0 THEN RUN_COMMAND_FILE()
+            ELSE
+              REPORT_ERROR("Unknown command")
+            ENDIF
+          ENDIF
+          IF DOS.ERROR AND FAILED = 0 THEN FILE_ERROR()
+        ENDIF
+    END CASE
   ENDIF
   ' An error in a command file shows its line, and ends every file.
   IF FAILED AND DO_DEPTH > 0

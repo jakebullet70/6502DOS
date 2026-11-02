@@ -728,6 +728,59 @@ The steps:
 
 A popup calendar can also be a cmdlet. It needs a key to open it and a redraw of the page after it.
 
+### SBROWSE, planned
+
+This is not built. `SBROWSE` takes the clauses of `BROWSE` and adds keys. `BROWSE` keeps the keys it
+has.
+
+```
+sbrowse fields id, title, status freeze 1 title "Bugs"
+```
+
+The code:
+
+- There is one `DO_BROWSE`. The word `SBROWSE` sets `SB` to 1 and the word `BROWSE` sets it to 0.
+- The loop checks `SB` before the search and append keys.
+- `FREEZE n` is a clause of `READ_SHOWN`, and takes no check of `SB`. It keeps the first n fields on
+  the screen when the columns pan.
+- `NOEDIT` works on both words, and blocks the append.
+
+The keys:
+
+- Ctrl+F asks for text on the names' row. It finds the next match in the picked field, and respects
+  `FILTER`.
+- Down on the last row opens a blank row. Leaving the cell writes the record, and Esc drops the row.
+
+The box stays on the screen while an `ON KEY` `PROC` runs, in `BROWSE` and `SBROWSE`. `DO_BROWSE`
+skips `COPY_FRAME(30, 0)` and `{CLS}` when `PRESSED` is above 255, and the cursor is still restored.
+A `MENU` draws over the box. The return redraws the box and the page.
+
+Limits:
+
+- A `PROC` that fails, as with `Proc not found`, leaves the box on the screen and the saved screen
+  not restored.
+
+The cost is estimated, doubled for past overruns, and not measured:
+
+| Step | Bytes of ROM |
+|---|---|
+| The box stays on the screen | 10 to 25 |
+| The word `SBROWSE`, `SB` and `FREEZE n` | 330 to 560 |
+| The search | 300 to 500 |
+| The append | 400 to 700 |
+
+XBASE stays in ROM banks 6, 7 and 8. The room comes from refactoring the code there, in asm where a
+form in UXCBASIC does not save enough.
+
+The steps:
+
+1. Refactor until the free bytes cover the steps below.
+2. The box stays on the screen.
+3. The word `SBROWSE`, `SB` and `FREEZE n`.
+4. The search.
+5. The append.
+6. The docs.
+
 ## The steps
 
 D1 to D7 are the library and its UXCBASIC face; A1 to A7 are the program; B1 and B2 its help;

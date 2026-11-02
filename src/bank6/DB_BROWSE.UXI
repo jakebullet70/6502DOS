@@ -12,6 +12,12 @@ DIM TITLE_AT AS UBYTE, FOOTER_AT AS UBYTE
 ' NUMBERED is 1 for the record's number in the fixed columns before START_COLUMN. CELL_LIMIT is the
 ' widest a column can be.
 DIM NUMBERED AS UBYTE, START_COLUMN AS UBYTE, CELL_LIMIT AS UBYTE
+' NO_EDIT is 1 for the NOEDIT clause, and CAN_FIND for the FIND clause. SB is 1 for the word SBROWSE,
+' 0 for BROWSE. The first FROZEN_COUNT fields stay on the screen when the columns move, and FIRST_SHOWN
+' is not below it.
+DIM NO_EDIT AS UBYTE, CAN_FIND AS UBYTE, SB AS UBYTE, FROZEN_COUNT AS UBYTE
+' Where the cursor goes back to after a BROWSE in a window, kept through the run of an ON KEY PROC.
+DIM KEPT_ROW AS UBYTE, KEPT_COLUMN AS UBYTE
 ' The byte of a row COPY_ROW starts at, and how many it copies.
 DIM COPY_SPOT AS UBYTE, COPY_SIZE AS UBYTE
 
@@ -19,8 +25,9 @@ DIM COPY_SPOT AS UBYTE, COPY_SIZE AS UBYTE
 DIM VERA_DATA1 AS UBYTE AT $9F24, VERA_CONTROL AS UBYTE AT $9F25
 
 ' The fields of the BROWSE, 0 to SHOWN_COUNT - 1, as field numbers, 0 for RECNO(), and the one
-' picked. On the screen are FIRST_SHOWN to END_SHOWN - 1. SHOWN_COLUMN has the column of each, and
-' of END_SHOWN as the end of the last.
+' picked. On the screen are 0 to FROZEN_COUNT - 1 and FIRST_SHOWN to END_SHOWN - 1. SHOWN_COLUMN has
+' the column of each, of FROZEN_COUNT as the end of the last frozen, and of END_SHOWN as the end of
+' the last.
 DIM SHOWN_COUNT AS UBYTE, FIRST_SHOWN AS UBYTE, END_SHOWN AS UBYTE, PICKED_FIELD AS UBYTE
 DIM BROWSE_FIELD(32) AS UBYTE, SHOWN_COLUMN(33) AS UBYTE
 
@@ -28,14 +35,21 @@ DIM BROWSE_FIELD(32) AS UBYTE, SHOWN_COLUMN(33) AS UBYTE
 DIM PAGE_COUNT AS UBYTE, PICKED_ROW AS UBYTE
 DIM BROWSE_RECORD(27) AS UWORD
 
-' Sets END_SHOWN and SHOWN_COLUMN for the fields that fit from FIRST_SHOWN. A column is as wide as
-' its field or its name, at most CELL_LIMIT, so one always fits.
+' Sets END_SHOWN and SHOWN_COLUMN for the frozen fields and those that fit from FIRST_SHOWN, and
+' CELL_LIMIT to the columns left after the frozen ones. A column is as wide as its field or its
+' name, at most CELL_LIMIT, so one always fits after them.
 SUB LAY_OUT_SHOWN()
   DIM COLUMN AS UBYTE, WIDTH AS UBYTE, NAME_WIDTH AS UBYTE, FIELD AS UBYTE
   COLUMN = START_COLUMN
-  END_SHOWN = FIRST_SHOWN
+  CELL_LIMIT = BROWSE_RIGHT - START_COLUMN
+  END_SHOWN = 0
   DO
     SHOWN_COLUMN(END_SHOWN) = COLUMN
+    IF END_SHOWN = FROZEN_COUNT
+      END_SHOWN = FIRST_SHOWN
+      SHOWN_COLUMN(END_SHOWN) = COLUMN
+      CELL_LIMIT = BROWSE_RIGHT - COLUMN
+    ENDIF
     IF END_SHOWN = SHOWN_COUNT THEN EXIT DO
     FIELD = BROWSE_FIELD(END_SHOWN)
     WIDTH = 5
@@ -61,20 +75,23 @@ SUB BLANK_ROW(ROW AS UBYTE)
   END REPEAT
 END SUB
 
-' Prints the current record on page row SLOT, a blank row: its number when NUMBERED, * when it is
-' deleted, then the fields on the screen.
-SUB DRAW_RECORD(SLOT AS UBYTE)
+' Prints the fields on the screen on the cursor's row: their names when NAMES is 1, else the current
+' record's values.
+SUB DRAW_CELLS(NAMES AS UBYTE)
   DIM SHOWN AS UBYTE, FIELD AS UBYTE
-  BROWSE_RECORD(SLOT) = CURRENT
-  POS(1) = SLOT + BROWSE_TOP
-  POS(0) = BROWSE_LEFT
-  IF NUMBERED THEN PRINT RIGHT_ALIGN(CURRENT, 5);
-  IF DB.DELETED THEN PRINT "*";
-  SHOWN = FIRST_SHOWN
-  DO WHILE SHOWN < END_SHOWN
+  SHOWN = 0
+  DO
+    IF SHOWN = FROZEN_COUNT THEN SHOWN = FIRST_SHOWN
+    IF SHOWN >= END_SHOWN THEN EXIT DO
     POS(0) = SHOWN_COLUMN(SHOWN)
     FIELD = BROWSE_FIELD(SHOWN)
-    IF FIELD
+    IF NAMES
+      IF FIELD
+        PRINT DB.FIELD_NAME(FIELD);
+      ELSE
+        PRINT "RECNO";
+      ENDIF
+    ELSEIF FIELD
       PRINT LEFT$(DB.GET(FIELD), CELL_LIMIT);
     ELSE
       PRINT RIGHT_ALIGN(CURRENT, 5);
@@ -83,25 +100,26 @@ SUB DRAW_RECORD(SLOT AS UBYTE)
   LOOP
 END SUB
 
+' Prints the current record on page row SLOT, a blank row: its number when NUMBERED, * when it is
+' deleted, then the fields on the screen.
+SUB DRAW_RECORD(SLOT AS UBYTE)
+  BROWSE_RECORD(SLOT) = CURRENT
+  POS(1) = SLOT + BROWSE_TOP
+  POS(0) = BROWSE_LEFT
+  IF NUMBERED THEN PRINT RIGHT_ALIGN(CURRENT, 5);
+  IF DB.DELETED THEN PRINT "*";
+  DRAW_CELLS(0)
+END SUB
+
 ' Draws the field names and a page of records from the current one, which is a record, and sets
 ' PAGE_COUNT. The current record is then the last read.
 SUB DRAW_PAGE()
-  DIM ROW AS UBYTE, SHOWN AS UBYTE, FIELD AS UBYTE
+  DIM ROW AS UBYTE
   FOR ROW = BROWSE_TOP - 1 TO BROWSE_TOP + PAGE_ROWS - 1
     BLANK_ROW(ROW)
   NEXT
   POS(1) = BROWSE_TOP - 1
-  SHOWN = FIRST_SHOWN
-  DO WHILE SHOWN < END_SHOWN
-    POS(0) = SHOWN_COLUMN(SHOWN)
-    FIELD = BROWSE_FIELD(SHOWN)
-    IF FIELD
-      PRINT DB.FIELD_NAME(FIELD);
-    ELSE
-      PRINT "RECNO";
-    ENDIF
-    SHOWN = SHOWN + 1
-  LOOP
+  DRAW_CELLS(1)
   PAGE_COUNT = 0
   DO WHILE PAST_LAST() = 0
     DRAW_RECORD(PAGE_COUNT)
@@ -216,6 +234,7 @@ END SUB
 ' page is drawn again.
 SUB PICK_FIELD(SHOWN AS UBYTE)
   PICKED_FIELD = SHOWN
+  IF SHOWN < FROZEN_COUNT THEN RETURN
   IF SHOWN < FIRST_SHOWN
     FIRST_SHOWN = SHOWN
   ELSEIF SHOWN < END_SHOWN
@@ -303,6 +322,63 @@ FUNCT EDIT_CELL() AS UWORD
   RETURN PRESSED
 END FUNCT
 
+' Asks for a text on the names' row, blank at the start. Enter moves the pick to the next record
+' along the order that meets FILTER and SET DELETED and holds the text in the picked field, in either
+' case, and any other key that leaves the row does nothing. A record off the page is drawn at its top.
+' With no match it beeps and the pick stays. RECNO() does nothing, and Esc cannot stop a long search.
+SUB FIND_IN_FIELD()
+  DIM FIELD AS UBYTE, WIDTH AS UBYTE, SPOT AS UBYTE, PRESSED AS UWORD, FIND_TEXT AS STRING * 73
+  FIELD = BROWSE_FIELD(PICKED_FIELD)
+  IF FIELD = 0 THEN RETURN
+  ' Trap: a text that ends in the last column leaves the cursor on the next row.
+  WIDTH = BROWSE_RIGHT - BROWSE_LEFT - 7
+  GET_AT(0) = AddrOf(GET_POOL)
+  GET_ROW(0) = BROWSE_TOP - 1
+  GET_COLUMN(0) = BROWSE_LEFT + 6
+  ' A GET's mask and text, as READ_GET makes them.
+  GET_POOL(0) = WIDTH
+  GET_POOL(1) = WIDTH
+  GET_POOL(WIDTH + 2) = WIDTH
+  GET_POOL(WIDTH + 3) = WIDTH
+  SPOT = 0
+  DO WHILE SPOT < WIDTH
+    SPOT = SPOT + 1
+    GET_POOL(1 + SPOT) = 88
+    GET_POOL(WIDTH + 3 + SPOT) = 32
+  LOOP
+  BLANK_ROW(GET_ROW(0))
+  POS(1) = GET_ROW(0)
+  POS(0) = BROWSE_LEFT
+  PRINT "Find: ";
+  CURSOR ON
+  PRESSED = EDIT_GET(0)
+  CURSOR OFF
+  BLANK_ROW(GET_ROW(0))
+  POS(1) = GET_ROW(0)
+  DRAW_CELLS(1)
+  IF PRESSED <> KEYS.ENTER THEN RETURN
+  FIND_TEXT = UCASE$(RTRIM$(StringAt(AddrOf(GET_POOL) + WIDTH + 2)))
+  MOVE_TO(BROWSE_RECORD(PICKED_ROW))
+  DO
+    REACH_FILTERED(DB.NEXT_RECORD())
+    IF PAST_LAST()
+      PRINT CHR$(7);
+      RETURN
+    ENDIF
+    IF INSTR(UCASE$(DB.GET(FIELD)), FIND_TEXT) THEN EXIT DO
+  LOOP
+  SPOT = 0
+  DO WHILE SPOT < PAGE_COUNT
+    IF BROWSE_RECORD(SPOT) = CURRENT
+      PICKED_ROW = SPOT
+      RETURN
+    ENDIF
+    SPOT = SPOT + 1
+  LOOP
+  DRAW_PAGE()
+  PICKED_ROW = 0
+END SUB
+
 ' Sets the place of the BROWSE, SHOWN_COUNT and BROWSE_FIELD from REST, its clauses in any order.
 ' With no FIELDS, the area's SET FIELDS TO list, or every field of the table and NUMBERED when it
 ' has none. Not 0 when they are good, else reports the error and gives 0.
@@ -320,6 +396,9 @@ FUNCT READ_SHOWN() AS UBYTE
   FOOTER_AT = 0
   SHOWN_COUNT = 0
   NUMBERED = 0
+  NO_EDIT = 0
+  CAN_FIND = 0
+  FROZEN_COUNT = 0
   CURSOR = 1
   DO
     SKIP_SPACES()
@@ -346,6 +425,13 @@ FUNCT READ_SHOWN() AS UBYTE
       TOKEN = NAME_AT()
       IF TOKEN = "DOUBLE"
         FRAME_STYLE = LINES.DOUBLE
+      ELSEIF IS("NOEDIT")
+        NO_EDIT = 1
+      ELSEIF IS("FIND")
+        CAN_FIND = 1
+      ELSEIF IS("FREEZE")
+        FROZEN_COUNT = SMALL_AT()
+        IF FAILED THEN RETURN 0
       ELSEIF IS("FIELDS")
         SHOWN_COUNT = READ_FIELD_LIST(@BROWSE_FIELD, 0)
         IF SHOWN_COUNT = 0 THEN RETURN 0
@@ -377,13 +463,13 @@ FUNCT READ_SHOWN() AS UBYTE
   ENDIF
   START_COLUMN = BROWSE_LEFT + 1
   IF NUMBERED THEN START_COLUMN = BROWSE_LEFT + 7
-  CELL_LIMIT = BROWSE_RIGHT - START_COLUMN
   RETURN 1
 END FUNCT
 
-' BROWSE [FIELDS name, name, ...] [@ row, column TO row, column [DOUBLE]] [TITLE text] [FOOTER text]:
-' shows the records that meet FILTER along the order, from the current one, until Ctrl+W or Esc.
-' The picked record is then current. A list names at most 32 fields, RECNO() among them for the
+' BROWSE [FIELDS name, name, ...] [@ row, column TO row, column [DOUBLE]] [TITLE text] [FOOTER text]
+' [NOEDIT] [FREEZE n] [FIND]: shows the records that meet FILTER along the order, from the current one,
+' until Ctrl+W or Esc. SBROWSE takes the same clauses. With FIND, Ctrl+F searches the picked field, as
+' FIND_IN_FIELD. The picked record is then current. A list names at most 32 fields, RECNO() among them for the
 ' record's number; a list shows the number only there. @ draws a box from the first corner to the
 ' second, the bottom right, and BROWSE stays inside it, with what was under it back at the end. A
 ' box is at least 5 rows by 19 columns, and does not end at row 29, column 79. TITLE and FOOTER are
@@ -392,11 +478,22 @@ END FUNCT
 ' back, and any other key that leaves the cell writes it and then acts. Ctrl+U deletes the picked
 ' record, or recalls it when it is deleted, and writes it. BROWSE drops the pending GETs. An edited or
 ' marked record stays on its row until the page is drawn again, even when its key, FILTER or SET
-' DELETED would move it. An error wider than the box runs over its side.
+' DELETED would move it. An error wider than the box runs over its side. An F key bound by ON KEY
+' writes an open cell, ends the BROWSE and runs its PROC, and the PROC's ENDPROC runs the BROWSE line
+' again: the field, the row and what was under the box stay as they were, and the current record is
+' the picked one. The page stays on the screen while the PROC runs, and the return draws it again. A
+' PROC that changes the table or the fields, or runs a BROWSE, loses them, and after a BROWSE the first
+' box's lines can stay on the screen at its end. A PROC that fails leaves the page on the screen, and
+' what was under the box is not restored. NOEDIT changes no record: Ctrl+Enter acts as Enter, Ctrl+U
+' does nothing, and the keys row leaves out the edit. FREEZE keeps the first n fields on the screen
+' when the columns move. They fit, with a column left for the rest. A field wider than the columns
+' left after them is cut, frozen or not, and is not edited.
 ' Trap: Ctrl+Home or Ctrl+End with no record left that meets FILTER and SET DELETED leaves PAGE_COUNT
 ' 0, and the keys that follow use rows that hold no record.
 SUB DO_BROWSE()
-  DIM SHOWN AS UBYTE, PRESSED AS UWORD, KEPT_ROW AS UBYTE, KEPT_COLUMN AS UBYTE
+  DIM SHOWN AS UBYTE, PRESSED AS UWORD, RESUMING AS UBYTE
+  RESUMING = (BROWSE_BACK = DO_LINE + 1)
+  BROWSE_BACK = 0
   IF IN_USE() = 0 THEN RETURN
   IF READ_SHOWN() = 0 THEN RETURN
   REACH_FILTERED(CURRENT)
@@ -405,15 +502,21 @@ SUB DO_BROWSE()
     RETURN
   ENDIF
   GET_COUNT = 0
-  FIRST_SHOWN = 0
-  PICKED_FIELD = 0
-  PICKED_ROW = 0
+  IF RESUMING
+    PICKED_ROW = BACK_UP(PICKED_ROW)
+  ELSE
+    FIRST_SHOWN = FROZEN_COUNT
+    PICKED_FIELD = 0
+    PICKED_ROW = 0
+  ENDIF
   LAY_OUT_SHOWN()
   CURSOR OFF
   IF FRAMED
-    KEPT_ROW = POS(1)
-    KEPT_COLUMN = POS(0)
-    COPY_FRAME(0, 30)
+    IF RESUMING = 0
+      KEPT_ROW = POS(1)
+      KEPT_COLUMN = POS(0)
+      COPY_FRAME(0, 30)
+    ENDIF
     BOX(FRAME_TOP, BROWSE_LEFT - 1, BROWSE_RIGHT - BROWSE_LEFT + 2, FRAME_BOTTOM - FRAME_TOP + 1, FRAME_STYLE)
   ELSE
     PRINT "{CLS}";
@@ -422,7 +525,10 @@ SUB DO_BROWSE()
       ' Trap: a character in row 29's last column would scroll the screen.
       POS(1) = 29
       POS(0) = 0
-      PRINT "Ctrl+Home/End Left/Right Tab Ctrl+Enter edit Ctrl+W Esc exit";
+      PRINT "Ctrl+Home/End Left/Right Tab ";
+      IF NO_EDIT = 0 THEN PRINT "Ctrl+Enter edit ";
+      IF CAN_FIND THEN PRINT "Ctrl+F find ";
+      PRINT "Ctrl+W Esc exit";
     ENDIF
   ENDIF
   IF TITLE_AT THEN SHOW_LABEL(FRAME_TOP, TITLE_AT)
@@ -434,7 +540,11 @@ SUB DO_BROWSE()
     FLIP_PICKED()
     PRESSED = WAIT_FOR_KEY()
     FLIP_PICKED()
-    IF PRESSED = KEYS.ENTER AND (KEYMODS() AND KEYS.MOD_CTRL) <> 0 THEN PRESSED = EDIT_CELL()
+    IF NO_EDIT = 0
+      IF PRESSED = KEYS.ENTER AND (KEYMODS() AND KEYS.MOD_CTRL) <> 0 THEN PRESSED = EDIT_CELL()
+    ELSEIF PRESSED = 21
+      PRESSED = 0
+    ENDIF
     SELECT CASE PRESSED
       CASE KEYS.KEY_UP
         BROWSE_UP()
@@ -486,17 +596,22 @@ SUB DO_BROWSE()
           BLANK_ROW(PICKED_ROW + BROWSE_TOP)
           DRAW_RECORD(PICKED_ROW)
         ENDIF
+      CASE 6
+        IF CAN_FIND THEN FIND_IN_FIELD()
       CASE 23, KEYS.ESC
         EXIT DO
+      CASE ELSE
+        IF BOUND_PROC(PRESSED) THEN EXIT DO
     END SELECT
   LOOP
   MOVE_TO(BROWSE_RECORD(PICKED_ROW))
   IF FRAMED
-    COPY_FRAME(30, 0)
+    IF PRESSED < 256 THEN COPY_FRAME(30, 0)
     POS(1) = KEPT_ROW
     POS(0) = KEPT_COLUMN
-  ELSE
+  ELSEIF PRESSED < 256
     PRINT "{CLS}";
   ENDIF
   CURSOR ON
+  IF PRESSED > 255 THEN GOSUB_KEY(PRESSED)
 END SUB
