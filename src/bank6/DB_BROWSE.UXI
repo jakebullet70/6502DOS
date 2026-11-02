@@ -269,6 +269,7 @@ END SUB
 ' Swaps the colors of the picked cell, to show it picked or not.
 SUB FLIP_PICKED()
   DIM COLUMN AS UBYTE
+  IF PAGE_COUNT = 0 THEN RETURN
   COLUMN = SHOWN_COLUMN(PICKED_FIELD)
   FLIP_CELLS(PICKED_ROW + BROWSE_TOP, COLUMN, SHOWN_COLUMN(PICKED_FIELD + 1) - COLUMN - 1)
 END SUB
@@ -511,9 +512,10 @@ END FUNCT
 ' what was under the box is not restored. NOEDIT changes no record: Enter and Ctrl+Enter end the
 ' BROWSE as Ctrl+W does, Ctrl+U does nothing, and the keys row leaves out the edit. FREEZE keeps the first n fields on the screen
 ' when the columns move. They fit, with a column left for the rest. A field wider than the columns
-' left after them is cut, frozen or not, and is not edited.
-' Trap: Ctrl+Home or Ctrl+End with no record left that meets FILTER and SET DELETED leaves PAGE_COUNT
-' 0, and the keys that follow use rows that hold no record.
+' left after them is cut, frozen or not, and is not edited. With no record from the current one on
+' that meets FILTER and SET DELETED it starts at the first of the order. With none at all the page
+' has the names and no rows, PAGE_COUNT is 0, only Esc, Ctrl+W and a bound F key act, and the place
+' past the last is current at the end.
 SUB DO_BROWSE()
   DIM SHOWN AS UBYTE, PRESSED AS UWORD, RESUMING AS UBYTE
   RESUMING = (BROWSE_BACK = DO_LINE + 1)
@@ -521,10 +523,7 @@ SUB DO_BROWSE()
   IF IN_USE() = 0 THEN RETURN
   IF READ_SHOWN() = 0 THEN RETURN
   REACH_FILTERED(CURRENT)
-  IF PAST_LAST()
-    RECORD_ERROR()
-    RETURN
-  ENDIF
+  IF PAST_LAST() THEN TOP_OF_ORDER()
   GET_COUNT = 0
   IF RESUMING
     PICKED_ROW = BACK_UP(PICKED_ROW)
@@ -564,6 +563,7 @@ SUB DO_BROWSE()
     FLIP_PICKED()
     PRESSED = WAIT_FOR_KEY()
     FLIP_PICKED()
+    IF PAGE_COUNT = 0 AND PRESSED <> KEYS.ESC AND PRESSED <> 23 AND BOUND_PROC(PRESSED) = 0 THEN PRESSED = 0
     IF NO_EDIT = 0
       IF PRESSED = KEYS.ENTER AND (KEYMODS() AND KEYS.MOD_CTRL) <> 0 THEN PRESSED = EDIT_CELL()
     ELSEIF PRESSED = 21
@@ -630,7 +630,7 @@ SUB DO_BROWSE()
         IF BOUND_PROC(PRESSED) THEN EXIT DO
     END SELECT
   LOOP
-  MOVE_TO(BROWSE_RECORD(PICKED_ROW))
+  IF PAGE_COUNT THEN MOVE_TO(BROWSE_RECORD(PICKED_ROW))
   IF FRAMED
     IF PRESSED < 256 THEN COPY_FRAME(30, 0)
     POS(1) = KEPT_ROW
