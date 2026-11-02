@@ -221,6 +221,11 @@ before the dot prompt. Without the file it does neither.
 `DB name` runs the command file `name`, as `DO name` does, then gives the dot prompt. A `QUIT`
 in the file ends DB.
 
+Ctrl+C does not end `XBASE.COM`. It is key code 3 in the program. A typed line and a GET drop it.
+`WAIT` takes it as a key, and `LASTKEY()` gives 3. A command file that loops on a key cannot be ended
+with Ctrl+C. A cmdlet or other program that `XBASE.COM` runs starts with Ctrl+C ending it, and the
+mode comes back when it ends.
+
 ### The commands
 
 A command word may be cut to its first 4 letters, as `DISP STRU`.
@@ -237,7 +242,7 @@ A command word may be cut to its first 4 letters, as `DISP STRU`.
 | Screens | `@ ... SAY`, `@ ... GET`, `READ`, `CLEAR`, `CLEAR GETS`, `CLS`, `@ ... TO`, `BOX`, `SET REVERSE` |
 | Menus | `@ ... PROMPT`, `MENU TO`, the function `MENU()` |
 | Screen files | `SAVE SCREEN TO`, `RESTORE SCREEN FROM` |
-| Command files | `DO`, `IF`, `ELSE`, `ENDIF`, `DO WHILE`, `ENDDO`, `RETURN`, `CANCEL`, `ACCEPT`, `INPUT`, `WAIT`, `MODIFY COMMAND`, `QUIT` |
+| Command files | `DO`, `IF`, `ELSE`, `ENDIF`, `DO WHILE`, `ENDDO`, `PROC`, `ENDPROC`, `GOSUB`, `ON KEY`, `RETURN`, `CANCEL`, `ACCEPT`, `INPUT`, `WAIT`, `MODIFY COMMAND`, `QUIT` |
 | Settings | `SET INDEX TO`, `SET PATH TO`, `SET FILTER TO`, `SET VALID TO`, `SET DELETED`, `SET FIELDS TO`, `SET REVERSE` |
 | Other programs | `HELP`, `!`, `RUN`, `SHELL` |
 
@@ -365,9 +370,9 @@ the order.
 - `SET DELETED ON` makes `GO TOP`, `GO BOTTOM`, `SKIP`, the scopes and `BROWSE` pass over deleted
   records, in both areas and across `USE`. `GO n`, `RECORD n` and `FIND` do not check it. `SET
   DELETED OFF`, the default, ends it.
-- `SET FIELDS TO names` adds names to the fields `BROWSE` alone shows, at most 32 an area, not
-  checked. `RECNO()` among them shows the record's number there. A bad name adds none, and gives
-  `Field not found`. `SET FIELDS TO` alone clears them, and `USE`, `CREATE` and `CLOSE` clear them.
+- `SET FIELDS TO list` adds to the fields `BROWSE` alone shows, at most 32 an area, not checked. The
+  list is a field list, in the section BROWSE. A bad name adds none, and gives `Field not found`.
+  `SET FIELDS TO` alone clears them, and `USE`, `CREATE` and `CLOSE` clear them.
 - `SET REVERSE ON` prints `ESC[7m`, and what prints after it shows in reverse video.
   `SET REVERSE OFF` prints `ESC[0m`, the default colors. `SET REV` is the same command.
 
@@ -384,9 +389,12 @@ the order.
   DOS error. Each file stays open while it runs. Files nest 8 deep; a 9th prints
   `Too many DO levels`.
 - `RETURN` ends the innermost file, and its caller goes on. The end of a file does the same.
-  `CANCEL` ends every file, and so does `QUIT`. At the prompt `RETURN` does nothing.
+  `RETURN` in a `PROC` goes back after its `GOSUB`. `CANCEL` ends every file, and so does `QUIT`. At
+  the prompt `RETURN` does nothing.
 - A line ends in LF; a CR is dropped. A last line with no LF runs. A line is cut at 240
   characters. A command file is under 64 KB.
+- A tab reads as a space, in quoted text too.
+- A line that starts with `*` or `//` is a comment, in a file and at the prompt.
 - A line that ends in a space and `_` joins the next. The `_` goes, the space stays, and the next
   line loses its leading spaces. Joined lines count together toward the 240 characters and toward
   the 256 bytes of a `DO WHILE` line. An error names the last line joined. A comment joins too. The
@@ -398,11 +406,24 @@ the order.
   has at most one `ELSE`. The condition is logical, else `Type mismatch`; more after it is
   `Syntax error`.
 - `DO WHILE condition` and `ENDDO`: when the condition is true, the lines up to its `ENDDO`
-  run, and `ENDDO` goes back to the `DO WHILE`. When false, they are skipped. Loops nest 8 deep
-  in all the files; a 9th prints `Too many DO levels`. A `DO WHILE` line is under 256 bytes.
-  `RETURN` inside a loop ends the file. `ENDDO` with no loop running does nothing.
-- At the prompt `IF` and `DO WHILE` print `Only in a command file`. `ELSE`, `ENDIF` and
-  `ENDDO` there do nothing.
+  run, and `ENDDO` goes back to the `DO WHILE`. When false, they are skipped. Loops and `GOSUB`s
+  nest 8 deep together in all the files; a 9th prints `Too many DO levels`. A `DO WHILE` line is
+  under 256 bytes. `RETURN` inside a loop ends the file, or goes back after the `GOSUB` of a `PROC`.
+  `ENDDO` with no loop running does nothing.
+- `PROC name` and `ENDPROC` hold lines that run only by `GOSUB name`. A `PROC` line that runs skips
+  to its `ENDPROC`. A `PROC` is not inside an `IF`, a `DO WHILE` or a `PROC`, not checked. It has no
+  parameters or locals.
+- `GOSUB name` runs the first `PROC name` of the file running, then goes on at the next line. The
+  search reads the file from its first line. A name not found prints `Proc not found: NAME` and ends
+  every file.
+- `ENDPROC`, and `RETURN` in a `PROC`, go back after the `GOSUB` and end the `DO WHILE`s since it. An
+  `ENDPROC` with no `GOSUB` ends the file.
+- `ON KEY Fn GOSUB name` binds F1 to F10 in a `BROWSE` to `PROC name` of the file running the
+  `BROWSE`. A name is at most 10 characters, not checked. `ON KEY Fn` alone drops the key, and the
+  last file's end drops every key. A bound key's line, the `BROWSE`, is under 256 bytes, joined lines
+  counted together.
+- At the prompt `IF`, `DO WHILE`, `PROC`, `GOSUB` and `ON` print `Only in a command file`. `ELSE`,
+  `ENDIF`, `ENDDO` and `ENDPROC` there do nothing.
 - `ACCEPT [prompt] TO name` stores the line typed as text. `INPUT [prompt] TO name` stores the
   value of the expression typed; one that does not evaluate prints its error and is not asked
   again. The prompt is a text expression, else `Type mismatch`.
@@ -474,18 +495,33 @@ the order.
 
 #### BROWSE
 
-- `BROWSE [FIELDS names] [@ row, column TO row, column] [DOUBLE] [TITLE expression] [FOOTER
-  expression]` shows a page of records from the current one, one a row, and picks a cell. The
-  clauses come in any order. The record picked at the end is current. Records that `SET FILTER TO`
-  and `SET DELETED ON` hide are passed over. `BROWSE` drops the pending GETs.
+- `BROWSE [FIELDS list] [@ row, column TO row, column] [DOUBLE] [TITLE expression] [FOOTER
+  expression] [NOEDIT] [FREEZE n] [FIND]` shows a page of records from the current one, one a row, and
+  picks a cell. The clauses come in any order. The record picked at the end is current. Records that
+  `SET FILTER TO` and `SET DELETED ON` hide are passed over. `BROWSE` drops the pending GETs.
+- With no record from the current one on, it starts at the first record of the order. With none at
+  all, the page has the field names and no rows, only Esc, Ctrl+W and a key of `ON KEY` act, and the
+  place past the last record is current at the end.
 - With no `FIELDS` it shows the `SET FIELDS TO` list. With no list it shows the record's number and
-  every field. `FIELDS` names at most 32 fields, not checked. `RECNO()` in a list shows the record's
-  number there. A row has `*` at its left on a deleted record.
+  every field. A row has `*` at its left on a deleted record.
+- A field list is `name[:width] ["column name"]`, apart by commas, at most 32, not checked.
+  - `RECNO()` as a name shows the record's number there. Its width is at least 5, not checked.
+  - The width is a number expression. It cuts the values and the column name, and a field wider than
+    it is not edited.
+  - The quoted text is the column's name, and changes nothing else. With no width, the column is as
+    wide as the longer of the field and the name.
+  - The column names of a list fit in 85 bytes, each its length and 2, not checked.
 - `@` draws a box from the top left corner to the bottom right corner, and `BROWSE` stays inside it.
   What was under the box comes back at the end. `DOUBLE` gives it double lines. A box is at least 5
   rows by 19 columns, and does not end at row 29, column 79. That is not checked.
 - `TITLE` and `FOOTER` are centered on the box's top and bottom lines, or on rows 0 and 29, in place
   of the table's name and the keys. Each fits between the sides of the box. That is not checked.
+- `NOEDIT` changes no record. Enter and Ctrl+Enter end the `BROWSE` as Ctrl+W does, and `LASTKEY()`
+  gives 13. Ctrl+U does nothing, and the keys row leaves out the edit.
+- `FREEZE n` keeps the first n fields on the screen when the columns move. They fit, with a column
+  left for the rest, not checked. A field wider than the columns left after them is cut and is not
+  edited, frozen or not.
+- `FIND` turns on Ctrl+F, and the keys row lists it. Without the clause, Ctrl+F does nothing.
 
 | Key | In `BROWSE` |
 |---|---|
@@ -495,15 +531,27 @@ the order.
 | Right, Ctrl+Right, Tab, Enter | the next field |
 | Ctrl+Enter | edit the picked cell |
 | Ctrl+U | delete the picked record, or recall it when it is deleted, and write it |
+| Ctrl+F | with `FIND`, search the picked field |
+| F1 to F10 | with `ON KEY`, run the `PROC` |
 | Ctrl+W, Esc | end |
 
-- An edit is a GET on the cell. `RECNO()` and a field wider than the page are not edited. Esc ends
+- An edit is a GET on the cell. `RECNO()` and a field wider than its column are not edited. Esc ends
   it with the old value back. Any other key that leaves the cell writes it, then acts. Left and
   Right stay in the cell. A wrong value shows its error on the names' row until a key. After that,
   or after a record that breaks `SET VALID TO`, the page is drawn again with the record unchanged.
 - An edited or marked record stays on its row until the page is drawn again.
-- Trap: `Ctrl+Home` or `Ctrl+End` with no record left that qualifies leaves no row on the page, and
-  the keys that follow use rows that hold no record.
+- Ctrl+F asks for a text after `Find: ` on the names' row, blank at the start. Enter searches from the
+  record after the picked one along the order, in the picked field, in either case, past the records
+  `SET FILTER TO` and `SET DELETED ON` hide. Any other key that leaves the row cancels. It does not
+  wrap, and Esc cannot stop a search. No match beeps and the pick stays, and an empty text finds no
+  match. A match on the page moves the pick, and one off it is drawn at the top. On `RECNO()` Ctrl+F
+  does nothing.
+- A key of `ON KEY` writes an open cell, ends the `BROWSE` and runs its `PROC`. The `PROC`'s `ENDPROC`
+  runs the `BROWSE` line again, and the field, the row and what was under the box stay as they were.
+  The page stays on the screen while the `PROC` runs, and the return draws it again.
+  - A `PROC` that changes the table or the fields, or runs a `BROWSE`, loses the field and the row.
+    After a `BROWSE` in a `PROC`, the first box's lines can stay on the screen at its end.
+  - A `PROC` that fails leaves the page on the screen, and what was under the box is not restored.
 
 #### Menus
 
@@ -557,7 +605,7 @@ MENU TO CHOICE
   `LEN()`, `INT()`, `UPPER()`, `DATE()`, `FILE()`, `REG()`, `MENU()`, `LASTKEY()`, `CENTER()`,
   `INSTR()`, `INLIST()`, `POPUP()`.
 - `LASTKEY()` is the last key `BROWSE`, `READ`, `MENU()` or `WAIT` read, as `WAITKEY()` gives it, 0
-  before the first.
+  before the first. Enter is 13, Esc is 27, Ctrl+W is 23 and Ctrl+C is 3.
 - `CENTER(text, width)` is text centered in width characters, at most 82, the odd space after it. A
   longer text comes back whole.
 - `INSTR(text, part)` is the place where part starts in text, from 1. It is 0 when part is absent or
@@ -600,9 +648,12 @@ The float code is a copy of MSBASIC's `src/float.s` in ROM bank 5, `src/asm/fp.s
 ### Sizes
 
 ROM banks 6 to 8 have 49,152 bytes. Each bank's code runs from `$C000` to `$FF9F`, 16,288
-bytes, and ends with the 43-byte `T_FAR`. The bytes free up to `K_FAR`: bank 6 2,555, bank 7 119,
-bank 8 106. The compiler moves the SUBs at the program's tail from bank 6 to
+bytes, and ends with the 43-byte `T_FAR`. The bytes free up to `K_FAR`: bank 6 161, bank 7 317,
+bank 8 644. The compiler moves the SUBs at the program's tail from bank 6 to
 banks 7 and 8 by itself.
+
+`XBASE.COM` stays in ROM banks 6, 7 and 8. Room comes from refactoring the code there, in asm where a
+form in UXCBASIC does not save enough.
 
 ## Cmdlets
 
@@ -728,59 +779,6 @@ The steps:
 
 A popup calendar can also be a cmdlet. It needs a key to open it and a redraw of the page after it.
 
-### SBROWSE, planned
-
-This is not built. `SBROWSE` takes the clauses of `BROWSE` and adds keys. `BROWSE` keeps the keys it
-has.
-
-```
-sbrowse fields id, title, status freeze 1 title "Bugs"
-```
-
-The code:
-
-- There is one `DO_BROWSE`. The word `SBROWSE` sets `SB` to 1 and the word `BROWSE` sets it to 0.
-- The loop checks `SB` before the search and append keys.
-- `FREEZE n` is a clause of `READ_SHOWN`, and takes no check of `SB`. It keeps the first n fields on
-  the screen when the columns pan.
-- `NOEDIT` works on both words, and blocks the append.
-
-The keys:
-
-- Ctrl+F asks for text on the names' row. It finds the next match in the picked field, and respects
-  `FILTER`.
-- Down on the last row opens a blank row. Leaving the cell writes the record, and Esc drops the row.
-
-The box stays on the screen while an `ON KEY` `PROC` runs, in `BROWSE` and `SBROWSE`. `DO_BROWSE`
-skips `COPY_FRAME(30, 0)` and `{CLS}` when `PRESSED` is above 255, and the cursor is still restored.
-A `MENU` draws over the box. The return redraws the box and the page.
-
-Limits:
-
-- A `PROC` that fails, as with `Proc not found`, leaves the box on the screen and the saved screen
-  not restored.
-
-The cost is estimated, doubled for past overruns, and not measured:
-
-| Step | Bytes of ROM |
-|---|---|
-| The box stays on the screen | 10 to 25 |
-| The word `SBROWSE`, `SB` and `FREEZE n` | 330 to 560 |
-| The search | 300 to 500 |
-| The append | 400 to 700 |
-
-XBASE stays in ROM banks 6, 7 and 8. The room comes from refactoring the code there, in asm where a
-form in UXCBASIC does not save enough.
-
-The steps:
-
-1. Refactor until the free bytes cover the steps below.
-2. The box stays on the screen.
-3. The word `SBROWSE`, `SB` and `FREEZE n`.
-4. The search.
-5. The append.
-6. The docs.
-
 ## The steps
 
 D1 to D7 are the library and its UXCBASIC face; A1 to A7 are the program; B1 and B2 its help;
@@ -862,7 +860,7 @@ written. Every step below is done.
 - An `N` field holds at most 10 characters. A number holds about 9 significant digits.
 - Two programs that open one table at once each keep their own copy of its header.
 - A command line is cut at 240 characters; the prompt takes 239.
-- Command files nest 8 deep, and `DO WHILE` loops 8 deep. `PUSH` holds 4 levels.
+- Command files nest 8 deep, and `DO WHILE` loops and `GOSUB`s 8 deep together. `PUSH` holds 4 levels.
 - At most 32 GETs in 2048 bytes, 16 prompts, and 16 items in `MENU()`.
 - The screen files are 80 by 30.
 

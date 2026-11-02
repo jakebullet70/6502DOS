@@ -65,14 +65,23 @@ BOX row, column, width, height [DOUBLE]
   row, and on the last row that scrolls the screen.
   BOX 2, 10, 30, 6 DOUBLE
 :BROWSE
-BROWSE [FIELDS name [, name ...]] [@ row, column TO row, column] [DOUBLE]
-       [TITLE expression] [FOOTER expression]
+BROWSE [FIELDS list] [@ row, column TO row, column] [DOUBLE]
+       [TITLE expression] [FOOTER expression] [NOEDIT] [FREEZE n] [FIND]
   Shows a page of records, one to a row, from the current record, and picks
   a cell. The clauses come in any order. The record picked at the end is
   current. BROWSE passes over the records SET FILTER and SET DELETED hide.
+  With none from the current record on, it starts at the first of the order.
+  With none at all, the page has the field names and no rows, only Esc,
+  Ctrl+W and a key of ON KEY act, and the place past the last is current at
+  the end.
   With no FIELDS it shows the SET FIELDS list, or else the record's number
-  and every field. FIELDS names at most 32 fields. RECNO() in the list shows
-  the record's number there. A row starts with * on a deleted record.
+  and every field. A row starts with * on a deleted record.
+  A list is name[:width] ["column name"], apart by commas, at most 32. RECNO()
+  as a name shows the record's number there, at least 5 wide. The width cuts
+  the values and the column name, and a field wider than it is not edited.
+  The quoted text is the column's name. With no width, the column is as wide
+  as the longer of the field and the name. The column names of a list fit in
+  85 bytes, each its length and 2.
   @ draws a box from the top left corner to the bottom right corner, and
   BROWSE stays inside it. What was under the box comes back at the end. The
   box is at least 5 rows by 19 columns, and does not end at row 29, column
@@ -80,21 +89,33 @@ BROWSE [FIELDS name [, name ...]] [@ row, column TO row, column] [DOUBLE]
   TITLE and FOOTER are centered on the top and bottom lines of the box, or
   on rows 0 and 29 with no box, in place of the table's name and the keys.
   Each fits between the sides of the box.
+  NOEDIT changes no record. Enter and Ctrl+Enter end BROWSE as Ctrl+W does,
+  and LASTKEY() gives 13. Ctrl+U does nothing.
+  FREEZE keeps the first n fields on the screen when the columns move. They
+  fit, with a column left for the rest. A field wider than the columns left
+  after them is cut and is not edited.
   Up, Down, PgUp and PgDn move through the records. Ctrl+Home and Ctrl+End go
   to the first and last. Left and Ctrl+Left go to the field before. Right,
   Ctrl+Right, Tab and Enter go to the next. Ctrl+W or Esc ends BROWSE.
   Ctrl+Enter edits the picked cell, as a GET with the field's mask. Esc puts
   the old value back. Any other key that leaves the cell writes it, then
   acts. In a cell Left and Right stay in the cell. RECNO() and a field wider
-  than the page are not edited. A wrong value shows its error until a key.
+  than its column are not edited. A wrong value shows its error until a key.
   A record that breaks SET VALID beeps and keeps its old value. The page is
   then drawn again.
   Ctrl+U deletes the picked record, or recalls it when it is deleted, and
   writes it.
   An edited or marked record stays on its row until the page is drawn again.
-  HELPDB POPUP gives a list to pick a cell's value from.
-  BROWSE FIELDS RECNO(), NAME, CITY
-  BROWSE @ 5, 10 TO 20, 70 DOUBLE TITLE "Parts" FOOTER DATE()
+  With FIND, Ctrl+F asks for a text on the names' row. Enter searches from the
+  record after the picked one along the order, in the picked field, in either
+  case. Any other key that leaves the row cancels. It does not wrap, and Esc
+  cannot stop a search. No match beeps, and an empty text finds no match. A
+  match on the page moves the pick, and one off it is drawn at the top. On
+  RECNO() Ctrl+F does nothing.
+  HELP ON gives F1 to F10. HELPDB POPUP gives a list to pick a cell's value
+  from.
+  BROWSE FIELDS RECNO(), NAME:20 "Who", CITY FREEZE 1 FIND
+  BROWSE @ 5, 10 TO 20, 70 DOUBLE TITLE "Parts" FOOTER DATE() NOEDIT
 :CANCEL
 CANCEL
   Ends every command file running. DB goes back to the dot prompt. At the
@@ -182,6 +203,9 @@ DB [file]
   DB keeps its memory variables in a RAM bank of their own. Without a free
   bank DB prints the error and ends.
   HELP [topic] at the prompt runs HELPDB. ! runs the shell.
+  Ctrl+C does not end DB. A typed line and a GET drop it. WAIT takes it as a
+  key, so a command file that loops on a key cannot be ended with it. A
+  program DB runs starts with Ctrl+C ending it.
   HELPDB alone lists the topics. HELPDB name prints a topic. The groups:
   TABLES, MOVING, SHOWING, CHANGING, INDEXES, VARIABLES, SCREENS, PROGRAMS,
   FUNCTIONS, OPERATORS, SCOPE, PICTURE, KEYS, EXPRESSIONS.
@@ -216,7 +240,8 @@ DO file | DO WHILE condition
   goes back to the caller. Command files nest 8 deep.
   DO WHILE runs the lines up to its ENDDO while condition is true. ENDDO
   goes back to the DO WHILE. When condition is false, the lines up to its
-  ENDDO are skipped. At most 8 DO WHILEs run at once, over all the files.
+  ENDDO are skipped. DO WHILEs and GOSUBs run 8 deep together, over all the
+  files.
   condition is a logical; any other value gives Type mismatch.
   At the prompt DO WHILE gives Only in a command file.
   More than 8 files or loops gives Too many DO levels.
@@ -245,6 +270,11 @@ ENDDO
 :ENDIF
 ENDIF
   Ends the lines of an IF. HELPDB IF gives IF.
+:ENDPROC
+ENDPROC
+  Ends the lines of a PROC, goes back after its GOSUB, and ends the DO WHILEs
+  since it. With no GOSUB it ends the command file. At the prompt it does
+  nothing. HELP PROC gives PROC.
 :EOF
 EOF()
   .T. when the place past the last record is current, as after LIST, SKIP
@@ -300,6 +330,14 @@ GO n | GO TOP | GO BOTTOM
   the record count, else Record out of range. GO TOP makes the first record
   of the order current, GO BOTTOM the last. GO prints "Record n".
   GO TOP
+:GOSUB
+GOSUB name
+  Runs the first PROC name of the command file running, then goes on at the
+  next line. The search reads the file from its first line. A name not found
+  prints "Proc not found: NAME" and ends every command file. GOSUBs and DO
+  WHILEs run 8 deep together, else Too many DO levels. At the prompt it gives
+  Only in a command file.
+  GOSUB OPENDB
 :GOTO
 GOTO n | GOTO TOP | GOTO BOTTOM
   The same as GO. HELPDB GO gives GO.
@@ -375,7 +413,8 @@ READ's keys
 :LASTKEY
 LASTKEY()
   The last key BROWSE, READ, MENU() or WAIT read, as a number, 0 before the
-  first. A character key is its code. Esc is 27, Ctrl+W is 23.
+  first. A character key is its code. Enter is 13, Esc is 27, Ctrl+W is 23,
+  Ctrl+C is 3.
 :LEN
 LEN(text)
   The number of characters of text. A C field counts its padding spaces.
@@ -423,6 +462,26 @@ GO  GOTO  SKIP  LOCATE  CONTINUE  FIND
   place of its own: EOF() is .T. there, and RECNO() is the record count
   plus 1.
   HELPDB name gives each command.
+:ON
+ON KEY Fn GOSUB name | ON KEY Fn
+  Binds F1 to F10 in a BROWSE to PROC name of the command file running the
+  BROWSE. name is at most 10 characters, and the BROWSE line is under 256
+  bytes. ON KEY Fn alone drops the key, and the last file's end drops every
+  key. At the prompt it gives Only in a command file.
+  The key writes an open cell, ends the BROWSE and runs the PROC. The PROC's
+  ENDPROC runs the BROWSE line again, and the field, the row and what was
+  under the box stay as they were. The page stays on the screen while the
+  PROC runs, and the return draws it again.
+  A PROC that changes the table or the fields, or runs a BROWSE, loses the
+  field and the row. A PROC that fails leaves the page on the screen, and
+  what was under the box does not come back.
+  ON KEY F2 GOSUB FILTERS
+  BROWSE
+  RETURN
+  PROC FILTERS
+    SET FILTER TO AGE > 30
+    GO TOP
+  ENDPROC
 :OPERATORS
 + - * / ( ) = # < > <= >= .NOT. .AND. .OR.
   + - * / work on numbers. + joins two texts. A - before a value changes
@@ -474,13 +533,26 @@ POPUP(list, text)
   length, and POPUP is .T.. Esc makes it .F.. Up, Down, Left and Right move.
   Elsewhere POPUP is INLIST.
   SET VALID TO POPUP("open;closed;hold", STATUS)
+:PROC
+PROC name
+  PROC name and ENDPROC hold lines that run only by GOSUB name. A PROC line
+  that runs skips to its ENDPROC. A PROC is not inside an IF, a DO WHILE or a
+  PROC. It has no parameters or locals. RETURN in a PROC goes back as ENDPROC
+  does. At the prompt it gives Only in a command file.
+  GOSUB OPENDB
+  RETURN
+  PROC OPENDB
+    USE PEOPLE
+  ENDPROC
 :PROGRAMS
 DO IF ELSE ENDIF DO WHILE ENDDO RETURN CANCEL ACCEPT INPUT WAIT MODIFY !
+PROC ENDPROC GOSUB ON
   A command file is a text file with the extension .PRG, under 64 KB. DO
   runs it, and MODIFY COMMAND edits it. Its lines run as if typed at the
   prompt.
   A line ends in LF, and a CR is dropped. A line is cut at 240 characters.
-  A DO WHILE line, its line end included, is under 256 bytes.
+  A DO WHILE line, its line end included, is under 256 bytes. A tab reads as
+  a space, in quoted text too. A line that starts with * or // is a comment.
   A line that ends in a space and _ joins the next. The _ goes, the space
   stays, and the next line loses its leading spaces. Joined lines count
   together toward both limits, and an error names the last line joined. A
@@ -565,8 +637,8 @@ RESTORE SCREEN FROM path
   RESTORE SCREEN FROM MAIN
 :RETURN
 RETURN
-  Ends the innermost command file, and its caller goes on. At the prompt
-  RETURN does nothing.
+  Ends the innermost command file, and its caller goes on. In a PROC it goes
+  back after the GOSUB. At the prompt RETURN does nothing.
 :RUN
 RUN [command line]
   The same as !. HELPDB ! gives !.
@@ -617,7 +689,7 @@ SET FILTER TO [condition]
 SET VALID TO [condition]
 SET REVERSE ON | SET REVERSE OFF
 SET DELETED ON | SET DELETED OFF
-SET FIELDS TO [name [, name ...]]
+SET FIELDS TO [list]
   SET INDEX TO closes the open indexes, then opens each name, with .NDX
   added when it has no extension. The first is the order, and the first
   record of the order is current. SET INDEX TO alone leaves the record
@@ -639,16 +711,15 @@ SET FIELDS TO [name [, name ...]]
   SET DELETED ON makes GO TOP, GO BOTTOM, SKIP, the scopes and BROWSE pass
   over deleted records, in both work areas and across USE. GO n, RECORD n
   and FIND do not check it. SET DELETED OFF, the default, ends it.
-  SET FIELDS TO adds names to the fields BROWSE alone shows, at most 32 for
-  the work area. RECNO() among them shows the record's number there. A bad
-  name adds none. SET FIELDS TO alone clears them, and USE, CREATE and CLOSE
-  clear them.
+  SET FIELDS TO adds to the fields BROWSE alone shows, at most 32 for the
+  work area. HELP BROWSE gives the list. A bad name adds none. SET FIELDS TO
+  alone clears them, and USE, CREATE and CLOSE clear them.
   SET INDEX TO NAMES, CITIES
   SET PATH TO C:\DATA; C:\OLD
   SET FILTER TO AGE > 30
   SET VALID TO INLIST("N;L;M;H", PRIORITY)
   SET DELETED ON
-  SET FIELDS TO RECNO(), NAME, CITY
+  SET FIELDS TO RECNO(), NAME:20 "Who", CITY
 :SHELL
 SHELL [command line]
   The same as !. HELPDB ! gives !.
