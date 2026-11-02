@@ -4,13 +4,19 @@
 use bugs
 on key f2 gosub go_filter
 on key f3 gosub say_hi
+// set field to desc:40 "Description", status, 
 set valid to popup(" open ; close ; hold ; closed ",status) 
-sbrowse @ 5,10 to 20,70 title "Bugs" footer "F2-Filters F3-"
+browse @ 5,10 to 20,70 title "Bugs" footer "F2-Filters F3-Dates" NOEDIT
+if lastkey() = 13 
+	? "selected"
+else
+	? "bye!"
+endif
 close
 return
 
 proc go_filter
-  pick = MENU(8,30,"All;Open;Closed;Hold")
+  pick = MENU(8,30," All ; Open ; Closed ; Hold ")
   if pick = 1
     set filter to
   endif
