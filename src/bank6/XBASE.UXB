@@ -717,6 +717,47 @@ FUNCT COMMAND_NUMBER() AS ENUM.COMMAND
   RETURN PLACE / 8 + COMMAND.CLOSE_WORD
 END FUNCT
 
+' Puts in each &name of REST the text of the memory variable name, with a . right after the name
+' gone too, and stores the line in COMMAND_LINE and, trimmed, in REST. An &name of no text
+' variable stays as typed. The text put in is not read again for &. A line past 240 characters
+' prints Text too long, keeps COMMAND_LINE as typed and empties REST.
+SUB EXPAND_MACROS()
+  DIM START AS UBYTE, NUMBER AS UBYTE, SLOT AS UWORD, TOTAL AS UWORD, NAME AS STRING * 10
+  COMMAND_LINE = ""
+  TOTAL = 0
+  CURSOR = 1
+  DO
+    START = INSTR(REST, "&", CURSOR)
+    IF START = 0 THEN START = LEN(REST) + 1
+    TOTAL = TOTAL + START - CURSOR
+    COMMAND_LINE = COMMAND_LINE + MID$(REST, CURSOR, START - CURSOR)
+    IF START > LEN(REST) THEN EXIT DO
+    CURSOR = START + 1
+    NAME = VARIABLE_NAME()
+    NUMBER = VARIABLE_LIMIT
+    IF NAME <> "" THEN NUMBER = FIND_VARIABLE(NAME)
+    SLOT = SLOT_AT(NUMBER)
+    IF NUMBER < VARIABLE_LIMIT AND ContentsAt(SLOT) = VALUE_KIND.TEXT
+      SLOT = ContentsAtW(SLOT + 12)
+      TOTAL = TOTAL + ContentsAt(SLOT + 1)
+      COMMAND_LINE = COMMAND_LINE + StringAt(SLOT)
+      IF CURRENT_CHAR() = 46 THEN CURSOR = CURSOR + 1
+    ELSE
+      ' The & alone; the name follows as typed.
+      TOTAL = TOTAL + 1
+      COMMAND_LINE = COMMAND_LINE + "&"
+      CURSOR = START + 1
+    ENDIF
+  LOOP
+  IF TOTAL > 240
+    REPORT_ERROR("Text too long")
+    COMMAND_LINE = REST
+    REST = ""
+    RETURN
+  ENDIF
+  REST = TRIM$(COMMAND_LINE)
+END SUB
+
 DOS.STOP_KEY(DOS.STOP.OFF)
 ' The variables' bank. Without a free bank DB does not run.
 RUNNING = 0
@@ -768,6 +809,8 @@ DO WHILE RUNNING
   FAILED = 0
   PART_LINE = 0
   REST = TRIM$(COMMAND_LINE)
+  ' &name puts in a text variable's value. A line skipped keeps it as typed.
+  IF SKIP_DEPTH = 0 AND INSTR(REST, "&") <> 0 THEN EXPAND_MACROS()
   // CUT_SPACES()
   // REST = TRIM$(REST)
   ' A line that starts with * or // is a comment, and runs as an empty line.
