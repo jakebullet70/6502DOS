@@ -4,12 +4,13 @@
 ' INDEX_BANK, FILE_COUNT, TAG_COUNT, FOCUS, SORT_BY, WIDE_VIEW, FILESPEC, COLOR_OF, DIGITS$,
 ' TWO_DIGITS$, DRAW_TITLE, ASK_TEXT and the screen's CONSTs.
 '
-' Set ARENA_BANK to a taken bank and ARENA_PLACE to ARENA_START before the first ADD_FILE. Set
-' FILE_COLUMN to NARROW_COLUMN and FILE_COLUMNS to NARROW_COLUMNS before the first draw.
+' Set ARENA_BANK and ARENA_HEAD to a taken bank and ARENA_PLACE to ARENA_START before the first
+' ADD_FILE. Set FILE_COLUMN to NARROW_COLUMN and FILE_COLUMNS to NARROW_COLUMNS before the first draw.
 '
 ' A record is its length, the 4-byte size, the date, the time, the attributes, the flags, and the
-' name with a zero after it. A length of 0 ends a bank: the next byte is the next record's bank,
-' and that record is at ARENA_START. A folder's records are one run, and they never move.
+' name with a zero after it. A length of 0 ends a bank. A bank's last byte, at ARENA_END - 1, is the
+' next bank, and that bank's first record is at ARENA_START. A folder's records are one run. A run
+' moves only when COMPACT_ARENA, in XTTREE.UXI, closes up the freed records; it fills the index again.
 '
 ' A folder's extras are 7 bytes at EXTRAS_START + node * 7: the file count, the first record's bank
 ' and place, the tag count. They are good only for a logged folder.
@@ -23,10 +24,14 @@
 CONST ARENA_START AS UWORD = $A000, ARENA_END AS UWORD = $C000
 CONST RECORD_SIZE AS UBYTE = 1, RECORD_DATE AS UBYTE = 5, RECORD_TIME AS UBYTE = 7
 CONST RECORD_ATTR AS UBYTE = 9, RECORD_FLAGS AS UBYTE = 10, RECORD_NAME AS UBYTE = 11
-' A record's bytes beside the name's characters, and the bytes a bank keeps for its end mark.
+' A record's bytes beside the name's characters, and the bytes a bank keeps for its end mark and
+' its link to the next bank.
 CONST RECORD_FIXED AS UBYTE = 12, END_MARK_BYTES AS UBYTE = 2
+' The longest record, with a 32-character name.
+CONST RECORD_LONGEST AS UBYTE = 44
 ' The flags' bits. A gone record is a deleted file: it keeps its place in the run, and a walk skips it.
-CONST RECORD_TAGGED AS UBYTE = 1, RECORD_GONE AS UBYTE = 2
+' A free record belongs to no folder.
+CONST RECORD_TAGGED AS UBYTE = 1, RECORD_GONE AS UBYTE = 2, RECORD_FREE AS UBYTE = 4
 CONST EXTRAS_START AS UWORD = $A000
 CONST EXTRA_FILE_COUNT AS UBYTE = 0, EXTRA_FIRST_BANK AS UBYTE = 2, EXTRA_FIRST_AT AS UBYTE = 3
 CONST EXTRA_TAG_COUNT AS UBYTE = 5
@@ -52,9 +57,11 @@ ENUM TAG_SCOPE
   SHOWN, ASKED, EVERY
 END ENUM
 
-' Where the next record goes.
-DIM ARENA_BANK AS UBYTE, ARENA_PLACE AS UWORD
-' The folder being logged: its file count, and where its run starts.
+' Where the next record goes, and the first bank of the chain.
+DIM ARENA_BANK AS UBYTE, ARENA_PLACE AS UWORD, ARENA_HEAD AS UBYTE
+' 1 when a record has been freed since the last compaction. The record a compaction moves.
+DIM ARENA_HOLES AS UBYTE, RECORD_COPY(RECORD_LONGEST) AS UBYTE
+' The folder being logged: its file count, and where its run starts once it has a record.
 DIM LOG_FILE_COUNT AS UWORD, LOG_BANK AS UBYTE, LOG_PLACE AS UWORD
 ' A walk of a folder's records: the folder's extras and tag count, the records left, and the record
 ' it is on.
@@ -83,8 +90,6 @@ DIM FILE_ROW_TEXT AS STRING * 80
 ' Starts the run of records of the folder being logged.
 SUB START_FILE_LOG()
   LOG_FILE_COUNT = 0
-  LOG_BANK = ARENA_BANK
-  LOG_PLACE = ARENA_PLACE
 END SUB
 
 ' Adds the file in DOS's FOUND_ variables to the run. Returns 0 when no bank is free, with
@@ -98,9 +103,14 @@ FUNCT ADD_FILE() AS UBYTE
     IF NEW_BANK = 0 THEN RETURN 0
     BANK.USE(ARENA_BANK)
     ContentsAt(ARENA_PLACE) = 0
-    ContentsAt(ARENA_PLACE + 1) = NEW_BANK
+    ContentsAt(ARENA_END - 1) = NEW_BANK
     ARENA_BANK = NEW_BANK
     ARENA_PLACE = ARENA_START
+  END IF
+  ' A run starts at its first record, never at a bank's end mark.
+  IF LOG_FILE_COUNT = 0 THEN
+    LOG_BANK = ARENA_BANK
+    LOG_PLACE = ARENA_PLACE
   END IF
   BANK.USE(ARENA_BANK)
   ContentsAt(ARENA_PLACE) = RECORD_LENGTH
@@ -366,7 +376,7 @@ FUNCT NEXT_RECORD() AS UBYTE
     BANK.USE(WALK_BANK)
     WALK_LENGTH = ContentsAt(WALK_PLACE)
     IF WALK_LENGTH = 0 THEN
-      WALK_BANK = ContentsAt(WALK_PLACE + 1)
+      WALK_BANK = ContentsAt(ARENA_END - 1)
       WALK_PLACE = ARENA_START
       BANK.USE(WALK_BANK)
       WALK_LENGTH = ContentsAt(WALK_PLACE)
@@ -374,6 +384,29 @@ FUNCT NEXT_RECORD() AS UBYTE
     IF (ContentsAt(WALK_PLACE + RECORD_FLAGS) AND RECORD_GONE) = 0 THEN RETURN 1
   LOOP
 END FUNCT
+
+' Frees each record of the run of NODE, which is logged, gone ones too. Selects a bank; a region's
+' bank comes back when the call returns.
+SUB DROP_RUN(NODE AS UBYTE)
+  DIM PLACE AS UWORD, RECORDS_LEFT AS UWORD, RUN_BANK AS UBYTE
+  ARENA_HOLES = 1
+  PLACE = EXTRAS_PLACE(NODE)
+  BANK.USE(EXTRAS_BANK)
+  RECORDS_LEFT = ContentsAtW(PLACE + EXTRA_FILE_COUNT)
+  RUN_BANK = ContentsAt(PLACE + EXTRA_FIRST_BANK)
+  PLACE = ContentsAtW(PLACE + EXTRA_FIRST_AT)
+  BANK.USE(RUN_BANK)
+  DO WHILE RECORDS_LEFT <> 0
+    IF ContentsAt(PLACE) = 0 THEN
+      RUN_BANK = ContentsAt(ARENA_END - 1)
+      PLACE = ARENA_START
+      BANK.USE(RUN_BANK)
+    END IF
+    ContentsAt(PLACE + RECORD_FLAGS) = ContentsAt(PLACE + RECORD_FLAGS) OR RECORD_FREE
+    PLACE = PLACE + ContentsAt(PLACE)
+    RECORDS_LEFT = RECORDS_LEFT - 1
+  LOOP
+END SUB
 
 ' Applies CHANGE, a TAG_CHANGE, to the flags at FLAGS_PLACE, in the selected bank, and keeps
 ' FOLDER_TAGS in step.

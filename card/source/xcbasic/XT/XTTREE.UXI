@@ -4,12 +4,14 @@
 ' DRAW_MENU, ASK_TEXT, TELL, the CTRL_ keys and the screen's CONSTs.
 '
 ' A node is a number, 0 to 253, and node 0 is C:\. Its links and flags are in low RAM. Its name
-' is in the names bank, at NAMES_START + node * 32, zero-padded. Nodes are never freed. Children
+' is in the names bank, at NAMES_START + node * 32, zero-padded. A freed node joins a list at
+' FREE_NODES, linked through FIRST_CHILD, and the next new node comes from that list first. Children
 ' keep the order of the folder on disk.
 
 CONST NODE_MAX AS UBYTE = 254, NODE_NONE AS UBYTE = 255, ROOT_NODE AS UBYTE = 0
 CONST NAME_SIZE AS UBYTE = 32, NAMES_START AS UWORD = $A000
-CONST FLAG_LOGGED AS UBYTE = 1, FLAG_EXPANDED AS UBYTE = 2
+' FLAG_SEEN marks an old child that a read of its parent found, until DROP_UNSEEN clears it.
+CONST FLAG_LOGGED AS UBYTE = 1, FLAG_EXPANDED AS UBYTE = 2, FLAG_SEEN AS UBYTE = 4
 ' A row's name and marker start after this many cells, and each level adds LEVEL_CELLS.
 CONST ROW_START AS UBYTE = 1, LEVEL_CELLS AS UBYTE = 2
 ' The codes of the tree's lines in CP437.
@@ -25,12 +27,16 @@ DIM NODE_FLAGS(NODE_MAX) AS UBYTE
 ' The nodes the pane can show, from the top. BUILD_VISIBLE fills it.
 DIM VISIBLE_NODES(NODE_MAX) AS UBYTE
 DIM NODE_COUNT AS UBYTE, VISIBLE_COUNT AS UBYTE
+' The first freed node, or NODE_NONE.
+DIM FREE_NODES AS UBYTE
 ' Positions in VISIBLE_NODES: the highlighted row, and the pane's first row.
 DIM TREE_CURSOR AS UBYTE, TREE_TOP AS UBYTE
 ' The folder FOLDER_PATH names while the file window fills the screen.
 DIM PATH_OWNER AS UBYTE
 ' 1 while OPEN_LEVEL leaves a logged folder unread, for Find's walk.
 DIM KEEP_LOGGED AS UBYTE
+' 1 while LOG_FOLDER frees the old children gone from the disk, for RELOG_KEY.
+DIM FREE_GONE AS UBYTE
 DIM NAME_TEXT AS STRING * 32, ROW_TEXT AS STRING * 27
 ' The path WALK_PATH follows: parts from C:\, each ending in \.
 DIM GO_PATH AS STRING * 255, PATH_PART AS STRING * 32
@@ -283,6 +289,100 @@ END SUB
 
 #REGION_SLOT 0
 
+' Points the start of the run at OLD_BANK and OLD_PLACE, of the log or of a logged folder, at
+' NEW_BANK and NEW_PLACE. Returns the run's record count, or 0 when no run starts there. Selects a
+' bank.
+FUNCT MOVE_RUN_START(OLD_BANK AS UBYTE, OLD_PLACE AS UWORD, NEW_BANK AS UBYTE, NEW_PLACE AS UWORD) AS UWORD
+  DIM PLACE AS UWORD, COUNT AS UWORD, NODE AS UBYTE
+  IF LOG_FILE_COUNT <> 0 AND LOG_BANK = OLD_BANK AND LOG_PLACE = OLD_PLACE THEN
+    LOG_BANK = NEW_BANK
+    LOG_PLACE = NEW_PLACE
+    RETURN LOG_FILE_COUNT
+  END IF
+  BANK.USE(EXTRAS_BANK)
+  NODE = 0
+  DO WHILE NODE < NODE_COUNT
+    IF (NODE_FLAGS(NODE) AND FLAG_LOGGED) <> 0 THEN
+      PLACE = EXTRAS_PLACE(NODE)
+      COUNT = ContentsAtW(PLACE + EXTRA_FILE_COUNT)
+      IF COUNT <> 0 AND ContentsAt(PLACE + EXTRA_FIRST_BANK) = OLD_BANK AND ContentsAtW(PLACE + EXTRA_FIRST_AT) = OLD_PLACE THEN
+        ContentsAt(PLACE + EXTRA_FIRST_BANK) = NEW_BANK
+        ContentsAtW(PLACE + EXTRA_FIRST_AT) = NEW_PLACE
+        RETURN COUNT
+      END IF
+    END IF
+    NODE = NODE + 1
+  LOOP
+  RETURN 0
+END FUNCT
+
+' Moves the live records down over the freed ones, in their order, frees the banks left past the
+' last record, and fills the index again with the same rows. Does nothing when no record has been
+' freed since the last time. Selects a bank; a region's bank comes back when the call returns.
+' Across the whole screen, rows that tie on the name may change places.
+SUB COMPACT_ARENA()
+  DIM READ_PLACE AS UWORD, WRITE_PLACE AS UWORD, RUN_LEFT AS UWORD, KEEP_CURSOR AS UWORD, KEEP_TOP AS UWORD
+  DIM READ_BANK AS UBYTE, WRITE_BANK AS UBYTE, NEXT_BANK AS UBYTE, LENGTH AS UBYTE, SPOT AS UBYTE
+  IF ARENA_HOLES = 0 THEN RETURN
+  ARENA_HOLES = 0
+  READ_BANK = ARENA_HEAD
+  READ_PLACE = ARENA_START
+  WRITE_BANK = READ_BANK
+  WRITE_PLACE = READ_PLACE
+  ' The records left in the run being moved, or 0 when the next live record may start a run.
+  RUN_LEFT = 0
+  DO WHILE READ_BANK <> ARENA_BANK OR READ_PLACE <> ARENA_PLACE
+    BANK.USE(READ_BANK)
+    LENGTH = ContentsAt(READ_PLACE)
+    IF LENGTH = 0 THEN
+      READ_BANK = ContentsAt(ARENA_END - 1)
+      READ_PLACE = ARENA_START
+    ELSEIF (ContentsAt(READ_PLACE + RECORD_FLAGS) AND RECORD_FREE) <> 0 THEN
+      READ_PLACE = READ_PLACE + LENGTH
+    ELSE
+      IF READ_BANK <> WRITE_BANK OR READ_PLACE <> WRITE_PLACE THEN
+        FOR SPOT = 0 TO LENGTH - 1
+          RECORD_COPY(SPOT) = ContentsAt(READ_PLACE + SPOT)
+        NEXT
+        IF WRITE_PLACE + LENGTH + END_MARK_BYTES > ARENA_END THEN
+          BANK.USE(WRITE_BANK)
+          ContentsAt(WRITE_PLACE) = 0
+          WRITE_BANK = ContentsAt(ARENA_END - 1)
+          WRITE_PLACE = ARENA_START
+        END IF
+        IF RUN_LEFT = 0 THEN RUN_LEFT = MOVE_RUN_START(READ_BANK, READ_PLACE, WRITE_BANK, WRITE_PLACE)
+        BANK.USE(WRITE_BANK)
+        FOR SPOT = 0 TO LENGTH - 1
+          ContentsAt(WRITE_PLACE + SPOT) = RECORD_COPY(SPOT)
+        NEXT
+      END IF
+      IF RUN_LEFT <> 0 THEN RUN_LEFT = RUN_LEFT - 1
+      READ_PLACE = READ_PLACE + LENGTH
+      WRITE_PLACE = WRITE_PLACE + LENGTH
+    END IF
+  LOOP
+  ' Frees each bank past WRITE_BANK, reading its link first.
+  READ_BANK = WRITE_BANK
+  DO WHILE READ_BANK <> ARENA_BANK
+    BANK.USE(READ_BANK)
+    NEXT_BANK = ContentsAt(ARENA_END - 1)
+    IF READ_BANK <> WRITE_BANK THEN BANK.FREE(READ_BANK)
+    READ_BANK = NEXT_BANK
+  LOOP
+  IF READ_BANK <> WRITE_BANK THEN BANK.FREE(READ_BANK)
+  ARENA_BANK = WRITE_BANK
+  ARENA_PLACE = WRITE_PLACE
+  KEEP_CURSOR = FILE_CURSOR
+  KEEP_TOP = FILE_TOP
+  IF WIDE_VIEW <> 0 THEN
+    FILL_WIDE()
+  ELSEIF ROW_COUNT <> 0 THEN
+    FILL_FILES(ContentsAt(ROW_PLACE(0) + ROW_OWNER))
+  END IF
+  FILE_CURSOR = KEEP_CURSOR
+  FILE_TOP = KEEP_TOP
+END SUB
+
 ' Fills the index again for a new sort, filespec or read, with its first row highlighted, and writes
 ' the file window and the title. A window left with no row gives the focus to the tree, and with the
 ' whole screen goes back to the two panes.
@@ -332,28 +432,95 @@ END SUB
 
 #REGION_SLOT 5
 
-' Returns 1 when FOLDER's children up to LAST_OLD hold DOS.FOUND_NAME, and 0 when they do not.
-' LAST_OLD is NODE_NONE for no children.
+' Returns 1 when FOLDER's children up to LAST_OLD hold DOS.FOUND_NAME, and sets FLAG_SEEN on that
+' child. Returns 0 when they do not. LAST_OLD is NODE_NONE for no children.
 FUNCT KNOWN_CHILD(FOLDER AS UBYTE, LAST_OLD AS UBYTE) AS UBYTE
   DIM CHILD AS UBYTE
   IF LAST_OLD = NODE_NONE THEN RETURN 0
   CHILD = FIRST_CHILD(FOLDER)
   DO
     LOAD_NAME(CHILD)
-    IF NAME_TEXT = DOS.FOUND_NAME THEN RETURN 1
+    IF NAME_TEXT = DOS.FOUND_NAME THEN
+      NODE_FLAGS(CHILD) = NODE_FLAGS(CHILD) OR FLAG_SEEN
+      RETURN 1
+    END IF
     IF CHILD = LAST_OLD THEN RETURN 0
     CHILD = NEXT_SIBLING(CHILD)
   LOOP
 END FUNCT
 
+' Returns a node from the freed nodes, or a node never used, or NODE_NONE when the tree is full.
+FUNCT TAKE_NODE() AS UBYTE
+  DIM NODE AS UBYTE
+  NODE = FREE_NODES
+  IF NODE <> NODE_NONE THEN
+    FREE_NODES = FIRST_CHILD(NODE)
+    RETURN NODE
+  END IF
+  IF NODE_COUNT = NODE_MAX THEN RETURN NODE_NONE
+  NODE_COUNT = NODE_COUNT + 1
+  RETURN NODE_COUNT - 1
+END FUNCT
+
+' Puts NODE on the list of freed nodes, and frees its records. NODE must be out of the tree.
+SUB FREE_NODE(NODE AS UBYTE)
+  IF (NODE_FLAGS(NODE) AND FLAG_LOGGED) <> 0 THEN DROP_RUN(NODE)
+  NODE_FLAGS(NODE) = 0
+  FIRST_CHILD(NODE) = FREE_NODES
+  FREE_NODES = NODE
+END SUB
+
+' Frees every node below TOP and their records, and leaves TOP with no children.
+SUB FREE_BELOW(TOP AS UBYTE)
+  DIM NODE AS UBYTE, NEXT_NODE AS UBYTE
+  NODE = NEXT_IN_BRANCH(TOP, TOP)
+  DO WHILE NODE <> NODE_NONE
+    ' The walk reads a node's FIRST_CHILD before FREE_NODE changes it, and climbs by PARENT_NODE
+    ' and NEXT_SIBLING, which stay.
+    NEXT_NODE = NEXT_IN_BRANCH(NODE, TOP)
+    FREE_NODE(NODE)
+    NODE = NEXT_NODE
+  LOOP
+  FIRST_CHILD(TOP) = NODE_NONE
+END SUB
+
+' Clears FLAG_SEEN on FOLDER's children up to LAST_OLD. When FREE_GONE is 1, each of them without
+' FLAG_SEEN leaves the tree, and it and the nodes below it are freed. LAST_OLD is NODE_NONE for no
+' children.
+SUB DROP_UNSEEN(FOLDER AS UBYTE, LAST_OLD AS UBYTE)
+  DIM CHILD AS UBYTE, NEXT_CHILD AS UBYTE, BEFORE AS UBYTE
+  IF LAST_OLD = NODE_NONE THEN RETURN
+  BEFORE = NODE_NONE
+  CHILD = FIRST_CHILD(FOLDER)
+  DO
+    NEXT_CHILD = NEXT_SIBLING(CHILD)
+    IF FREE_GONE <> 0 AND (NODE_FLAGS(CHILD) AND FLAG_SEEN) = 0 THEN
+      IF BEFORE = NODE_NONE THEN
+        FIRST_CHILD(FOLDER) = NEXT_CHILD
+      ELSE
+        NEXT_SIBLING(BEFORE) = NEXT_CHILD
+      END IF
+      FREE_BELOW(CHILD)
+      FREE_NODE(CHILD)
+    ELSE
+      NODE_FLAGS(CHILD) = NODE_FLAGS(CHILD) AND (FLAG_LOGGED OR FLAG_EXPANDED)
+      BEFORE = CHILD
+    END IF
+    IF CHILD = LAST_OLD THEN RETURN
+    CHILD = NEXT_CHILD
+  LOOP
+END SUB
+
 ' Reads the PARTS, a READ_PARTS, of FOLDER from disk: folders that are not children yet become its
-' last children, and files become a new run of records with no tags. The old run stays as dead
-' space. A child gone from the disk stays. Sets FOLDER_PATH to the path of FOLDER. A full tree drops
-' the folders past it and keeps reading the files. No free bank stops the read. Each shows a message
-' after the read. A disk error ends the read as the end of the folder does.
+' last children, and files become a new run of records with no tags. The old run is freed after the
+' read, and FOLDER is logged from then. PARTS is READ_PARTS.FOLDERS_ONLY only for a logged FOLDER. A
+' child gone from the disk stays, unless FREE_GONE is 1 and the read reaches the end of the folder:
+' then DROP_UNSEEN frees it. Sets FOLDER_PATH to the path of FOLDER. A full tree drops the folders
+' past it and keeps reading the files. With no free bank, COMPACT_ARENA runs, and when that leaves no
+' room the read stops. Each shows a message after the read. A disk error ends the read as the end of
+' the folder does.
 SUB LOG_FOLDER(FOLDER AS UBYTE, PARTS AS UBYTE)
   DIM NODE AS UBYTE, LAST_CHILD AS UBYTE, LAST_OLD AS UBYTE, TREE_FULL AS UBYTE, BANKS_FULL AS UBYTE
-  NODE_FLAGS(FOLDER) = NODE_FLAGS(FOLDER) OR FLAG_LOGGED
   LAST_CHILD = FIRST_CHILD(FOLDER)
   IF LAST_CHILD <> NODE_NONE THEN
     DO WHILE NEXT_SIBLING(LAST_CHILD) <> NODE_NONE
@@ -370,17 +537,19 @@ SUB LOG_FOLDER(FOLDER AS UBYTE, PARTS AS UBYTE)
     IF (DOS.FOUND_ATTRIBUTES AND DOS.ATTR_DIRECTORY) = 0 THEN
       IF PARTS <> READ_PARTS.FOLDERS_ONLY THEN
         IF ADD_FILE() = 0 THEN
-          BANKS_FULL = 1
-          EXIT DO
+          COMPACT_ARENA()
+          IF ADD_FILE() = 0 THEN
+            BANKS_FULL = 1
+            EXIT DO
+          END IF
         END IF
       END IF
     ELSEIF PARTS <> READ_PARTS.FILES_ONLY AND DOS.FOUND_NAME <> "." AND DOS.FOUND_NAME <> ".." THEN
       IF KNOWN_CHILD(FOLDER, LAST_OLD) = 0 THEN
-        IF NODE_COUNT = NODE_MAX THEN
+        NODE = TAKE_NODE()
+        IF NODE = NODE_NONE THEN
           TREE_FULL = 1
         ELSE
-          NODE = NODE_COUNT
-          NODE_COUNT = NODE_COUNT + 1
           STORE_NAME(NODE, DOS.FOUND_NAME)
           PARENT_NODE(NODE) = FOLDER
           FIRST_CHILD(NODE) = NODE_NONE
@@ -397,7 +566,15 @@ SUB LOG_FOLDER(FOLDER AS UBYTE, PARTS AS UBYTE)
     END IF
     DOS.FINDNEXT()
   LOOP
-  IF PARTS <> READ_PARTS.FOLDERS_ONLY THEN END_FILE_LOG(FOLDER)
+  IF PARTS <> READ_PARTS.FILES_ONLY THEN
+    IF DOS.ERROR <> DOS.ERR_NO_MORE AND DOS.ERROR <> DOS.ERR_NOT_FOUND THEN FREE_GONE = 0
+    DROP_UNSEEN(FOLDER, LAST_OLD)
+  END IF
+  IF PARTS <> READ_PARTS.FOLDERS_ONLY THEN
+    IF (NODE_FLAGS(FOLDER) AND FLAG_LOGGED) <> 0 THEN DROP_RUN(FOLDER)
+    END_FILE_LOG(FOLDER)
+    NODE_FLAGS(FOLDER) = NODE_FLAGS(FOLDER) OR FLAG_LOGGED
+  END IF
   IF TREE_FULL <> 0 THEN TELL("LOG:", "The tree holds 254 folders")
   IF BANKS_FULL <> 0 THEN TELL("LOG:", "No free RAM bank for more files")
 END SUB
@@ -473,6 +650,7 @@ END SUB
 SUB START_TREE()
   DIM NODE AS UBYTE
   NODE_COUNT = 1
+  FREE_NODES = NODE_NONE
   STORE_NAME(ROOT_NODE, "C:\")
   PARENT_NODE(ROOT_NODE) = NODE_NONE
   FIRST_CHILD(ROOT_NODE) = NODE_NONE
@@ -483,10 +661,11 @@ SUB START_TREE()
   BUILD_INDEX(NODE)
 END SUB
 
-' Forgets NODE's children and files, gives the focus to the tree, and draws the screen. The children's
-' nodes and the records stay as dead space.
+' Forgets NODE's children and files, gives the focus to the tree, and draws the screen. The nodes
+' below NODE and the records of all of them are freed.
 SUB FORGET_FOLDER(NODE AS UBYTE)
-  FIRST_CHILD(NODE) = NODE_NONE
+  FREE_BELOW(NODE)
+  IF (NODE_FLAGS(NODE) AND FLAG_LOGGED) <> 0 THEN DROP_RUN(NODE)
   NODE_FLAGS(NODE) = 0
   BUILD_VISIBLE()
   FOCUS = PANE.TREE
@@ -507,8 +686,9 @@ SUB RELEASE_KEY()
 END SUB
 
 ' Reads a folder from disk again. A folder that is not logged is read whole. The tree's focus reads
-' the highlighted folder's new folders. The file window's reads the files of its folder, or across
-' the whole screen the files of the highlighted row's folder.
+' the highlighted folder's folders: new ones join the tree, and ones gone from the disk leave it. The
+' file window's reads the files of its folder, or across the whole screen the files of the highlighted
+' row's folder.
 SUB RELOG_KEY()
   DIM NODE AS UBYTE, PARTS AS UBYTE
   NODE = VISIBLE_NODES(TREE_CURSOR)
@@ -518,7 +698,9 @@ SUB RELOG_KEY()
     PARTS = READ_PARTS.FOLDERS_ONLY
     IF FOCUS = PANE.FILES THEN PARTS = READ_PARTS.FILES_ONLY
   END IF
+  FREE_GONE = 1
   LOG_FOLDER(NODE, PARTS)
+  FREE_GONE = 0
   IF PARTS <> READ_PARTS.FILES_ONLY THEN
     NODE_FLAGS(NODE) = NODE_FLAGS(NODE) OR FLAG_EXPANDED
     BUILD_VISIBLE()

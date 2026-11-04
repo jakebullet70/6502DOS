@@ -253,7 +253,7 @@ SUB DELETE_FILE()
   SETTLE_WINDOW(FILE_CURSOR, FILE_TOP)
 END SUB
 
-' Takes NODE from its parent's children. Its name, links and records stay as dead space.
+' Takes NODE from its parent's children. Its links stay.
 SUB UNLINK_NODE(NODE AS UBYTE)
   DIM PARENT AS UBYTE, WALK AS UBYTE
   PARENT = PARENT_NODE(NODE)
@@ -268,9 +268,12 @@ SUB UNLINK_NODE(NODE AS UBYTE)
   NEXT_SIBLING(WALK) = NEXT_SIBLING(NODE)
 END SUB
 
-' Takes NODE, which is highlighted, from the tree, and highlights the row above it.
+' Takes NODE, which is highlighted, from the tree, frees it and the nodes below it, and highlights
+' the row above it. Their records are freed.
 SUB DROP_TREE_ROW(NODE AS UBYTE)
   UNLINK_NODE(NODE)
+  FREE_BELOW(NODE)
+  FREE_NODE(NODE)
   BUILD_VISIBLE()
   TREE_CURSOR = TREE_CURSOR - 1
   MOVE_TREE_CURSOR(TREE_CURSOR)
