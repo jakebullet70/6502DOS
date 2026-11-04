@@ -97,6 +97,8 @@ CARD_FOLDERS = ("help", "sys/temp", "sys/themes", "sys/basic", "sys/xbase", "sys
                 "source/xcbasic", "source/uxcbasic", "source/scripts", "source/xbase", "apps", "games")
 # The utilities of src/utils that go to card/sys/themes, with the fonts and color themes.
 THEME_PROGRAMS = ("THEMED", "FONTEDIT")
+# The utilities of src/utils that go to card/sys/xbase, the cmdlets XBASE.COM looks up.
+XBASE_PROGRAMS = ("MODSTRU",)
 # The tests that also go to card/sys, for the user to run on the card.
 SHOWN_TESTS = []
 TEMPLATES = os.path.join(ROOT, "UXCBASIC", "tpl")
@@ -174,17 +176,20 @@ def write_help_index(source, target):
 
 
 def compile_utils():
-    """Compile each src/utils/FOLDER/NAME.UXB to card/sys/NAME.COM, or card/sys/themes/NAME.COM
-    for THEME_PROGRAMS, copy the files of
+    """Compile each src/utils/FOLDER/NAME.UXB to card/sys/NAME.COM, card/sys/themes/NAME.COM
+    for THEME_PROGRAMS, or card/sys/xbase/NAME.COM for XBASE_PROGRAMS, copy the files of
     src/utils/FOLDER to card/source/xcbasic/FOLDER, and compile each test of SHOWN_TESTS to
     card/sys/NAME.COM. Return the folder card/source."""
     themes = os.path.join(SYS_OUT, "themes")
+    xbase = os.path.join(SYS_OUT, "xbase")
     os.makedirs(themes, exist_ok=True)
+    os.makedirs(xbase, exist_ok=True)
     for folder in sorted(glob.glob(os.path.join(UTILS, "*", ""))):
         folder = os.path.dirname(folder)
         for source in sorted(glob.glob(os.path.join(folder, "*.UXB"))):
             name = os.path.splitext(os.path.basename(source))[0].upper()
-            uxb.compile(source, os.path.join(themes if name in THEME_PROGRAMS else SYS_OUT, name + ".COM"))
+            target = themes if name in THEME_PROGRAMS else xbase if name in XBASE_PROGRAMS else SYS_OUT
+            uxb.compile(source, os.path.join(target, name + ".COM"))
         shutil.copytree(folder, os.path.join(SOURCE_OUT, "xcbasic", os.path.basename(folder).upper()),
                         ignore=shutil.ignore_patterns(".*"), dirs_exist_ok=True)
     for name in SHOWN_TESTS:

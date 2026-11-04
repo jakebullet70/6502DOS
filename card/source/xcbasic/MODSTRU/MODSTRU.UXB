@@ -1,0 +1,566 @@
+'=============================================================================================
+' -- MODSTRU table
+' -- changes a table's fields and keeps its records. table gets .DB when it has no extension.
+' -- The page lists the fields. Up and Down move the bar. Enter edits the field under the bar,
+' -- as name,type,length,decimals, the form CREATE takes, and an empty line or any key but Enter
+' -- leaves it as it was. Ins adds a field above the bar, Del removes the one under it, and the
+' -- row past the last field adds one at the end. Ctrl+W saves. Esc quits, and asks when a field
+' -- changed.
+' -- Each field keeps the field it came from, so a new name keeps the data. A text field is cut
+' -- to its length. Any type copied to a C field becomes text. An N field keeps its value at its
+' -- decimals. Any other change of type leaves the field blank. Deleted records stay deleted.
+' -- Ctrl+W lists the fields that lose data and asks before it saves.
+' -- Save writes name.TMP, renames the table to name.BAK and renames name.TMP to the table. A
+' -- number too long for its field stops the save, and the table stays as it was.
+' -- Exit code 0, 1 for no table named or a table named .TMP or .BAK, 2 for a file error at the
+' -- start.
+' --
+' -- From the XBASE prompt, with the table closed:
+' --     MODSTRU BUGS
+' -- Trap: run it on a table XBASE has open, and XBASE's copy goes stale. Indexes on the table are
+' -- not changed: open them and run REINDEX after. An index on a removed field fails.
+'=============================================================================================
+#INCLUDE "DOS.UXI"
+#INCLUDE "DB.UXI"
+#INCLUDE "HEAP.UXI"
+#INCLUDE "FLOAT.UXI"
+#INCLUDE "STR.UXI"
+#INCLUDE "KEYS.UXI"
+#INCLUDE "CONS.UXI"
+
+CONST SLOT_P1 AS UBYTE = 0, MOST_FIELDS AS UBYTE = 32, CTRL_W AS UBYTE = 23
+' The bytes of a field's entry in the table DB.DEFINE fills.
+CONST AT_KIND AS UBYTE = 11, AT_LENGTH AS UBYTE = 12, AT_DECIMALS AS UBYTE = 13
+' The rows of the screen above and below the page.
+CONST TITLE_ROW AS UBYTE = 0, HEAD_ROW AS UBYTE = 1, FIRST_ROW AS UBYTE = 2, ROWS_AROUND AS UBYTE = 5
+
+' How a record's value reaches a new field.
+ENUM COPY_RULE
+  NOTHING, AS_TEXT, NUMBER_AS_TEXT, SAME_NUMBER, NEW_DECIMALS
+END ENUM
+
+' What a new field loses against the field it came from.
+ENUM LOSS
+  NONE, CUT, BLANKED
+END ENUM
+
+DIM PATH AS STRING * 80, TEMP_PATH AS STRING * 84, BACKUP_PATH AS STRING * 84
+DIM FIELD_TABLE(512) AS UBYTE               ' the fields as edited, DB.FIELD_SIZE bytes each
+DIM OLD_TABLE(512) AS UBYTE                 ' the fields of the table on the card
+DIM ORIGIN(33) AS UBYTE                     ' from 1: the field of OLD_TABLE each came from, or 0
+DIM RULE(33) AS UBYTE                       ' from 1: the COPY_RULE of each field
+DIM FIELDS AS UBYTE, OLD_FIELDS AS UBYTE, CHANGED AS UBYTE
+DIM PICKED AS UBYTE, TOP AS UBYTE, PAGE_ROWS AS UBYTE, PROMPT_ROW AS UBYTE, MESSAGE_ROW AS UBYTE
+DIM ANSWER AS STRING * 40
+DIM NEW_NAME AS STRING * 40, NEW_KIND AS ENUM.DB.FIELD_KIND, NEW_LENGTH AS UWORD, NEW_DECIMALS AS UWORD
+DIM SOURCE AS UBYTE, TARGET AS UBYTE, RECORDS AS UWORD, COPY_PROBLEM AS STRING * 80
+DIM NUMBER_VALUE(FP.SIZE) AS UBYTE
+DIM PRESSED AS UWORD, OLD_PICKED AS UBYTE
+
+' The byte at OFFSET of field N, from 1, in the field table at TABLE.
+FUNCT ENTRY_BYTE(TABLE AS UWORD, N AS UBYTE, OFFSET AS UBYTE) AS UBYTE
+  RETURN ContentsAt(TABLE + (N - 1) * DB.FIELD_SIZE + OFFSET)
+END FUNCT
+
+' The name of field N, from 1, in the field table at TABLE.
+FUNCT ENTRY_NAME(TABLE AS UWORD, N AS UBYTE) AS STRING
+  DIM NAME AS STRING * 10, INDEX AS UBYTE
+  NAME = ""
+  INDEX = 0
+  DO WHILE INDEX < 10 AND ENTRY_BYTE(TABLE, N, INDEX) <> 0
+    NAME = NAME + CHR$(ENTRY_BYTE(TABLE, N, INDEX))
+    INDEX = INDEX + 1
+  LOOP
+  RETURN NAME
+END FUNCT
+
+' Prints TEXT on the message row.
+SUB SHOW_MESSAGE(TEXT AS STRING)
+  CONS.LOCATE(MESSAGE_ROW, 0)
+  PRINT TEXT; CONS.CLEAR_EOL$;
+END SUB
+
+' Prints TEXT on the message row, waits for a key, and gives 1 for Y.
+FUNCT ASK_YES(TEXT AS STRING) AS UBYTE
+  SHOW_MESSAGE(TEXT)
+  RETURN (WAITKEY() OR 32) = 121
+END FUNCT
+
+' ---- the page ----
+
+' Draws row N of the fields, from 1: past the last field a blank row, in reverse under the bar.
+SUB DRAW_ROW(N AS UBYTE)
+  DIM TEXT AS STRING * 40
+  TEXT = ""
+  IF N <= FIELDS
+    TEXT = STR.PADL(TRIM$(STR$(N)), 2) + " " + STR.PADR(ENTRY_NAME(AddrOf(FIELD_TABLE), N), 10) + "  "
+    TEXT = TEXT + CHR$(ENTRY_BYTE(AddrOf(FIELD_TABLE), N, AT_KIND)) + "    "
+    TEXT = TEXT + STR.PADL(TRIM$(STR$(ENTRY_BYTE(AddrOf(FIELD_TABLE), N, AT_LENGTH))), 6)
+    IF ENTRY_BYTE(AddrOf(FIELD_TABLE), N, AT_KIND) = DB.FIELD_KIND.NUMBER
+      TEXT = TEXT + STR.PADL(TRIM$(STR$(ENTRY_BYTE(AddrOf(FIELD_TABLE), N, AT_DECIMALS))), 4)
+    ENDIF
+  ENDIF
+  CONS.LOCATE(FIRST_ROW + N - TOP, 0)
+  IF N = PICKED THEN PRINT CONS.REVERSE$;
+  PRINT STR.PADR(TEXT, 32);
+  IF N = PICKED THEN PRINT CONS.NORMAL$;
+END SUB
+
+SUB DRAW_ROWS()
+  DIM ROW AS UBYTE
+  FOR ROW = 0 TO PAGE_ROWS - 1
+    DRAW_ROW(TOP + ROW)
+  NEXT
+END SUB
+
+SUB DRAW_PAGE()
+  PRINT CONS.CLEAR_SCREEN$;
+  CONS.LOCATE(TITLE_ROW, 0)
+  PRINT "MODSTRU "; PATH;
+  CONS.LOCATE(HEAD_ROW, 0)
+  PRINT " # Name        Type  Length Dec";
+  DRAW_ROWS()
+  CONS.LOCATE(MESSAGE_ROW + 1, 0)
+  PRINT "Enter edit  Ins add  Del remove  Ctrl+W save  Esc quit";
+END SUB
+
+' Moves the bar from OLD_PICKED to PICKED, and the page with it.
+SUB SHOW_BAR()
+  IF PICKED < TOP
+    TOP = PICKED
+    DRAW_ROWS()
+  ELSEIF PICKED >= TOP + PAGE_ROWS
+    TOP = PICKED - PAGE_ROWS + 1
+    DRAW_ROWS()
+  ELSE
+    DRAW_ROW(OLD_PICKED)
+    DRAW_ROW(PICKED)
+  ENDIF
+END SUB
+
+' ---- one field ----
+
+' The next part of ANSWER up to a comma, which leaves ANSWER.
+FUNCT NEXT_PART() AS STRING
+  DIM SPLIT AS UBYTE, PART AS STRING * 40
+  SPLIT = INSTR(ANSWER, ",")
+  IF SPLIT = 0
+    PART = ANSWER
+    ANSWER = ""
+  ELSE
+    PART = LEFT$(ANSWER, SPLIT - 1)
+    ANSWER = MID$(ANSWER, SPLIT + 1)
+  ENDIF
+  RETURN TRIM$(PART)
+END FUNCT
+
+' 1 when NEW_NAME is 1 to 10 letters, digits and _, from a letter, in capitals.
+FUNCT NAME_IS_GOOD() AS UBYTE
+  DIM INDEX AS UBYTE
+  IF LEN(NEW_NAME) = 0 OR LEN(NEW_NAME) > 10 THEN RETURN 0
+  IF INSTR("ABCDEFGHIJKLMNOPQRSTUVWXYZ", LEFT$(NEW_NAME, 1)) = 0 THEN RETURN 0
+  FOR INDEX = 2 TO LEN(NEW_NAME)
+    IF INSTR("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", MID$(NEW_NAME, INDEX, 1)) = 0 THEN RETURN 0
+  NEXT
+  RETURN 1
+END FUNCT
+
+' Reads ANSWER, name,type,length,decimals, into the NEW_ variables by CREATE's rules. Gives "" or
+' the error. A field numbered SELF keeps its own name. ANSWER does not stay.
+FUNCT READ_ANSWER(SELF AS UBYTE) AS STRING
+  DIM KIND_TEXT AS STRING * 40, N AS UBYTE
+  ANSWER = UCASE$(ANSWER)
+  NEW_NAME = NEXT_PART()
+  KIND_TEXT = NEXT_PART()
+  IF NAME_IS_GOOD() = 0 OR LEN(KIND_TEXT) <> 1 OR INSTR("CNLD", KIND_TEXT) = 0 THEN RETURN "Syntax error"
+  NEW_KIND = ASC(KIND_TEXT)
+  NEW_LENGTH = 1
+  NEW_DECIMALS = 0
+  IF NEW_KIND = DB.FIELD_KIND.DATE THEN NEW_LENGTH = 8
+  IF NEW_KIND = DB.FIELD_KIND.CHARACTER OR NEW_KIND = DB.FIELD_KIND.NUMBER THEN NEW_LENGTH = VAL(NEXT_PART())
+  IF NEW_KIND = DB.FIELD_KIND.NUMBER AND ANSWER <> "" THEN NEW_DECIMALS = VAL(NEXT_PART())
+  IF ANSWER <> "" THEN RETURN "Syntax error"
+  IF NEW_LENGTH = 0 OR NEW_LENGTH > 255 THEN RETURN "Number out of range"
+  IF NEW_KIND = DB.FIELD_KIND.NUMBER AND (NEW_LENGTH > 10 OR (NEW_DECIMALS > 0 AND NEW_DECIMALS + 2 > NEW_LENGTH)) THEN RETURN "Number out of range"
+  FOR N = 1 TO FIELDS
+    IF N <> SELF AND ENTRY_NAME(AddrOf(FIELD_TABLE), N) = NEW_NAME THEN RETURN "Duplicate field"
+  NEXT
+  RETURN ""
+END FUNCT
+
+' Edits ANSWER on the prompt row until it reads as a field. Gives 1 with the NEW_ variables set, 0
+' for an empty line or a key other than Enter. SELF is the field's number, as in READ_ANSWER.
+FUNCT ASK_FIELD(SELF AS UBYTE) AS UBYTE
+  DIM PROBLEM AS STRING * 20, TYPED AS STRING * 40
+  DO
+    CONS.LOCATE(PROMPT_ROW, 0)
+    PRINT "Name,type,length,decimals: "; CONS.CLEAR_EOL$;
+    IF DOS.CON_EDIT(ANSWER) <> KEYS.ENTER OR ANSWER = "" THEN EXIT DO
+    TYPED = ANSWER
+    PROBLEM = READ_ANSWER(SELF)
+    IF PROBLEM = ""
+      CONS.LOCATE(PROMPT_ROW, 0)
+      PRINT CONS.CLEAR_EOL$;
+      RETURN 1
+    ENDIF
+    ANSWER = TYPED
+    SHOW_MESSAGE(PROBLEM)
+  LOOP
+  CONS.LOCATE(PROMPT_ROW, 0)
+  PRINT CONS.CLEAR_EOL$;
+  RETURN 0
+END FUNCT
+
+' Puts the NEW_ variables in field N.
+SUB STORE_FIELD(N AS UBYTE)
+  DB.DEFINE(AddrOf(FIELD_TABLE), N, NEW_NAME, CHR$(NEW_KIND), NEW_LENGTH, NEW_DECIMALS)
+  CHANGED = 1
+END SUB
+
+' Copies field SPOT to field TO_SPOT, with its origin.
+SUB MOVE_FIELD(TO_SPOT AS UBYTE, SPOT AS UBYTE)
+  DIM INDEX AS UBYTE, TO_ENTRY AS UWORD, ENTRY AS UWORD
+  TO_ENTRY = AddrOf(FIELD_TABLE) + (TO_SPOT - 1) * DB.FIELD_SIZE
+  ENTRY = AddrOf(FIELD_TABLE) + (SPOT - 1) * DB.FIELD_SIZE
+  FOR INDEX = 0 TO DB.FIELD_SIZE - 1
+    ContentsAt(TO_ENTRY + INDEX) = ContentsAt(ENTRY + INDEX)
+  NEXT
+  ORIGIN(TO_SPOT) = ORIGIN(SPOT)
+END SUB
+
+' Asks for a new field and adds it at the bar.
+SUB ADD_FIELD()
+  DIM N AS UBYTE
+  IF FIELDS = MOST_FIELDS
+    SHOW_MESSAGE("A table holds 32 fields")
+    RETURN
+  ENDIF
+  ANSWER = ""
+  IF ASK_FIELD(0) = 0 THEN RETURN
+  N = FIELDS
+  DO WHILE N >= PICKED
+    MOVE_FIELD(N + 1, N)
+    N = N - 1
+  LOOP
+  FIELDS = FIELDS + 1
+  ORIGIN(PICKED) = 0
+  STORE_FIELD(PICKED)
+  DRAW_ROWS()
+END SUB
+
+' Asks for the field under the bar again.
+SUB EDIT_FIELD()
+  ANSWER = ENTRY_NAME(AddrOf(FIELD_TABLE), PICKED) + "," + CHR$(ENTRY_BYTE(AddrOf(FIELD_TABLE), PICKED, AT_KIND))
+  IF ENTRY_BYTE(AddrOf(FIELD_TABLE), PICKED, AT_KIND) = DB.FIELD_KIND.CHARACTER OR ENTRY_BYTE(AddrOf(FIELD_TABLE), PICKED, AT_KIND) = DB.FIELD_KIND.NUMBER
+    ANSWER = ANSWER + "," + TRIM$(STR$(ENTRY_BYTE(AddrOf(FIELD_TABLE), PICKED, AT_LENGTH)))
+  ENDIF
+  IF ENTRY_BYTE(AddrOf(FIELD_TABLE), PICKED, AT_KIND) = DB.FIELD_KIND.NUMBER
+    ANSWER = ANSWER + "," + TRIM$(STR$(ENTRY_BYTE(AddrOf(FIELD_TABLE), PICKED, AT_DECIMALS)))
+  ENDIF
+  IF ASK_FIELD(PICKED) = 0 THEN RETURN
+  STORE_FIELD(PICKED)
+  DRAW_ROW(PICKED)
+END SUB
+
+' Removes the field under the bar.
+SUB REMOVE_FIELD()
+  DIM N AS UBYTE
+  IF PICKED > FIELDS THEN RETURN
+  FOR N = PICKED TO FIELDS - 1
+    MOVE_FIELD(N, N + 1)
+  NEXT
+  FIELDS = FIELDS - 1
+  CHANGED = 1
+  DRAW_ROWS()
+END SUB
+
+' ---- the save ----
+
+' The COPY_RULE of field N.
+FUNCT RULE_OF(N AS UBYTE) AS ENUM.COPY_RULE
+  DIM KIND AS UBYTE, OLD_KIND AS UBYTE
+  IF ORIGIN(N) = 0 THEN RETURN COPY_RULE.NOTHING
+  KIND = ENTRY_BYTE(AddrOf(FIELD_TABLE), N, AT_KIND)
+  OLD_KIND = ENTRY_BYTE(AddrOf(OLD_TABLE), ORIGIN(N), AT_KIND)
+  IF KIND = DB.FIELD_KIND.CHARACTER
+    IF OLD_KIND = DB.FIELD_KIND.NUMBER THEN RETURN COPY_RULE.NUMBER_AS_TEXT
+    RETURN COPY_RULE.AS_TEXT
+  ENDIF
+  IF KIND <> OLD_KIND THEN RETURN COPY_RULE.NOTHING
+  IF KIND <> DB.FIELD_KIND.NUMBER THEN RETURN COPY_RULE.AS_TEXT
+  IF ENTRY_BYTE(AddrOf(FIELD_TABLE), N, AT_DECIMALS) = ENTRY_BYTE(AddrOf(OLD_TABLE), ORIGIN(N), AT_DECIMALS) THEN RETURN COPY_RULE.SAME_NUMBER
+  RETURN COPY_RULE.NEW_DECIMALS
+END FUNCT
+
+' What field N loses.
+FUNCT LOSS_OF(N AS UBYTE) AS ENUM.LOSS
+  IF ORIGIN(N) = 0 THEN RETURN LOSS.NONE
+  IF RULE_OF(N) = COPY_RULE.NOTHING THEN RETURN LOSS.BLANKED
+  IF RULE_OF(N) = COPY_RULE.NEW_DECIMALS
+    IF ENTRY_BYTE(AddrOf(FIELD_TABLE), N, AT_DECIMALS) < ENTRY_BYTE(AddrOf(OLD_TABLE), ORIGIN(N), AT_DECIMALS) THEN RETURN LOSS.CUT
+    RETURN LOSS.NONE
+  ENDIF
+  IF ENTRY_BYTE(AddrOf(FIELD_TABLE), N, AT_KIND) = DB.FIELD_KIND.CHARACTER AND ENTRY_BYTE(AddrOf(FIELD_TABLE), N, AT_LENGTH) < ENTRY_BYTE(AddrOf(OLD_TABLE), ORIGIN(N), AT_LENGTH) THEN RETURN LOSS.CUT
+  RETURN LOSS.NONE
+END FUNCT
+
+' Prints LABEL and the names of the fields that lose WANTED, and gives 1 when any does.
+FUNCT LIST_LOSS(WANTED AS ENUM.LOSS, LABEL AS STRING) AS UBYTE
+  DIM N AS UBYTE, ANY_LOST AS UBYTE
+  ANY_LOST = 0
+  FOR N = 1 TO FIELDS
+    IF LOSS_OF(N) = WANTED
+      IF ANY_LOST = 0 THEN PRINT LABEL;
+      ANY_LOST = 1
+      PRINT " "; ENTRY_NAME(AddrOf(FIELD_TABLE), N);
+    ENDIF
+  NEXT
+  IF ANY_LOST THEN PRINT
+  RETURN ANY_LOST
+END FUNCT
+
+' Prints the fields of OLD_TABLE no field came from, and gives 1 when there are any.
+FUNCT LIST_REMOVED() AS UBYTE
+  DIM OLD AS UBYTE, N AS UBYTE, FOUND AS UBYTE, ANY_LOST AS UBYTE
+  ANY_LOST = 0
+  FOR OLD = 1 TO OLD_FIELDS
+    FOUND = 0
+    FOR N = 1 TO FIELDS
+      IF ORIGIN(N) = OLD THEN FOUND = 1
+    NEXT
+    IF FOUND = 0
+      IF ANY_LOST = 0 THEN PRINT "Removed:";
+      ANY_LOST = 1
+      PRINT " "; ENTRY_NAME(AddrOf(OLD_TABLE), OLD);
+    ENDIF
+  NEXT
+  IF ANY_LOST THEN PRINT
+  RETURN ANY_LOST
+END FUNCT
+
+' Lists what the save loses, on a clear screen, and asks. Gives 1 to save, at once when it loses
+' nothing. The screen stays clear for the page to be drawn again.
+FUNCT SAVE_AGREED() AS UBYTE
+  DIM ANY_LOST AS UBYTE
+  PRINT CONS.CLEAR_SCREEN$;
+  ANY_LOST = LIST_REMOVED()
+  ANY_LOST = LIST_LOSS(LOSS.CUT, "Cut:") OR ANY_LOST
+  ANY_LOST = LIST_LOSS(LOSS.BLANKED, "Blank:") OR ANY_LOST
+  IF ANY_LOST = 0 THEN RETURN 1
+  PRINT "Save? Y/N ";
+  RETURN (WAITKEY() OR 32) = 121
+END FUNCT
+
+' Copies field N of the current record of SOURCE to the current record of TARGET, by its rule.
+' Leaves TARGET the workspace and DOS.ERROR set.
+SUB COPY_FIELD(N AS UBYTE)
+  DIM TEXT AS STRING * 255
+  DOS.ERROR = 0
+  IF RULE(N) = COPY_RULE.NOTHING THEN RETURN
+  DB.WORKSPACE = SOURCE
+  TEXT = DB.GET(ORIGIN(N))
+  DB.WORKSPACE = TARGET
+  IF DOS.ERROR <> 0 THEN RETURN
+  IF RULE(N) = COPY_RULE.AS_TEXT
+    DB.PUT(N, LEFT$(TEXT, ENTRY_BYTE(AddrOf(FIELD_TABLE), N, AT_LENGTH)))
+  ELSEIF RULE(N) = COPY_RULE.NUMBER_AS_TEXT
+    DB.PUT(N, LEFT$(TRIM$(TEXT), ENTRY_BYTE(AddrOf(FIELD_TABLE), N, AT_LENGTH)))
+  ELSEIF RULE(N) = COPY_RULE.SAME_NUMBER
+    DB.PUT(N, TRIM$(TEXT))
+  ELSEIF TRIM$(TEXT) <> ""
+    FP.FROM_TEXT(AddrOf(NUMBER_VALUE), TEXT)
+    IF DOS.ERROR <> 0 THEN RETURN
+    TEXT = FP.FIXED(AddrOf(NUMBER_VALUE), ENTRY_BYTE(AddrOf(FIELD_TABLE), N, AT_DECIMALS))
+    IF DOS.ERROR = 0 THEN DB.PUT(N, TEXT)
+  ENDIF
+END SUB
+
+' Writes TEMP_PATH with the fields of FIELD_TABLE and every record of PATH, RECORDS counting them.
+' Gives 0, or the error, with COPY_PROBLEM naming its record and field when a value failed.
+FUNCT WRITE_COPY() AS UBYTE
+  DIM RECORD AS UWORD, N AS UBYTE, GONE AS UBYTE, CODE AS UBYTE
+  COPY_PROBLEM = ""
+  SOURCE = DB.OPEN_TABLE(PATH)
+  IF SOURCE = 0 THEN RETURN DOS.ERROR
+  TARGET = DB.CREATE(TEMP_PATH, AddrOf(FIELD_TABLE), FIELDS)
+  IF TARGET = 0
+    CODE = DOS.ERROR
+    DB.WORKSPACE = SOURCE
+    DB.CLOSE_TABLE()
+    RETURN CODE
+  ENDIF
+  FOR N = 1 TO FIELDS
+    RULE(N) = RULE_OF(N)
+  NEXT
+  RECORDS = 0
+  CODE = 0
+  DB.WORKSPACE = SOURCE
+  RECORD = DB.FIRST_RECORD()
+  DO WHILE RECORD <> 0
+    GONE = DB.DELETED
+    DB.WORKSPACE = TARGET
+    DB.APPEND()
+    CODE = DOS.ERROR
+    N = 1
+    DO WHILE CODE = 0 AND N <= FIELDS
+      COPY_FIELD(N)
+      CODE = DOS.ERROR
+      IF CODE <> 0 THEN COPY_PROBLEM = "Record " + TRIM$(STR$(RECORD)) + ", " + ENTRY_NAME(AddrOf(FIELD_TABLE), N) + ": " + DOS.ERRMSG(CODE)
+      N = N + 1
+    LOOP
+    IF CODE = 0 AND GONE <> 0 THEN DB.DELETE()
+    IF CODE = 0 THEN DB.WRITE_RECORD()
+    IF CODE = 0 THEN CODE = DOS.ERROR
+    IF CODE <> 0 THEN EXIT DO
+    RECORDS = RECORDS + 1
+    DB.WORKSPACE = SOURCE
+    RECORD = DB.NEXT_RECORD()
+  LOOP
+  IF CODE = 0 THEN CODE = DOS.ERROR
+  DB.WORKSPACE = TARGET
+  DB.CLOSE_TABLE()
+  IF CODE = 0 THEN CODE = DOS.ERROR
+  DB.WORKSPACE = SOURCE
+  DB.CLOSE_TABLE()
+  RETURN CODE
+END FUNCT
+
+' Saves the fields. Ends the program when it works. Else leaves the table as it was, deletes
+' TEMP_PATH, draws the page again and shows the error.
+SUB SAVE_TABLE()
+  DIM CODE AS UBYTE
+  IF FIELDS = 0
+    SHOW_MESSAGE("A table needs a field")
+    RETURN
+  ENDIF
+  IF SAVE_AGREED() = 0
+    DRAW_PAGE()
+    RETURN
+  ENDIF
+  PRINT "Saving"
+  CODE = WRITE_COPY()
+  IF CODE = 0
+    DOS.DELETE(BACKUP_PATH)
+    DOS.RENAME(PATH, BACKUP_PATH)
+    CODE = DOS.ERROR
+  ENDIF
+  IF CODE = 0
+    DOS.RENAME(TEMP_PATH, PATH)
+    CODE = DOS.ERROR
+    IF CODE <> 0 THEN DOS.RENAME(BACKUP_PATH, PATH)
+  ENDIF
+  IF CODE = 0
+    PRINT TRIM$(STR$(RECORDS)); " records copied"
+    PRINT "The old table is "; BACKUP_PATH
+    END 0
+  ENDIF
+  DOS.DELETE(TEMP_PATH)
+  DRAW_PAGE()
+  IF COPY_PROBLEM <> ""
+    SHOW_MESSAGE(COPY_PROBLEM)
+  ELSE
+    SHOW_MESSAGE(DOS.ERRMSG(CODE))
+  ENDIF
+END SUB
+
+' ---- the start ----
+
+' Puts the table's three paths in PATH, TEMP_PATH and BACKUP_PATH, or ends the program.
+SUB READ_PATHS()
+  DIM SPOT AS UBYTE, CHARACTER AS UBYTE, STEM AS STRING * 80
+  PATH = UCASE$(TRIM$(HEAP.SYS_STRINGS_GET(SLOT_P1)))
+  IF PATH = ""
+    PRINT "MODSTRU table"
+    END 1
+  ENDIF
+  ' SPOT ends on the last dot of the file name, or 0 when it has none.
+  SPOT = LEN(PATH)
+  DO WHILE SPOT > 0
+    CHARACTER = ContentsAt(@PATH + 1 + SPOT)
+    IF CHARACTER = 46 THEN EXIT DO
+    IF CHARACTER = 92 OR CHARACTER = 58 THEN SPOT = 1
+    SPOT = SPOT - 1
+  LOOP
+  STEM = PATH
+  IF SPOT = 0
+    PATH = PATH + ".DB"
+  ELSE
+    STEM = LEFT$(PATH, SPOT - 1)
+  ENDIF
+  TEMP_PATH = STEM + ".TMP"
+  BACKUP_PATH = STEM + ".BAK"
+  ' Trap: the save deletes BACKUP_PATH and empties TEMP_PATH.
+  IF PATH = TEMP_PATH OR PATH = BACKUP_PATH
+    PRINT "Table named .TMP or .BAK"
+    END 1
+  ENDIF
+END SUB
+
+' Reads the table's fields into FIELD_TABLE and OLD_TABLE, or ends the program.
+SUB READ_FIELDS()
+  DIM N AS UBYTE, NAME AS STRING * 10, SPOT AS UWORD
+  SOURCE = DB.OPEN_TABLE(PATH)
+  IF SOURCE = 0
+    PRINT DOS.ERRMSG(DOS.ERROR)
+    END 2
+  ENDIF
+  OLD_FIELDS = DB.FIELD_COUNT()
+  FOR N = 1 TO OLD_FIELDS
+    NAME = DB.FIELD_NAME(N)
+    DB.DEFINE(AddrOf(OLD_TABLE), N, NAME, CHR$(DB.FIELD_TYPE(N)), DB.FIELD_LENGTH(N), DB.FIELD_DECIMALS(N))
+    ORIGIN(N) = N
+  NEXT
+  DB.CLOSE_TABLE()
+  FOR SPOT = 0 TO 511
+    FIELD_TABLE(SPOT) = OLD_TABLE(SPOT)
+  NEXT
+  FIELDS = OLD_FIELDS
+END SUB
+
+DOS.STOP_KEY(DOS.STOP.OFF)
+READ_PATHS()
+READ_FIELDS()
+PAGE_ROWS = CONS.SCREEN_ROWS() - ROWS_AROUND
+PROMPT_ROW = FIRST_ROW + PAGE_ROWS
+MESSAGE_ROW = PROMPT_ROW + 1
+PICKED = 1
+TOP = 1
+DRAW_PAGE()
+DO
+  PRESSED = WAITKEY()
+  SHOW_MESSAGE("")
+  OLD_PICKED = PICKED
+  IF PRESSED = KEYS.KEY_UP
+    IF PICKED > 1
+      PICKED = PICKED - 1
+      SHOW_BAR()
+    ENDIF
+  ELSEIF PRESSED = KEYS.KEY_DOWN
+    IF PICKED <= FIELDS AND PICKED < MOST_FIELDS
+      PICKED = PICKED + 1
+      SHOW_BAR()
+    ENDIF
+  ELSEIF PRESSED = KEYS.ENTER
+    IF PICKED > FIELDS
+      ADD_FIELD()
+    ELSE
+      EDIT_FIELD()
+    ENDIF
+  ELSEIF PRESSED = KEYS.KEY_INSERT
+    ADD_FIELD()
+  ELSEIF PRESSED = KEYS.KEY_DELETE
+    REMOVE_FIELD()
+  ELSEIF PRESSED = CTRL_W
+    IF CHANGED = 0
+      PRINT CONS.CLEAR_SCREEN$;
+      PRINT "No change"
+      END 0
+    ENDIF
+    SAVE_TABLE()
+  ELSEIF PRESSED = KEYS.ESC
+    IF CHANGED = 0 THEN EXIT DO
+    IF ASK_YES("Quit without saving? Y/N ") THEN EXIT DO
+    SHOW_MESSAGE("")
+  ENDIF
+LOOP
+PRINT CONS.CLEAR_SCREEN$;

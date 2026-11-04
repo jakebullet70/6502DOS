@@ -33,7 +33,7 @@
   the bottom right, as BOX does.
   @ ... PROMPT prints text there and adds it to the prompts MENU TO picks
   from. At most 16 prompts.
-  HELPDB PICTURE gives the PICTURE characters, HELPDB READ the editing.
+  HELPXBASE PICTURE gives the PICTURE characters, HELPXBASE READ the editing.
   @ 2, 0 SAY "Name" GET NAME PICTURE "!XXXXXXXXX"
   @ 1, 10 TO 5, 40 DOUBLE
 :ACCEPT
@@ -112,7 +112,7 @@ BROWSE [FIELDS list] [@ row, column TO row, column] [DOUBLE]
   cannot stop a search. No match beeps, and an empty text finds no match. A
   match on the page moves the pick, and one off it is drawn at the top. On
   RECNO() Ctrl+F does nothing.
-  HELP ON gives F1 to F10. HELPDB POPUP gives a list to pick a cell's value
+  HELP ON gives F1 to F10. HELPXBASE POPUP gives a list to pick a cell's value
   from.
   BROWSE FIELDS RECNO(), NAME:20 "Who", CITY FREEZE 1 FIND
   BROWSE @ 5, 10 TO 20, 70 DOUBLE TITLE "Parts" FOOTER DATE() NOEDIT
@@ -131,7 +131,7 @@ APPEND  EDIT  REPLACE  DELETE  RECALL  PACK  ZAP
   The commands that add and change records. A change to a record is written
   to the table at once. DELETE only marks a record; PACK removes the marked
   records. ZAP removes every record.
-  HELPDB name gives each command.
+  HELPXBASE name gives each command.
 :CLEAR
 CLEAR [GETS]
   CLEAR blanks the screen, puts the cursor at row 0, column 0, and drops the
@@ -202,11 +202,11 @@ DB [file]
   command gives Unknown command, unless it is name = value.
   DB keeps its memory variables in a RAM bank of their own. Without a free
   bank DB prints the error and ends.
-  HELP [topic] at the prompt runs HELPDB. ! runs the shell.
+  HELP [topic] at the prompt runs HELPXBASE. ! runs the shell.
   Ctrl+C does not end DB. A typed line and a GET drop it. WAIT takes it as a
   key, so a command file that loops on a key cannot be ended with it. A
   program DB runs starts with Ctrl+C ending it.
-  HELPDB alone lists the topics. HELPDB name prints a topic. The groups:
+  HELPXBASE alone lists the topics. HELPXBASE name prints a topic. The groups:
   TABLES, MOVING, SHOWING, CHANGING, INDEXES, VARIABLES, SCREENS, PROGRAMS,
   FUNCTIONS, OPERATORS, SCOPE, PICTURE, KEYS, EXPRESSIONS.
   . USE PEOPLE
@@ -261,15 +261,15 @@ EDIT
   EDIT gives Record out of range.
 :ELSE
 ELSE
-  Starts the lines of an IF that run when its condition is false. HELPDB IF
+  Starts the lines of an IF that run when its condition is false. HELPXBASE IF
   gives IF.
 :ENDDO
 ENDDO
   Ends the lines of a DO WHILE, and goes back to the innermost DO WHILE
-  running. Without one it does nothing. HELPDB DO gives DO WHILE.
+  running. Without one it does nothing. HELPXBASE DO gives DO WHILE.
 :ENDIF
 ENDIF
-  Ends the lines of an IF. HELPDB IF gives IF.
+  Ends the lines of an IF. HELPXBASE IF gives IF.
 :ENDPROC
 ENDPROC
   Ends the lines of a PROC, goes back after its GOSUB, and ends the DO WHILEs
@@ -296,7 +296,7 @@ EOF()
   long. At most 16 operators and brackets wait at once, else Syntax error.
   Values of two kinds in one operation give Type mismatch. A name that is
   neither a field nor a variable gives Variable not found.
-  HELPDB OPERATORS gives the operators, HELPDB FUNCTIONS the functions.
+  HELPXBASE OPERATORS gives the operators, HELPXBASE FUNCTIONS the functions.
 :FILE
 FILE(path)
   .T. when a file or folder matches path, a text. Else .F..
@@ -320,10 +320,10 @@ CENTER INSTR INLIST POPUP MENU
   arguments gives Syntax error, and an argument of the wrong kind Type
   mismatch. A count or a place argument is 0 to 255, else Number out of
   range.
-  HELPDB name gives each function, without the brackets.
+  HELPXBASE name gives each function, without the brackets.
 :GET
 GET name [PICTURE text]
-  Part of @. HELPDB @ gives @ ... GET.
+  Part of @. HELPXBASE @ gives @ ... GET.
 :GO
 GO n | GO TOP | GO BOTTOM
   GO n makes record n current. n is the record's number in the file, 1 to
@@ -340,7 +340,7 @@ GOSUB name
   GOSUB OPENDB
 :GOTO
 GOTO n | GOTO TOP | GOTO BOTTOM
-  The same as GO. HELPDB GO gives GO.
+  The same as GO. HELPXBASE GO gives GO.
 :HELP
 HELP [topic]
   Runs C:\sys\HELPXBASE.COM on topic, then comes back to the prompt. HELP
@@ -376,7 +376,7 @@ INDEX  SET INDEX  USE ... INDEX  FIND  REINDEX
   most 3 open indexes.
   GO TOP, GO BOTTOM, SKIP, FIND and the scopes ALL and NEXT follow the
   order. GO n and RECORD n take the record's number in the file.
-  HELPDB name gives each of INDEX, SET, USE, FIND and REINDEX.
+  HELPXBASE name gives each of INDEX, SET, USE, FIND and REINDEX.
 :INLIST
 INLIST(list, text)
   .T. when text, without its trailing spaces and in either case, is an item
@@ -432,6 +432,19 @@ LOCATE [scope]
   and prints "Record n". At the scope's end it prints "End of LOCATE". The
   scope is every record when left out. CONTINUE finds the next record.
   LOCATE FOR CITY = "Boston"
+:MACROS
+&name
+  Before a line runs, each &name of a text memory variable becomes the
+  variable's text. A . right after the name goes too. An &name of no text
+  variable stays as typed, so ? "R&D" prints R&D. Quoted text is expanded
+  too. The text put in is not expanded again.
+  An error shows the line expanded. The history keeps it as typed. A line
+  past 240 characters gives Text too long and runs nothing.
+  Lines an IF or a DO WHILE skips are not expanded, so a macro there that
+  gives IF, ENDIF, DO WHILE or ENDDO is not counted.
+  STORE "PEOPLE" TO F
+  USE &F
+  ? "&F..DB"
 :MENU
 MENU TO name | MENU(row, column, items)
   MENU TO shows the prompts of @ ... PROMPT, one picked at a time, and
@@ -461,7 +474,7 @@ GO  GOTO  SKIP  LOCATE  CONTINUE  FIND
   The commands that change the current record. Past the last record is a
   place of its own: EOF() is .T. there, and RECNO() is the record count
   plus 1.
-  HELPDB name gives each command.
+  HELPXBASE name gives each command.
 :ON
 ON KEY Fn GOSUB name | ON KEY Fn
   Binds F1 to F10 in a BROWSE to PROC name of the command file running the
@@ -559,10 +572,10 @@ PROC ENDPROC GOSUB ON
   comment joins too. The prompt has no joining.
   An error in a command file prints "Line n: " and the line, and ends every
   command file.
-  HELPDB name gives each command.
+  HELPXBASE name gives each command.
 :PROMPT
 PROMPT text
-  Part of @. HELPDB @ gives @ ... PROMPT, HELPDB MENU the picking.
+  Part of @. HELPXBASE @ gives @ ... PROMPT, HELPXBASE MENU the picking.
 :PUSH
 PUSH
   Saves the work area in use, its current record and BOF(). POP gives
@@ -577,7 +590,7 @@ QUIT
   DB.
 :READ
 READ
-  Edits the pending GETs in turn, from the first. HELPDB KEYS gives the
+  Edits the pending GETs in turn, from the first. HELPXBASE KEYS gives the
   keys. READ with no GETs does nothing.
   READ stores each GET in its field or variable, first to last: a text as
   it is, a number read as a number expression, 0 when blank, a logical true
@@ -641,7 +654,7 @@ RETURN
   back after the GOSUB. At the prompt RETURN does nothing.
 :RUN
 RUN [command line]
-  The same as !. HELPDB ! gives !.
+  The same as !. HELPXBASE ! gives !.
 :SAVE
 SAVE SCREEN TO path
   Writes the 80 by 30 screen's cells to path, with .SCR added when it has
@@ -650,7 +663,7 @@ SAVE SCREEN TO path
   SAVE SCREEN TO MAIN
 :SAY
 SAY expression
-  Part of @. HELPDB @ gives @ ... SAY.
+  Part of @. HELPXBASE @ gives @ ... SAY.
 :SCOPE
 ALL | NEXT n | RECORD n  [FOR condition]
   A scope picks the records a command works on. It has at most one of ALL,
@@ -674,7 +687,7 @@ ALL | NEXT n | RECORD n  [FOR condition]
   pick from a list. BOX and @ ... TO draw a box. CLEAR blanks the screen
   and drops the GETs. SAVE SCREEN and RESTORE SCREEN keep the screen in a
   file. SET REVERSE shows text in reverse video.
-  HELPDB name gives each, and HELPDB KEYS gives READ's keys.
+  HELPXBASE name gives each, and HELPXBASE KEYS gives READ's keys.
 :SELECT
 SELECT PRIMARY | SELECT SECONDARY
   Makes that work area the one in use. Each area keeps its table, its
@@ -722,11 +735,11 @@ SET FIELDS TO [list]
   SET FIELDS TO RECNO(), NAME:20 "Who", CITY
 :SHELL
 SHELL [command line]
-  The same as !. HELPDB ! gives !.
+  The same as !. HELPXBASE ! gives !.
 :SHOWING
 LIST  DISPLAY  BROWSE  ?  COUNT  SUM
   The commands that print records and values.
-  HELPDB name gives each command.
+  HELPXBASE name gives each command.
 :SKIP
 SKIP [n]
   Moves n records along the order, 1 when n is left out, back when n is
@@ -770,7 +783,7 @@ USE  CLOSE  CREATE  DISPLAY STRUCTURE  SELECT  PUSH  POP  COPY  SET
   DB has two work areas, PRIMARY and SECONDARY, each with a table of its
   own. A command works on the area in use. PUSH and POP save and take back
   the area in use and its record.
-  HELPDB name gives each of USE, CLOSE, CREATE, DISPLAY, SELECT, PUSH, POP,
+  HELPXBASE name gives each of USE, CLOSE, CREATE, DISPLAY, SELECT, PUSH, POP,
   COPY and SET.
 :TRIM
 TRIM(text)
@@ -791,12 +804,12 @@ USE [path [INDEX name [, name ...]]]
 VAL(text)
   The number text starts with, 0 when it starts with none.
 :VARIABLES
-STORE  name = value  RELEASE  DISPLAY MEMORY  ACCEPT  INPUT  WAIT
+STORE  name = value  RELEASE  DISPLAY MEMORY  ACCEPT  INPUT  WAIT  &name
   A memory variable holds a number, a text or a logical. It is made when a
   value is first stored in it. COUNT TO and SUM TO store in variables too.
   A variable keeps its value until RELEASE or QUIT.
-  HELPDB name gives each of STORE, RELEASE, DISPLAY, ACCEPT, INPUT and
-  WAIT.
+  HELPXBASE name gives each of STORE, RELEASE, DISPLAY, ACCEPT, INPUT and
+  WAIT. HELPXBASE MACROS gives &name.
 :WAIT
 WAIT [TO name]
   Prints WAITING and waits for a key. TO stores the key in the memory
