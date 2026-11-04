@@ -1,0 +1,148 @@
+'=============================================================================================
+' -- DELTREE path [-Y]
+' -- deletes the directory path with every file and directory below it, then path itself. A
+' -- path that is a file deletes that file. Hidden and system files are deleted too. For the
+' -- command line, not for scripts.
+' -- It first asks Delete path and all it holds (Y/N)?, or Delete path (Y/N)? for a file. Y
+' -- deletes. N or Esc deletes nothing. -Y deletes with no question.
+' -- The root of a drive, and a directory that holds the drive's current directory, print
+' -- Cannot delete path and are not deleted.
+' -- A read-only file, or any other delete error, prints the error message and its path and
+' -- stops the walk. The files and directories deleted up to then stay deleted.
+' -- Paths below path are kept to 255 characters. Wildcards are not supported.
+' -- -H or -? as the first parameter runs HELP DELTREE.
+' -- Exit codes: OUTCOME's members.
+' --
+' -- From a prompt:
+' --     DELTREE C:\OLD
+' --     DELTREE TEMP -Y
+'=============================================================================================
+#INCLUDE "DOS.UXI"
+#INCLUDE "HEAP.UXI"
+#INCLUDE "KEYS.UXI"
+#INCLUDE "HELPSW.UXI"
+CONST SLOT_P1 AS UBYTE = 0, SLOT_P9 AS UBYTE = 8
+
+' The exit codes.
+' DONE: deleted. STOPPED: a delete, remove or read error stopped the walk.
+' CANCELLED: N or Esc at the question. BAD_PARAMETER: Required parameter missing, Invalid
+' switch, Too many parameters, Invalid drive, the error message of a path that is not found,
+' and Cannot delete path.
+ENUM OUTCOME
+  DONE = 0, STOPPED = 1, CANCELLED = 2, BAD_PARAMETER = 4
+END ENUM
+
+DIM ARGUMENT AS STRING * 255, TARGET AS STRING * 255, START AS STRING * 255
+DIM SLOT AS UBYTE, NO_QUESTION AS UBYTE, DRIVE AS UBYTE, PREFIX AS STRING * 2
+DIM OLD_DIRECTORY AS STRING * 255, QUESTION AS STRING * 255, KEY AS UWORD
+' PATH is the directory to delete, from the root without the drive: \OLD\SUB.
+DIM PATH AS STRING * 255
+' WALK_PATH is the directory being emptied, PREFIX and PATH at the start. TOP_LENGTH is the
+' length of that start.
+DIM WALK_PATH AS STRING * 255, FILE_PATH AS STRING * 255, TOP_LENGTH AS UBYTE, SPOT AS UBYTE
+
+SUB FAIL(MESSAGE AS STRING)
+  PRINT MESSAGE
+  END OUTCOME.BAD_PARAMETER
+END SUB
+
+' Prints the error message and FAILED_PATH, and ends the program.
+SUB STOP_ON_ERROR(FAILED_PATH AS STRING)
+  PRINT DOS.ERRMSG(DOS.ERROR); ": "; FAILED_PATH
+  END OUTCOME.STOPPED
+END SUB
+
+' Prints QUESTION and waits for Y, N or Esc. Ends the program on N or Esc.
+SUB CONFIRM()
+  PRINT QUESTION; " ";
+  DO
+    KEY = WAITKEY()
+    IF KEY = KEYS.ESC THEN KEY = ASC("N")
+    IF KEY >= ASC("a") AND KEY <= ASC("z") THEN KEY = KEY - 32
+    IF KEY = ASC("Y") OR KEY = ASC("N") THEN EXIT DO
+  LOOP
+  PRINT CHR$(KEY)
+  IF KEY = ASC("N") THEN END OUTCOME.CANCELLED
+END SUB
+
+' ---- the arguments ----
+HELP_SWITCH("DELTREE")
+FOR SLOT = SLOT_P1 TO SLOT_P9
+  ARGUMENT = HEAP.SYS_STRINGS_GET(SLOT)
+  IF ARGUMENT = "" THEN CONTINUE
+  IF ASC(ARGUMENT) = ASC("-") THEN
+    IF LEN(ARGUMENT) <> 2 OR (ASC(MID$(ARGUMENT, 2)) OR $20) <> ASC("y") THEN FAIL("Invalid switch")
+    NO_QUESTION = 1
+  ELSE
+    IF TARGET <> "" THEN FAIL("Too many parameters")
+    TARGET = ARGUMENT
+  END IF
+NEXT
+IF TARGET = "" THEN FAIL("Required parameter missing")
+
+' ---- the target ----
+START = TARGET
+IF MID$(START, 2, 1) = ":" THEN
+  ' a to z give 1 to 26. Any other first character gives 0 or wraps past 26.
+  DRIVE = (ASC(START) OR $20) - ASC("a") + 1
+  IF DRIVE = 0 OR DRIVE > 26 THEN FAIL("Invalid drive")
+  PREFIX = CHR$(DRIVE + ASC("A") - 1) + ":"
+  START = MID$(START, 3)
+  IF START = "" THEN START = "."                   ' C: alone is C:'s current directory
+END IF
+OLD_DIRECTORY = DOS.GETCWD(DRIVE)
+IF DOS.ERROR <> 0 THEN FAIL("Invalid drive")
+DOS.CHDIR(PREFIX + START)
+IF DOS.ERROR <> 0 THEN
+  ' Not a directory: a file, or nothing.
+  IF DOS.EXISTS(TARGET) = 0 THEN FAIL(DOS.ERRMSG(DOS.ERROR))
+  IF NO_QUESTION = 0 THEN
+    QUESTION = "Delete " + TARGET + " (Y/N)?"
+    CONFIRM()
+  END IF
+  DOS.DELETE(TARGET)
+  IF DOS.ERROR <> 0 THEN STOP_ON_ERROR(TARGET)
+  END OUTCOME.DONE
+END IF
+' GETCWD gives the directory from the root with no . or .. in it.
+PATH = DOS.GETCWD(DRIVE)
+DOS.CHDIR(PREFIX + "\" + OLD_DIRECTORY)
+IF PATH = "" THEN FAIL("Cannot delete " + TARGET)
+PATH = "\" + PATH
+IF LEFT$("\" + OLD_DIRECTORY + "\", LEN(PATH) + 1) = PATH + "\" THEN FAIL("Cannot delete " + TARGET)
+IF NO_QUESTION = 0 THEN
+  QUESTION = "Delete " + TARGET + " and all it holds (Y/N)?"
+  CONFIRM()
+END IF
+
+' ---- the walk ----
+' WALK_PATH is the walk's only state. Each pass finds the first name in WALK_PATH other than
+' . and .., then goes into a directory, deletes a file, or, with no name left, removes
+' WALK_PATH and goes up. A new search each pass needs no search state kept across a delete.
+WALK_PATH = PREFIX + PATH
+TOP_LENGTH = LEN(WALK_PATH)
+DO
+  DOS.FINDFIRST(WALK_PATH + "\", DOS.ATTR_DIRECTORY OR DOS.ATTR_HIDDEN OR DOS.ATTR_SYSTEM)
+  DO WHILE DOS.ERROR = 0
+    IF DOS.FOUND_NAME <> "." AND DOS.FOUND_NAME <> ".." THEN EXIT DO
+    DOS.FINDNEXT()
+  LOOP
+  IF DOS.ERROR <> 0 THEN
+    IF DOS.ERROR <> DOS.ERR_NOT_FOUND AND DOS.ERROR <> DOS.ERR_NO_MORE THEN STOP_ON_ERROR(WALK_PATH)
+    DOS.RMDIR(WALK_PATH)
+    IF DOS.ERROR <> 0 THEN STOP_ON_ERROR(WALK_PATH)
+    IF LEN(WALK_PATH) = TOP_LENGTH THEN EXIT DO
+    SPOT = LEN(WALK_PATH)
+    DO WHILE MID$(WALK_PATH, SPOT, 1) <> "\"
+      SPOT = SPOT - 1
+    LOOP
+    WALK_PATH = LEFT$(WALK_PATH, SPOT - 1)
+  ELSEIF (DOS.FOUND_ATTRIBUTES AND DOS.ATTR_DIRECTORY) <> 0 THEN
+    WALK_PATH = WALK_PATH + "\" + DOS.FOUND_NAME
+  ELSE
+    FILE_PATH = WALK_PATH + "\" + DOS.FOUND_NAME
+    DOS.DELETE(FILE_PATH)
+    IF DOS.ERROR <> 0 THEN STOP_ON_ERROR(FILE_PATH)
+  END IF
+LOOP
+END OUTCOME.DONE

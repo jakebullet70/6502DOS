@@ -13,7 +13,7 @@ rem -- setup default console color for system
 CONCOLOR
 cls
 
-print "CMD Shell in ROM: BASICShell v0.1.1, setting path and binds"
+print "CMD Shell in ROM: BASICShell v0.1.3, setting path and binds"
 print "And... Its in ";
 gosub printcolor
 print

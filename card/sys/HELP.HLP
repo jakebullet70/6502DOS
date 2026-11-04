@@ -531,6 +531,16 @@ XCOPY source [target] [-s] [-e] [-p] [-l] [-y] (Command line only)
   Examples:
     XCOPY C:\DOCS C:\BAK -s
     XCOPY DOCS\*.TXT BAK -sp
+:DELTREE
+DELTREE path [-y]               (Command line only)
+  Deletes directory path with all its files and directories, then path.
+  A path that is a file deletes the file. Hidden and system files go too.
+  It asks Delete path and all it holds (Y/N)? first. -y does not ask.
+  The root and the current directory cannot be deleted.
+  A read-only file stops it with an error.
+  Examples:
+    DELTREE C:\OLD
+    DELTREE TEMP -y
 :HELPBAS
 HELPBAS [topic | -R]            (Command line only)
   Prints the help on the MSBASIC keyword topic, from C:\sys\HELPBAS.HLP.

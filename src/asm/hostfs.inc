@@ -125,6 +125,12 @@ host_probe:
         stz HOST_CWD
         stz host_gone
         jsr host_read_status    ; x16emu's first message
+        lda #CHANNEL_LAST       ; a reset leaves x16emu's channels open
+        sta host_channel
+@close:
+        jsr host_channel_close
+        dec host_channel
+        bpl @close
         jsr host_cd_root
 @done:
         rts
