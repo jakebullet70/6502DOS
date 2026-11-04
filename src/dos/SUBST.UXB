@@ -40,10 +40,13 @@ SUB FAIL(MESSAGE AS STRING)
   END OUTCOME.BAD_PARAMETER
 END SUB
 
-' Prints the message of DOS.ERROR and ends the program.
+' Prints the message of DOS.ERROR and ends the program. The kernel gives ERR_BAD_FUNCTION only
+' for host files.
 SUB STOP_ON_ERROR()
   IF DOS.ERROR = DOS.ERR_CURRENT_DIR THEN
     PRINT "Cannot change the current drive"
+  ELSEIF DOS.ERROR = DOS.ERR_BAD_FUNCTION THEN
+    PRINT "Host files do not support SUBST"
   ELSE
     PRINT DOS.ERRMSG(DOS.ERROR)
   END IF
