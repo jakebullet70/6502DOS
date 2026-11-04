@@ -553,10 +553,11 @@ SUBST [drive: path | drive: -d]  (Command line only)
     SUBST E: -d
 :HELPBAS
 HELPBAS [topic | -R]            (Command line only)
-  Prints the help on the MSBASIC keyword topic, from C:\sys\HELPBAS.HLP.
+  Prints the help on the MSBASIC keyword topic,
+  from C:\sys\basic\HELPBAS.HLP.
   With no topic it lists the topics. Small letters are the same as capitals.
-  HELPBAS -R remakes the topic index, C:\sys\HELPBAS.IDX, after HELPBAS.HLP
-  is edited. Without a good index HELPBAS still works, more slowly.
+  HELPBAS -R remakes the topic index, C:\sys\basic\HELPBAS.IDX,
+  after HELPBAS.HLP is edited. Without a good index HELPBAS still works, more slowly.
   Examples:
     HELPBAS PRINT
     HELPBAS str$

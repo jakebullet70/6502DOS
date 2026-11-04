@@ -10,12 +10,18 @@ No code comes from MS-DOS. MS-DOS 2.0 is x86 code, so only its design carries ov
 
 ## Status
 
-This is beta 2, version 0.1.1. The banner reads `6502DOS V0.1.1 Beta 2`. The API in
+This is beta 3, version 0.1.3. The banner reads `6502DOS V0.1.3 Beta 3`. The API in
 `docs/API.md` is frozen, save the parts that `docs/PLAN.md` section 13 marks unstable. `SYSINIT`
 and `CONFIG.SYS` are not built yet. EDIT and XBASE are betas.
 
 6502DOS runs on x16emu R49. It reads files from the SD card, or from a folder of the PC through
 the emulator's host file system.
+
+## New in beta 3
+
+- `DELTREE`, which deletes a directory with all its files and directories.
+- `SUBST`, which makes a drive letter a name for a directory, A:, B: and D: to H:. The API
+  call is 60, `subst`.
 
 ## New in beta 2
 
@@ -40,7 +46,7 @@ the emulator's host file system.
 
 ## Running it
 
-The release is a zip for Windows, `6502DOS-0.1.1-beta2-win.zip`. It unzips to the folder
+The release is a zip for Windows, `6502DOS-0.1.3-beta3-win.zip`. It unzips to the folder
 `6502DOS`, which holds `6502DOS.ROM`, `SD.IMG` (a 4 MB FAT32 card),
 `LICENSE`, `NOTICE`, `RUN.BAT`, and x16emu R49 with its DLLs and licences in the folder
 `x16emu`. `RUN.BAT` starts 6502DOS:
@@ -91,7 +97,7 @@ C:\>HELPXBASE
 | Path | Holds |
 |---|---|
 | `C:\startup.cmd` | The start-up script |
-| `C:\sys` | `ROMSHELL.COM`, which starts the shell in ROM; `CMDSHELL.COM`, the same shell built to run from RAM; `BASIC.COM`, which starts Microsoft BASIC in ROM bank 2; `XBASE.COM`, which starts XBASE in ROM banks 6 to 8; `HDIR`, `HELPED`, `GUIDEMO`; `EDIT`, `TED`, `VIEW`, `XT`, `MORE`, `HEAD`, `TAIL`, `GREP`, `TREE`, `XCOPY`, `ZIP`, `UNZIP`, `CHKDSK`, `SI`, `FONT`, `PUSHD`, `POPD`, `HELP`, `HELPBAS`, `HELPXBASE`, and the commandlets `DATE`, `TIME`, `UPTIME`, `MEM`, `DISKFREE`, `DISKINFO`, `WHERE`, `EXIST`, `REG`, `CONCOLOR` |
+| `C:\sys` | `ROMSHELL.COM`, which starts the shell in ROM; `CMDSHELL.COM`, the same shell built to run from RAM; `BASIC.COM`, which starts Microsoft BASIC in ROM bank 2; `XBASE.COM`, which starts XBASE in ROM banks 6 to 8; `HDIR`, `HELPED`, `GUIDEMO`; `EDIT`, `TED`, `VIEW`, `XT`, `MORE`, `HEAD`, `TAIL`, `GREP`, `TREE`, `XCOPY`, `DELTREE`, `SUBST`, `ZIP`, `UNZIP`, `CHKDSK`, `SI`, `FONT`, `PUSHD`, `POPD`, `HELP`, `HELPBAS`, `HELPXBASE`, and the commandlets `DATE`, `TIME`, `UPTIME`, `MEM`, `DISKFREE`, `DISKINFO`, `WHERE`, `EXIST`, `REG`, `CONCOLOR` |
 | `C:\sys\themes` | The fonts and color themes; `THEMED`, `FONTEDIT` |
 | `C:\sys\basic` | `HELPBAS.HLP` and `HELPBAS.IDX`, the BASIC help that `HELPBAS` reads |
 | `C:\sys\xbase` | `XBASE.STR`, the text of XBASE; `HELPXBASE.HLP` and `HELPXBASE.IDX`, the help that `HELPXBASE` reads; `MODSTRU.COM` |

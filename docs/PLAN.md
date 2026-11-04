@@ -1130,10 +1130,31 @@ Short names:
     and 2 on Esc at a question. A missing parameter, a bad switch, a third name, a path not
     found, a copy into itself and `Insufficient disk space` give 4. A read or write error
     prints its error message and gives 5.
+- `DELTREE path [-y]` is a DOS utility, `DELTREE.COM`, for the command line. It deletes the
+  directory path with every file and directory below it, then path. A path that is a file
+  deletes that file.
+  - Hidden and system files are deleted too. Wildcards are not supported.
+  - It first asks `Delete path and all it holds (Y/N)?`, or `Delete path (Y/N)?` for a
+    file. Y deletes. N or Esc deletes nothing. `-y` deletes with no question.
+  - The root of a drive, and a directory that holds the drive's current directory, print
+    `Cannot delete path`.
+  - A read-only file, or any other delete error, prints its error message and path and
+    stops. What was deleted up to then stays deleted.
+  - The exit code is 0 when deleted, 1 when an error stops it, 2 on N or Esc, and 4 for a
+    bad parameter, a path not found or `Cannot delete path`.
+- `SUBST [drive: path | drive: -d]` is a DOS utility, `SUBST.COM`, for the command line,
+  over call 60 `subst`. It makes drive a name for the directory path: `drive:\X` is
+  `path\X`.
+  - drive is A:, B:, or a letter past the card's, up to H:. A drive already substituted
+    gets the new path. `-d` makes drive no drive. The current drive cannot be changed.
+  - With no parameters it lists the substituted drives: `E: => C:\DOCS`.
+  - `..` in `drive:\` goes up past path. Host files do not support `SUBST`.
+  - The exit code is 0 when done, 1 on a kernel error, and 4 for a bad parameter.
 - `HELPBAS [topic]` is a DOS utility, `HELPBAS.COM`. It prints the help on an MSBASIC keyword
-  from `C:\sys\HELPBAS.HLP`, and with no topic lists the topics.
+  from `basic\HELPBAS.HLP` in its own folder, `C:\sys\basic\HELPBAS.HLP` on the card, and
+  with no topic lists the topics.
   - `HELPBAS.HLP` has the format of `HELP.HLP`, with CR LF line ends. MSBASIC's `HELP [topic]`
-    reads the same file.
+    reads the same file, from `basic\HELPBAS.HLP` in the folder of `BASIC.COM`.
   - No help for the topic gives exit code 1, and no `HELPBAS.HLP` exit code 2.
 - `HELPXBASE [topic]` is a DOS utility, `HELPXBASE.COM`, from `src/dos/HELPXBASE.UXB`. It prints the
   help on a DB command from `C:\sys\xbase\HELPXBASE.HLP`, and with no topic lists the topics. DB's
@@ -1557,8 +1578,6 @@ run on 6502DOS.
 
 - Refactor every help: `HELP`, `HELPBAS`, `HELPXBASE`, `TED.HLP`, `HELPED`, and the `HELP` statement
   of MSBASIC.
-- MSBASIC's `HELP` statement fails: `MSBASIC/src/6502dos_extra.s` opens
-  `C:\DOS\HELPBAS.HLP`, and the card has no `C:\DOS`. `HELPBAS.HLP` is in `C:\sys`.
 
 ## 13. Still to decide
 
