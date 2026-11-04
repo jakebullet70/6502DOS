@@ -541,6 +541,16 @@ DELTREE path [-y]               (Command line only)
   Examples:
     DELTREE C:\OLD
     DELTREE TEMP -y
+:SUBST
+SUBST [drive: path | drive: -d]  (Command line only)
+  Makes drive a name for directory path: drive:\X is path\X.
+  drive is A:, B:, or a letter past the card's, up to H:.
+  -d makes drive no drive. The current drive cannot be changed.
+  With no parameters it lists the substituted drives.
+  .. in drive:\ goes up past path. Host files do not support SUBST.
+  Examples:
+    SUBST E: C:\DOCS
+    SUBST E: -d
 :HELPBAS
 HELPBAS [topic | -R]            (Command line only)
   Prints the help on the MSBASIC keyword topic, from C:\sys\HELPBAS.HLP.

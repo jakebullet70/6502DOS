@@ -143,6 +143,9 @@ tmp_bufptr:          .word 0       ; Used by next_sector
 tmp_sector_lba:      .dword 0      ; Used by next_sector
 name_offset:         .byte 0
 tmp_dir_cluster:     .dword 0
+; fat32_top: the cluster a path that starts with / starts at, 0 for the root. fat32dos.s sets
+; it. A path of / alone, and .. in the root, still name the root.
+fat32_top:           .dword 0
 tmp_attrib:          .byte 0       ; temporary: attribute when creating a dir entry
 tmp_dirent_flag:     .byte 0
 shortname_buf:       .res 11       ; Used for shortname creation
@@ -235,6 +238,7 @@ fat32_root = cur_volume + fs::rootdir_cluster
 fat32_sectors_per_cluster = cur_volume + fs::sectors_per_cluster
 fat32_cluster_count = cur_volume + fs::cluster_count
 .export fat32_root, fat32_sectors_per_cluster, fat32_cluster_count
+.export fat32_top
 .export fat32_tell_dir
 .export fat32_seek_dir
 
@@ -1136,12 +1140,12 @@ find_dirent:
 	sta tmp_filetype
 	stz name_offset
 
-	; If path starts with a slash, use root directory as base,
+	; If path starts with a slash, use fat32_top as base,
 	; otherwise the current directory.
 	lda (fat32_ptr)
 	cmp #'/'
 	bne @use_current
-	set32_val cur_context + context::cluster, 0
+	set32 cur_context + context::cluster, fat32_top
 	inc name_offset
 
 	; Does path only consists of a slash?

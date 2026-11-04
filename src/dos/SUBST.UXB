@@ -1,0 +1,92 @@
+'=============================================================================================
+' -- SUBST [drive: path | drive: -D]
+' -- makes drive a name for the directory path: drive:\ is path, and drive:\X is path\X. A drive
+' -- already substituted gets the new path. -D makes drive no drive.
+' -- drive is A:, B:, or a letter past the card's, up to H:. The current drive cannot be
+' -- changed. Host files do not support SUBST.
+' -- With no parameters, SUBST lists the substituted drives: E: => C:\DOCS.
+' -- .. in drive:\ goes up past path.
+' -- -H or -? as the first parameter runs HELP SUBST.
+' -- Exit codes: OUTCOME's members.
+' --
+' -- From a prompt:
+' --     SUBST E: C:\DOCS
+' --     SUBST
+' --     SUBST E: -D
+'=============================================================================================
+#INCLUDE "DOS.UXI"
+#INCLUDE "HEAP.UXI"
+#INCLUDE "HELPSW.UXI"
+CONST SLOT_P1 AS UBYTE = 0, SLOT_P9 AS UBYTE = 8
+' Trap: the card driver has one unit, so C: is the only card drive, and each substituted drive
+' names a directory of C:.
+CONST CARD_DRIVE$ = "C:"
+' Checklist: DRIVES in src/asm/mem.inc.
+CONST DRIVE_COUNT AS UBYTE = 8
+
+' The exit codes.
+' DONE: set, removed or listed. FAILED: the kernel's error, such as a path not found.
+' BAD_PARAMETER: Required parameter missing, Invalid switch, Too many parameters, and Invalid
+' drive for a name that is not a letter and a colon.
+ENUM OUTCOME
+  DONE = 0, FAILED = 1, BAD_PARAMETER = 4
+END ENUM
+
+DIM ARGUMENT AS STRING * 255, DRIVE_NAME AS STRING * 255, FOLDER AS STRING * 255
+DIM SLOT AS UBYTE, DRIVE AS UBYTE, REMOVE AS UBYTE
+
+SUB FAIL(MESSAGE AS STRING)
+  PRINT MESSAGE
+  END OUTCOME.BAD_PARAMETER
+END SUB
+
+' Prints the message of DOS.ERROR and ends the program.
+SUB STOP_ON_ERROR()
+  IF DOS.ERROR = DOS.ERR_CURRENT_DIR THEN
+    PRINT "Cannot change the current drive"
+  ELSE
+    PRINT DOS.ERRMSG(DOS.ERROR)
+  END IF
+  END OUTCOME.FAILED
+END SUB
+
+' ---- the arguments ----
+HELP_SWITCH("SUBST")
+FOR SLOT = SLOT_P1 TO SLOT_P9
+  ARGUMENT = HEAP.SYS_STRINGS_GET(SLOT)
+  IF ARGUMENT = "" THEN CONTINUE
+  IF ASC(ARGUMENT) = ASC("-") THEN
+    IF LEN(ARGUMENT) <> 2 OR (ASC(MID$(ARGUMENT, 2)) OR $20) <> ASC("d") THEN FAIL("Invalid switch")
+    REMOVE = 1
+  ELSEIF DRIVE_NAME = "" THEN
+    DRIVE_NAME = ARGUMENT
+  ELSEIF FOLDER = "" THEN
+    FOLDER = ARGUMENT
+  ELSE
+    FAIL("Too many parameters")
+  END IF
+NEXT
+
+' ---- the list ----
+IF DRIVE_NAME = "" THEN
+  IF REMOVE <> 0 THEN FAIL("Required parameter missing")
+  FOR DRIVE = 0 TO DRIVE_COUNT - 1
+    FOLDER = DOS.GET_SUBST(DRIVE)
+    IF DOS.ERROR = 0 THEN PRINT CHR$(ASC("A") + DRIVE); ": => "; CARD_DRIVE$; "\"; FOLDER
+    IF DOS.ERROR = DOS.ERR_BAD_FUNCTION THEN STOP_ON_ERROR()
+  NEXT
+  END OUTCOME.DONE
+END IF
+
+' ---- set or remove ----
+IF LEN(DRIVE_NAME) <> 2 OR MID$(DRIVE_NAME, 2, 1) <> ":" THEN FAIL("Invalid drive")
+' A first character other than a letter wraps past H:, which the kernel refuses.
+DRIVE = (ASC(DRIVE_NAME) OR $20) - ASC("a")
+IF REMOVE <> 0 THEN
+  IF FOLDER <> "" THEN FAIL("Too many parameters")
+ELSEIF FOLDER = "" THEN
+  FAIL("Required parameter missing")
+END IF
+DOS.SET_SUBST(DRIVE, FOLDER)
+IF DOS.ERROR <> 0 THEN STOP_ON_ERROR()
+END OUTCOME.DONE

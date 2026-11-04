@@ -153,12 +153,15 @@ DRV_IOCTL_OUTPUT = 12           ; r0 control data, r1 count, BLK_UNIT; returns r
 ; fault. They may change BLK_COUNT.
 
 ; Drives
-DRIVES        = 4               ; A: to D:
+DRIVES        = 8               ; A: to H:
 FIRST_DRIVE   = 2               ; C:, the drive of the first block unit
-; The fields of a drive's DPB, in kernel.s
+; The fields of a drive's DPB, in kernel.s. A substituted drive, made by api_subst, has the
+; block driver of its volume, and its \ names the directory at DPB_TOP.
 DPB_DRIVER    = 0               ; the block driver header, 2 bytes; 0 when the drive does not exist
 DPB_CWD       = 2               ; the current directory's first cluster, 4 bytes; 0 for the root
-DPB_SIZE      = 8
+DPB_TOP       = 6               ; the first cluster of the directory \ names, 4 bytes; 0 for the root
+DPB_TOP_LEN   = 10              ; the length of that directory's path from the volume's root
+DPB_SIZE      = 16
 
 ; VIA 1
 VIA1_PRA      = $9F01           ; bit 0 I2C data, bit 1 I2C clock

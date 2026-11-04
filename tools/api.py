@@ -462,6 +462,19 @@ CALLS = [
          in_=[("r0", "buffer, 84 bytes")],
          out=[("r0", "buffer, filled with a length-prefixed path")],
          written=True),
+    call(60, "subst", None, ("Gets a drive's substitution with carry set, sets it with carry "
+          "clear. The drive is A:, B: or a letter past the card's. A set with a path makes the "
+          "drive a substituted drive whose \\ names that directory; with an empty path it makes "
+          "the drive no drive. A set on the current drive gives error 16. A get copies the "
+          "directory's path, as `getcwd` gives a path; a drive not substituted gives error 15. "
+          "`getcwd` on a substituted drive gives the path below that directory. Host files give "
+          "error 1. On a substituted drive, .. in its \\ directory goes above it, `ioctl` and "
+          "`absread` are not supported, and `rename` to or from another drive gives error 17."),
+         in_=[("carry", "set: get, clear: set"), ("A", "drive: 0 A:, 1 B:"),
+              ("r0", "to set: path; to get: buffer, 256 bytes")],
+         out=[("r0", "to get: buffer, filled with a length-prefixed path")],
+         errors=[1, 3, 15, 16, 21],
+         written=True),
 ]
 
 # The functions of call 57, db: (Y, name, in, out, written). The name becomes DB_NAME in asm.

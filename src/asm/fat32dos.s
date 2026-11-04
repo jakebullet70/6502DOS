@@ -3,11 +3,11 @@
 ; lib_open takes a path and gives a context; lib_read, lib_seek and lib_close take that context
 ; in A, lib_io an SFT entry in Y. Each returns carry set and A = the error, an ERR_ of api.inc,
 ; on a fault. The gate calls api_findfirst, api_findnext, api_delete, api_rename, api_mkdir,
-; api_rmdir, api_chdir, api_getcwd, api_diskfree, api_absread and api_abswrite here.
+; api_rmdir, api_chdir, api_getcwd, api_diskfree, api_absread, api_abswrite and api_subst here.
 ;
 ; The library has one volume: drive C:. It mounts the volume when a call first takes a context.
-; Its current directory is set from the drive's DPB at each call, so the DPBs keep the current
-; directories.
+; Its current directory and fat32_top are set from the drive's DPB at each call, so the DPBs
+; keep the current directories.
 
 .setcpu "65C02"
 
@@ -27,7 +27,7 @@
 .export host_on, host_status
 .export lib_init, lib_open, lib_read, lib_io, lib_seek, lib_close, api_findfirst, api_findnext
 .export api_delete, api_rename, api_mkdir, api_rmdir, api_chdir, api_getcwd, api_diskfree
-.export api_absread, api_abswrite
+.export api_absread, api_abswrite, api_subst
 .export fat32_dir_pos
 .import fat32_init, fat32_alloc_context, fat32_free_context, fat32_set_context
 .import fat32_chdir, fat32_open, fat32_read, fat32_seek, fat32_close, fat32_get_size
@@ -36,9 +36,9 @@
 .import fat32_open_dir, fat32_read_dirent_filtered, fat32_tell_dir, fat32_seek_dir
 .import fat32_open_tree, fat32_walk_tree
 .import fat32_cwd, fat32_size, fat32_dirent, fat32_errno, fat32_readonly, skip_mask, sector_lba
-.import fat32_root, fat32_sectors_per_cluster, fat32_cluster_count
+.import fat32_root, fat32_sectors_per_cluster, fat32_cluster_count, fat32_top
 .import sync_sector_buffer, sdcard_read_sector, sd_input, sd_output, jsrfar1
-.import DPB, current_drive, create_attr, match_name
+.import DPB, current_drive, next_dpb, create_attr, match_name
 .importzp saved_bank, bank_save, file_context, file_size, krn_ptr1
 
 ; The search state of a find buffer, before FIND_ATTR.
@@ -355,14 +355,7 @@ api_chdir:
         HOST_GO host_chdir
         jsr lib_enter
         bcs @bank
-        bit lib_wild
-        bmi @no_path
-        lda (fat32_ptr)         ; the name part
-        beq @set                ; the path ends at a separator
-        jsr dir_change
-        bcs @drop
-@set:
-        jsr cwd_build           ; getcwd must be able to return the path
+        jsr dir_find
         bcs @drop
         ldx lib_dpb
         ldy #0
@@ -376,10 +369,123 @@ api_chdir:
         jmp lib_done
 @bank:
         jmp lib_bank
-@no_path:
-        lda #ERR_NO_PATH
 @drop:
         jmp lib_drop
+
+; dir_find: makes the directory of the path lib_enter took the library's current directory,
+; and builds its path with cwd_build, which getcwd must be able to return. Returns cwd_build's
+; X, or carry set and A = the error. Changes Y.
+dir_find:
+        bit lib_wild
+        bmi @no_path
+        lda (fat32_ptr)         ; the name part
+        beq @build              ; the path ends at a separator
+        jsr dir_change
+        bcs @done
+@build:
+        jmp cwd_build
+@no_path:
+        lda #ERR_NO_PATH
+        sec
+@done:
+        rts
+
+; api_subst: subst, call 60. Drive A, 0 for A:, must be A:, B:, or a letter past the block
+; drivers' units. With carry clear, the path at r0 makes it a substituted drive whose \ names
+; that directory, and an empty path makes it no drive; the current drive gives
+; ERR_CURRENT_DIR. With carry set, copies the path of the directory its \ names to r0, as
+; api_getcwd does; a drive not substituted gives ERR_BAD_DRIVE. Host files give
+; ERR_BAD_FUNCTION. Selects RAM bank 0 while it runs and keeps the caller's bank in
+; saved_bank.
+api_subst:
+        bit host_on             ; keeps carry
+        bmi @host
+        tay                     ; the drive
+        bcs @get
+        cmp current_drive
+        beq @current
+        jsr subst_check
+        bcs @done
+        lda (r0)                ; the path's length, in the caller's bank
+        bne @set
+        stz DPB + DPB_DRIVER,x
+        stz DPB + DPB_DRIVER+1,x ; carry clear from subst_check
+@done:
+        rts
+@get:
+        jsr subst_check
+        bcs @done
+        lda DPB + DPB_DRIVER+1,x
+        beq @bad_drive
+        iny
+        tya                     ; 1 for A:
+        ldy #$FF
+        jmp cwd_give
+@host:
+        lda #ERR_BAD_FUNCTION
+        sec
+        rts
+@current:
+        lda #ERR_CURRENT_DIR
+        sec
+        rts
+@bad_drive:
+        lda #ERR_BAD_DRIVE
+        sec
+        rts
+@set:
+        phx
+        jsr lib_enter
+        plx                     ; keeps carry and A
+        bcs @bank
+        stx lib_new_dpb
+        jsr dir_find
+        bcs @drop
+        lda lib_path,x          ; the length of the directory's path
+        ldx lib_new_dpb
+        sta DPB + DPB_TOP_LEN,x
+        ldy lib_dpb
+        lda DPB + DPB_DRIVER,y
+        sta DPB + DPB_DRIVER,x
+        lda DPB + DPB_DRIVER+1,y
+        sta DPB + DPB_DRIVER+1,x
+        ldy #0
+@byte:
+        lda fat32_cwd,y
+        sta DPB + DPB_CWD,x
+        sta DPB + DPB_TOP,x
+        inx
+        iny
+        cpy #4                  ; carry set at the end
+        bne @byte
+        jmp lib_done
+@bank:
+        jmp lib_bank
+@drop:
+        jmp lib_drop
+
+; subst_check: returns X = the DPB offset of drive A, 0 for A:, or carry set and A =
+; ERR_BAD_DRIVE when the drive is past the last letter or is a block driver's unit.
+subst_check:
+        cmp #DRIVES
+        bcs @bad
+        asl
+        asl
+        asl
+        asl                     ; DPB_SIZE 16; carry clear
+        tax
+        cmp #FIRST_DRIVE * DPB_SIZE
+        bcc @done               ; A: or B:
+        cmp next_dpb
+        bcc @bad
+        clc
+@done:
+        rts
+@bad:
+        lda #ERR_BAD_DRIVE
+        sec
+        rts
+        .assert DPB_SIZE = 16, error, "subst_check multiplies by 16"
 
 ; api_rename: rename, call 7. Checks the directories of both paths, then hands the library both
 ; paths from the current directory. A directory moved to another directory gives ERR_ACCESS.
@@ -566,12 +672,18 @@ abs_io:
 @fault:
         jmp lib_error
 
-; api_getcwd: getcwd, call 19. Copies the path cwd_build makes to r0. Selects RAM bank 0 while
-; it runs and keeps the caller's bank in saved_bank.
+; api_getcwd: getcwd, call 19. Copies the path cwd_build makes to r0, past the path of the
+; directory the drive's \ names. Selects RAM bank 0 while it runs and keeps the caller's bank
+; in saved_bank.
 api_getcwd:
+        ldy #0
+; cwd_give: api_getcwd with Y = 0, or with Y = $FF the path of the directory the drive's \
+; names, from the volume's root.
+cwd_give:
         HOST_GO host_getcwd
         jsr drive_enter
         bcs @bank
+        sty lib_wild            ; bit 7 set: the \ directory's path
         lda #0                  ; the volume
         jsr fat32_alloc_context
         bcs @taken
@@ -581,8 +693,27 @@ api_getcwd:
         jsr fat32_set_context
         bcc @fault
         jsr cwd_set
+        bit lib_wild
+        bpl @build
+        jsr cwd_root
+@build:
         jsr cwd_build
         bcs @drop
+        bit lib_wild
+        bmi @whole
+        ldy lib_dpb
+        lda DPB + DPB_TOP_LEN,y
+        beq @whole              ; \ is the volume's root
+        stx lib_len
+        sec
+        adc lib_len             ; past the \ directory's path and the \ after it
+        bcc @strip
+        dec                     ; the \ directory itself: no \ after its path
+@strip:
+        tax
+        eor #$FF                ; the length: 255 - the index
+        sta lib_path,x
+@whole:
         ldy #0
 @copy:
         lda lib_path,x
@@ -751,12 +882,20 @@ path_trim:
         rts
 
 ; cwd_set: makes the current directory of drive lib_dpb the library's, with cluster 0 for the
-; root, as a .. entry holds it. The volume must be mounted. Changes A, X and Y.
+; root, as a .. entry holds it, and sets fat32_top from the drive. The volume must be mounted.
+; Changes A, X and Y.
 cwd_set:
         lda lib_dpb
-        ora #DPB_CWD + 3
+        ora #DPB_TOP + 3
         tax
         ldy #3
+@top:
+        lda DPB,x
+        sta fat32_top,y
+        dex
+        dey
+        bpl @top
+        ldy #3                  ; X = DPB_CWD + 3
 @root:
         lda DPB,x
         sta fat32_cwd,y
@@ -775,13 +914,17 @@ cwd_set:
         bra @copy
 @done:
         rts
+        .assert DPB_TOP = DPB_CWD + 4, error, "cwd_set steps from DPB_TOP down to DPB_CWD"
 
-; cwd_root: makes the root the library's current directory. Changes nothing else.
+; cwd_root: makes fat32_top, the directory \ names, the library's current directory. Changes A
+; and X.
 cwd_root:
-        stz fat32_cwd
-        stz fat32_cwd+1
-        stz fat32_cwd+2
-        stz fat32_cwd+3
+        ldx #3
+@byte:
+        lda fat32_top,x
+        sta fat32_cwd,x
+        dex
+        bpl @byte
         rts
 
 ; dir_change: makes the directory at fat32_ptr the library's current directory. Returns carry
@@ -1122,7 +1265,8 @@ drive_check:
         txa
         asl
         asl
-        asl                     ; DPB_SIZE 8; carry clear
+        asl
+        asl                     ; DPB_SIZE 16; carry clear
         sta lib_dpb
         tax
         lda DPB + DPB_DRIVER+1,x
@@ -1132,7 +1276,7 @@ drive_check:
         lda #ERR_BAD_DRIVE
         sec
         rts
-        .assert DPB_SIZE = 8, error, "drive_check multiplies by 8"
+        .assert DPB_SIZE = 16, error, "drive_check multiplies by 16"
 
 ; path_char: returns character Y of the path at r0, in RAM bank saved_bank. Changes A.
 path_char:

@@ -6,7 +6,8 @@
 ; bank 0. A device's SFT entry holds the address of its driver header; a file's holds its
 ; context in the library and its position.
 ;
-; A drive's DPB holds its block driver and the first cluster of its current directory.
+; A drive's DPB holds its block driver, the first cluster of its current directory, and on a
+; substituted drive the directory its \ names.
 
 .setcpu "65C02"
 
@@ -18,7 +19,7 @@
 .export api_create, api_open, api_close, api_read, api_write, api_version, api_ticks, api_errmsg
 .export drv_call, bank0, bank_restore, io_start, io_step, io_done, handles_inherit, handles_close
 .export sft_find, api_dup, api_dup2, api_ioctl, api_seek, api_getdrive, api_setdrive
-.export DPB, current_drive, create_attr
+.export DPB, current_drive, next_dpb, create_attr
 .exportzp driver, io_ptr, io_left, saved_bank, file_context, file_size
 .import con_init, api_con_status, CHRIN, CHROUT, errmsg_table, sd_driver
 .import jsrfar, lib_init, lib_open, lib_io, lib_seek, lib_close
@@ -44,7 +45,7 @@ file_size:    .res 4
 
 DPB:          .res DRIVES * DPB_SIZE
 current_drive: .res 1
-next_dpb:     .res 1            ; drives_add: the DPB of the next drive letter
+next_dpb:     .res 1            ; the DPB past the block drivers' units
 create_attr:  .res 1            ; api_create: the attributes, for lib_open
 device_name:  .res 8            ; open_common: the name of the path's last part, padded with spaces
 io_refused:   .res 1            ; the access mode that refuses a read or a write
@@ -167,7 +168,8 @@ drive_driver:
         tay
         asl
         asl
-        asl                     ; DPB_SIZE 8; carry clear
+        asl
+        asl                     ; DPB_SIZE 16; carry clear
         tax
         lda DPB + DPB_DRIVER,x
         sta driver
@@ -179,7 +181,7 @@ drive_driver:
         sec
 @done:
         rts
-        .assert DPB_SIZE = 8, error, "drive_driver multiplies by 8"
+        .assert DPB_SIZE = 16, error, "drive_driver multiplies by 16"
 
 ; chain_first: points driver at the first driver. Changes A.
 chain_first:
