@@ -53,6 +53,12 @@ C:\>PRINT "N is "; N
 C:\>LIST README.TXT | MORE
 ```
 
+Built in help from DOS
+```
+C:\>HELP
+C:\>HELPBAS
+```
+
 ## The card
 
 | Path | Holds |
