@@ -23,14 +23,14 @@ or on every tagged file.
 | `xarena.p8` | | a bump allocator over RAM banks | `XTFILE.UXI` |
 | `xtree.p8` | | the folder tree | `XTTREE.UXI` |
 | `xfiles.p8`, `xscan.p8` | | file records, the index, logging | `XTFILE.UXI`, `XTTREE.UXI` |
-| `uiutil.ovl` | 6121 | dialogs, frames, the menu | `GUI.UXI` dialogs; the menu in `XT.UXB` |
-| `miscutil.ovl` | 5528 | wildcard rename, prune, history, copy, the Find crawl | `XTOPS.UXI` |
+| `uiutil.ovl` | 6121 | dialogs, frames, the menu | the prompts and the menu in `XT.UXB` |
+| `miscutil.ovl` | 5528 | wildcard rename, prune, history, copy, the Find crawl | `XTOPS.UXI`, `XTHIST.UXI`, `XTFIND.UXI` |
 | `tview.ovl` | 7251 | the text and hex viewer | the shell command `VIEW` |
 | `xsyntax.ovl` | 5473 | syntax colors, the viewer's footer | not taken |
 | `ximgview.ovl` | 2111 | the BMX viewer | not taken |
 | `xmusic.ovl` | 2487 | the WAV player | not taken |
 | `zsmkit.bin` | 5380 | the ZSM engine | not taken |
-| `xfsetup.prg` | 5551 | the settings screen | a dialog in `XTOPS.UXI` |
+| `xfsetup.prg` | 5551 | the settings screen | Alt-F10 on the menu's rows, in `XTSET.UXI` |
 | `install.prg` | 5804 | the installer | not taken: `XT.COM` is on the card |
 
 ## Not taken
@@ -45,11 +45,12 @@ or on every tagged file.
 - The dates of a copy. A copy takes the current date, as `COPY` and `DOS.COPY` do, since the
   `filetime` call is not written.
 - Browsing inside an archive.
+- The clock in the title, and the setting that clears the history.
 
 ## The screen
 
 - 80 by 30, drawn with `VERA.UXI`. VIEW fixes the same size.
-- Row 0 is the title: the path, the counts, the clock. Rows 28 and 29 are the menu.
+- Row 0 is the title: the path and the counts. Rows 28 and 29 are the menu, and the prompts.
 - The tree takes columns 0 to 26. The file window takes columns 28 to 79. A row of it holds the
   tag mark, the name in up to 32 columns, the size in bytes, and the date. Showall and Branch
   widen it to columns 0 to 79, and add the time.
@@ -65,11 +66,11 @@ other keys.
 |---|---|---|---|
 | Invert tags | Ctrl-I | Ctrl-N | Ctrl-I is Tab, 9 |
 | Move tagged | Ctrl-M | Ctrl-O | Ctrl-M is Enter, 13 |
-| Find | Ctrl-F or Ctrl-N | Ctrl-F | Ctrl-N is Invert |
-| Search tagged | Ctrl-S or Ctrl-E | Ctrl-S | |
+| Find | Ctrl-F or Ctrl-N | Ctrl-F or Ctrl-G | Ctrl-N is Invert |
+| Search tagged | Ctrl-S or Ctrl-E | Ctrl-S or Ctrl-E | |
 | View tagged | Ctrl-V or Ctrl-L | Ctrl-V | |
-| Delete tagged | Ctrl-D or Ctrl-X | Ctrl-D | |
-| Settings | Alt-F10, by another program | Alt-F10, a dialog | |
+| Delete tagged | Ctrl-D or Ctrl-X | Ctrl-D or Ctrl-X | |
+| Settings | Alt-F10, by another program | Alt-F10, on the menu's rows | |
 | Execute | Alt-X quits, then runs | Alt-X runs, then returns | `exec` returns here |
 
 - Ctrl-C is Copy tagged. The program calls `DOS.STOP_KEY(DOS.STOP.OFF)` at its start, so Ctrl-C
@@ -85,8 +86,9 @@ other keys.
 | Regions 1 to 4 | 4 | `GUI.UXI` and `VERA.UXI`, whose slots are fixed |
 | Regions 5 to 9 | 5 | XT's cold code |
 | Names | 1 | 254 folder names, 32 bytes each, zero-padded, at `$A000 + node * 32`: 8128 bytes |
-| Folder extras | 1 | 254 records of 7 bytes: file count, first file's bank and offset, tag count; then the history |
+| Folder extras | 1 | 254 records of 7 bytes: file count, first file's bank and offset, tag count; then the open prompt's history, 512 bytes |
 | Index | 2 | 2048 rows of 8 bytes: bank, offset, owner folder, 4-byte sort key |
+| Copy | 1 | `COPY_BANK`: the 8 KB of a copy, and the 1 KB blocks of Search tagged |
 | Arena | the rest, from 1 | file records |
 
 - A file record is the record's length, the 4-byte size, the date, the time, the attributes, the
@@ -99,7 +101,7 @@ other keys.
   size or the date and time, high byte first.
 - The tree stays in low RAM: 5 arrays of 254 bytes, 1270 bytes.
 - Code that selects a bank lives in low RAM. `#REGION_SLOT` code gets RAM BANK WRITE IN A REGION.
-- x16emu has 62 free banks at boot. XT takes 13 and an `exec` save up to 5, which leaves about 43
+- x16emu has 62 free banks at boot. XT takes 14 and an `exec` save up to 5, which leaves about 43
   for the arena: about 14000 files.
 
 Estimated use of low RAM, 38655 bytes from `$0801` to `$9EFF`:
@@ -112,8 +114,7 @@ Estimated use of low RAM, 38655 bytes from `$0801` to `$9EFF`:
 | The key loop, row drawing, bank accessors | 7000 |
 | Free | about 21000 |
 
-The file comes to about 55 KB: 18 KB of low RAM and 37 KB of regions. A program that passes
-`$9EFF` reads the rest with `exec_rest` at its start.
+`XT.COM` is 44856 bytes. It passes `$9EFF`, so its start reads the rest with `exec_rest`.
 
 ## Steps
 
@@ -121,8 +122,8 @@ Bytes are code added, estimated, then RAM. Each step lists the region its code g
 
 ### X1. The frame (2500 B, low RAM)
 
-`XT.UXB`: the switches, `STOP_KEY`, the banks, the theme, the frame, the title, the clock polled
-by ticks, the menu's three states, Q, F1 (`HELP XT` by `exec`).
+`XT.UXB`: the switches, `STOP_KEY`, the banks, the theme, the frame, the title, the menu's three
+states, Q, F1 (`VIEW` on `XT.HLP` by `exec`).
 
 ### X2. The tree (2500 B low RAM, 1500 B region 5, 1270 B arrays)
 
@@ -155,54 +156,59 @@ Alt-J.
 ### X7. Delete, rename, mkdir (2000 B, region 7)
 
 File window D and R, with `*` and `?` in the new name. Tree window D (empty folders), R and M.
-Dialogs are `GUI.YESNO`, `GUI.MSGBOX` and `GUI.INPUTBOX`.
+The prompts are on rows 28 and 29: `ASK_TEXT`, `ASK_YES` and `TELL` in `XT.UXB`. D and R on the
+root, and the tree's D on a folder that is not logged, give a message.
 
 ### X8. Copy and move (2500 B, region 7)
 
-C, M, Ctrl-C, Ctrl-O, Ctrl-D. The copy reads and writes 8 KB at a time through a bank, in place
-of `DOS.COPY`'s 256 bytes. Move is `DOS.RENAME`: a file moves on the same drive in one call. A
+C, M, Ctrl-C, Ctrl-O, and Ctrl-D or Ctrl-X. The copy reads and writes 8 KB at a time through
+`COPY_BANK`, in place of `DOS.COPY`'s 256 bytes. Move is `DOS.RENAME`: a file moves on the same drive in one call. A
 destination that does not exist is made and added to the tree. A name that exists asks Yes, No,
 All or Skip all.
 
 ### X9. History and the folder picker (1500 B, region 8)
 
-The prompt becomes a form of one `INPUT2` field, so Up opens the history and F2 the tree picker.
-INPUTBOX gives no way to take them. Check first that `INPUT2`'s ending key reports them; if not,
-add that to `GUI.UXI`. A ring of 8 entries per prompt lives in the extras bank, saved to
-`C:\XT.HIS`.
+The prompt's field is `GUI.INPUT2`, whose ending key gives Up for the history and F2 for the tree
+picker. `ASK_TEXT` returns an `ASK_END`. Each prompt keeps its last 8 answers in
+`C:\sys\xt\NAME.HIS`, newest first. The prompt reads its file into the one ring in the extras
+bank. An answer over 64 characters is not kept.
 
 ### X10. Prune (700 B, region 8)
 
-Alt-P, with the word `prune` typed to confirm. Root refused. Deepest folder first; a counter on
-the menu row. Reuses the walk of `XCOPY.UXB` or `TREE.UXB`.
+Alt-P, with the word `prune` typed to confirm. The root, and a branch that holds C:'s current
+directory, are refused. Deepest folder first; the counts on the menu's rows. `GO_PATH` is the
+walk's only state.
 
 ### X11. Find (1000 B, region 8)
 
-Ctrl-F crawls from the root, logs the folders with a match, and shows the hits with `GUI.LISTBOX`;
-Enter jumps to the file.
+Ctrl-F or Ctrl-G asks for a filespec, crawls from the root, logs the folders with a match, and
+shows the hits in the whole-screen file window; Enter jumps to the file. Esc stops the crawl.
 
 ### X12. Search tagged (600 B, region 8)
 
-Ctrl-S scans each tagged file, 1 KB at a time, in any case, across a block's edge, and untags the
-files without the text. The bar walks the files and the count falls as it goes.
+Ctrl-S or Ctrl-E scans each tagged file, 1 KB at a time, with A to Z folded, across a block's
+edge, and untags the files without the text. Esc stops the scan. The bar walks the files and the count falls as it goes.
 
 ### X13. The children (1000 B, region 9)
 
 V runs `VIEW.COM` and E runs `EDIT.COM`, from `DOS.PROGRAM_FOLDER()`, with the highlighted file as
 the tail. XT does not change either. Alt-X runs the highlighted `.COM`, with a tail from a prompt,
-from its folder, then returns. Each repaints the whole screen after. Trap: `exec`'s fifth level
-gives error 8: the message comes from `DOS.ERRMSG`. Alt-Q leaves the shell in the selected folder;
-Q changes back to the launch folder first.
+from its folder, waits for a key, then returns. Each repaints the whole screen after. Trap: `exec`'s fifth level
+gives error 8: the message comes from `DOS.ERRMSG`. Alt-Q leaves the shell in the selected folder.
+XT brings back C:'s folder and the current drive after each child, so Q leaves in the launch
+folder.
 
 ### X14. View tagged (200 B, region 9)
 
 Ctrl-V runs `VIEW.COM` on each tagged file in turn. Q or Esc in VIEW goes to the next file. VIEW's
-exit code is 0 for both, so the walk does not stop early.
+exit code is 0 for both, so the walk does not stop early. An `exec` error or another exit code
+stops it.
 
 ### X15. Settings and help (600 B, region 9)
 
-Alt-F10 picks the theme and the sort, saved in `[XT]` of `C:\6502DOS.INI` with `INI.UXI`. A is the
-About box: version, free banks, disk free. `HELP.HLP` gains the topic `XT`. PLAN gets the row, and
+Alt-F10, on the menu's rows: T picks the next `.GTH` of `C:\sys\themes`, S the next sort, Enter
+saves both in `[XT]` of `C:\6502DOS.INI` with `INI.UXI`, and Esc brings back the old ones. A
+shows the DOS version, the free banks and the free KB. `HELP.HLP` gains the topic `XT`. PLAN gets the row, and
 `README.md`.
 
 ## Traps
@@ -215,6 +221,8 @@ About box: version, free banks, disk free. `HELP.HLP` gains the topic `XT`. PLAN
   Move takes files only.
 - A name over 32 characters shows as its alias.
 - A `.CMD` is not a program: Alt-X takes `.COM` only.
+- `VIEW.COM` and `EDIT.COM` read their file from `P1$`, which only the shell sets. XT sets `P1$`
+  before each `exec`.
 
 ## Order and budget
 

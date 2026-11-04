@@ -21,6 +21,7 @@ Remind the user to `/compact` when a change is done.
 
 Resume here (2026-11-04), `XBASE.COM`, `BROWSE` and cmdlets:
 
+- `docs/XFMGR.PLAN.md` now matches XT's code, not committed. It now names the prompts on rows 28 and 29 instead of the GUI dialogs, `C:\sys\xt\NAME.HIS` and the one ring instead of `C:\XT.HIS`, and the key aliases Ctrl-G, Ctrl-E and Ctrl-X. It also has `COPY_BANK`, 14 banks, `XT.COM` at 44856 bytes, F1 on `XT.HLP`, no clock, Find in the file window instead of `GUI.LISTBOX`, the prune refusals, the Esc stops, Alt-F10's keys and the `P1$` trap. The step sizes stay estimates. No build. Next: the user checks, then commits.
 - Docs batch for beta 3, built and committed: the README says beta 3, version 0.1.3, has `## New in beta 3` with `DELTREE` and `SUBST`, the zip name `6502DOS-0.1.3-beta3-win.zip`, and both programs in the `C:\sys` row. PLAN has `DELTREE` and `SUBST` entries after `XCOPY`. The BASIC help path: the asm was already done in e2e3386, so `basic\HELPBAS.HLP` in the program's folder is now in PLAN, `HELP.HLP`'s `HELPBAS` topic, `HELPBAS.HLP`'s `HELP` topic, `MSBASIC/docs/keywords.md` and `MSBASIC/CLAUDE.md`. PLAN's to-do item on MSBASIC's `HELP` failing is gone. `card/sys/themes/GUI.F08` stays: it was deleted in `cf7a638` by mistake and is back. The examples of `FONT.UXB` and `FONTEDIT.UXB` now name `CP437.F08`. The build remade `HELP.IDX` and `HELPBAS.IDX`; `FONT.COM` and `FONTEDIT.COM` recompiled unchanged. Build 2.66 s, outer 2823 ms, the new baseline.
 - `SUBST` host message, built, run by the user and committed: with host files, `STOP_ON_ERROR` in `src/dos/SUBST.UXB` prints "Host files do not support SUBST" for `ERR_BAD_FUNCTION`, the only error the kernel gives there. `card/sys/SUBST.COM` is 2092 bytes, 53 more. No ROM change. Build 1.52 s, outer 1679 ms; the baseline for a one-program build.
 - `SUBST` step 2, the program, run by the user on the card and committed: `src/dos/SUBST.UXB` builds `card/sys/SUBST.COM`, 2039 bytes. `SUBST` lists the substituted drives as `E: => C:\DOCS`; `SUBST E: path` sets one, replacing an old one; `SUBST E: -d` removes one. It prints C: as the source because the card driver has one unit. Error 16 prints "Cannot change the current drive" in place of its kernel text. Exit codes are `ENUM OUTCOME`: 0 done, 1 a kernel error, 4 a bad parameter. `DOS.UXI` has `SET_SUBST` and `GET_SUBST`. Topic `:SUBST` is in `HELP.HLP`, after `:DELTREE`. `build/SD.IMG` rewritten. Build 19.70 s, outer 19852 ms, all programs recompiled for the changed `DOS.UXI`; not a baseline. Next: the user tests; the README gets beta 3, `DELTREE` and `SUBST` in the docs batch.
@@ -126,9 +127,8 @@ Earlier entries, `XBASE.COM`. Their space figures are out of date:
   `C:\sys\xt`: `COPYMOVE`, `JUMP`, `MKDIR`, `RENAME`, `TAG` and `FILESPEC`, each `.HIS`. The first save
   makes the folder. An answer over 64 characters is not kept. `F2` in the copy and move prompt points at
   a folder in the tree's pane, and `Enter` puts its path in the field. `ASK_TEXT` returns an `ASK_END`.
-  `SHOW_TREE_CURSOR` came out of `MOVE_TREE_CURSOR`, and `TREE_SPOT_FOR` out of `TREE_KEY`. Plan line
-  171 still says `C:\XT.HIS` and a ring per prompt in the extras bank; there is one ring, read per
-  prompt.
+  `SHOW_TREE_CURSOR` came out of `MOVE_TREE_CURSOR`, and `TREE_SPOT_FOR` out of `TREE_KEY`. The plan
+  now names the history files and the one ring.
 - `GUI.LISTBOX` costs about 9 KB, as it brings back the form code that the compile now removes: the
   first X9 build was 42926 bytes. X11's plan names `GUI.LISTBOX`, and `PICK_HISTORY` is the cheap shape.
 - X10, prune: written in `XTOPS.UXI`, region 8. Built, not run, not committed. `Alt-P` in the tree asks
@@ -200,8 +200,7 @@ Earlier entries, `XBASE.COM`. Their space figures are out of date:
 - XT declares 2127 names. pyuxc's limit is now 4080: `K_SYM_BANKS` 16 and `K_SY_MAX` 4080 in
   `UXCBASIC/pyuxc/uxc_defs.py`, with the help and docs under `UXCBASIC` changed to match. The commit
   "xbase: BROWSE, line editor, SET DELETED" holds those files, as `XBASE.UXB` needs the limit too.
-- X9's history files go in `C:\sys\xt`, a folder not made yet. The plan's X9 still says
-  `C:\XT.HIS`, and its X1 and screen section still name the clock.
+- X9's history files go in `C:\sys\xt`. XT makes the folder at the first save.
 - A file rename to a longer name reads the folder's files again, which clears their tags, as in
   XFMGR2. A shorter or equal name keeps them. A deleted file's record stays in the run with the
   `RECORD_GONE` flag.
@@ -2705,8 +2704,7 @@ the beta 1 list).
   GUI glyph, so block art such as `splash.dot` breaks under that font.
 - XT (the user, 2026-10-30): port XFMGR2, the Prog8 file manager at
   `C:\dev\CmdrX16\dos_tools\XFMGR2`, to UXCBASIC as `XT.COM`. The plan is `docs/XFMGR.PLAN.md`,
-  steps X1 to X15, one a compact. Asm approved for this plan. Written: X1 to X6. Next: X7, after
-  the user's word.
+  steps X1 to X15, one a compact. Asm approved for this plan. Done: X1 to X15, commit `078cb94`.
 - Beta 1 (the user, 2026-10-25). Order: scope, the API freeze, the known bugs, a full suite,
   a clean 4 MB release image, the README, the owed doc batches, NOTICE credits, then the
   version text and a tag.
