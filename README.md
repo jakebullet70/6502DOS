@@ -10,15 +10,37 @@ No code comes from MS-DOS. MS-DOS 2.0 is x86 code, so only its design carries ov
 
 ## Status
 
-This is beta 1. The API in `docs/API.md` is frozen, save the parts that `docs/PLAN.md` section
-13 marks unstable. `SYSINIT` and `CONFIG.SYS` are not built yet. EDIT is a beta.
+This is beta 2, version 0.1.1. The banner reads `6502DOS V0.1.1 Beta 2`. The API in
+`docs/API.md` is frozen, save the parts that `docs/PLAN.md` section 13 marks unstable. `SYSINIT`
+and `CONFIG.SYS` are not built yet. EDIT and XBASE are betas.
 
 6502DOS runs on x16emu R49. It reads files from the SD card, or from a folder of the PC through
 the emulator's host file system.
 
+## New in beta 2
+
+- `XBASE`, an xBASE database language in ROM banks 6, 7 and 8, with a dot prompt and command
+  files. It has tables and indexes, `BROWSE`, `@ ... SAY ... GET` and `READ`, boxes, menus and
+  `POPUP`, `PROC` and `GOSUB`, `ON KEY`, `SET FILTER`, `SET FIELDS`, and `&name` macros.
+  `HELPXBASE`, or `HELP` at the dot prompt, gives its help. `C:\source\xbase\bugs` holds a
+  sample, the table `BUGS.DB` and its command files.
+- `XT`, a file manager with a tree and a file window.
+- `TED`, a text editor that keeps its text in RAM banks, up to 65535 bytes.
+- `ZIP` and `UNZIP`, for ZIP archives, stored or deflated.
+- `CHKDSK`, a read-only FAT32 check.
+- `SI`, which prints the CPU, its speed, the ROM, VERA, RAM, the card and the clock.
+- `FONT`, which loads an 8x8 font file, and `FONTEDIT`, an 8x8 font editor.
+- `REG`, the settings store `C:\6502DOS.REG`. `THEMED`, `TED` and `VIEW` take their colors from
+  its `THEME` key.
+- `PUSHD` and `POPD`, a stack of 6 folders.
+- A power-on screen with the memory count, VERA, the SD card and the boot keys.
+- `-H` or `-?` after a program's name shows its help topic.
+- 6502DOS runs from a folder of the PC as `C:`, through `-fsroot`.
+- `MSBASIC.COM` is now `BASIC.COM`.
+
 ## Running it
 
-The release is a zip for Windows, `6502DOS-0.1.0-beta1-win.zip`. It unzips to the folder
+The release is a zip for Windows, `6502DOS-0.1.1-beta2-win.zip`. It unzips to the folder
 `6502DOS`, which holds `6502DOS.ROM`, `SD.IMG` (a 4 MB FAT32 card),
 `LICENSE`, `NOTICE`, `RUN.BAT`, and x16emu R49 with its DLLs and licences in the folder
 `x16emu`. `RUN.BAT` starts 6502DOS:
@@ -53,24 +75,30 @@ C:\>PRINT "N is "; N
 C:\>LIST README.TXT | MORE
 ```
 
-Built in help from DOS
+Each help program reads its topics from the card:
+
 ```
 C:\>HELP
 C:\>HELPBAS
+C:\>HELPXBASE
 ```
+
+`HELP` covers the shell and the programs, `HELPBAS` covers BASIC, and `HELPXBASE` covers XBASE.
+`XBASE` starts the dot prompt, and `XBASE name` runs the command file `name`.
 
 ## The card
 
 | Path | Holds |
 |---|---|
 | `C:\startup.cmd` | The start-up script |
-| `C:\sys` | `ROMSHELL.COM`, which starts the shell in ROM; `CMDSHELL.COM`, the same shell built to run from RAM; `MSBASIC.COM`, which starts Microsoft BASIC in ROM bank 2; `HDIR`, `HELPED`, `GUIDEMO`; `EDIT`, `TED`, `VIEW`, `XT`, `MORE`, `HEAD`, `TAIL`, `GREP`, `TREE`, `XCOPY`, `HELP`, `HELPBAS`, `HELPXBASE`, and the commandlets `DATE`, `TIME`, `UPTIME`, `MEM`, `DISKFREE`, `DISKINFO`, `WHERE`, `EXIST` |
+| `C:\sys` | `ROMSHELL.COM`, which starts the shell in ROM; `CMDSHELL.COM`, the same shell built to run from RAM; `BASIC.COM`, which starts Microsoft BASIC in ROM bank 2; `XBASE.COM`, which starts XBASE in ROM banks 6 to 8; `HDIR`, `HELPED`, `GUIDEMO`; `EDIT`, `TED`, `VIEW`, `XT`, `MORE`, `HEAD`, `TAIL`, `GREP`, `TREE`, `XCOPY`, `ZIP`, `UNZIP`, `CHKDSK`, `SI`, `FONT`, `PUSHD`, `POPD`, `HELP`, `HELPBAS`, `HELPXBASE`, and the commandlets `DATE`, `TIME`, `UPTIME`, `MEM`, `DISKFREE`, `DISKINFO`, `WHERE`, `EXIST`, `REG`, `CONCOLOR` |
 | `C:\sys\themes` | The fonts and color themes; `THEMED`, `FONTEDIT` |
-| `C:\sys\xbase` | `HELPXBASE.HLP` and `HELPXBASE.IDX`, the xBASE help that `HELPXBASE` reads |
-| `C:\sys\temp`, `basic`, `edit` | Data of the system and its programs |
+| `C:\sys\basic` | `HELPBAS.HLP` and `HELPBAS.IDX`, the BASIC help that `HELPBAS` reads |
+| `C:\sys\xbase` | `XBASE.STR`, the text of XBASE; `HELPXBASE.HLP` and `HELPXBASE.IDX`, the help that `HELPXBASE` reads; `MODSTRU.COM` |
+| `C:\sys\temp`, `edit`, `xt` | Data of the system and its programs |
 | `C:\source\basic` | MSBASIC sample programs |
 | `C:\source\xcbasic` | The sources of the utilities |
-| `C:\source\xbase` | xBASE programs |
+| `C:\source\xbase` | XBASE programs; `bugs`, the sample |
 | `C:\apps`, `C:\games` | Empty, for your programs |
 
 ## Building
