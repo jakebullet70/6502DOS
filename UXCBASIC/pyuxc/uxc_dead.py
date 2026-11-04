@@ -78,6 +78,7 @@ def dd_strip():
     g.dd_runtime_before = g.dd_runtime
     dd_fixups()
     dd_records()
+    uxc_branch.br_offsets()
     uxc_branch.br_moved()
     dd_code()
     dd_runtime()
