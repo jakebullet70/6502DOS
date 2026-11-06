@@ -1372,6 +1372,18 @@ Folders:
   Then it zips `build/release` to `release/6502DOS-VERSION-win.zip`, under the folder
   `6502DOS`. VERSION comes from `VERSION` and `VERSION_LABEL` in `tools/api.py`, as in
   `0.1.0-beta1`. The folder `release` is tracked.
+- `build.py --force` rebuilds the template tables and compiles every program, stale or not.
+  `build.py --list` prints each program as its group, name, state (`stale`, `fresh` or `rom`),
+  source and program, split by tabs. `build.py --only NAME...` compiles the named stale
+  programs. A `rom` program needs a full build.
+- `tests.py --list` prints each test as its group (`tests` or `msbasic`), name and state
+  (`stopped` or `run`), split by tabs.
+- `tools/gui/buildgui.py` is a tkinter window over `build.py` and `tests.py`, which it runs as
+  subprocesses with the repo's Python. The Build tab lists the programs; the Tests tab lists
+  the tests and runs one at a time. Output goes to a shared log pane. Stop kills the run's
+  process tree by PID. Each run's time is kept in `build/gui-baselines.json`; a run past twice
+  its baseline plus 5 s logs a warning. `MKGUI.BAT` freezes it with `tools/gui/buildgui.spec`
+  to `BUILDGUI.EXE` in the repo root, which git ignores.
 - `tools/fatcheck.py IMAGE` checks a card image: the FATs are equal, no cluster is lost or in
   two chains, and each file's chain fits its size. Each run of long-name entries must count
   down from the entry with bit 6 to 1, hold one checksum, type 0 and cluster 0, and end at the

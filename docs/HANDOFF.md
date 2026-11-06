@@ -2696,6 +2696,7 @@ the beta 1 list).
 
 - `python tools/build.py`, then `python tools/tests.py`. `BUILD.BAT` runs `build.py`. `--card` also
   writes `build/SD.IMG`.
+- `BUILDGUI.EXE`, from `MKGUI.BAT`, runs the builds and single tests in a window.
 - In a window: `RUNHOST.BAT` on the folder `card`, or `RUNCARD.BAT` on `build/SD.IMG`. Both add
   `-scale 2 -noemucmdkeys`. With `-noemucmdkeys`, Ctrl and Alt keys
   reach the X16, and the emulator's Ctrl hotkeys (reset, paste, fullscreen) are off.
@@ -2755,6 +2756,8 @@ the beta 1 list).
     `BUILD.BAT`, `RUNUXCTESTS.BAT`, `MSBASIC/Makefile` and README already did. Python312
     stays installed, unused. `BUILD.BAT` on 3.13: exit 0, the ROM 1.52 s, outer 1783 ms, the
     new baseline. Committed.
+  - G6 done: README's build table names `--force`, `--only`, `MKGUI.BAT` and `BUILDGUI.EXE`;
+    PLAN's tools section has the new switches and the GUI; Run names the GUI. Committed.
 
 - Fonts (the user, 2026-10-30): revisit them. `GUI.F08` replaces `$DB`, the solid block, with a
   GUI glyph, so block art such as `splash.dot` breaks under that font.

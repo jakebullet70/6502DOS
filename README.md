@@ -116,9 +116,13 @@ Building needs Windows, Python 3.13 and x16emu R49. ca65, ld65 and 64tass are in
 | `python tools/build.py` | Builds `build/6502DOS.ROM` and the programs in `card` |
 | `python tools/build.py --card` | Builds as above, then writes `build/SD.IMG` from the folder `card` |
 | `python tools/build.py --release` | Builds as above, then fills `build/release` with the release files and zips them to `release/` |
+| `python tools/build.py --force` | Builds as above, and compiles every program, stale or not |
+| `python tools/build.py --only NAME...` | Compiles the named programs, when stale |
 | `python tools/tests.py` | Runs every test, headless, in x16emu |
 | `python tools/tests.py NAME` | Runs the test `NAME` |
 | `BUILD.BAT` | Runs `build.py` |
+| `MKGUI.BAT` | Builds `BUILDGUI.EXE` with PyInstaller |
+| `BUILDGUI.EXE` | A window to run builds and single tests, with a log pane and a Stop button |
 | `RUNCARD.BAT` | Starts x16emu in a window on `build/6502DOS.ROM`, with the card `build/SD.IMG` as `C:` |
 | `RUNHOST.BAT` | Starts x16emu in a window on `build/6502DOS.ROM`, with the folder `card` as `C:`. Files saved on the X16 are files in `card` |
 
