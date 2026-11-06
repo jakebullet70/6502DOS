@@ -58,7 +58,7 @@ Resume here (2026-11-04), `XBASE.COM`, `BROWSE` and cmdlets:
 - A command file line that ends in a space and `_` joins the next, built and committed: `READ_DO_LINE` in `DB_DO.UXI`. The `_` goes, the space stays, and the next line loses its leading spaces. Joined lines count together toward the 240 characters of a line, and toward the 256 bytes of a `DO WHILE` line. An error names the last line joined. A comment that ends in a space and `_` joins the next line. The prompt has no joining. It took 173 bytes of ROM and 1 of low RAM.
 - A line holds 240 characters, built and committed: `COMMAND_LINE`, `REST`, `FILTER`, `OTHER_FILTER`, `VALID_RULE`, `OTHER_VALID`, `LOCATE_LINE`, `KEPT_REST` and `KEPT_NAME` are `STRING * 240`, and `READ_DO_LINE` cuts at 240. The prompt takes 239, as `CON_EDIT` keeps a place for the CR, and Tab cuts at 239. `KEEP_LINE` does not keep a line over 127, as a history record holds 127, so Up does not recall it and `cmds.bin` does not change. A rule's text literals still share `TEXT_BUFFER`'s 254 characters, and `PUSH_TEXT` reports past that. Limit 255 is not usable: `CURSOR` is a `UBYTE`, and `READ_FIELD` adds 1 unchecked. It took 8 bytes of ROM in bank 8, and up to 1008 of low RAM, 224 of them the two locals, not measured.
 - A date field's GET takes digits only, built and committed, not run: `READ_GET` gives a field of kind `D` the mask `DATE_MASK$`, `99999999`, when it has no `PICTURE`. It serves `@ ... GET` and `BROWSE`, not `EDIT` or `APPEND`. Delete still puts a space, so a date can be left blank. The value is not checked: month 99 passes. The check by cmdlet is planned, not built, in `DB.PLAN.md`, section Cmdlets. It took 16 bytes of ROM in bank 8 and 10 of `XBASE.STR`.
-- Space: free up to `K_FAR` is 192 bytes in bank 6, 462 in bank 7 and 1495 in bank 8, total 2149. Low RAM ends at about `$47CA`, estimated from the size of `XBASE.STR` and the new variables. Build 18.73 s, outer 18879 ms, with every program rebuilt; 3.44 s, outer 3593 ms, the baseline with `XBASE.COM` compiled; 2.37 s, outer 2574 ms, with asm alone changed.
+- Space: free up to `K_FAR` is 115 bytes in bank 6, 317 in bank 7 and 141 in bank 8, total 573. Low RAM ends at about `$47CA`, estimated from the size of `XBASE.STR` and the new variables. Build 18.73 s, outer 18879 ms, with every program rebuilt; 3.44 s, outer 3593 ms, the baseline with `XBASE.COM` compiled; 2.37 s, outer 2574 ms, with asm alone changed.
 - `BROWSE`. Built and working: B1 draw and move, B2 `FIELDS`, `SET FIELDS TO`, `RECNO()` in a list, the window with `@`, `DOUBLE`, `TITLE` and `FOOTER`, `CENTER()`, `LASTKEY()`. Steps left, agreed, in order:
   - B3 is built and committed: Ctrl+Enter in `DO_BROWSE` starts an edit, seen as Enter with `MOD_CTRL` in `KEYMODS()`. `EDIT_CELL` in `DB_BROWSE.UXI` edits the picked cell as GET 0 with `READ_GET` and `EDIT_GET`. Esc ends the edit with the old value back and stays in `BROWSE`. Any other key that leaves the cell writes it with `STORE_GETS`, acts, and ends the edit. `GET_EDITED`, set by `EDIT_GET`, skips the write of an unchanged cell. `RECNO()` and a field wider than `CELL_LIMIT` are not edited. A wrong value shows its error on the names' row until a key, and the page is drawn again with the record unchanged. An edited record stays on its row until the page is drawn again. It took 382 bytes of ROM, all in bank 8. Outside an edit, Left and Right also move between fields, for 28 bytes of bank 8. In an edit they stay in the cell, and Ctrl+Left and Ctrl+Right leave it. `EDIT_GET` sets the row after it draws, as a text that ends in the last column leaves the cursor on the next row, for 17 bytes of bank 8. The footer drops `Up Down PgUp PgDn`, and `XBASE.STR` is 17 bytes shorter.
   - B4 is built, committed and works: Ctrl+U in `DO_BROWSE` deletes the picked record, or recalls it when it is deleted, writes it and draws its row again. In an edit, `EDIT_GET` returns key 21, and `EDIT_CELL` writes an edited cell first. A write error shows on the names' row until a key, and the page is drawn again. A marked record stays on its row until the page is drawn again, under `SET DELETED ON` too. In `READ`, Ctrl+U puts the cursor at the start of the same GET. The footer does not list Ctrl+U. It took 187 bytes of ROM, all in bank 8; `XBASE.STR` does not change.
@@ -264,8 +264,6 @@ Resume here (2026-10-30), the card and themes:
 - `startup.cmd` reads REG `THEME` and sets the console color through the commandlet `CONCOLOR`.
   `card/sys/themes` holds `DARK.GTH`, `GRAY.GTH` and `LIGHT.GTH`, 15 bytes each.
 - Open, each on the user's word:
-  - `BUILD.BAT` calls `Python313\python.exe`, and README asks for Python 3.13. Only `Python312` is
-    installed.
   - The SHADOW role in `DRAW_SHADOW`.
   - The GUI SUB reads REG `THEME`.
   - Goldens for `THEMED`, `GUITHEME` and `GUISHADOW`.
@@ -2704,6 +2702,57 @@ the beta 1 list).
   `RUN CMDSHELL.COM`, `D C000`.
 
 ## Next
+
+- Build GUI (the user, 2026-11-06): a tkinter front end for `tools/build.py` and the test
+  runners, frozen with PyInstaller `--onefile --windowed`, the exe in the repo root. The exe
+  runs the repo's Python on `build.py` and the test runners as subprocesses. A single rebuild
+  compiles only stale programs. `card/sys/basic` holds only `HELPBAS.HLP` and `HELPBAS.IDX`;
+  the GUI has no BASIC group. Steps: G1 `build.py --list` and `--only`; G2 the build tab and
+  the log; G3 the tests tab, one test at a time, timed, with a diff; G4 the build baseline and
+  the kill by PID; G5 the PyInstaller spec and `MKGUI.BAT`; G6 docs.
+  - G1 done: `tools/build.py --list` prints each program as group, name, `stale`, `fresh` or
+    `rom`, source and program, split by tabs; `--only NAME...` compiles the named stale
+    programs after genapi and the templates, with the copies the full build makes for them.
+    `rom` programs (BASIC, ROMSHELL, XBASE) need a full build. `targets()` is the one map
+    of programs; `compile_bas`, `compile_scom` and `compile_utils` read it. `uxb.stale()`
+    holds the check `uxb.compile` makes. `--list` 0.33 s, `--only TREE` 0.18 s. Full
+    build 1550 ms, the new baseline; the ROM and every COM and SCOM file are byte for byte
+    the same. Committed.
+  - G2 done: `tools/gui/buildgui.py`, run with the repo's Python. The Build tab is a tree of
+    `--list`, one branch a group, stale rows orange and rom rows grey; Full build with
+    `--release` and `--card` ticks; Build selected runs `--only` on the selected programs,
+    a selected group standing for its programs, rom programs left out; Refresh. Output
+    streams to the log pane with the exit code and time; the tree is read again after each
+    run. Frozen, ROOT is the exe's folder and the Python is the Python313 path. A headless
+    smoke test filled 7 groups, 47 programs, and ran `--only TREE` in 0.19 s. The user ran
+    it: `--only REG`, `--card` and `--release` work. Committed.
+  - Force done: `build.py --force` reruns MKTPL.PY and compiles every program, stale or
+    not; `uxb.FORCE` makes `uxb.stale()` True. The GUI's Full build has a `--force` tick.
+    Forced full build 20.59 s, outer 20746 ms, the new baseline for a forced build; no
+    tracked file on the card changed. Committed.
+  - G3 done: `tools/tests.py --list` prints each test as group (`tests` or `msbasic`), name
+    and `stopped` or `run`, split by tabs, in 0.13 s. The GUI's log pane sits under the tabs,
+    shared. The Tests tab is a tree of `--list`, stopped tests grey; Run test runs tests.py on
+    the one test selected, `--host` when ticked, `--msbasic` for an msbasic test. A failed
+    test's log is the runner's expected and got output. A headless smoke test filled 163
+    tests and 31 msbasic tests. The user ran BOOT: it fails, as expected now. Committed.
+  - G4 done: the log pane has Stop and Clear log. Stop runs `taskkill /PID pid /T /F` on the
+    run's process, which takes the emulator a test started with it. Each run that is not
+    stopped writes its time to `build/gui-baselines.json`, keyed by the script and its
+    switches, or `test`. A run past 2 times its baseline plus 5 s logs one warning and the
+    status reads "past baseline"; it is not killed. A full build without Force takes the
+    larger of its own baseline and the Force build's with the same switches. A smoke test
+    stopped a dummy run with a child after 6.18 s, the child gone, the baseline kept. Committed.
+  - G5 built: `tools/gui/buildgui.spec` makes `BUILDGUI.EXE`, one file, no console.
+    `MKGUI.BAT` runs it with the Python313 path, the exe in the repo root and the work folder
+    `build/pyinstaller`. Without PyInstaller, `MKGUI.BAT` says so and exits 1. First build:
+    exit 0, 26.8 s, the baseline; the exe is 11.4 MB. `.gitignore` lists `/BUILDGUI.EXE`. The
+    user ran it and built from it (2026-11-06): it works. Committed.
+  - Python 3.13.17 installed per user with winget (2026-11-06), with tkinter 8.6 and
+    PyInstaller 6.22.3. `CLAUDE.md`, `MKGUI.BAT` and `buildgui.py` name Python313, as
+    `BUILD.BAT`, `RUNUXCTESTS.BAT`, `MSBASIC/Makefile` and README already did. Python312
+    stays installed, unused. `BUILD.BAT` on 3.13: exit 0, the ROM 1.52 s, outer 1783 ms, the
+    new baseline. Committed.
 
 - Fonts (the user, 2026-10-30): revisit them. `GUI.F08` replaces `$DB`, the solid block, with a
   GUI glyph, so block art such as `splash.dot` breaks under that font.

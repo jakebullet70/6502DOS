@@ -18,6 +18,8 @@ PYUXC = os.path.join(ROOT, "UXCBASIC", "pyuxc")
 TABLE = os.path.join(ROOT, "UXCBASIC", "tpl", "UXDOS", "UXC.TPL.BIN")
 OUT = os.path.join(ROOT, "build", "uxc")
 LIBRARY_FOLDER = os.path.join(ROOT, "lib")
+# True makes stale say every program is out of date.
+FORCE = False
 
 
 def includes(source):
@@ -41,12 +43,12 @@ def string_file(source):
     return os.path.join(ROOT, "card", *found.group(1).split("\\")) if found else None
 
 
-def compile(source, program, second=None, third=None):
-    """Compile source to program when program is missing or older than source, than the template
-    table, than a file that source includes or than a file of pyuxc. Print the time a compile
-    took, and exit on a compile error. second and third are where the second and third ROM
-    banks' files of a #ROMBANKS source go; a compile without one removes it. A #STRINGFILE
-    source's file goes to the card with the program."""
+def stale(source, program, second=None, third=None):
+    """True when program, source's #STRINGFILE file, or second or third for a #ROMBANKS source,
+    is missing or older than source, than the template table, than a file that source includes
+    or than a file of pyuxc. Always True when FORCE is set."""
+    if FORCE:
+        return True
     inputs = [source, TABLE] + includes(source) + glob.glob(os.path.join(PYUXC, "*.py"))
     outputs = [program]
     strings = string_file(source)
@@ -57,9 +59,18 @@ def compile(source, program, second=None, third=None):
         outputs.append(second)
         if third is not None:
             outputs.append(third)
-    if all(os.path.exists(o) and all(os.path.getmtime(o) >= os.path.getmtime(i) for i in inputs)
-           for o in outputs):
+    return not all(os.path.exists(o) and all(os.path.getmtime(o) >= os.path.getmtime(i) for i in inputs)
+                   for o in outputs)
+
+
+def compile(source, program, second=None, third=None):
+    """Compile source to program when stale says so. Print the time a compile took, and exit on
+    a compile error. second and third are where the second and third ROM banks' files of a
+    #ROMBANKS source go; a compile without one removes it. A #STRINGFILE source's file goes to
+    the card with the program."""
+    if not stale(source, program, second, third):
         return
+    strings = string_file(source)
     if PYUXC not in sys.path:
         sys.path.insert(0, PYUXC)
     import pyuxc

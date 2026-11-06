@@ -1,6 +1,6 @@
 """Run the 6502DOS tests: boot build/TEST.ROM headless and compare what it prints.
 
-    python tools/tests.py [NAME ...] [--update]
+    python tools/tests.py [NAME ...] [--update] [--host] [--msbasic] [--list]
 
 build/TEST.ROM boots to the monitor. The tests in SHELL_ROM_TESTS boot build/6502DOS.ROM, which
 runs C:\\sys\\ROMSHELL.COM at boot.
@@ -25,6 +25,9 @@ A test can type keys into the monitor with x16emu -bas:
 - or RUN NAME.COM, when tests/NAME.UXB exists: it compiles to NAME.COM on the test card;
 - then tests/NAME.IN, each line ended by CR. \\XE0 then a scan code types an extended key:
   \\XE0\\X48 is Up.
+
+--list prints each test as its group, tests or msbasic, its name and its state, stopped for a
+test in STOPPED_TESTS and run for the rest, split by tabs, and runs none.
 
 NAMEs pick tests; with none, every test runs but those in STOPPED_TESTS. --update runs each test for 4.5 s and writes
 NAME.OUT from what it printed: read the .OUT before you keep it. Build first
@@ -262,6 +265,13 @@ def main():
     update = "--update" in args
     msbasic = "--msbasic" in args
     names = [a.upper() for a in args if not a.startswith("--")]
+    if "--list" in args:
+        for out_path in sorted(glob.glob(os.path.join(TESTS, "*.OUT"))):
+            name = test_name(out_path)
+            print("tests\t%s\t%s" % (name, "stopped" if name in STOPPED_TESTS else "run"))
+        for source in sorted(glob.glob(os.path.join(BASIC_TESTS, "*.bas"))):
+            print("msbasic\t%s\trun" % os.path.splitext(os.path.basename(source))[0])
+        return
     if not os.path.exists(ROM):
         sys.exit("tests: no build/TEST.ROM; run tools/build.py first")
     outs = sorted(glob.glob(os.path.join(TESTS, "*.OUT")))

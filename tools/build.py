@@ -1,6 +1,12 @@
 r"""Build the 6502DOS ROM image.
 
-    python tools/build.py [--release] [--card]
+    python tools/build.py [--release] [--card] [--force]
+    python tools/build.py --list
+    python tools/build.py --only NAME...
+
+--force rebuilds the template tables and compiles every program, stale or not. --list prints each program the build makes, its group and whether it is stale; --only compiles
+the named programs when they are stale, without the ROM. The programs in ROM banks need a full
+build.
 
 Runs tools/genapi.py, assembles every src/asm/*.s and build/gen/*.s with ca65, links them
 with src/asm/rom.cfg into build/6502DOS.ROM, ROM banks 0, 1 and 5, and copies LICENSE and NOTICE
@@ -121,7 +127,7 @@ def make_templates():
     or all of its output when it failed."""
     sources = (glob.glob(os.path.join(TEMPLATES, "*.ASM"))
                + glob.glob(os.path.join(TEMPLATES, "UXDOS", "*.ASM")))
-    if os.path.exists(uxb.TABLE) and all(os.path.getmtime(uxb.TABLE) >= os.path.getmtime(s)
+    if not uxb.FORCE and os.path.exists(uxb.TABLE) and all(os.path.getmtime(uxb.TABLE) >= os.path.getmtime(s)
                                          for s in sources):
         return
     result = subprocess.run([sys.executable, os.path.join(TEMPLATES, "MKTPL.PY")],
@@ -132,27 +138,55 @@ def make_templates():
     sys.stdout.write(result.stdout.strip().split("\n")[-1] + "\n")
 
 
+def targets():
+    """Each program the build makes, as (name, group, source, program), in build order. Groups:
+    bas, src/bas/NAME.UXB to build/bas/NAME.COM; scom, src/scom/NAME.UXB to card/sys/NAME.SCOM;
+    dos, src/dos/NAME.UXB to card/sys/NAME.COM; sys, themes and xbase, src/utils/FOLDER/NAME.UXB
+    to card/sys, card/sys/themes or card/sys/xbase; test, SHOWN_TESTS to card/sys; rom, the
+    programs in ROM banks, made only by a full build, with their stubs in build/bas."""
+    found = []
+
+    def add(group, sources, folder, extension):
+        for source in sources:
+            name = os.path.splitext(os.path.basename(source))[0].upper()
+            found.append((name, group, source, os.path.join(folder, name + extension)))
+
+    add("bas", sorted(glob.glob(os.path.join(BAS, "*.UXB"))), BAS_OUT, ".COM")
+    add("scom", sorted(glob.glob(os.path.join(SCOM, "*.UXB"))), SYS_OUT, ".SCOM")
+    add("dos", sorted(glob.glob(os.path.join(UTILITIES, "*.UXB"))), SYS_OUT, ".COM")
+    for source in sorted(glob.glob(os.path.join(UTILS, "*", "*.UXB"))):
+        name = os.path.splitext(os.path.basename(source))[0].upper()
+        group = "themes" if name in THEME_PROGRAMS else "xbase" if name in XBASE_PROGRAMS else "sys"
+        add(group, [source], os.path.join(SYS_OUT, group) if group != "sys" else SYS_OUT, ".COM")
+    add("test", [os.path.join(ROOT, "tests", name + ".UXB") for name in SHOWN_TESTS], SYS_OUT, ".COM")
+    found.append(("BASIC", "rom", os.path.join(MSBASIC_SRC, "msbasic.s"), os.path.join(BAS_OUT, "BASIC.COM")))
+    for first in (3, 6):
+        add("rom", sorted(glob.glob(os.path.join(ROOT, "src", "bank%d" % first, "*.UXB"))), BAS_OUT, ".COM")
+    return found
+
+
+def compile_group(*groups):
+    """Compile each program of targets() in groups that uxb.stale says is out of date. Return the
+    program paths."""
+    programs = []
+    for name, group, source, program in targets():
+        if group in groups:
+            uxb.compile(source, program)
+            programs.append(program)
+    return programs
+
+
 def compile_bas():
     """Compile each src/bas/NAME.UXB whose COM file is missing or older. Return the COM paths."""
     os.makedirs(BAS_OUT, exist_ok=True)
-    programs = []
-    for source in sorted(glob.glob(os.path.join(BAS, "*.UXB"))):
-        name = os.path.splitext(os.path.basename(source))[0].upper() + ".COM"
-        uxb.compile(source, os.path.join(BAS_OUT, name))
-        programs.append(os.path.join(BAS_OUT, name))
-    return programs
+    return compile_group("bas")
 
 
 def compile_scom():
     """Compile each src/scom/NAME.UXB to card/sys/NAME.SCOM and each src/dos/NAME.UXB to
     card/sys/NAME.COM, and copy each src/dos/NAME.TXT and NAME.HLP to card/sys. Return the folder card/sys."""
     os.makedirs(SYS_OUT, exist_ok=True)
-    for source in sorted(glob.glob(os.path.join(SCOM, "*.UXB"))):
-        name = os.path.splitext(os.path.basename(source))[0].upper() + ".SCOM"
-        uxb.compile(source, os.path.join(SYS_OUT, name))
-    for source in sorted(glob.glob(os.path.join(UTILITIES, "*.UXB"))):
-        name = os.path.splitext(os.path.basename(source))[0].upper() + ".COM"
-        uxb.compile(source, os.path.join(SYS_OUT, name))
+    compile_group("scom", "dos")
     for text in sorted(glob.glob(os.path.join(UTILITIES, "*.TXT")) + glob.glob(os.path.join(UTILITIES, "*.HLP"))):
         shutil.copyfile(text, os.path.join(SYS_OUT, os.path.basename(text).upper()))
     write_help_index(os.path.join(UTILITIES, "HELP.HLP"), os.path.join(SYS_OUT, "HELP.IDX"))
@@ -180,21 +214,56 @@ def compile_utils():
     for THEME_PROGRAMS, or card/sys/xbase/NAME.COM for XBASE_PROGRAMS, copy the files of
     src/utils/FOLDER to card/source/xcbasic/FOLDER, and compile each test of SHOWN_TESTS to
     card/sys/NAME.COM. Return the folder card/source."""
-    themes = os.path.join(SYS_OUT, "themes")
-    xbase = os.path.join(SYS_OUT, "xbase")
-    os.makedirs(themes, exist_ok=True)
-    os.makedirs(xbase, exist_ok=True)
+    os.makedirs(os.path.join(SYS_OUT, "themes"), exist_ok=True)
+    os.makedirs(os.path.join(SYS_OUT, "xbase"), exist_ok=True)
+    compile_group("sys", "themes", "xbase", "test")
     for folder in sorted(glob.glob(os.path.join(UTILS, "*", ""))):
-        folder = os.path.dirname(folder)
-        for source in sorted(glob.glob(os.path.join(folder, "*.UXB"))):
-            name = os.path.splitext(os.path.basename(source))[0].upper()
-            target = themes if name in THEME_PROGRAMS else xbase if name in XBASE_PROGRAMS else SYS_OUT
-            uxb.compile(source, os.path.join(target, name + ".COM"))
-        shutil.copytree(folder, os.path.join(SOURCE_OUT, "xcbasic", os.path.basename(folder).upper()),
-                        ignore=shutil.ignore_patterns(".*"), dirs_exist_ok=True)
-    for name in SHOWN_TESTS:
-        uxb.compile(os.path.join(ROOT, "tests", name + ".UXB"), os.path.join(SYS_OUT, name + ".COM"))
+        copy_source(os.path.dirname(folder))
     return SOURCE_OUT
+
+
+def copy_source(folder):
+    """Copy the files of the folder src/utils/FOLDER to card/source/xcbasic/FOLDER."""
+    shutil.copytree(folder, os.path.join(SOURCE_OUT, "xcbasic", os.path.basename(folder).upper()),
+                    ignore=shutil.ignore_patterns(".*"), dirs_exist_ok=True)
+
+
+def list_targets():
+    """Print each program of targets(), one a line: the group, the name, stale, fresh or rom, the
+    source and the program, paths from the repo root, split by tabs."""
+    for name, group, source, program in targets():
+        state = "rom" if group == "rom" else "stale" if uxb.stale(source, program) else "fresh"
+        print("\t".join((group, name, state, os.path.relpath(source, ROOT), os.path.relpath(program, ROOT))))
+
+
+def build_only(names):
+    """Compile the programs of targets() named in names that uxb.stale says are out of date, after
+    genapi and the templates, and copy what the full build copies with each: the shell to
+    card/sys, a dos program's TXT and HLP files, a utility's folder to card/source/xcbasic. Exit
+    when a name is unknown or a rom program, which only a full build makes."""
+    by_name = {name: (group, source, program) for name, group, source, program in targets()}
+    for name in names:
+        if name not in by_name:
+            sys.exit("build: no program %s" % name)
+        if by_name[name][0] == "rom":
+            sys.exit("build: %s is in ROM; run a full build" % name)
+    started = time.time()
+    genapi.main()
+    make_templates()
+    for name in names:
+        group, source, program = by_name[name]
+        os.makedirs(os.path.dirname(program), exist_ok=True)
+        uxb.compile(source, program)
+        if name in ("CMDSHELL", "ROMSHELL"):
+            shutil.copy2(program, SYS_OUT)
+        elif group == "dos":
+            for text in glob.glob(os.path.join(UTILITIES, name + ".TXT")) + glob.glob(os.path.join(UTILITIES, name + ".HLP")):
+                shutil.copyfile(text, os.path.join(SYS_OUT, os.path.basename(text).upper()))
+            if name == "HELP":
+                write_help_index(os.path.join(UTILITIES, "HELP.HLP"), os.path.join(SYS_OUT, "HELP.IDX"))
+        elif group in ("sys", "themes", "xbase"):
+            copy_source(os.path.dirname(source))
+    print("built %s, %.2f s" % (", ".join(names), time.time() - started))
 
 
 def build_basic():
@@ -345,10 +414,18 @@ RELEASE_ZIPS."""
 
 
 def main():
-    release = "--release" in sys.argv[1:]
-    card_image = "--card" in sys.argv[1:]
-    if set(sys.argv[1:]) - {"--release", "--card"}:
-        sys.exit("usage: build.py [--release] [--card]")
+    arguments = sys.argv[1:]
+    if arguments == ["--list"]:
+        list_targets()
+        return
+    if arguments[:1] == ["--only"] and len(arguments) > 1:
+        build_only([name.upper() for name in arguments[1:]])
+        return
+    release = "--release" in arguments
+    card_image = "--card" in arguments
+    uxb.FORCE = "--force" in arguments
+    if set(arguments) - {"--release", "--card", "--force"}:
+        sys.exit("usage: build.py [--release] [--card] [--force] | --list | --only NAME...")
     started = time.time()
     genapi.main()
     os.makedirs(OBJ, exist_ok=True)
