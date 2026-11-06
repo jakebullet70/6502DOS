@@ -104,7 +104,7 @@ CARD_FOLDERS = ("help", "sys/temp", "sys/themes", "sys/basic", "sys/xbase", "sys
 # The utilities of src/utils that go to card/sys/themes, with the fonts and color themes.
 THEME_PROGRAMS = ("THEMED", "FONTEDIT")
 # The utilities of src/utils that go to card/sys/xbase, the cmdlets XBASE.COM looks up.
-XBASE_PROGRAMS = ("MODSTRU",)
+XBASE_PROGRAMS = ("MODSTRU", "APPFROM")
 # The tests that also go to card/sys, for the user to run on the card.
 SHOWN_TESTS = []
 TEMPLATES = os.path.join(ROOT, "UXCBASIC", "tpl")

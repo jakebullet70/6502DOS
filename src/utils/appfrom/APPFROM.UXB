@@ -1,0 +1,189 @@
+'=============================================================================================
+' -- APPFROM target source
+' -- adds the records of the table source to the end of the table target. Each name gets .DB
+' -- when it has no extension.
+' -- Each field of target takes the field of source with its name. A text field is cut to its
+' -- length. Any type copied to a C field becomes text. An N field takes the value at its
+' -- decimals. A field with no field of its name in source, or one of another type, stays blank.
+' -- The deleted records of source are not added.
+' -- A value that fails, such as a number too long for its field, stops the copy and prints its
+' -- record and field. The records added before it stay.
+' -- Prints the number of records added. Exit code 0, 1 for a name missing or one table named
+' -- twice, 2 for a file error.
+' --
+' -- From the XBASE prompt, with both tables closed:
+' --     APPFROM ORDERS OLDORDER
+' -- Trap: run it on a table XBASE has open, and XBASE's copy goes stale. Indexes on target are
+' -- not changed: open them and run REINDEX after.
+' -- Trap: the names are compared as typed, so C:\ORDERS and ORDERS pass as two tables, and the
+' -- copy then runs until the card is full.
+'=============================================================================================
+#INCLUDE "DOS.UXI"
+#INCLUDE "DB.UXI"
+#INCLUDE "HEAP.UXI"
+#INCLUDE "FLOAT.UXI"
+
+CONST SLOT_P1 AS UBYTE = 0
+
+' How a record's value reaches a field of target.
+ENUM COPY_RULE
+  NOTHING, AS_TEXT, NUMBER_AS_TEXT, SAME_NUMBER, NEW_DECIMALS
+END ENUM
+
+DIM TARGET_PATH AS STRING * 80, SOURCE_PATH AS STRING * 80
+DIM TARGET AS UBYTE, SOURCE AS UBYTE, FIELDS AS UBYTE
+DIM ORIGIN(33) AS UBYTE                     ' from 1: the field of source each field takes, or 0
+DIM RULE(33) AS UBYTE                       ' from 1: the COPY_RULE of each field
+DIM WIDTH(33) AS UBYTE, PLACES(33) AS UBYTE ' from 1: the length and decimals of each field
+DIM NUMBER_VALUE(FP.SIZE) AS UBYTE
+DIM RECORD AS UWORD, RECORDS AS UWORD, CODE AS UBYTE, N AS UBYTE, PROBLEM AS STRING * 80
+
+' NAME, with .DB added when its file name has no extension.
+FUNCT WITH_EXTENSION(NAME AS STRING) AS STRING
+  DIM SPOT AS UBYTE, CHARACTER AS UBYTE
+  SPOT = LEN(NAME)
+  DO WHILE SPOT > 0
+    CHARACTER = ContentsAt(@NAME + 1 + SPOT)
+    IF CHARACTER = 46 THEN RETURN NAME
+    IF CHARACTER = 92 OR CHARACTER = 58 THEN EXIT DO
+    SPOT = SPOT - 1
+  LOOP
+  RETURN NAME + ".DB"
+END FUNCT
+
+' Puts the two names of P1$ in TARGET_PATH and SOURCE_PATH, or ends the program.
+SUB READ_PATHS()
+  DIM SPLIT AS UBYTE
+  TARGET_PATH = UCASE$(TRIM$(HEAP.SYS_STRINGS_GET(SLOT_P1)))
+  SPLIT = INSTR(TARGET_PATH, " ")
+  IF SPLIT = 0
+    PRINT "APPFROM target source"
+    END 1
+  ENDIF
+  SOURCE_PATH = WITH_EXTENSION(TRIM$(MID$(TARGET_PATH, SPLIT + 1)))
+  TARGET_PATH = WITH_EXTENSION(LEFT$(TARGET_PATH, SPLIT - 1))
+  IF TARGET_PATH = SOURCE_PATH
+    PRINT "One table named twice"
+    END 1
+  ENDIF
+END SUB
+
+' Opens PATH and gives its workspace, or prints the error and gives 0.
+FUNCT OPEN_OR_SAY(PATH AS STRING) AS UBYTE
+  DIM BANK AS UBYTE
+  BANK = DB.OPEN_TABLE(PATH)
+  IF BANK = 0 THEN PRINT PATH; ": "; DOS.ERRMSG(DOS.ERROR)
+  RETURN BANK
+END FUNCT
+
+' Fills ORIGIN, RULE, WIDTH and PLACES for each field of target.
+SUB MATCH_FIELDS()
+  DIM NAME AS STRING * 10, KIND AS UBYTE, OLD_KIND AS UBYTE
+  DB.WORKSPACE = TARGET
+  FIELDS = DB.FIELD_COUNT()
+  FOR N = 1 TO FIELDS
+    DB.WORKSPACE = TARGET
+    NAME = DB.FIELD_NAME(N)
+    KIND = DB.FIELD_TYPE(N)
+    WIDTH(N) = DB.FIELD_LENGTH(N)
+    PLACES(N) = DB.FIELD_DECIMALS(N)
+    DB.WORKSPACE = SOURCE
+    ORIGIN(N) = DB.FIELD_NUMBER(NAME)
+    OLD_KIND = DB.FIELD_TYPE(ORIGIN(N))
+    IF OLD_KIND = DB.FIELD_KIND.NONE
+      RULE(N) = COPY_RULE.NOTHING
+    ELSEIF KIND = DB.FIELD_KIND.CHARACTER AND OLD_KIND = DB.FIELD_KIND.NUMBER
+      RULE(N) = COPY_RULE.NUMBER_AS_TEXT
+    ELSEIF KIND = DB.FIELD_KIND.CHARACTER OR (KIND = OLD_KIND AND KIND <> DB.FIELD_KIND.NUMBER)
+      RULE(N) = COPY_RULE.AS_TEXT
+    ELSEIF KIND <> OLD_KIND
+      RULE(N) = COPY_RULE.NOTHING
+    ELSEIF PLACES(N) = DB.FIELD_DECIMALS(ORIGIN(N))
+      RULE(N) = COPY_RULE.SAME_NUMBER
+    ELSE
+      RULE(N) = COPY_RULE.NEW_DECIMALS
+    ENDIF
+  NEXT
+END SUB
+
+' Copies field N of the current record of source to the current record of target, by its rule.
+' Leaves target the workspace and DOS.ERROR set.
+SUB COPY_FIELD()
+  DIM TEXT AS STRING * 255
+  DOS.ERROR = 0
+  IF RULE(N) = COPY_RULE.NOTHING THEN RETURN
+  DB.WORKSPACE = SOURCE
+  TEXT = DB.GET(ORIGIN(N))
+  DB.WORKSPACE = TARGET
+  IF DOS.ERROR <> 0 THEN RETURN
+  IF RULE(N) = COPY_RULE.AS_TEXT
+    DB.PUT(N, LEFT$(TEXT, WIDTH(N)))
+  ELSEIF RULE(N) = COPY_RULE.NUMBER_AS_TEXT
+    DB.PUT(N, LEFT$(TRIM$(TEXT), WIDTH(N)))
+  ELSEIF RULE(N) = COPY_RULE.SAME_NUMBER
+    DB.PUT(N, TRIM$(TEXT))
+  ELSEIF TRIM$(TEXT) <> ""
+    FP.FROM_TEXT(AddrOf(NUMBER_VALUE), TEXT)
+    IF DOS.ERROR <> 0 THEN RETURN
+    TEXT = FP.FIXED(AddrOf(NUMBER_VALUE), PLACES(N))
+    IF DOS.ERROR = 0 THEN DB.PUT(N, TEXT)
+  ENDIF
+END SUB
+
+' Adds each record of source that is not deleted to target, RECORDS counting them. Gives 0, or
+' the error, with PROBLEM naming its record and field when a value failed.
+FUNCT COPY_RECORDS() AS UBYTE
+  PROBLEM = ""
+  RECORDS = 0
+  CODE = 0
+  DB.WORKSPACE = SOURCE
+  RECORD = DB.FIRST_RECORD()
+  DO WHILE RECORD <> 0
+    IF DB.DELETED = 0
+      DB.WORKSPACE = TARGET
+      DB.APPEND()
+      CODE = DOS.ERROR
+      N = 1
+      DO WHILE CODE = 0 AND N <= FIELDS
+        COPY_FIELD()
+        CODE = DOS.ERROR
+        IF CODE <> 0 THEN PROBLEM = "Record " + TRIM$(STR$(RECORD)) + ", " + DB.FIELD_NAME(N) + ": " + DOS.ERRMSG(CODE)
+        N = N + 1
+      LOOP
+      IF CODE = 0 THEN DB.WRITE_RECORD()
+      IF CODE = 0 THEN CODE = DOS.ERROR
+      IF CODE <> 0 THEN EXIT DO
+      RECORDS = RECORDS + 1
+      DB.WORKSPACE = SOURCE
+    ENDIF
+    RECORD = DB.NEXT_RECORD()
+  LOOP
+  IF CODE = 0 THEN CODE = DOS.ERROR
+  RETURN CODE
+END FUNCT
+
+DOS.STOP_KEY(DOS.STOP.OFF)
+READ_PATHS()
+TARGET = OPEN_OR_SAY(TARGET_PATH)
+IF TARGET = 0 THEN END 2
+SOURCE = OPEN_OR_SAY(SOURCE_PATH)
+IF SOURCE = 0
+  DB.WORKSPACE = TARGET
+  DB.CLOSE_TABLE()
+  END 2
+ENDIF
+MATCH_FIELDS()
+CODE = COPY_RECORDS()
+DB.WORKSPACE = TARGET
+DB.CLOSE_TABLE()
+IF CODE = 0 THEN CODE = DOS.ERROR
+DB.WORKSPACE = SOURCE
+DB.CLOSE_TABLE()
+IF PROBLEM <> ""
+  PRINT PROBLEM
+ELSEIF CODE <> 0
+  PRINT DOS.ERRMSG(CODE)
+ENDIF
+PRINT TRIM$(STR$(RECORDS)); " records added"
+IF CODE <> 0 THEN END 2
+END 0

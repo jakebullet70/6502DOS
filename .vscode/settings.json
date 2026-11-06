@@ -1,3 +1,6 @@
 {
-  "files.readonlyInclude": { "build/**": true }
+  "files.readonlyInclude": {
+    "build/**": true
+  },
+  "python-envs.defaultEnvManager": "ms-python.python:system"
 }
