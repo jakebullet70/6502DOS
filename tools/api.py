@@ -489,6 +489,15 @@ CALLS = [
          out=[("A r0 r1 r4-r7", "by function")],
          errors=[1],
          written=True),
+    call(63, "con_keys", None, ("Tells which game keys are held down. The call reads every key "
+          "press and release the keyboard holds. When no key was waiting, the first key read that "
+          "gives a character waits for `con_in`, and Ctrl+C there obeys the break mode. The "
+          "characters of the keys after it are lost. A key pressed and released between two "
+          "calls does not show as held."),
+         out=[("A", "keys held: $01 Right, $02 Left, $04 Down, $08 Up, $10 Space, $20 Enter, "
+               "$40 Esc, $80 Ctrl"),
+              ("X", "modifiers: $01 Shift, $04 Caps Lock on, $40 Alt, $80 Ctrl")],
+         written=True),
 ]
 
 # The functions of call 57, db: (Y, name, in, out, written). The name becomes DB_NAME in asm.

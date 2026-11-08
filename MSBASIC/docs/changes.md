@@ -1119,3 +1119,16 @@ are allowed in this target only.
   sets them.
 - `sim` and `6502dos` are byte for byte as before: the sim image is 12722 bytes, bank 2 holds
   13731.
+
+## KEYHELD (+23 bytes in 6502dos)
+
+- `KEYHELD(n)` with n 0 gives the keys held down: 1 Right, 2 Left, 4 Down, 8 Up, 16 Space, 32
+  Enter, 64 Esc, 128 Ctrl. Any other n gives the modifiers: 1 Shift, 4 Caps Lock on, 64 Alt, 128
+  Ctrl. It runs call 63, `con_keys`, which reads every key the keyboard holds.
+- `K=KEYHELD(0): IF K AND 1 THEN X=X+1` moves X right while Right is held.
+- A function keyword after `SPRITEHIT`, under `CONFIG_KEYHELD`, in `6502dos` only. The tokens
+  from `LEFT$` to `GO` move up by 1.
+- `KEYHELD` tests the exponent byte of `FAC`, which is 0 only when n is 0, so it needs no
+  `CONINT`.
+- 6502dos bytes: `6502dos_extra.s` 14, keywords 9. No new RAM.
+- Bank 2 holds 13754 bytes, and 2630 bytes are free.

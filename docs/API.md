@@ -82,6 +82,7 @@ Conventions:
 | `subst` | 60 | `$03F4` | none | `carry` set: get, clear: set<br>`A` drive: 0 A:, 1 B:<br>`r0` to set: path; to get: buffer, 256 bytes | `r0` to get: buffer, filled with a length-prefixed path | 1, 3, 15, 16, 21 | yes |
 | `vera` | 61 | `$03F7` | none | `Y` function<br>`A X r0-r3` by function | `A` by function<br>`r1` by function | 1, 5, 6, 21, 30 | yes |
 | `gfx` | 62 | `$03FA` | none | `Y` function<br>`A r0-r3` by function | `A r0 r1 r4-r7` by function | 1 | yes |
+| `con_keys` | 63 | `$03FD` | none | none | `A` keys held: $01 Right, $02 Left, $04 Down, $08 Up, $10 Space, $20 Enter, $40 Esc, $80 Ctrl<br>`X` modifiers: $01 Shift, $04 Caps Lock on, $40 Alt, $80 Ctrl | none | yes |
 
 ## What each call does
 
@@ -148,6 +149,7 @@ Conventions:
 - `subst`: Gets a drive's substitution with carry set, sets it with carry clear. The drive is A:, B: or a letter past the card's. A set with a path makes the drive a substituted drive whose \ names that directory; with an empty path it makes the drive no drive. A set on the current drive gives error 16. A get copies the directory's path, as `getcwd` gives a path; a drive not substituted gives error 15. `getcwd` on a substituted drive gives the path below that directory. Host files give error 1. On a substituted drive, .. in its \ directory goes above it, `ioctl` and `absread` are not supported, and `rename` to or from another drive gives error 17.
 - `vera`: VRAM, the sprites and the palette, in ROM bank 1. Runs function Y of VERA_FUNCTIONS. A Y past the last gives error 1.
 - `gfx`: The bitmap on VERA's layer 0, under the console's text, in ROM bank 1. Runs function Y of GFX_FUNCTIONS. A Y past the last gives error 1. `exit` puts screen 0 back.
+- `con_keys`: Tells which game keys are held down. The call reads every key press and release the keyboard holds. When no key was waiting, the first key read that gives a character waits for `con_in`, and Ctrl+C there obeys the break mode. The characters of the keys after it are lost. A key pressed and released between two calls does not show as held.
 
 ## Errors
 

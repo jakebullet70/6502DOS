@@ -32,7 +32,7 @@
 .include "api.inc"
 
 .export con_init, api_con_line, api_con_edit, api_con_screen, api_con_status, api_con_out, api_con_in, api_con_cursor
-.export api_con_getkey
+.export api_con_getkey, api_con_keys
 .export api_con_colour, api_con_break, con_hide
 .export CHRIN, CHROUT, clear
 .exportzp con_last_row, con_last_col
@@ -97,6 +97,7 @@ ansi_state:   .res 1            ; 0, ANSI_ESC after Esc, ANSI_CSI after Esc [
 con_default:  .res 1            ; the colour Esc[0m sets: the one api_con_colour last set
 con_broke:    .res 1            ; 1 when Ctrl+C came in BREAK_CATCH since api_con_break's last get
 con_hide:     .res 1            ; bit 6 set keeps the cursor hidden; api_con_cursor sets it
+kbd_held:     .res 1            ; bit n set while key n of kbd_held_keys is down
 ansi_count:   .res 1            ; the index of the parameter being read
 ansi_params:  .res ANSI_PARAMS  ; the parameters, each modulo 256
 scr_row:      .res 1            ; api_con_screen: the row and column the line started at
@@ -123,7 +124,8 @@ con_init:
         stz VERA_DC_BORDER
         stz con_broke
         stz con_hide
-        lda #$60                ; map 64 rows by 128 columns, 1 bpp tiles
+        stz kbd_held
+        lda #$60               ; map 64 rows by 128 columns, 1 bpp tiles
         sta VERA_L1_CONFIG
         lda #SCREEN_MAP >> 9
         sta VERA_L1_MAPBASE
@@ -552,7 +554,9 @@ con_in:
 con_status:
         lda con_key
         ora con_scan
-        bne @done
+        beq @read
+        rts
+@read:
         php
         sei                     ; x16emu pastes only while I is clear
         ldx RAM_BANK
@@ -575,22 +579,26 @@ con_status:
 @queued:
         stx RAM_BANK
         plp
-        bra @key
+        bra con_char
 @smc:
         stx RAM_BANK
         plp
         jsr kbd_get
-@key:
+
+; con_char: makes A the waiting character, or with A = 0 and con_scan set the waiting extended
+; key; A = 0 and con_scan = 0 is none. Ctrl+C obeys PSP_BREAK. Returns as con_status does.
+con_char:
         cmp #$03                ; Ctrl+C
         beq @break
 @store:
         sta con_key
         ora con_scan            ; kbd_get sets con_scan for an extended key
-@done:
         rts
 @break:
         ldx PSP_BREAK
         beq @store              ; BREAK_OFF: a character
+; con_brk: obeys a Ctrl+C for X = PSP_BREAK, BREAK_END or BREAK_CATCH. Returns A = 0.
+con_brk:
         dex
         bne @catch
         jmp exec_break          ; BREAK_END
@@ -709,6 +717,44 @@ api_con_getkey:
         stz con_key
 @mods:
         ldy kbd_mods
+        clc
+        rts
+
+; api_con_keys: reads every keycode the SMC holds. When no character waited, the first key that
+; gives one waits for con_in; the characters of the keys after it are lost. A Ctrl+C obeys
+; PSP_BREAK in both cases.
+; Returns the keys held in A: $01 Right, $02 Left, $04 Down, $08 Up, $10 Space, $20 Enter,
+; $40 Esc, $80 Ctrl; kbd_mods in X. Returns carry clear.
+api_con_keys:
+        ldx #SMC
+        ldy #SMC_KEYCODE
+        jsr i2c_read_byte
+        bcs @done
+        beq @done
+        ldx con_key
+        bne @drop
+        ldx con_scan
+        bne @drop
+        jsr kbd_key             ; sets con_scan for an extended key
+        jsr con_char
+        bra api_con_keys
+@drop:
+        ldx con_scan
+        phx
+        jsr kbd_key
+        plx
+        stx con_scan
+        cmp #$03                ; Ctrl+C
+        bne api_con_keys
+        ldx PSP_BREAK
+        beq api_con_keys        ; BREAK_OFF: lost as the others are
+        jsr con_brk
+        bra api_con_keys
+@done:
+        ldx kbd_mods
+        txa
+        and #MOD_CTRL
+        ora kbd_held
         clc
         rts
 
@@ -1240,10 +1286,31 @@ kbd_get:
         ldx #SMC
         ldy #SMC_KEYCODE
         jsr i2c_read_byte
-        bcs @none
-        beq @none
+        bcc @read
+        lda #0                  ; the SMC does not answer: no keycode
+@read:
+        bne kbd_key
+        rts
+
+; kbd_key: kbd_get's work on the keycode in A, nonzero, bit 7 set on release. Sets kbd_held.
+kbd_key:
         tay                     ; Y = keycode, bit 7 set on release
         and #$7F
+        ldx #kbd_held_bits - kbd_held_keys - 1
+@held:
+        cmp kbd_held_keys,x
+        bne @next
+        pha
+        lda kbd_held_bits,x
+        tsb kbd_held
+        cpy #$80
+        bcc @down
+        trb kbd_held
+@down:
+        pla
+@next:
+        dex
+        bpl @held
         ldx #kbd_mod_bits - kbd_mod_keys - 1
 @modifier:
         cmp kbd_mod_keys,x
@@ -1377,6 +1444,15 @@ kbd_mod_bits:
         .byte MOD_SHIFT, MOD_SHIFT
         .byte MOD_CTRL, MOD_CTRL
         .byte MOD_ALT, MOD_ALT
+
+; The keycodes api_con_keys reports, and their bits. Bit 7 is Ctrl, from kbd_mods.
+kbd_held_keys:
+        .byte $59, $4F, $54, $53                ; Right, Left, Down, Up
+        .byte KEY_SPACE, $2B, $6E               ; Space, Enter, Esc
+kbd_held_bits:
+        .byte $01, $02, $04, $08, $10, $20, $40
+        .assert * - kbd_held_bits = kbd_held_bits - kbd_held_keys, error, "kbd_held_bits needs one bit a key"
+        .assert MOD_CTRL = $80, error, "api_con_keys gives Ctrl as bit 7 from kbd_mods"
 
 ; The modifiers F1 to F10 check, the last first, and the scan code of F1 less KEY_F1 with no
 ; modifier and with each.

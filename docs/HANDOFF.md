@@ -744,6 +744,68 @@ Steps, one at a time:
   `help/MKHELP.PY`: exit 0, 178 ms, 48 topics, 4 examples. `docs/API.md` is `genapi.py`'s
   output, already current. PLAN: the `VERA.UXI` row, ROM bank 1 holds calls 61 and 62, bank 2
   `BASIC.COM`, VRAM rows for the bitmap, the box stack and the sprite attributes.
+- V1 to G7n, the cbm drop and the doc batch are committed in c24b2bc (local; the user pushes).
+  `tests/VERAGFX.OUT` is not committed. Still untested: VERAGFX, VERABOX, GFXDEMO.UXB, the G7l
+  LF load, `make test` (no sim65).
+
+The sprite editor plan (the user, 2026-11-08). `SPRED`, a UXCBASIC program in
+`src/utils/spred`, builds `card/sys/SPRED.COM`, on the pattern of `FONTEDIT.UXB`. `SPRDEMO`
+moves a sprite with the keys: `src/utils/sprdemo/SPRDEMO.UXB` to `card/sys/SPRDEMO.COM`, and
+`card/source/basic/SPRDEMO.bas`. The user's answers:
+
+1. A sheet file is `.SPR`: a 32-byte header, then the frames. Bytes 0-2 `SPR`, 3 version 1, 4
+   the width code and 5 the height code (0 to 3: 8, 16, 32, 64 pixels), 6 the mode (0 4 bpp,
+   1 8 bpp), 7 the palette offset, 8-9 the frame count, 10-31 zero. One size a sheet. A file
+   `VLOAD`ed at a 32-aligned VRAM address A has frame k's shape at A / 32 + 1 + k * (the frame's
+   bytes) / 32: `VLOAD "SHIP.SPR",$14000`, then `SPRITE 0 SHAPE $A01`.
+2. Palette editing comes after the files step: a 16-color slice saved as a raw 32-byte `.PAL`,
+   `VLOAD`ed at $1FA00 + 32 * the slice.
+3. Game keys come from a held-key ROM call, call 63 `con_keys`.
+4. The mouse comes after E3. Sprite 0 stays free for its pointer.
+
+Steps: K1 the call (asm), K2 `KEYS.UXI` and an MSBASIC function, D1 `SPRDEMO.UXB`, D2
+`SPRDEMO.bas`, E1 to E3 the editor's grid, frames and files, E3a the palette, E4 the tools, E5
+the export, M the mouse, then one doc batch. Not in the plan: opening headerless `.SPR` files
+of other tools.
+
+- K1 done: call 63 `con_keys` in `src/asm/console.s`, the last entry of the gate page; a next
+  call needs another page or a function number. `api_con_keys` reads keycodes from the SMC
+  until it gives 0, and runs `kbd_key` on each. When no key waited, the first one's character
+  goes through `con_char`, so it waits for `con_in` and Ctrl+C obeys `PSP_BREAK`; after that
+  `con_scan` is kept and the characters are lost. It returns A = `kbd_held` with bit 7 from
+  `kbd_mods`' `MOD_CTRL`: $01 Right, $02 Left, $04 Down, $08 Up, $10 Space, $20 Enter, $40 Esc,
+  $80 Ctrl; X = `kbd_mods`. `kbd_get` is split: it reads the SMC, and `kbd_key` does the rest,
+  first setting or clearing `kbd_held`'s bit from `kbd_held_keys` and `kbd_held_bits`. The
+  tail of `con_status` is now `con_char`. `con_init` clears `kbd_held`. A key pressed and
+  released between two calls does not show. Bytes: bank 0 CODE +83, RODATA +14, about 4777
+  free below `$FFA0`; KERNELRAM +1, 68 free. Each keycode costs about 90 cycles more in
+  `kbd_key`. `build.py`: exit 0, 20.73 s, every program compiled again for `api.inc`; not a
+  baseline. `docs/API.md` and `lib/DOS.UXI` are `genapi.py`'s output. No test yet. Not
+  committed. Next: the user checks the keys still type in the shell, arrows and Ctrl+C
+  included; then K2.
+- K2, the UXCBASIC half: `lib/KEYS.UXI` gains `ENUM HELD_KEY` (RIGHT $01 to CTRL $80) and
+  `FUNCTION HELD_KEYS() AS UBYTE`, an ASM block: `phx`, `jsr $03FD`, `sta`, `plx`. The header
+  shows its use. It adds bytes only when called: a scratch program that calls it is 15 bytes
+  longer than one that reads `PEEK(2)`. `build.py`: exit 0, 13.52 s, the new baseline; the
+  programs that include `KEYS.UXI` compile to the same bytes. Not committed.
+- K2, the MSBASIC half: the user named it `KEYHELD(n)` and approved its asm. n 0 gives the held
+  keys, any other n the modifiers. `KEYHELD` in `MSBASIC/src/6502dos_extra.s` calls
+  `API_CON_KEYS`, tests `FAC`'s exponent byte for n, and returns through `GIVAYF`. Its keyword
+  follows `SPRITEHIT` in `token.s`, under `CONFIG_KEYHELD` in `defines_6502dos.s`; the tokens
+  `LEFT$` to `GO` move up by 1. Bank 2 +23 (14 code, 9 keyword), 13754 held, 2630 free.
+  Logged in `MSBASIC/docs/changes.md`. `build.py`: exit 0, 1.60 s, no program stale. Not
+  committed; no test yet. For the doc batch: `MSBASIC/docs/keywords.md`'s token table and a
+  `HELPBAS.HLP` topic.
+- K1 fix, asm approved: the user's test `10 PRINT KEYHELD(0): GOTO 10`, an arrow, then Ctrl+C
+  did not break, as `api_con_keys`' `@drop` path lost the Ctrl+C. On that path a Ctrl+C now
+  obeys `PSP_BREAK` through `con_brk`, a new label at `con_char`'s `dex`; under `BREAK_OFF` it
+  is lost as the other characters are. Bank 0 +14; bank 0 ends at `$ED02`, GATE included, 4765
+  free below `$FFA0`. About 10 cycles more on each dropped key. `build.py`: exit 0, 1.37 s,
+  outer 1534 ms, the ROM only, the new baseline. The user's rerun of the test passes: Ctrl+C
+  breaks.
+- Read from the code, not tested, not fixed: MSBASIC `GET` waits in `con_in`, which returns on a caught Ctrl+C only for
+  `api_con_screen`; so a Ctrl+C during `GET` breaks at the next key.
+- K1, K2 and the K1 fix are committed (local; the user pushes). Next: D1.
 
 9. Older, still open: UXC-HELP topics for `PICKFILE.UXI` and `CONS.UXI`; the
    GUI.UXI contract fixes; PLAN section 11 steps 8 to 10, after beta 1.

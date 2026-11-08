@@ -446,6 +446,24 @@ COLOR:
         jmp     TA_INK
 .endif
 
+.ifdef CONFIG_KEYHELD
+; ----------------------------------------------------------------------------
+; "KEYHELD" FUNCTION: KEYHELD(N). N = 0 GIVES THE KEYS HELD DOWN: 1 RIGHT,
+; 2 LEFT, 4 DOWN, 8 UP, 16 SPACE, 32 ENTER, 64 ESC, 128 CTRL. ANY OTHER N
+; GIVES THE MODIFIERS: 1 SHIFT, 4 CAPS LOCK ON, 64 ALT, 128 CTRL. CALL 63,
+; con_keys, READS EVERY KEY THE KEYBOARD HOLDS.
+; ----------------------------------------------------------------------------
+KEYHELD:
+        jsr     API_CON_KEYS		; A = the keys, X = the modifiers
+        ldy     FAC			; the exponent, 0 when N = 0
+        beq     @keys
+        txa
+@keys:
+        tay
+        lda     #0
+        jmp     GIVAYF
+.endif
+
 .ifdef CONFIG_QUIT
 ; ----------------------------------------------------------------------------
 ; "QUIT" STATEMENT: QUIT [N]. ENDS BASIC AND RETURNS TO THE PROGRAM THAT RAN

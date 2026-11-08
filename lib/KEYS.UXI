@@ -8,11 +8,17 @@
 ' GETKEY() gives one character a call: 0 for an extended key, then its scan code at the next
 ' GETKEY(). The SCAN_ names are those scan codes.
 '
-' It holds constants and BINDs only, so it adds no bytes to a program. Include it in any file, with or
-' without DOS.UXI.
+' HELD_KEYS() gives the game keys held down, as HELD_KEY bits:
 '
-' Checklist: the codes come from kbd_get and its tables in src/asm/console.s. Change both
-' together.
+' DIM HELD AS UBYTE
+' HELD = KEYS.HELD_KEYS()
+' IF HELD AND KEYS.HELD_KEY.RIGHT THEN X = X + 1
+'
+' Its constants and BINDs add no bytes to a program, and HELD_KEYS() adds bytes only when
+' called. Include it in any file, with or without DOS.UXI.
+'
+' Checklist: the codes come from kbd_get, kbd_key and their tables in src/asm/console.s. Change
+' both together.
 
 NAMESPACE KEYS
   ' The key functions under KEYS.
@@ -31,6 +37,30 @@ NAMESPACE KEYS
   ' The modifier bits that KEYMODS() gives and API_CON_STATUS returns in X.
   CONST MOD_SHIFT AS UBYTE = $01, MOD_CAPS AS UBYTE = $04, MOD_ALT AS UBYTE = $40
   CONST MOD_CTRL AS UBYTE = $80
+
+  ' The bits of HELD_KEYS(), one a key.
+  ENUM HELD_KEY
+    RIGHT = $01, LEFT = $02, DOWN = $04, UP = $08
+    SPACE = $10, ENTER = $20, ESC = $40, CTRL = $80
+  END ENUM
+
+  ' Returns the HELD_KEY bits of the keys held down. It reads every key press and release the
+  ' keyboard holds, so a game calls it once a frame. When no key was waiting, the first key read
+  ' that gives a character waits for GETKEY(), and Ctrl+C there obeys the break mode. The
+  ' characters of the keys after it are lost. A key pressed and released between two calls does
+  ' not show as held.
+  ' Checklist: $03FD is call 63, con_keys; tools/genapi.py writes it into lib/DOS.UXI as
+  ' API_CON_KEYS. Change this one when that one moves.
+  FUNCTION HELD_KEYS() AS UBYTE
+    DIM HELD AS UBYTE
+    ASM
+        phx
+        jsr $03FD               ' con_keys
+        sta @HELD
+        plx
+    END ASM
+    RETURN HELD
+  END FUNCTION
 
   ' Scan codes: the cursor keys and the editing keys.
   CONST SCAN_HOME AS UBYTE = $47, SCAN_UP AS UBYTE = $48, SCAN_PGUP AS UBYTE = $49

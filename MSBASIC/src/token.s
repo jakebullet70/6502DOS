@@ -234,6 +234,9 @@ UNFNC_ATN:
 .ifdef CONFIG_VERA
 		keyword_addr "SPRITEHIT", SPRITEHIT
 .endif
+.ifdef CONFIG_KEYHELD
+		keyword_addr "KEYHELD", KEYHELD
+.endif
 		keyword_addr "LEFT$", LEFTSTR, TOKEN_LEFTSTR
 		keyword_addr "RIGHT$", RIGHTSTR
 		keyword_addr "MID$", MIDSTR, TOKEN_MIDSTR
