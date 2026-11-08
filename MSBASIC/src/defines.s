@@ -1,10 +1,4 @@
-.if .def(cbmbasic1)
-CBM1 := 1
-.include "defines_cbm1.s"
-.elseif .def(cbmbasic2)
-CBM2 := 1
-.include "defines_cbm2.s"
-.elseif .def(sim)
+.if .def(sim)
 SIM := 1
 .include "defines_sim.s"
 .elseif .def(DOS6502)

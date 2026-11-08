@@ -492,6 +492,21 @@ L24D0:
 L24A8:
         lda     #$80
         ora     EOLPNTR
+  .ifdef CONFIG_VERA
+; SPRITE'S CLAUSE WORDS ARE KEYWORDS ONLY IN A SPRITE STATEMENT: DATAFLG BIT 7,
+; SET BY THE SPRITE TOKEN, CLEARED BY ':' AT L24BF.
+        cmp     #TOKEN_SPRITE
+        bne     @clause
+        sta     DATAFLG
+        .assert TOKEN_SPRITE < $C0, error, "DATAFLG bit 6 reads the SPRITE token as DATA"
+@clause:
+        cmp     #TOKEN_OFF
+        bcc     L24AA
+        cmp     #TOKEN_HIT+1
+        bcs     L24AA
+        bit     DATAFLG
+        bpl     L24D7		; outside SPRITE: try the next keyword
+  .endif
         bne     L24AA		; always
 ; ----------------------------------------------------------------------------
 ; A KEYWORD THAT ENDS IN A LETTER, WITH A LETTER BEHIND IT, IS THE START OF A

@@ -363,29 +363,389 @@ The DB decisions of 2026-10-28 are in `docs/DB.PLAN.md`: MSBASIC's float in DB.C
 `LOG`, `SQR`, `FPWRT`, `EXP` and the polynomials, `N` fields of 1 to 10 characters, and the `N`
 rewrite in the key. The DB work through A2c4b is committed in f16cde7.
 
-The sprite, VRAM and graphics plan is not complete. It is under Next, at "sprite commands in
-namespace VERA". No asm is written for it. Each question waits on the user.
+The sprite, VRAM and graphics plan is under Next, at "sprite commands in namespace VERA". The
+user's answers (2026-11-06):
 
-Resume here (2026-10-26): the plan and these questions are committed in ad1a475. They are on
-hold (the user, 2026-10-26); other work comes first. When they resume: the user's answers, then
-asm only on their word. Current work: TED in RAM banks, done, not committed (Next, the end of
-the beta 1 list).
+1. The ROM call `vera`, in bank 1, with a function number: yes. Call 53 is `absread` now; `vera`
+   is call 61, entry `$03F7`.
+2. Graphics in a call of its own, `gfx`, call 62, entry `$03FA`.
+3. Modes: SCREEN 1 (640x240, 4 colors), SCREEN 2 (40x30 text, 320x240, 16 colors) and SCREEN 3
+   (40x25 text, 320x200, 256 colors). The text map stays at $10000.
+4. VERA FX (the line helper, cache writes) with a plain fallback: yes.
+5. The UXCBASIC SUBs in namespace VERA: yes.
+6. The MSBASIC statements `SPRITE n` and its clauses, MASK kept, `SPRITE CLEAR HIT`,
+   `SPRITEHIT(g)`, VMEMSET, MEMCPYMV, MEMCPYVM and VLOAD: yes.
+7. MSBASIC's VPOKE and VPEEK take a 17-bit address, and `tests/vera.bas` changes with them: yes.
+8. The ROM does not turn sprites off when a program exits.
 
-1. ROM call 53 `vera`, entry `$03DF`, in bank 1, with a subfunction in A: yes or no?
-2. Graphics in call 53, or in a new call 54 `gfx`? Recommended: call 54.
-3. Which graphics modes: SCREEN 1 (640x240, 4 colors), SCREEN 2 (40x30 text, 320x240, 16
-   colors), SCREEN 3 (40x25 text, 320x200, 256 colors), or the text map moved to
-   $1B000-$1EFFF for 320x240 at 256 colors? Recommended: 1, 2 and 3; the map stays.
-4. VERA FX (the line helper, cache writes) with a plain fallback: yes or no?
-5. The UXCBASIC SUBs in namespace VERA (SPRITE_ON to SPRITE_XYFLIP, SPRITE_MASK, SPRITE_HIT,
-   SPRITE_CLEAR_HIT, VPOKE to MEMCPYVM): yes or no?
-6. The MSBASIC statements: `SPRITE n` and its clauses, `SPRITE CLEAR HIT`, `SPRITEHIT(g)`,
-   VMEMSET, MEMCPYMV, MEMCPYVM, VLOAD: yes or no? The clause MASK: keep or drop?
-7. MSBASIC's VPOKE and VPEEK take a 17-bit address, and `tests/vera.bas` changes with them: yes
-   or no?
-8. Does the ROM turn every sprite off when a program exits? To check in the emulator: whether
-   sprite attribute RAM is 0 at boot.
-9. Older, still open: UXC-HELP topics for `PICKFILE.UXI`, `VERA.UXI` and `CONS.UXI`; the
+Bank 1 has 2810 bytes free: B1CODE ends at $F4A5, FARIRQ1 starts at $FFA0. The IRQ does not
+touch the VERA address registers. Call 61 takes its function in Y, as `db` and `fp` do (the
+user, 2026-11-06).
+
+Steps, one at a time:
+
+- V1 done: call 61 `vera` in `src/asm/vera.s`, functions 0 `vpeek` and 1 `vpoke`; `api.py`
+  has VERA_FUNCTIONS, `genapi.py` its table. 55 bytes; B1CODE ends at $F4DC, 2755 bytes free.
+  `build.py`: exit 0, 19.49 s, every program compiled again since `api.inc` changed; no card
+  file changed. `DOS.UXI` has `API_VERA`. No test yet. Not committed.
+- V2 done: functions 2 `vfill` (`A` into `r1` bytes), 3 `vwrite` (`r2` bytes, RAM at `r1` to
+  VRAM) and 4 `vread` (`r2` bytes, VRAM to RAM at `r1`), increment 1, a count of 0 for none,
+  `r1` kept. `vera.o` is 183 bytes, 128 more; B1CODE ends at $F55C, 2627 bytes free.
+  `build.py`: exit 0, 1.36 s, the ROM only. No test yet. Not committed.
+- V3 done (the user chose the I/O-page stream): call 3 `read` on a file with a buffer in
+  `IO_PAGE`, $9F00-$9FFF (new in `mem.inc`), puts every byte at that one address: `lib_read`
+  passes carry set to `fat32_read`'s stream copy, `host_read` passes it to MACPTR, and
+  `host_advance` keeps `fat32_ptr` in place. Function 5 `vload`: `X` a file's handle, `r0` the
+  VRAM address with bit 16 in `A`, `r1` the count; it reads into `VERA_DATA0` and keeps `r0`;
+  out `r1` the bytes read. A device handle is out of contract. Call 61's errors are now 1, 5,
+  6, 21, 30. 52 bytes of bank 1: B1CODE ends at $F590, 2575 bytes free. The SD stream copy is
+  18 cycles a byte. `build.py`: exit 0, 1.34 s, outer 1510 ms, the ROM only. No test yet; MACPTR
+  stream mode on x16emu's host is untried. Not committed.
+- V4 done (the user chose field numbers and a latch in the IRQ): functions 6 `sprset` (`X`
+  sprite, `A` field, `r0` value; fields 0 depth, 1 flip, 2 collision mask, 3 palette offset,
+  4 width, 5 height, 6 mode, from the tables `vera_field_byte`, `_shift`, `_mask`), 7 `sprmove`
+  (`r0` x, `r1` y), 8 `sprshape` (`r0` VRAM address / 32, the mode kept), 9 `sprhits` (`A`
+  bits 0 to 3), 10 `sprclear` and 11 `palette` (`X` entry, `r0` $0RGB). `SPRITES` = $1FC00 in
+  `mem.inc`. The VSYNC IRQ ORs `VERA_ISR` bits 7 to 4 into `sprite_hits` (KERNELRAM, 1 byte,
+  zeroed at reset): 11 bytes of bank 0, 12 cycles a frame. 198 bytes of bank 1: B1CODE ends at
+  $F656, 2377 bytes free. `build.py`: exit 0, 1.34 s, outer 1496 ms, the ROM only. No test yet.
+  Not committed.
+- V5 done: `lib/VERA.UXI` wraps each function in an ASM block that runs `jsr $03F7` (an ASM
+  `jsr NAME` takes NAME as a label, so not a CONST): `VPEEK`, `VPOKE`, `VMEMSET`, `MEMCPYMV`
+  (RAM source first), `MEMCPYVM`, `VLOAD` (returns the bytes read, sets `VERA.ERROR`),
+  `SPRITE_SET` with `ENUM SPRITE_FIELD` (DEPTH, FLIP, MASK, PALETTE, WIDTH, HEIGHT, MODE),
+  `SPRITE_MOVE`, `SPRITE_SHAPE` (address / 32), `SPRITE_HITS`, `CLEAR_HITS` (a name is 16
+  characters at most), `PALETTE`. A VRAM address is a ULONG. All 12 together: 333 bytes of
+  region 3; a SUB adds bytes only when called. A scratch program calling each compiled; not
+  run. MSBASIC's `K_VPEEK` and `K_VPOKE` call `API_VERA` through `DOS_VREG` (r0 = LINNUM, X =
+  bank bit 0): 31 bytes, 2 fewer, plus the gate's cycles a call; `stz VERA_CTRL` dropped.
+  MSBASIC `make CC65=tools/cc65/bin build/6502dos.bin`: exit 0, 287 ms. `build.py`: exit 0,
+  9.34 s, 6 programs recompiled for the newer `VERA.UXI`. No test yet. Not committed.
+- V6 done: MSBASIC's `VPEEK(addr)` and `VPOKE addr,n` take one address, 0 to $1FFFF, else
+  ?ILLEGAL QUANTITY. `GETVADR` in `poke.s` (`CONFIG_VERA`): LINNUM = bits 0 to 15, A = bit 16;
+  it shares GETADR's tail through the new label `GETADR_QINT`. `K_VPEEK` and `K_VPOKE` take
+  A = bit 16; `DOS_VREG` lost its `and #$01`. Bytes: VPEEK 34 (9 fewer), VPOKE 14 (1 fewer),
+  GETVADR 16, DOS_VREG 2 fewer: 4 more in all. `tests/vera.bas` and both goldens
+  (`vera.out`, `vera.rom.out`) rewritten for the new syntax, plus `VPEEK($1FFFF)`. Doc lines
+  still on the old `VPEEK(bank,addr)`: MSBASIC `CLAUDE.md`, `README.md`, `docs/keywords.md`,
+  `docs/changes.md` (a new entry). MSBASIC make: exit 0, 281 ms. `build.py`: exit 0, 1.46 s,
+  outer 1623 ms. No test yet. Not committed.
+- V7a done: MSBASIC statements `VMEMSET addr,n,len`, `MEMCPYMV ram,addr,len`, `MEMCPYVM
+  addr,ram,len` (`vera.s`), a len of 0 for none. `VGETV` puts a video address in `VADR` and
+  `VBANK`, `VGETR` a RAM address in `VARG`, `VGETLEN` ",len" in LINNUM; `VADR`, `VARG`, `VBANK`
+  are 5 bytes of IORAM (28 free). Target primitives `K_VMEMSET`, `K_VWRITE`, `K_VREAD` (stubs in
+  the sim); in 6502dos they call 61's vfill, vwrite, vread through `DOS_VBLK` (r0 = VADR, r1 =
+  VARG, r2 = LINNUM, X = VBANK). Bytes of bank 2: vera.s 85, keywords 29, 6502dos_extra.s 52;
+  166 in all, 3249 free before $FFA0. Token numbers past SCREEN move up 3 (`TOKEN_GO` $EA).
+  Proposed, not done: vfill's count in r2, as vwrite's, saves 8 bytes of `K_VMEMSET` (ROM
+  `vera.s`, `VERA.UXI` `VMEMSET`, `docs/API.md` change with it). `tests/vera.bas` has 6 new
+  lines; both goldens extended by hand. MSBASIC make of 6502dos and sim: exit 0, 440 ms.
+  `build.py`: exit 0, 1.37 s, outer 1550 ms. No test yet. Not committed.
+- V7b done: MSBASIC statement `VLOAD "name",addr` (`vera.s`) copies the whole file, raw, to
+  video memory; a missing file is ?FILE NOT FOUND. `K_VLOAD` (a stub in the sim) opens the
+  file with `K_OPEN`, calls 61's vload $8000 bytes a call through `DOS_VBLK` (VARG = the
+  count), adds $8000 to VADR and VBANK after a full read, stops on a short read or a read
+  error, then closes. Bytes of bank 2: vera.s 12, keyword 7, 6502dos_extra.s 57; 76 in all,
+  3173 free before $FFA0. Tokens past VLOAD move up 1 (`TOKEN_GO` $EB, 20 left).
+  `tests/vera.bas` has 5 new lines: write "AB" to `vera.tmp`, VLOAD it to $1F000 (ROM 65 66,
+  sim 0 0), a missing file (ROM the error, sim prints SIM), $20000, no address; both goldens
+  extended by hand. A file over $8000 bytes is untested. MSBASIC make of 6502dos and sim:
+  exit 0, 416 ms. `build.py`: exit 0, 1.32 s, outer 1474 ms. No test yet. Not committed.
+- V7c done (the user chose tokens gated to SPRITE, XYSIZE in pixels): MSBASIC statement
+  `SPRITE n clause ...` (`vera.s`), clauses ON, OFF, AT x,y, SHAPE s, COLOR c, LOWCOL,
+  HICOL, XYSIZE w,h (8, 16, 32, 64 pixels; `SPR_SIZE` makes the code), XYFLIP x,y, ZDEPTH z,
+  MASK m, in any order; `SPRITE CLEAR HIT`; the function `SPRITEHIT(g)`, -1 or 0 for mask
+  bit g. VBANK holds n. The 10 clause words (OFF to HIT) are keywords after `<`, before
+  TOKEN_SGN; `program.s` L24A8 crunches them only while DATAFLG bit 7 is set, which the
+  SPRITE token sets and ':' clears. Trap: plain-text clause words fail after a variable
+  (`Y SHAPE` reads as the variable YS). Dispatch: `SPR_TABLE` by token, the clause's RTS
+  back to `SPR_CLAUSE`. Target primitives `K_SPRSET`, `K_SPRMOVE`, `K_SPRSHAPE`,
+  `K_SPRCLEAR`, `K_SPRHITS` (stubs in the sim, sprhits 0) call 61 through `DOS_VBLK`. Bytes of
+  bank 2: vera.s 229, keywords 65, `program.s` gate 18, 6502dos_extra.s 22; 336 in all, 2837
+  free before $FFA0. Tokens: SPRITE $AF, OFF to HIT $C9 to $D2, `TOKEN_GO` $F7, 8 left. No new
+  RAM. `tests/vera.bas` has 10 new lines: every clause read back with VPEEK at $1FC08, a
+  variable before a clause, AT and OFF as variables outside SPRITE, SPRITEHIT after CLEAR,
+  ?SYNTAX for `AT 5`, LIST of a SPRITE line; both goldens extended by hand. The ROM's
+  SPRITEHIT 0 assumes no other sprite with a mask bit overlaps. MSBASIC make of 6502dos and
+  sim: exit 0, 448 ms. `build.py`: exit 0, 1.37 s, outer 1532 ms. No test yet. Not committed.
+- Fix done (the user's ask): `PRINT GO` reached UNARY with a token past MID$ and jumped
+  through bytes past UNFNC. UNARY (`eval.s`) now gives ?SYNTAX for a token past
+  `TOKEN_MIDSTR` (new name on MID$ in `token.s`); the check sits in UNARY, as 4 bytes at L2D74
+  push `bcs FRM_VARIABLE` out of range. 4 bytes, 4 cycles a function call, both targets.
+  `tests/errors.bas` has `print go`, the golden ?SYNTAX ERROR, extended by hand. MSBASIC make
+  of 6502dos and sim: exit 0, 531 ms. `build.py`: exit 0, 1.36 s, outer 1517 ms. No test yet.
+  Not committed.
+- Call 62 `gfx`, steps (2026-11-06): G1 the call, `mode` 0 and 1, `clear`; G2 the console's
+  ROWS and COLUMNS as variables, then screens 2 and 3; G3 `pset`, `point`; G4 `line`, VERA FX
+  with a plain fallback; G5 `frame`, `rect`, `circle`; G6 `char`; G7 MSBASIC's statements and
+  the SUBs in `VERA.UXI`. The user (2026-11-06): `exit` puts screen 0 back.
+- G1 done: call 62 `gfx`, entry `$03FA`, in `api.py` (`GFX_FUNCTIONS`) and `genapi.py`;
+  functions 0 `mode` (`A` 0 the text alone, 1 the text over a 640 by 240 bitmap at 2 bpp at
+  `BITMAP` = $00000, 38400 bytes; tables `gfx_config`, `gfx_tilebase`) and 1 `clear` (`A`
+  color 0 to 3, every byte of the bitmap, 9 cycles a byte, about 43 ms). New
+  `src/asm/gfx.s`; `api_gfx` in `vera.s` adds VERA_COUNT to Y and runs `vera_table`, which
+  holds gfx's routines after vera's. `mem.inc`: `VERA_L0_CONFIG`, `_TILEBASE`, `_HSCROLL_H`,
+  `BITMAP`, `BITMAP_SIZE`. `exec_quit` (`exec.s`) turns layer 0 off. Bytes: bank 1 81 (gfx.s
+  68, dispatch and table 13), B1CODE ends at $F6A7, 2297 free; bank 0 6. No RAM. Trap for G7:
+  `VERA.UXI`'s SAVE_RECT stack starts at VRAM $00000, inside the bitmap. `build.py`: exit 0,
+  19.89 s, outer 20086 ms, every program compiled again for `DOS.UXI`'s `API_GFX`. No test yet:
+  no program calls 62 until G7. Not committed.
+- G2a done: the console's size is in kernel ZP, `con_last_row` and `con_last_col` (`console.s`,
+  rows and columns less 1, adjacent for ansi's locate), set in `con_init` from `ROWS` and
+  `COLUMNS`, now boot values only. All 23 uses read them; `ansi_last` is gone. Nothing sets
+  them yet; G2b does. Bytes: bank 0 about +10 by count (con_init 8, the `inx`/`iny` of 4 uses,
+  less 4 for `ansi_last` and its zp,x), 2 ZP; kernel ZP is now full, $80 of $80. A compare or
+  load of the size takes 1 cycle more; `put` 1 more a character. `build.py`: exit 0, 1.35 s,
+  outer 1497 ms. No test yet. Not committed.
+- G2b done: `gfx_mode` takes screens 0 to 3 from 7 tables by screen (L0_CONFIG, L0_TILEBASE,
+  DC_HSCALE, `con_last_col`, `con_last_row`, DC_VSTART, DC_VSTOP), then clears the text and
+  puts the cursor home by `FARCALL clear, jsrfar1`. Screen 2: HSCALE $40, 4 bpp, 40x30.
+  Screen 3: HSCALE $40, 8 bpp, 40x25, DCSEL 1 VSTART 20 and VSTOP 220 (lines 40 to 440 of
+  480). `gfx_clear` takes the depth from L0_CONFIG: 2 bpp by `gfx_nibble` then 4 bpp, the
+  nibble in both halves; 8 bpp the color itself; 150 pages, or 250 on screen 3 (about 72 ms).
+  Screen 0 is out of its contract. `exec_quit` runs `gfx_mode` 0 when DC_HSCALE bit 7 is
+  clear (screens 2 and 3), so a text program's exit keeps its screen. `mem.inc`:
+  `VERA_DC_VSTART`, `_VSTOP`, `BITMAP3_SIZE`. `console.s` exports `clear` and, zp,
+  `con_last_row`, `con_last_col`. `api.py`'s notes for 62 changed; `api.inc` did not. Bytes:
+  bank 1 93 (gfx.o 161), B1CODE ends at $F704, 2204 free; bank 0 15 (`exec_quit` 13, and
+  `exec_fail`'s `bra exec_unwind` and the `bra exit_normal` before `@start` became `jmp`, out
+  of range). No RAM. `exec_quit` 7 cycles more on 80 columns. Untried: that layer lines start
+  at DC_VSTART. `monitor.s` `LINE_MAX` 79 is untouched; the monitor runs after `exit`, in 80
+  columns. Proposed: DC_VSTOP as 240 less DC_VSTART (`eor #$FF`, `sec`, `adc #240`) saves 2
+  bytes. `build.py`: exit 0, 1.35 s, outer 1504 ms. No test yet: no program calls 62 until
+  G7. Not committed.
+- G3 done: gfx functions 2 `pset` (`A` color, `r0` x, `r1` y) and 3 `point` (`r0` x, `r1` y;
+  returns `A` the color), in `gfx.s`, `vera_table` and `api.py` (call 62 now lists `r0`, `r1`
+  in and `A` out). `gfx_at` points port 0 at the pixel's byte: y times 5 times 32 (160 bytes
+  a row) or 64 (320), worked in VERA_ADDR_M:A, plus x / 4, x / 2 or x by L0_CONFIG; it returns
+  Y = the pixel's place, x AND `gfx_place_and` OR `gfx_place_or`, into `gfx_mask` (the bits)
+  and `gfx_shift` (down to bit 0). `gfx_spread` (from `gfx_clear`) puts the color in every
+  pixel of a byte, so `pset` needs no shift: old EOR color AND mask EOR old. Bytes: bank 1 163
+  (gfx.o 161 to 320, 4 in `vera_table`), B1CODE ends at $F7A7, 2041 free; bank 0 0. No RAM.
+  Cycles, by count: `gfx_at` about 190 on screen 1; `pset` about 270 on screen 1, 230 on
+  screen 3; `point` about 235 on screen 1. Proposed: a table of the 240 row addresses (480
+  bytes) saves about 90 cycles a pixel. `api.inc` gained `GFX_PSET`, `GFX_POINT`; `DOS.UXI`
+  did not change. `build.py`: exit 0, 1.50 s, outer 1662 ms. No test yet: no program calls 62
+  until G7. Not committed.
+- G3 row table done: `gfx_at` reads row y's address from `gfx_row_high` (240 bytes, by y) and
+  `gfx_row_low` (8 bytes, by y AND 7: the low byte of y times 160 repeats every 8 rows), and
+  doubles it on screen 3; it no longer multiplies. Bytes: bank 1 +237 (gfx.o 320 to 557: code
+  -11, tables +248), B1CODE ends at $F894, 1804 free; bank 0 0. No RAM. Cycles, by count: the
+  row part 108 to 34 on screens 1 and 2, 120 to 41 on screen 3, so `pset` about 196 on screen
+  1, `point` about 161; `gfx_row_high` crosses a page, +1 for y from 14. `build.py`: exit 0,
+  1.40 s, outer 1560 ms. No test yet. Not committed.
+- G4a done (the plain line, every screen; G4b adds VERA FX on screens 2 and 3): gfx function
+  4 `line` (`A` color, `r0` `r1` to `r2` `r3`, both ends included), Bresenham through
+  `gfx_plot`, the new entry of `pset` after `gfx_spread`, so the color is spread once a line.
+  `r4` = |dx|, `r5` = minus |dy|, `r6` the error, `r7` bit 7 x rises, bit 6 y rises, high
+  byte the color; the error times 2 sits in X:Y while it steps. Returns `r0` `r1` = `r2` `r3`;
+  changes `r4` to `r7`. `api.py`: call 62 in `A r0-r3`, out `A r0 r1 r4-r7`. Bytes: bank 1
+  +179 (gfx.o 557 to 734, `vera_table` 2), B1CODE ends at $F947, 1625 free; bank 0 0. No RAM.
+  Cycles, by count: about 250 a pixel on screen 1, about 100 of them the stepping, so a line
+  640 across about 20 ms. `build.py`: exit 0, 1.34 s, outer 1501 ms. No test yet. Not
+  committed.
+- G4b done (VERA FX line on screens 2 and 3): `gfx_line` calls `gfx_line_fx` after its setup;
+  carry set means FX drew the line, else the plain loop runs. `gfx_line_fx` runs on 4 or 8 bpp
+  with DC_VER0 = 'V' and a version of 0.3.1 or later, read at DCSEL 63 each line. It points
+  ADDR1 at the first pixel through `gfx_at` with ADDRSEL 1, sets ADDR1_H to the major axis's
+  step and the nibble address, and ADDR0_H to the minor axis's step: 4 bpp x by the nibble
+  increment ($04), y by 160 ($D0); 8 bpp x by 1 ($10), y by 320 ($E0); DECR ($08) when the
+  axis falls. The slope is minor * 1024 / major by 10 shift-subtract steps, then (q + 1) / 2
+  into FX_X_INCR, written after FX_CTRL = line draw ($01, $05 with 4-bit mode on 4 bpp) so the
+  position starts at half a pixel. It writes the color to DATA1 major + 1 times, then clears
+  FX_CTRL and VERA_CTRL and sets `r0` `r1` = `r2` `r3`. The rounded slope keeps each pixel
+  within 0.31 of the true line for majors to 319, so both ends are exact; a pixel between them
+  can differ by one from the plain steps. IRQ touches only VERA_ISR, so FX needs no SEI.
+  mem.inc: VERA_DC_VER0 to 3, VERA_FX_CTRL, VERA_FX_X_INCR_L and _H. Not checked: the nibble
+  address 0 is the left pixel, as VERA's 4 bpp layout. Bytes: bank 1 +238 (gfx.o 734 to 972),
+  B1CODE ends at $FA35, 1386 free; bank 0 0. No RAM. Cycles, by count: about 650 setup (400 of
+  them the divide) and 11 a pixel, so a line 320 across about 0.5 ms against about 10 ms
+  plain. `build.py`: exit 0, 1.37 s, outer 1520 ms. No test yet. Not committed.
+- G5a done (`frame` and `rect`; G5b `circle`): gfx functions 5 `frame` and 6 `rect` (`A`
+  color, `r0` `r1` to `r2` `r3`, `r0` <= `r2`, `r1` <= `r3`), in `gfx.s`, `vera_table` and
+  `api.py`; they keep `r0` to `r3` and change `r4` to `r7`. One row loop serves both: `r7`
+  bit 7 set for `frame` (`sec`, then `.byte $24`, a BIT zp that skips `rect`'s `clc`), `r7+1`
+  the spread color, `r6` the top row. `rect` fills every row; `frame` fills the top and bottom
+  rows and plots `r0` and `r2` on the rows between. `gfx_span` fills row `r1` from `r0` to
+  `r2`: `gfx_at` on `r2` (through `gfx_swap`, which swaps `r0` and `r2`) gives the last byte's
+  address into `r4` and its mask (`gfx_right`) into `r5`; `gfx_at` on `r0` gives the first; the
+  first byte takes the `gfx_left` mask, then increment 1, a read of DATA0 to step, the whole
+  bytes between, and the last byte masked with no increment. The first byte alone takes both
+  masks. Bytes: bank 1 +209 (gfx.o 972 to 1177, `vera_table` 4), B1CODE ends at $FB06, 1177
+  free; bank 0 0. No RAM. Cycles, by count: about 440 a row and 9 a byte, so a `rect` of
+  screen 1 about 56 ms and of screen 3 about 83 ms; a `frame` of screen 1 about 12 ms.
+  `build.py`: exit 0, 1.42 s, outer 1586 ms. No test yet. Not committed.
+- G5a FX fill done: with VERA FX (`gfx_fx_ok`, the version check out of `gfx_line_fx`, carry
+  set for 0.3.1 or later), `rect` and `frame` load the spread color into the 4 bytes of the
+  FX cache (DCSEL 6) and set `r7` bit 7; `frame`'s flag moves to bit 6. `gfx_span`'s whole
+  bytes then go: bytes one by one up to a 4-byte boundary, groups of 4 by cache write
+  (FX_CTRL $40, increment 4, nibble mask 0), and the rest one by one. Fewer than 4 after the
+  boundary: all one by one. It works on every depth, 2 bpp too. Trap: FX stays on through the
+  groups; an IRQ that wrote VRAM or VERA_CTRL would break the row. Bytes: bank 1 +123 (gfx.o
+  1177 to 1300), B1CODE ends at $FB81, 1054 free; bank 0 0. No RAM. Cycles, by count: about
+  2.3 a byte in the groups plus about 90 a row, so a `rect` of screen 1 about 26 ms (56) and of
+  screen 3 about 32 ms (83). `build.py`: exit 0, 1.38 s, outer 1542 ms. No test yet. Not
+  committed.
+- G5b done (`circle`): gfx function 7 `circle` (`A` color, `r0` `r1` the center, `r2` the
+  radius, the whole circle on the bitmap, so below 120), in `gfx.s`, `vera_table` and
+  `api.py`; it keeps `r0` to `r3` and changes `r4` to `r7`. Midpoint steps from x = the radius,
+  y = 0, while x >= y, signed so radius 0 plots one pixel: `r4` the center's x, `r5` its y,
+  `r5+1` x, `r7` y, `r6` the 16-bit error, `r7+1` the spread color. `@eight` plots the 8
+  points as `@four` (x +- `r5+1`, y +- `r7`), a swap of `r5+1` and `r7`, `@four` again and the
+  swap back; `@two` plots both x for one y through `gfx_plot`. Bytes: bank 1 +169 (gfx.o 1300
+  to 1467, `vera_table` 2), B1CODE ends at $FC2A, 885 free; bank 0 0. No RAM. Cycles, by
+  count: about 1330 a step of 8 pixels, about 0.71 times the radius steps, so radius 100 about
+  12 ms. `build.py`: exit 0, 1.38 s, outer 1559 ms. No test yet. Not committed.
+- G6 done (`char`): gfx function 8 `char` (`A` color, `r0` `r1` the top left, `r2` the
+  character, 0 to 255, the whole 8 by 8 glyph on the bitmap), in `gfx.s`, `vera_table` and
+  `api.py`. The glyph comes from the live font at `CHARSET` ($1F000) through data port 1,
+  increment 1; port 0 stays on the pixels, and `VERA_CTRL` is 0 again before the rows. Set
+  bits plot through `gfx_plot`; clear bits keep the bitmap. A row ends at its last set bit.
+  Returns `r0` = x + 8 and `r1` as it came; changes `r4` to `r6` (`r4` the left x, `r5` the
+  rows left, `r5+1` the row's bits, `r6+1` the spread color). Trap: an IRQ that moved port 1
+  would break the glyph. Bytes: bank 1 +112 (gfx.o 1467 to 1577, `vera_table` 2), B1CODE ends
+  at $FC9A, 774 free; bank 0 0. No RAM. Cycles, by count: about 126 a set bit, 21 a bit up to
+  a row's last set bit, 30 a row; `A` about 3900 (0.5 ms), a solid block about 10700 (1.3 ms).
+  `build.py`: exit 0, 1.38 s, outer 1541 ms. No test yet. Not committed.
+- G7a done (`SCREEN`): MSBASIC's `K_SCREEN` (`6502dos_extra.s`) runs call 62's `mode` with
+  `A` = the screen; `SCREEN`'s contract (`vera.s`) is now 0 to 3. The sim's stub is unchanged.
+  Open: `WIDTH` (80) and `WIDTH2` (70) in `defines_6502dos.s` are fixed, so screens 2 and 3
+  (40 columns) keep BASIC's line width and comma stops of 80. Bytes: bank 2 +5, EXTRA ends at
+  $F493, 2828 free. No RAM. `build.py`: exit 0, 1.38 s, outer 1539 ms. No test yet. Not
+  committed.
+- G7b done (`PSET X, Y, C`): a new statement keyword after `SCREEN` (`token.s`). `PSET`
+  (`vera.s`) reads x into `VADR`, y into `VARG` and C into A; `K_PSET` (`6502dos_extra.s`) runs
+  call 62's `pset` through `DOS_VBLK`. The sim's `K_PSET` does nothing. New `VGETXY` (`vera.s`)
+  reads "X, Y" for `PSET` and `SPRITE ... AT`, which saved 3 bytes. Bytes: bank 2 +29, EXTRA
+  ends at $F4B0, 2799 free. No RAM. `build.py`: exit 0, 1.37 s, outer 1529 ms. No test yet. Not
+  committed. `keywords.md` is not yet updated (doc batch).
+- G7c done (`POINT(X, Y)`): a new function keyword after `VPEEK` (`token.s`), caught in
+  `FRM_ELEMENT` (`eval.s`). `VPOINT` (`vera.s`; the label `POINT` is taken) reads x through
+  `MKINT` onto the stack and y through `COMBYTE`, so `LINNUM`, `VADR` and `VARG` are kept and
+  `PSET X, Y, POINT(X2, Y2)` works. `K_POINT` (`6502dos_extra.s`) sets r0 and r1's low byte and
+  runs call 62's `point`. The sim's `K_POINT` gives 0. Bytes: bank 2 +57, EXTRA ends at $F4E9,
+  2742 free. No RAM. `build.py`: exit 0, 1.51 s, outer 1689 ms. The user's emulator test
+  passes: `SCREEN 1: PSET 10,10,2: PRINT POINT(10,10)` prints 2. Not committed.
+- G7d done (`LINE`, `FRAME`, `RECT X1, Y1, X2, Y2, C`): three statement keywords after `PSET`
+  (`token.s`). One body in `vera.s`: each entry loads call 62's number (4, 5, 6) and skips the
+  next `lda` with `$2C`. x1, y1 go to `VXY` (4 bytes of IORAM, just before `VADR`), x2, y2 to
+  `VADR` and `VARG`. `K_SHAPE` (`6502dos_extra.s`) copies the 8 bytes to r0 to r3 and runs
+  call 62; an `.assert` holds `GFX_LINE` = 4, `GFX_FRAME` = 5, `GFX_RECT` = 6. The sim's
+  `K_SHAPE` does nothing. Bytes: bank 2 +72, EXTRA ends at $F531, 2670 free. RAM: 4 bytes of
+  IORAM, off BASIC's free RAM. `build.py`: exit 0, 1.36 s, outer 1515 ms. No test yet. Not
+  committed.
+- G7e done (`CIRCLE X, Y, R, C`): a new statement keyword after `RECT` (`token.s`). `CIRCLE`
+  (`vera.s`) reads x into `VADR`, y into `VARG`, R into `LINNUM` through `VGETLEN`, and C into
+  A. `K_CIRCLE` (`6502dos_extra.s`) loads `GFX_CIRCLE` and skips `K_PSET`'s `ldy` with `$2C`,
+  so `DOS_VBLK` sets r0 to r2. R is 0 to 255: `gfx_circle` reads r2's low byte only. The sim's
+  `K_CIRCLE` does nothing. Bytes: bank 2 +24, EXTRA ends at $F549, 2646 free. No RAM.
+  `build.py`: exit 0, 1.39 s, outer 1553 ms. No test yet. Not committed.
+- G7f done (screen clear): `gfx_mode` (`gfx.s`) calls `gfx_clear` with color 0 on screens 1
+  to 3, so `SCREEN 1` no longer shows the old VRAM. About 43 ms on screens 1 and 2, 72 ms on
+  screen 3. `tools/api.py` row of `GFX_MODE` says so. Bytes: bank 1 +5. No RAM. `build.py`:
+  exit 0, 1.46 s, outer 1817 ms. The user's emulator test passes: `SCREEN 1` is black, and
+  `RECT` and `PSET` draw. Not committed.
+- G7g done (`CHAR X, Y, A$, C` or `CHAR X, Y, CODE, C`): a new statement keyword after
+  `CIRCLE` (`token.s`). `CHAR` (`vera.s`) reads x into `VADR`, y into `VARG`, the text as
+  `TEXTAT` does (through `FRMSTRCHR`), and C into `VBANK`, then frees the text with
+  `FRETMP` after C, so C's own strings cannot overwrite it. `K_CHAR` (`6502dos_extra.s`) counts
+  the characters in `VXY`, walks `INDEX`, and runs call 62's `char` for each; `gfx_char`
+  returns r0 = x + 8, so the next glyph sits 8 pixels right. A text of length 0 draws none.
+  The sim's `K_CHAR` does nothing. Bytes: bank 2 +76, EXTRA ends at $F595, 2570 free. No RAM.
+  `build.py`: exit 0, 1.38 s, outer 1556 ms. No test yet. Not committed.
+- G7h done: `FRMSTRCHR` (`textat.s`) evaluates a string or a character code and returns the
+  string's descriptor, or CHR$(code)'s, in FAC. It replaces `CHRSTUB` and the `FRMEVL`,
+  `bit VALTYP`, `bmi` lines in `TEXTAT`, `RPT$` (`rpt.s`) and `CHAR` (`vera.s`). Its `bmi`
+  reaches `TA_PUTS`'s `rts`. `rpt.s` keeps a copy for a build without `CONFIG_TEXTAT`. Bytes:
+  bank 2 −14, EXTRA ends at $F587, 2584 free. No RAM. `build.py`: exit 0, 1.43 s, outer
+  1590 ms. `make sim`: exit 0. No test yet. Not committed.
+- G7i done: `MSBASIC/Makefile` takes `CC65 ?= ../tools/cc65/bin`, the repo's ca65 and ld65.
+  `make sim 6502dos`: exit 0, outer 501 ms. The repo has no `sim65`, and none is installed, so
+  `make test` and `make run` fail; `tests/run.py` looks for `sim65` in
+  `C:\8bitProgramming\cc65\bin`, which is gone. Not committed.
+- G7j done: `VERA.UXI` has call 62's SUBs, thin wrappers through `$03FA`: `SCREEN(MODE)`,
+  `CLEAR(COLOR)`, `PSET(X, Y, COLOR)`, `POINT(X, Y)`, `LINE`, `FRAME` and `RECT(X1, Y1, X2, Y2,
+  COLOR)`, `CIRCLE(X, Y, RADIUS, COLOR)`, `CHAR(X, Y, CHARACTER, COLOR)`; X is a UWORD, Y and
+  the rest UBYTEs. New `R3` at `$08`. A scratchpad `GFXDEMO.UXB` that calls all nine compiles:
+  exit 0, 286 ms, region 3 262 bytes. No ROM change. `build.py`: exit 0, 9.24 s, outer 9435 ms,
+  GUIDEMO, HELPED, THEMED and XT compiled again; GUIDEMO and XT are byte for byte the same.
+  Not a baseline. The SAVE_RECT trap stays: its stack starts at VRAM $00000, in the bitmap. No
+  test yet. Not committed.
+- G7k done: two graphics samples draw one picture on screen 2: the 16 color swatches (RECT), a
+  dotted rule (PSET), a FRAME, a title (CHAR), a fan of LINEs, ten CIRCLE rings in colors 1 to
+  10; after a key, screen 0 and the POINT of the largest ring, 10. `card/source/basic/GFXDEMO.bas`
+  for MSBASIC; `UXCBASIC/samples/GFXDEMO.UXB` for UXCBASIC, with a DRAW_TEXT SUB over
+  `VERA.CHAR`. The UXB compiles: exit 0, 274 ms, 1779 bytes, region 3 251 bytes. No ROM change,
+  no build. Not committed.
+- G7k fix: the first `GFXDEMO.bas` had LF line ends. `LOAD` ends a line on CR only, so the file
+  read as one 806-character line, and each character past `LINE_MAX` (80) sounded a BEL. The
+  file now has CR LF ends, longest line 78. The user's emulator test passes: `LOAD` and `RUN`
+  draw the picture.
+- G7l done (LF line ends): `INLIN_READ` (`MSBASIC/src/inline.s`, `CONFIG_HOSTED`) ends a line
+  on LF when it holds text; an LF on an empty line, as the LF of CR LF, is dropped. So LF-only
+  files load, and CR LF files and `INPUT#` read as before. The test sits on the
+  control-character path: no cycles more for a printable character. The sim is unchanged: its
+  `K_READ` turns LF into CR. Bytes: bank 2 +7, EXTRA ends at $F58E, 2577 free. No RAM.
+  `build.py`: exit 0, 1.35 s, outer 1496 ms. No test yet. Not committed. `changes.md` entry in
+  the doc batch.
+- G7m done (the SAVE_RECT trap): `VERA.UXI`'s box stack starts past the bitmap. New
+  `STACK_BASE` (UBYTE), the high byte of the stack's first VRAM address. `SCREEN` sets it, $00
+  on screen 0, $96 on screens 1 and 2, $FA on screen 3, and empties the stack (`STACK_TOP` =
+  `STACK_BASE` times 256). `RESTORE_RECT` is empty when `STACK_TOP` is the base. `SAVE_RECT` is
+  unchanged; it stops at $0FFFF as before. Room: screen 0 65536 bytes (13 full screens, so
+  VERABOX keeps its golden), screens 1 and 2 27136, screen 3 1536. Bytes: `RESTORE_RECT` +5,
+  `SCREEN` +22, RAM +1; GUIDEMO, HELPED and XT +6 each; GFXDEMO.UXB 1804 bytes, region 3 276.
+  `build.py`: exit 0, 8.95 s, outer 9107 ms, the 6 VERA.UXI programs compiled again. No test
+  yet. Not committed.
+- G7n done (a test of G7m): new `tests/VERAGFX.UXB`. Screen 2 sets the bitmap's first and last
+  pixels, fills the stack with full screens, reads the pixels back, then restores every box and
+  one more and reads cell 0, 0. Screen 3 counts full screens and 40 by 10 boxes and reads its
+  pixels. Screen 0 counts full screens again. `tests/VERAGFX.OUT` is written by hand, the
+  predicted output: `5 5 6 8001`, `0 1 200 201`, `13`; not yet run. Compiles: 1769 bytes,
+  region 3 629, 286 ms. Not committed.
+- Doc batch of V1 to G7n, in 3 parts, one commit: part 1 MSBASIC (`keywords.md`, `changes.md`,
+  `CLAUDE.md`, `README.md`); part 2 UXC-HELP's `VERA.UXI` topic; part 3 `docs/API.md`, PLAN.
+  Part 1 was paused: the `PRINT GO` fix in `eval.s` UNARY broke `make verify` (`cbmbasic1`
+  differed, `cbmbasic2` did not build).
+- cbm dropped (the user's ask, "asm ok, drop cbmbasic stuff"): MSBASIC builds `sim` and
+  `6502dos` only. `Makefile`: no `verify`, `pet`, `pet-check`, VICE or ROM-dump lines;
+  `TARGETS := sim 6502dos`. `src/defines.s`: no `cbmbasic1`/`cbmbasic2` branches. Deleted
+  `src/cbmbasic1.cfg`, `cbmbasic2.cfg`, `defines_cbm1.s`, `defines_cbm2.s`, `cbm1_patches.s`.
+  The UNARY check stays unconditional. `ref/msbasic` (upstream copy, with the ROM dumps) is
+  kept. The shared sources still hold the dead `CONFIG_CBM_ALL` / `CONFIG_CBM1_PATCHES`
+  branches. `make all`: exit 0, 428 ms, the new baseline; sim 12722, 6502dos 13731 bytes, as
+  before. `make test` not run. Not committed. Docs to change in part 1: MSBASIC `CLAUDE.md`
+  (lines 14, 23-26, 35, 41, 71, 117-118), `README.md` (66, 70, 80-82), `docs/handoff.md` (15,
+  170-173), `docs/sub-function.md` 227, `docs/inline-asm.md` 252, `docs/keywords.md` 26;
+  `changes.md` gets an entry. Also found: the sim does not build without
+  `CONFIG_SCREEN` (`vera.s:262`, SPRITE's `TOKEN_COLOR`), so `CONFIG_VERA` needs
+  `CONFIG_SCREEN`; for `keywords.md`, not fixed.
+  Measured on the working tree (scratchpad `kwmeasure.py`, `kwm2.py`): sim 12722 bytes, $C000 to
+  $F1B1, 3406 free of $3F00; VECTORS 205, KEYWORDS 480, ERROR 249, CODE 7941, CHRGET 29, INIT
+  271, EXTRA 2904, IORAM 643; 122 tokens, $80 to $F9 (`GO`). Flags: BLOCK 307, LABELS 126,
+  TEXTAT 181 (VERA and SCREEN off), INSTR 167, MOD 160, RADIX_LIT 147, FAST_FIN 120, BITFN 128,
+  RPT 90, HEXBIN 108, CASE 70, DEEK 80, PAUSE 44, VERA 733, SCREEN 79 (VERA off),
+  PEEK_SAVE_LINNUM 12, PI 21, VAR_CACHE 358, GOTO_CACHE 347, KW16 22, SAFE_NAMENOTFOUND 8,
+  NAME_NOCRUNCH 64, POS_LINE 10, NO_LET -5, NO_SPC -13. 6502dos: bank 2 13731 bytes (EXTRA
+  ends at $F58E), IORAM 744; `CONFIG_VERA` 960 bytes of bank 2, 9 of IORAM. At 8a795f5 (the
+  last `changes.md` entry): sim 12079, 6502dos 12847, IORAM 735. At HEAD: 6502dos 12891, so
+  e2e3386 (HELP's path through `progpath`) added 44 bytes and has no `changes.md` entry yet.
+- Doc batch of V1 to G7n done (2026-11-08, the user's "update docs, lets commit"). MSBASIC:
+  `CLAUDE.md` (no cbm rule, VICE or `make verify`/`pet`; Tools line on `../tools/cc65/bin` and
+  no sim65; the video, sprite and graphics keywords; LOAD's LF ends; `BASIC.COM`),
+  `README.md` (no cbm targets; the new keywords; the `6502dos` target), `docs/keywords.md`
+  (rewritten: 122 tokens, the sizes and flag costs above, a CONFIG_VERA keyword and clause
+  table, HELP 348 bytes measured, the cbmbasic2 row gone), `docs/changes.md` (9 entries:
+  e2e3386 +44, VPEEK/VPOKE +2, VMEMSET/MEMCPYMV/MEMCPYVM +166, VLOAD +76, SPRITE +336,
+  `PRINT GO` +4, SCREEN and graphics +249, LF ends +7, the cbm drop +0; bank 2 13731, 2653
+  free), `docs/handoff.md`, `sub-function.md`, `inline-asm.md` (cbm lines),
+  `docs/6502dos-zeropage.md` (`BASIC.COM`). UXC-HELP: new topic "The VERA library" (text
+  screen, VRAM and sprites, screens and drawing, an example, a link to GFXDEMO.UXB);
+  `help/MKHELP.PY`: exit 0, 178 ms, 48 topics, 4 examples. `docs/API.md` is `genapi.py`'s
+  output, already current. PLAN: the `VERA.UXI` row, ROM bank 1 holds calls 61 and 62, bank 2
+  `BASIC.COM`, VRAM rows for the bitmap, the box stack and the sprite attributes.
+
+9. Older, still open: UXC-HELP topics for `PICKFILE.UXI` and `CONS.UXI`; the
    GUI.UXI contract fixes; PLAN section 11 steps 8 to 10, after beta 1.
 10. GUI glyphs (2026-10-27): `github.com/viler-int10h/vga-text-mode-fonts`, files
     `FONTS/BIGPILE/NORTON0.F16` and `NORTON1.F16`, hold Norton Utilities' GUI glyphs: checkbox,

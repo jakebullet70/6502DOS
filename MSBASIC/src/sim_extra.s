@@ -154,13 +154,30 @@ K_JIFFY:
 
 .ifdef CONFIG_VERA
 ; Video stubs for VPEEK, VPOKE and SCREEN: the sim has no video chip.
-; K_VPEEK: A = bank, LINNUM = address; returns the byte in A (always 0).
-; K_VPOKE: A = bank, LINNUM = address, X = byte; does nothing.
-; K_SCREEN: X = mode; does nothing.
+; K_VPEEK: A = bit 16, LINNUM = bits 0 to 15; returns the byte in A (always 0).
+; K_VPOKE: A = bit 16, LINNUM = bits 0 to 15, X = byte; does nothing.
+; K_SCREEN: X = mode; does nothing. K_PSET, K_SHAPE, K_CIRCLE, K_CHAR: as in
+; 6502dos_extra.s; do nothing.
+; K_VMEMSET, K_VWRITE, K_VREAD, K_VLOAD, K_SPRSET, K_SPRMOVE, K_SPRSHAPE,
+; K_SPRCLEAR: as in 6502dos_extra.s; do nothing. K_SPRHITS, K_POINT: return A = 0.
 K_VPEEK:
+K_SPRHITS:
+K_POINT:
         lda     #$00
 K_SCREEN:
+K_PSET:
+K_SHAPE:
+K_CIRCLE:
+K_CHAR:
 K_VPOKE:
+K_VMEMSET:
+K_VWRITE:
+K_VREAD:
+K_VLOAD:
+K_SPRSET:
+K_SPRMOVE:
+K_SPRSHAPE:
+K_SPRCLEAR:
         rts
 .endif
 

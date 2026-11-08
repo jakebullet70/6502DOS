@@ -73,7 +73,7 @@ The UXCBASIC library is the folder `lib/`. Each file holds one namespace of the 
 | `lib/FLOAT.UXI` | `FP` | MSBASIC's 5-byte float through call 58, `fp`: text, the four operations, compare, floor, LONGs; include it after `DOS.UXI` |
 | `lib/BANK.UXI` | `BANK` | the RAM bank calls: `ALLOC`, `FREE`, `FREE_COUNT`, `USE`, `CURRENT`, `GET_BYTE`, `PUT_BYTE`, `FAR_CALL`; include it after `DOS.UXI` |
 | `lib/INI.UXI` | `INI` | `READ_KEY$` and `WRITE_KEY` of the settings file `C:\6502DOS.INI`, text in `[NAME]` sections of `KEY=VALUE` lines; include it after `DOS.UXI` |
-| `lib/VERA.UXI` | `VERA` | direct reads and writes of the text screen in VERA, and a stack of saved screen boxes in VRAM; it runs from region 3 |
+| `lib/VERA.UXI` | `VERA` | direct reads and writes of the text screen in VERA, a stack of saved screen boxes in VRAM, call 61's VRAM, sprite and palette functions, and call 62's screens and drawing; it runs from region 3 |
 | `lib/GUI.UXI` | `GUI` | GUI Forms, the text-mode user interface: forms, fields, buttons, menus, dialogs, lists; it runs from regions 1 to 4; include `KEYS.UXI` and `VERA.UXI` first |
 | `lib/PICKFILE.UXI` | `GUI` | `GUI.PICKFILE`, a dialog that picks a file, after MS-DOS EDIT's Open dialog, and `GUI.PICKMANAGE`, the same with the keys of a file manager; include `KEYS.UXI`, `DOS.UXI`, `BANK.UXI`, `VERA.UXI` and `GUI.UXI` first |
 
@@ -121,8 +121,8 @@ The UXCBASIC library is the folder `lib/`. Each file holds one namespace of the 
 | `$A000–$BFFF` bank 11 | VARBANK, the shared string heap (String heaps, below) |
 | `$A000–$BFFF` banks 1 to 10, 12 and up | handed out by `bank_alloc`: `exec`'s saves (section 7) and the programs' banks |
 | `$C000–$FFFF` ROM bank 0 | kernel core and the vectors. `$FFCF` and `$FFD2` jump to `con_in` and `con_out`, and `$FFF6–$FFF9` hold `MIST` (section 10) |
-| `$C000–$FFFF` ROM bank 1 | the FAT32 library, the kernel's file calls on it, and its glue to the SD driver |
-| `$C000–$FFFF` ROM bank 2 | MSBASIC, started by `MSBASIC.COM` |
+| `$C000–$FFFF` ROM bank 1 | the FAT32 library, the kernel's file calls on it, and its glue to the SD driver; call 61, `vera`, and call 62, `gfx` |
+| `$C000–$FFFF` ROM bank 2 | MSBASIC, started by `BASIC.COM` |
 | `$C000–$FFFF` ROM banks 3 and 4 | the UXCBASIC program in `src/bank3`, the shell `ROMSHELL`, started by its `.COM` stub |
 | `$C000–$FFFF` ROM bank 5 | the DB library, call 57, and MSBASIC's float, call 58 |
 | `$C000–$FFFF` ROM banks 6 to 8 | the UXCBASIC program in `src/bank6`, `DB`, started by `XBASE.COM` |
@@ -134,9 +134,13 @@ VRAM:
 
 | Range | Use |
 |---|---|
+| `$00000–$095FF` | the bitmap of layer 0 on screens 1 and 2 (call 62) |
+| `$00000–$0F9FF` | the bitmap of layer 0 on screen 3 |
+| `$00000`, or past the bitmap, to `$0FFFF` | `VERA.UXI`'s stack of saved screen boxes |
 | `$10000–$13FFF` | the text map of layer 1: 64 rows of 128 cells, each a character and a color byte |
 | `$1F000–$1F7FF` | the CP437 font |
 | `$1FA00–$1FBFF` | the palette |
+| `$1FC00–$1FFFF` | the sprite attributes: 128 sprites of 8 bytes |
 
 - Trap: code in ROM that writes `$01` fetches its next instruction from the new bank. Every
   change of ROM bank goes through the gate at `$0310`.

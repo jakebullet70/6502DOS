@@ -942,9 +942,9 @@ dir_change:
         sec
         rts
 
-; lib_read: reads r1 bytes of context A to r0. Returns r1 = the bytes read, fewer at the end of
-; the file. RAM bank 0 must be selected, and saved_bank must be the bank of a buffer at
-; $A000-$BFFF. Changes X and Y.
+; lib_read: reads r1 bytes of context A to r0, or, for r0 in IO_PAGE, every byte to r0 itself.
+; Returns r1 = the bytes read, fewer at the end of the file. RAM bank 0 must be selected, and
+; saved_bank must be the bank of a buffer at $A000-$BFFF. Changes X and Y.
 lib_read:
         HOST_GO host_read
         ldx r1
@@ -954,15 +954,18 @@ lib_read:
 @read:
         jsr lib_set_bank
         bcc lib_errno_set
-        lda r0
-        sta fat32_ptr
-        lda r0+1
-        sta fat32_ptr+1
         lda r1
         sta fat32_size
         lda r1+1
         sta fat32_size+1
-        clc                     ; not a stream
+        lda r0
+        sta fat32_ptr
+        lda r0+1
+        sta fat32_ptr+1
+        cmp #>IO_PAGE           ; equal: carry set, a stream
+        beq @stream
+        clc
+@stream:
         jsr fat32_read          ; carry clear at the end of the file
         lda fat32_size
         sta r1

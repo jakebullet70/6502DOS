@@ -56,7 +56,8 @@ CALLS = [
          in_=[("X", "handle")],
          errors=[6, 21, 29, 30],
          written=True),
-    call(3, "read", 0x3F, "Reads bytes from a handle into memory.",
+    call(3, "read", 0x3F, ("Reads bytes from a handle into memory. For a file, a buffer in the "
+          "I/O page, $9F00-$9FFF, takes every byte at that one address."),
          in_=[("X", "handle"), ("r0", "buffer"), ("r1", "count")],
          out=[("r1", "bytes read, 0 at the end of the file")],
          errors=[1, 5, 6, 21, 30],
@@ -475,6 +476,19 @@ CALLS = [
          out=[("r0", "to get: buffer, filled with a length-prefixed path")],
          errors=[1, 3, 15, 16, 21],
          written=True),
+    call(61, "vera", None, ("VRAM, the sprites and the palette, in ROM bank 1. Runs function Y "
+          "of VERA_FUNCTIONS. A Y past the last gives error 1."),
+         in_=[("Y", "function"), ("A X r0-r3", "by function")],
+         out=[("A", "by function"), ("r1", "by function")],
+         errors=[1, 5, 6, 21, 30],
+         written=True),
+    call(62, "gfx", None, ("The bitmap on VERA's layer 0, under the console's text, in ROM bank "
+          "1. Runs function Y of GFX_FUNCTIONS. A Y past the last gives error 1. `exit` puts "
+          "screen 0 back."),
+         in_=[("Y", "function"), ("A r0-r3", "by function")],
+         out=[("A r0 r1 r4-r7", "by function")],
+         errors=[1],
+         written=True),
 ]
 
 # The functions of call 57, db: (Y, name, in, out, written). The name becomes DB_NAME in asm.
@@ -554,6 +568,68 @@ FP_FUNCTIONS = [
      ("the buffer, filled with the value rounded to `X` decimals as length-prefixed text: `-` "
       "when it is below 0, the digits, and a point before the decimals; error 13 when the "
       "size times 10^`X` rounds to 2^31 or more"), True),
+]
+
+# The functions of call 61, vera: (Y, name, in, out, written). The name becomes VERA_NAME in asm.
+VERA_FUNCTIONS_NOTE = ("A VRAM address is 17 bits: bits 0 to 15 in `r0`, bit 16 in `X`, 0 or 1, "
+                       "or in `A` where a function says so. A sprite is 0 to 127. "
+                       "A function changes VERA's data port 0 address.")
+VERA_FUNCTIONS = [
+    (0, "vpeek", "`r0` `X` VRAM address", "`A` the byte", True),
+    (1, "vpoke", "`r0` `X` VRAM address<br>`A` byte", "none", True),
+    (2, "vfill", "`r0` `X` VRAM address<br>`A` byte<br>`r1` count, 0 for none",
+     "VRAM: `r1` bytes of `A` from the address", True),
+    (3, "vwrite", "`r0` `X` VRAM address<br>`r1` RAM address<br>`r2` count, 0 for none",
+     "VRAM: the `r2` bytes of RAM at `r1`, from the address", True),
+    (4, "vread", "`r0` `X` VRAM address<br>`r1` RAM address<br>`r2` count, 0 for none",
+     "RAM at `r1`: the `r2` bytes of VRAM from the address", True),
+    (5, "vload", "`r0` VRAM address, bit 16 in `A`<br>`X` a file's handle<br>`r1` count",
+     "`r1` bytes read, 0 at the end of the file; VRAM: the bytes from the address", True),
+    (6, "sprset", ("`X` sprite<br>`A` field: 0 depth 0-3, 1 flip (bit 0 across, bit 1 down), "
+                   "2 collision mask 0-15, 3 palette offset 0-15, 4 width and 5 height (0 8, "
+                   "1 16, 2 32, 3 64 pixels), 6 mode (0 4 bpp, 1 8 bpp)<br>`r0` value"),
+     "none; the sprite's other fields stay", True),
+    (7, "sprmove", "`X` sprite<br>`r0` x<br>`r1` y", "none", True),
+    (8, "sprshape", "`X` sprite<br>`r0` the shape's VRAM address / 32",
+     "none; the mode stays", True),
+    (9, "sprhits", "none",
+     "`A` bits 0 to 3: the collision mask bits of the sprites that collided since the last "
+     "`sprclear`", True),
+    (10, "sprclear", "none", "none; `sprhits` gives 0", True),
+    (11, "palette", "`X` entry<br>`r0` color, $0RGB", "none", True),
+]
+
+# The functions of call 62, gfx: (Y, name, in, out, written). The name becomes GFX_NAME in asm.
+GFX_FUNCTIONS_NOTE = ("Screen 1 is the console's 80 by 30 text over a 640 by 240 bitmap of 4 "
+                      "colors, 2 bits a pixel, at VRAM $00000-$095FF. Screen 2 is 40 by 30 text "
+                      "over a 320 by 240 bitmap of 16 colors, 4 bits a pixel, at $00000-$095FF. "
+                      "Screen 3 is 40 by 25 text over a 320 by 200 bitmap of 256 colors, a byte a "
+                      "pixel, at $00000-$0F9FF, with borders above and below. "
+                      "A function changes VERA's data port 0 address.")
+GFX_FUNCTIONS = [
+    (0, "mode", "`A` screen: 0 the 80 by 30 text alone, 1 to 3 the text over a bitmap",
+     "none; the text cleared, the cursor home; screens 1 to 3 clear the bitmap to color 0", True),
+    (1, "clear", "`A` color: 0 to 3 on screen 1, 0 to 15 on screen 2, 0 to 255 on screen 3",
+     "none; the whole bitmap is the color", True),
+    (2, "pset", "`A` color, in the ranges of `clear`<br>`r0` x<br>`r1` y",
+     "none; the pixel is the color", True),
+    (3, "point", "`r0` x<br>`r1` y", "`A` the pixel's color", True),
+    (4, "line", "`A` color, in the ranges of `clear`<br>`r0` x<br>`r1` y<br>`r2` x<br>`r3` y",
+     ("none; the pixels from `r0` `r1` to `r2` `r3`, both ends included, are the color; `r0` "
+      "`r1` = `r2` `r3`; `r4` to `r7` changed"), True),
+    (5, "frame", ("`A` color, in the ranges of `clear`<br>`r0` x<br>`r1` y<br>`r2` x, not below "
+                  "`r0`<br>`r3` y, not below `r1`"),
+     "none; the edge of the box from `r0` `r1` to `r2` `r3` is the color; `r4` to `r7` changed",
+     True),
+    (6, "rect", "as `frame`",
+     "none; the box from `r0` `r1` to `r2` `r3` is the color; `r4` to `r7` changed", True),
+    (7, "circle", ("`A` color, in the ranges of `clear`<br>`r0` x of the center<br>`r1` y of "
+                   "the center<br>`r2` the radius, the whole circle on the bitmap"),
+     "none; the circle is the color; `r4` to `r7` changed", True),
+    (8, "char", ("`A` color, in the ranges of `clear`<br>`r0` x of the top left<br>`r1` y of the "
+                 "top left<br>`r2` the character, 0 to 255, the whole 8 by 8 glyph on the bitmap"),
+     "`r0` = x + 8; the glyph's set bits are the color, its clear bits keep the bitmap; `r4` to "
+     "`r6` changed", True),
 ]
 
 # The break modes of con_break: (number, name). The name becomes BREAK_NAME in asm.

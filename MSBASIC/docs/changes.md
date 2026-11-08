@@ -980,3 +980,142 @@ are allowed in this target only.
   holds 12847 bytes, and 3537 bytes are free.
 - `sim`: 17 bytes more. The space was the sign place of `FOUT`.
 - `cbmbasic1` and `cbmbasic2` are byte for byte as before.
+
+## HELP finds its file in the folder of BASIC.COM (+44 bytes in 6502dos)
+
+- The start program is `BASIC.COM`, so `BASIC NAME.BAS` loads and runs a program. The comments
+  that named `MSBASIC.COM` name `BASIC.COM`.
+- `HELP` reads `basic\HELPBAS.HLP` in the folder of `BASIC.COM`, not `C:\DOS\HELPBAS.HLP`. It
+  calls `API_PROGPATH` into `DOS_BUF`, cuts the path after its last `\`, `/` or `:`, and adds
+  `HELP_TAIL`, the text `basic\HELPBAS.HLP`. `HELP_PATH` goes.
+- The path fills `DOS_BUF` and runs on over `FILES_COUNT`: 87 bytes, which hold progpath's 84.
+  An `.assert` holds a folder of up to 69 characters. `HELP` first calls `DOS_GIVEBACK`.
+- `K_OPEN_R0`, a new entry of `K_OPEN`, opens the name at `r0` with A and `DOS_MODE` set to the
+  mode.
+- `sim` is byte for byte as before. Bank 2 holds 12891 bytes, and 3493 bytes are free.
+
+## VPEEK and VPOKE take one 17-bit address (+2 bytes in 6502dos)
+
+- `VPEEK(addr)` and `VPOKE addr,n` take one video address, 0 to $1FFFF; a larger one is
+  ?ILLEGAL QUANTITY ERROR. `VPEEK(bank,addr)` and `VPOKE bank,addr,n` go.
+- `GETVADR`, new in `poke.s` (`CONFIG_VERA`), puts bits 0 to 15 in `LINNUM` and bit 16 in A. It
+  shares the tail of `GETADR` through the new label `GETADR_QINT`. 16 bytes.
+- `K_VPEEK` and `K_VPOKE` take bit 16 in A. In `6502dos` they call the ROM's call 61, `vera`,
+  through `DOS_VREG` (`r0` = `LINNUM`), not the VERA ports, and `stz VERA_CTRL` goes. 31 bytes,
+  2 fewer.
+- `VPEEK` is 34 bytes (9 fewer), `VPOKE` 14 (1 fewer).
+- `tests/vera.bas` uses the new syntax and reads `VPEEK($1FFFF)`.
+- Bank 2 holds 12893 bytes, and 3491 bytes are free.
+
+## VMEMSET, MEMCPYMV and MEMCPYVM (+166 bytes in 6502dos)
+
+- `VMEMSET addr,n,len` writes n to len bytes of video memory. `MEMCPYMV ram,addr,len` copies
+  len bytes from RAM to video memory, `MEMCPYVM addr,ram,len` from video memory to RAM. A len
+  of 0 writes or copies none. All three are statement keywords in `vera.s`.
+- `VGETV` puts a video address in `VADR` and `VBANK`, `VGETR` a RAM address in `VARG`, and
+  `VGETLEN` ",len" in `LINNUM`. `VADR`, `VARG` and `VBANK` are 5 bytes of `IORAM`.
+- Target primitives `K_VMEMSET`, `K_VWRITE` and `K_VREAD`, stubs in the sim. In `6502dos` they
+  call call 61's `vfill`, `vwrite` and `vread` through `DOS_VBLK` (`r0` = `VADR`, `r1` = `VARG`,
+  `r2` = `LINNUM`, X = `VBANK`).
+- 6502dos bytes: `vera.s` 85, keywords 29, `6502dos_extra.s` 52.
+- `tests/vera.bas` has 6 new lines.
+- Bank 2 holds 13059 bytes, and 3325 bytes are free.
+
+## VLOAD (+76 bytes in 6502dos)
+
+- `VLOAD "name",addr` copies the whole file, raw, to video memory from addr. A missing file is
+  ?FILE NOT FOUND ERROR. A statement keyword in `vera.s`, after `MEMCPYVM`.
+- `K_VLOAD`, a stub in the sim. In `6502dos` it opens the file with `K_OPEN` and calls call
+  61's `vload` for $8000 bytes a call through `DOS_VBLK`, with `VARG` the count. After a full
+  read it adds $8000 to `VADR` and `VBANK`; it stops on a short read or a read error, then
+  closes the file.
+- 6502dos bytes: `vera.s` 12, keyword 7, `6502dos_extra.s` 57.
+- `tests/vera.bas` has 5 new lines. A file over $8000 bytes is not tested.
+- Bank 2 holds 13135 bytes, and 3249 bytes are free.
+
+## SPRITE and SPRITEHIT (+336 bytes in 6502dos)
+
+- `SPRITE n clause ...`, n 0 to 127, runs its clauses on sprite n in any order: `ON`, `OFF`,
+  `AT x,y`, `SHAPE s`, `COLOR c`, `LOWCOL`, `HICOL`, `XYSIZE w,h`, `XYFLIP x,y`, `ZDEPTH z`,
+  `MASK m`. `SPRITE CLEAR HIT` clears the groups that `SPRITEHIT` reports. `VBANK` holds n.
+- `SPRITEHIT(g)`, g 0 to 3, is -1 if sprites that share bit g of their masks collided since the
+  last `SPRITE CLEAR HIT`, else 0. A function keyword after `LCASE$`.
+- The 10 clause words `OFF` to `HIT` are keywords after `<`, before `TOKEN_SGN`, so
+  `FRM_ELEMENT` gives ?SYNTAX ERROR for them. `program.s` L24A8 crunches them only while
+  `DATAFLG` bit 7 is set, which the `SPRITE` token sets and `:` clears. Outside `SPRITE` they
+  are names. 18 bytes.
+- Trap: a clause word in plain text after a variable is read as part of the name: `Y SHAPE`
+  reads as the variable `YS`.
+- Dispatch: `SPR_TABLE`, by token, `OFF` to `HIT`, then `ON` and `COLOR`. Each clause's `rts`
+  goes back to `SPR_CLAUSE`. `SPR_SIZE` turns 8, 16, 32 or 64 pixels into the size code.
+- Target primitives `K_SPRSET`, `K_SPRMOVE`, `K_SPRSHAPE`, `K_SPRCLEAR` and `K_SPRHITS`, stubs
+  in the sim (`K_SPRHITS` gives 0). In `6502dos` they call call 61 through `DOS_VBLK`.
+- 6502dos bytes: `vera.s` 229, keywords 65, `program.s` 18, `6502dos_extra.s` 22. No new RAM.
+- `tests/vera.bas` has 10 new lines: each clause read back with `VPEEK` at $1FC08, a variable
+  before a clause, `AT` and `OFF` as variables outside `SPRITE`, `SPRITEHIT` after
+  `SPRITE CLEAR HIT`, ?SYNTAX ERROR for `AT 5`, and LIST of a `SPRITE` line.
+- Bank 2 holds 13471 bytes, and 2913 bytes are free.
+
+## PRINT GO gives ?SYNTAX ERROR (+4 bytes)
+
+- `PRINT GO` reached `UNARY` (`eval.s`) with a token past `MID$` and jumped through the bytes
+  past `UNFNC`. `UNARY` now gives ?SYNTAX ERROR for a token past `TOKEN_MIDSTR`, a new name on
+  `MID$` in `token.s`. The check sits in `UNARY`, because 4 bytes at L2D74 push
+  `bcs FRM_VARIABLE` out of range.
+- 4 bytes, 4 cycles a function call, in both targets.
+- `tests/errors.bas` has `print go`.
+- Bank 2 holds 13475 bytes, and 2909 bytes are free.
+
+## SCREEN 0 to 3 and the graphics keywords (+249 bytes in 6502dos)
+
+- `SCREEN mode` takes 0 to 3. In `6502dos`, `K_SCREEN` runs call 62's `mode`. 5 bytes.
+- `PSET x,y,c` sets a pixel to color c, a statement keyword after `SCREEN`. `VGETXY`, new,
+  reads "x, y" into `VADR` and `VARG` for `PSET` and `SPRITE ... AT`, which saves 3 bytes.
+  29 bytes.
+- `POINT(x,y)` gives a pixel's color, a function keyword after `VPEEK`, caught in
+  `FRM_ELEMENT`. `VPOINT` (the label `POINT` is taken) reads x through `MKINT` onto the stack
+  and y through `COMBYTE`, so `LINNUM`, `VADR` and `VARG` are kept and
+  `PSET X, Y, POINT(X2, Y2)` works. 57 bytes.
+- `LINE`, `FRAME` and `RECT x1,y1,x2,y2,c`: a line, both ends included; a box's edge; a filled
+  box, with x1 <= x2 and y1 <= y2. Statement keywords after `PSET`, one body: each entry loads
+  call 62's function number, 4, 5 or 6, and skips the next `lda` with `$2C`. x1 and y1 go to
+  `VXY`, 4 bytes of `IORAM` just before `VADR`. `K_SHAPE` copies the 8 bytes to `r0` to `r3`;
+  an `.assert` holds `GFX_LINE` = 4, `GFX_FRAME` = 5 and `GFX_RECT` = 6. 72 bytes.
+- `CIRCLE x,y,r,c`, r 0 to 255, a statement keyword after `RECT`. `VGETLEN` reads r into
+  `LINNUM`. `K_CIRCLE` loads `GFX_CIRCLE` and skips the `ldy` of `K_PSET` with `$2C`, so
+  `DOS_VBLK` sets `r0` to `r2`. 24 bytes.
+- `CHAR x,y,a$ or code,c` draws the text's glyphs on the bitmap, 8 pixels apart; a glyph's
+  clear bits keep the bitmap. A statement keyword after `CIRCLE`. It frees the text with
+  `FRETMP` after c, so c's own strings cannot overwrite it; c goes to `VBANK`. `K_CHAR` counts
+  the characters in `VXY`, walks `INDEX` and runs call 62's `char` for each. A text of length 0
+  draws none. 76 bytes.
+- `FRMSTRCHR`, new in `textat.s`, evaluates a string or a character code and leaves the
+  string's descriptor, or that of CHR$(code), in `FAC`. It replaces `CHRSTUB` and the `FRMEVL`,
+  `bit VALTYP`, `bmi` lines of `TEXTAT`, `RPT$` (`rpt.s`) and `CHAR`. `rpt.s` keeps a copy for
+  a build without `CONFIG_TEXTAT`. 14 bytes fewer.
+- Screen 0 is out of the contract of `PSET`, `POINT`, `LINE`, `FRAME`, `RECT`, `CIRCLE` and
+  `CHAR`. Their arguments are in the ranges of the screen.
+- The new primitives are stubs in the sim; the sim's `K_POINT` gives 0.
+- `WIDTH` (80) and `WIDTH2` (70) in `defines_6502dos.s` are fixed, so screens 2 and 3, 40
+  columns, keep a line width and comma stops of 80.
+- Bank 2 holds 13724 bytes, and 2660 bytes are free. `IORAM` is 744 bytes of 768.
+
+## 6502dos: LOAD reads LF line ends (+7 bytes)
+
+- `INLIN_READ` (`inline.s`, `CONFIG_HOSTED`) ends a line on LF when the line holds text. An LF
+  on an empty line, as the LF of CR LF, is dropped. Files with LF line ends load, and files with
+  CR LF and `INPUT#` read as before.
+- The test sits on the control-character path, so a printable character takes no more cycles.
+- `sim` is byte for byte as before: its `K_READ` turns LF into CR.
+- Bank 2 holds 13731 bytes, and 2653 bytes are free.
+
+## The cbmbasic1 and cbmbasic2 targets go (+0 bytes)
+
+- The Makefile builds `sim` and `6502dos` only. `make verify`, `make pet` and `make pet-check`
+  go.
+- `defines.s` loses the `cbmbasic1` and `cbmbasic2` branches. `cbmbasic1.cfg`,
+  `cbmbasic2.cfg`, `defines_cbm1.s`, `defines_cbm2.s` and `cbm1_patches.s` are deleted.
+- The `CONFIG_CBM_ALL` and `CONFIG_CBM1_PATCHES` code in the shared sources stays; no target
+  sets them.
+- `sim` and `6502dos` are byte for byte as before: the sim image is 12722 bytes, bank 2 holds
+  13731.

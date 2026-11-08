@@ -11,7 +11,6 @@ orders of the 6502DOS `CLAUDE.md` apply here. All paths below are relative to `M
 - Stage files by name; never `git add -A`.
 - Do not name the X16 as the target in this file or in `docs/`. The target is new hardware with a
   new Unix-style kernal.
-- Run `make verify` after a change to a shared source; `cbmbasic1` and `cbmbasic2` must match.
 
 - `m6502.asm` is frozen history. Do not edit it. Work goes into `src/` (ca65).
 - CPU is NMOS 6502 only, with no 65C02 opcodes, in every target but `6502dos`. The `6502dos`
@@ -20,27 +19,25 @@ orders of the 6502DOS `CLAUDE.md` apply here. All paths below are relative to `M
 - Use `git mv` / `git rm` for tracked files.
 - Log every change to `src/` (what and why) in `docs/changes.md`, in the same commit.
 - ROM space is tight. With every change, suggest ways to save bytes (in that code or nearby).
-- Compatibility with CBM BASIC does not matter for the `sim` and new-kernal builds: keywords,
-  tokens and behavior may change or go away if that saves bytes or helps. Old CBM programs and
-  saved tokenized files need not run. The `cbmbasic1`/`cbmbasic2` builds must still pass
-  `make verify`, so put such changes behind an `.ifdef` in shared sources.
+- Compatibility with CBM BASIC does not matter: keywords, tokens and behavior may change or go
+  away if that saves bytes or helps. Old CBM programs and saved tokenized files need not run.
 - Compatibility with X16 BASIC does not matter either. X16 keywords are a source of ideas only;
   their syntax and behavior may differ.
 
 ## Tools (not on PATH)
 
-- ca65/ld65/sim65 V2.19: `C:\8bitProgramming\cc65\bin\`
+- ca65/ld65 V2.19: `../tools/cc65/bin`, the Makefile's `CC65`.
+- sim65: none is installed, so `make test` and `make run` fail. `tests/run.py` looks for it in
+  `C:\8bitProgramming\cc65\bin\`.
 - make: `C:\8bitProgramming\make-4.4.1\bin\make.exe`
 - Python: `C:\Users\Admin\AppData\Local\Programs\Python\Python313\python.exe`
-- VICE 3.8 (`xpet` for the PET check): `C:\8bitProgramming\GTK3VICE-3.8-win32\`
 
 ## Layout
 
 - `src/`: ca65 sources, forked from mist64/msbasic (2-clause BSD, `LICENSE-msbasic`;
   our changes are public domain, Unlicense, `LICENSE`). One `msbasic.s` builds every target; `-D <target>` picks it, `<target>.cfg` sets the memory map.
-  Targets: `cbmbasic1` and `cbmbasic2` (checked against the ROM dumps; BASIC 2 runs in xpet) and
-  `sim`, and `6502dos`. The other upstream targets were removed; their `.ifdef` code in the
-  shared sources stays.
+  Targets: `sim` and `6502dos`. The other upstream targets were removed; their `.ifdef` code in
+  the shared sources stays.
 - `6502dos` target: BASIC in ROM bank 2 of the 6502DOS ROM, `$C000-$FFFF`. Files
   `defines_6502dos.s`, `6502dos_zp.s` (zero page and RAM data, `docs/6502dos-zeropage.md`),
   `6502dos_extra.s` (the target primitives on the 6502DOS API), `6502dos_iscntc.s`,
@@ -50,14 +47,15 @@ orders of the 6502DOS `CLAUDE.md` apply here. All paths below are relative to `M
   start-up prompts, the banner first, lowercase folding (`UPPER`). The long branches that
   `6502dos` needs go through `bne_far`, `beq_far` and `bcs_far` in `macros.s`, so the other
   binaries do not change. `tools/build.py` of the 6502DOS repo links the image as bank 2 of
-  the ROM and assembles `src/6502dos_com.s` to `MSBASIC.COM`, the program that starts it.
-  `MSBASIC NAME.BAS` loads NAME.BAS and runs it; `QUIT [n]` returns to the shell.
+  the ROM and assembles `src/6502dos_com.s` to `BASIC.COM`, the program that starts it.
+  `BASIC NAME.BAS` loads NAME.BAS and runs it; `QUIT [n]` returns to the shell.
   The file keywords, in `6502dos_extra.s`, details in `docs/changes.md`:
   - `HELP [topic]` (`CONFIG_HELP`), direct mode only, prints a topic of `basic\HELPBAS.HLP`
     in the folder of `BASIC.COM`, or with no topic the list. A token in the topic is spelled out, so `HELP TAB(` finds
     `TAB`. In a program it is ?SYNTAX ERROR.
-  - `LOAD "name"` does a NEW and reads the program text, as `MSBASIC NAME.BAS` does; in a
-    program it runs the loaded program. A missing file keeps the program.
+  - `LOAD "name"` does a NEW and reads the program text, as `BASIC NAME.BAS` does; in a
+    program it runs the loaded program. A missing file keeps the program. A line ends at CR, or
+    at LF when it holds text, so files with CR LF or LF line ends load.
   - `SAVE "name"` writes the program as LIST does, with no space before a line number, and
     replaces a file of that name. It ends a program.
   - `KILL "name"` deletes a file. `NAME "old" AS "new"` renames one; a new name that is taken
@@ -68,8 +66,8 @@ orders of the 6502DOS `CLAUDE.md` apply here. All paths below are relative to `M
     holder back by its unread bytes.
   - Typed lines go through `con_screen`, the full-screen editor: Up onto a listed line edits
     it.
-- `Makefile` (run in Git Bash): `make all`, `make <target>`, `make test` (see `tests/`), `make verify` (byte-compare with the
-  original ROM dumps; prints only mismatches), `make clean`. Output goes to `build/`.
+- `Makefile` (run in Git Bash): `make all`, `make <target>`, `make test` (see `tests/`),
+  `make run`, `make clean`. Output goes to `build/`.
 - `sim` target (our addition): headless build for sim65. Files `defines_sim.s`, `sim_extra.s`,
   `sim_iscntc.s`, `sim.cfg`. BASIC at $C000; console on fd 0/1 via sim65 paravirt calls. Any argument
   after the program (`sim65 build/sim.bin echo`) echoes input so stdout is a session transcript
@@ -89,8 +87,16 @@ orders of the 6502DOS `CLAUDE.md` apply here. All paths below are relative to `M
   `CONFIG_RADIX_LIT`). `PI` constant (`CONFIG_PI`). `XOR(a,b)`, `SHL(a,n)`, `SHR(a,n)`
   (`bitfn.s`, `CONFIG_BITFN`). `DEEK(addr)`, `DOKE addr,n` (`deek.s`, `CONFIG_DEEK`). `PAUSE n` waits n+1
   jiffies (`pause.s`, `CONFIG_PAUSE`; target primitive `K_JIFFY`, a busy loop in the sim).
-  `VPEEK(bank,addr)`, `VPOKE bank,addr,n` for video memory, `SCREEN mode` (`vera.s`,
-  `CONFIG_VERA`; target primitives `K_VPEEK`, `K_VPOKE`, `K_SCREEN`, stubs in the sim). `CLS`, `LOCATE x,y` (moves the cursor and
+  Video memory, addresses 0 to `$1FFFF`: `VPEEK(addr)`, `VPOKE addr,n`, `VMEMSET addr,n,len`,
+  `MEMCPYMV ram,addr,len`, `MEMCPYVM addr,ram,len`, `VLOAD "name",addr`. Sprites:
+  `SPRITE n clause ...` with the clauses ON, OFF, AT x,y, SHAPE s, COLOR c, LOWCOL, HICOL,
+  XYSIZE w,h, XYFLIP x,y, ZDEPTH z and MASK m, in any order; `SPRITE CLEAR HIT`;
+  `SPRITEHIT(g)`. The clause words crunch only in a SPRITE statement. Graphics: `SCREEN mode`
+  (0 to 3), `PSET x,y,c`, `POINT(x,y)`, `LINE`, `FRAME` and `RECT x1,y1,x2,y2,c`,
+  `CIRCLE x,y,r,c`, `CHAR x,y,a$ or code,c`. All in `vera.s`, `CONFIG_VERA`, which needs
+  `CONFIG_SCREEN`; target primitives `K_VPEEK`, `K_VPOKE`, `K_VMEMSET`, `K_VWRITE`,
+  `K_VREAD`, `K_VLOAD`, `K_SPRSET`, `K_SPRMOVE`, `K_SPRSHAPE`, `K_SPRCLEAR`, `K_SPRHITS`,
+  `K_SCREEN`, `K_PSET`, `K_POINT`, `K_SHAPE`, `K_CIRCLE`, `K_CHAR`, stubs in the sim. `CLS`, `LOCATE x,y` (moves the cursor and
   sets `POS()`), `COLOR fg[,bg]` (`textat.s`, `CONFIG_SCREEN`; ANSI codes, which the new kernal's
   POSIX-style console is planned to understand, so no target primitives). `POS(0)` column,
   `POS(1)` line (`CONFIG_POS_LINE`; the sim counts printed lines in `POSY`). Labels: `100 name:`
@@ -114,8 +120,6 @@ orders of the 6502DOS `CLAUDE.md` apply here. All paths below are relative to `M
   sim65 runs in `build/`, so files that tests write land there. Keep test lines at 80 characters
   or less.
   After an intended output change, run `python tests/run.py --update [NAME]` and review the diff.
-- `make pet` starts xpet (3032) with our BASIC 2 ROM (first 8K of `cbmbasic2.bin`).
-  `make pet-check` types a program headless and saves `build/pet.png`.
 - `defines_sim.s` started from upstream `defines_w65c816sxb.s`, whose zero page overlaps (`Z14`
   and `TEMPPT` both at $65, so FRE hangs). It uses ZP_START4 = $66.
 

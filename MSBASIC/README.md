@@ -5,10 +5,11 @@ hardware with a new DOS-style kernal. This code is an exercise at the moment; ma
 will come of it.
 
 The code is a fork of [mist64/msbasic](https://github.com/mist64/msbasic), a ca65 version of the
-original source. It is NMOS 6502 code only, with no 65C02 opcodes.
+original source. The `sim` target is NMOS 6502 code only, with no 65C02 opcodes; the `6502dos`
+target may use 65C02 opcodes.
 
-**Status:** early work. BASIC runs headless under sim65 and passes its tests. The new kernal
-does not exist yet, so the screen and video commands go to ANSI codes or stubs in the sim.
+**Status:** early work. BASIC runs headless under sim65 and in bank 2 of the 6502DOS ROM. In
+the sim, the screen commands send ANSI codes and the video commands are stubs.
 
 ## What is new
 
@@ -23,8 +24,14 @@ Compared to Commodore BASIC 2:
   `DEEK(addr)` and `DOKE addr,n` (16-bit PEEK and POKE), `POS(1)` for the cursor line.
 - Literals: `$FF` hex and `%1010` binary.
 - Screen: `CLS`, `LOCATE x,y`, `COLOR fg[,bg]`, `TEXTAT x,y,a$ or code[,color]` (prints without
-  moving the cursor), `SCREEN mode`, `VPEEK(bank,addr)` and `VPOKE bank,addr,n` for video
-  memory, `PAUSE n` (waits n+1 jiffies).
+  moving the cursor), `PAUSE n` (waits n+1 jiffies).
+- Video memory, addresses 0 to `$1FFFF`: `VPEEK(addr)`, `VPOKE addr,n`, `VMEMSET addr,n,len`,
+  `MEMCPYMV ram,addr,len`, `MEMCPYVM addr,ram,len`, `VLOAD "name",addr`.
+- Sprites: `SPRITE n` with the clauses `ON`, `OFF`, `AT x,y`, `SHAPE s`, `COLOR c`, `LOWCOL`,
+  `HICOL`, `XYSIZE w,h`, `XYFLIP x,y`, `ZDEPTH z` and `MASK m`, in any order;
+  `SPRITE CLEAR HIT`; `SPRITEHIT(g)`.
+- Graphics: `SCREEN mode` (0 to 3), `PSET x,y,c`, `POINT(x,y)`, `LINE`, `FRAME` and
+  `RECT x1,y1,x2,y2,c`, `CIRCLE x,y,r,c`, `CHAR x,y,a$ or code,c`.
 - File I/O by name: `OPEN lf,"name"[,mode]` (0 read, 1 write, 2 append), `CLOSE`, `PRINT#`,
   `INPUT#`, `GET#`, `CMD` and `ST`, on top of four primitives: open, close, read and write.
 - `SYS address` calls machine code.
@@ -63,23 +70,14 @@ You need [cc65](https://cc65.github.io/) (ca65, ld65 and sim65), GNU make and Py
 ```sh
 make all      # build every target into build/
 make test     # run the BASIC test programs under sim65
-make verify   # compare cbmbasic1 and cbmbasic2 with the original ROM dumps
 make run      # start the sim build interactively
-```
-
-`make verify` needs the original ROM dumps from mist64/msbasic:
-
-```sh
-git clone https://github.com/mist64/msbasic.git ref/msbasic
 ```
 
 ## Targets
 
 - `sim`: headless build for sim65, with the console on stdin and stdout. This is where new
-  features are developed and tested.
-- `cbmbasic1`, `cbmbasic2`: Commodore PET BASIC 1 and 2. They still build byte for byte equal to
-  the original ROMs, which checks that changes to the shared sources do not break the old code.
-  `make pet` runs BASIC 2 in the VICE PET emulator.
+  features are developed and tested. The video, sprite and graphics keywords are stubs here.
+- `6502dos`: BASIC in ROM bank 2 of the 6502DOS ROM, on the 6502DOS API.
 
 ## Layout
 

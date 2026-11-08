@@ -8,3 +8,4 @@ print a(11)
 print "x"+1
 dim q(5): dim q(5)
 print "still ok"
+print go

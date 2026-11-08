@@ -112,7 +112,8 @@ INLIN_READ:
   .ifdef CONFIG_HOSTED
 ; hosted: buffer outside zero page, LINE_MAX characters, BS or DEL deletes
 ; the last character, other control characters are dropped. BEL when the
-; line is full.
+; line is full. CR ends a line. LF ends a line that holds text; an LF on an
+; empty line, as the LF of CR LF, is dropped.
         ldx     #$00
 INLIN2:
         jsr     GETLN
@@ -123,7 +124,7 @@ INLIN2:
         cmp     #$7F ; DEL
         beq     @del
         cmp     #$20
-        bcc     INLIN2
+        bcc     @ctrl
         cpx     #LINE_MAX
         bcs     @full
         sta     INPUTBUFFER,x
@@ -138,6 +139,11 @@ INLIN2:
         beq     INLIN2
         dex
         bpl     INLIN2		; always
+@ctrl:
+        cmp     #$0A ; LF
+        bne     INLIN2
+        txa
+        beq     INLIN2
 L2453:
         jmp     L29B9
   .endif

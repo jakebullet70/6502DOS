@@ -120,7 +120,7 @@ is the order of `sim`.
 
 | Address | Bytes | What |
 |---|---|---|
-| `$0801` | 15 at most | `MSBASIC.COM`, the stub |
+| `$0801` | 15 at most | `BASIC.COM`, the stub |
 | `$0810` | 66 | The RAM data: the 71 bytes of the second table less `CURLIN`, `VALTYP` and `EOLPNTR` |
 | `$085B` | 5 | `INPUTBUFFER-5` to `-1` |
 | `$0860` | 81 | `INPUTBUFFER`: `LINE_MAX` 80 characters and the CR |

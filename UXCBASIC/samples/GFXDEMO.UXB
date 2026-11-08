@@ -1,0 +1,48 @@
+' GFXDEMO.UXB -- the graphics SUBs of VERA.UXI on screen 2, 320 by 240 in 16 colors.
+' It draws the picture of card\source\basic\GFXDEMO.BAS. A key ends it, and it then
+' prints the color POINT read from the largest ring, 10.
+#INCLUDE "VERA.UXI"
+
+DIM SWATCH AS UWORD, X AS UWORD, RADIUS AS UBYTE, RING_COLOR AS UBYTE, K AS UBYTE
+
+' DRAW_TEXT: draws T$ with its first character's top left at LEFT_X, TOP_Y, each next one
+' 8 pixels to the right, in COLOR. The whole text lies on the bitmap.
+SUB DRAW_TEXT(LEFT_X AS UWORD, TOP_Y AS UBYTE, T$ AS CONST, COLOR AS UBYTE)
+  DIM I AS UBYTE
+  FOR I = 1 TO LEN(T$)
+    VERA.CHAR(LEFT_X, TOP_Y, ASC(MID$(T$, I, 1)), COLOR)
+    LEFT_X = LEFT_X + 8
+  NEXT
+END SUB
+
+VERA.SCREEN(2)
+
+' The 16 colors, a swatch of 20 by 20 each
+FOR SWATCH = 0 TO 15
+  X = SWATCH * 20
+  VERA.RECT(X, 0, X + 19, 19, SWATCH)
+NEXT
+
+' A dotted rule under the swatches
+FOR X = 0 TO 318 STEP 2
+  VERA.PSET(X, 20, 15)
+NEXT
+
+VERA.FRAME(0, 22, 319, 239, 15)
+DRAW_TEXT(8, 26, "6502DOS GRAPHICS", 1)
+
+' A fan of lines from the bottom middle
+FOR X = 1 TO 318 STEP 9
+  VERA.LINE(160, 238, X, 40, 11)
+NEXT
+
+' Ten rings over the fan, radius 10 in color 1 to radius 100 in color 10
+FOR RADIUS = 10 TO 100 STEP 10
+  RING_COLOR = RADIUS / 10
+  VERA.CIRCLE(160, 135, RADIUS, RING_COLOR)
+NEXT
+
+RING_COLOR = VERA.POINT(260, 135)
+K = WAITKEY()
+VERA.SCREEN(0)
+PRINT "POINT(260, 135) IS"; RING_COLOR

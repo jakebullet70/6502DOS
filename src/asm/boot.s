@@ -10,7 +10,7 @@
 .import CHROUT, gate_init, kernel_init, heap_init, bank_init, monitor, monitor_brk, put_decimal
 .import sd_ready
 .importzp mon_number
-.export boot_shell, irq
+.export boot_shell, irq, sprite_hits
 .exportzp ticks
 
 .define SHELL_PATH "C:\sys\ROMSHELL.COM"   ; starts the shell in ROM banks 3 and 4
@@ -18,6 +18,10 @@
 .segment "KERNELZP" : zeropage
 
 ticks:        .res 4            ; VSYNCs since boot
+
+.segment "KERNELRAM"
+
+sprite_hits:  .res 1            ; bits 7 to 4: the sprite groups that collided since the clear
 
 .segment "CODE"
 
@@ -34,6 +38,7 @@ reset:
         stz ROM_BANK            ; trap: reads back as noise until written
         stz RAM_BANK
         stz KBD_COUNT
+        stz sprite_hits
         jsr gate_init
         jsr kernel_init
         jsr heap_init
@@ -337,8 +342,9 @@ print:
 @done:
         rts
 
-; irq: counts VSYNCs, the only VERA interrupt on. A BRK goes to the monitor. irq_entry jumps
-; here with A and the interrupted ROM bank on the stack.
+; irq: counts VSYNCs, the only VERA interrupt on, and adds the frame's sprite collisions to
+; sprite_hits. A BRK goes to the monitor. irq_entry jumps here with A and the interrupted ROM
+; bank on the stack.
 irq:
         phx
         tsx
@@ -351,6 +357,9 @@ irq:
         tsx
         jmp monitor_brk         ; X = S: X, A, P and PC above it
 @vsync:
+        lda VERA_ISR
+        and #$F0                ; the groups that collided in the frame
+        tsb sprite_hits
         lda #$01                ; VSYNC
         sta VERA_ISR
         inc ticks

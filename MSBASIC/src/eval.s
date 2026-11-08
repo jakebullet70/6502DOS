@@ -363,6 +363,10 @@ L2D3A:
         bne     L2D3B
         jmp     VPEEK
 L2D3B:
+        cmp     #TOKEN_POINT
+        bne     L2D3C
+        jmp     VPOINT
+L2D3C:
 .endif
         jsr     ISLETC
         bcs     FRM_VARIABLE
@@ -623,6 +627,9 @@ LCE90:
 
 ; ----------------------------------------------------------------------------
 UNARY:
+; A TOKEN PAST MID$ WITH NO CASE IN L2D74 (GO) HAS NO UNFNC ENTRY.
+        cmp     #TOKEN_MIDSTR+1
+        bcs     SYNERR
         asl     a
         pha
         tax

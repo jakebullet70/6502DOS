@@ -12,7 +12,6 @@ mist64/msbasic. One source tree builds three targets:
 
 | Target | Purpose | Check |
 |---|---|---|
-| `cbmbasic1`, `cbmbasic2` | Original Commodore ROMs | `make verify` must match the ROM dumps byte for byte |
 | `sim` | Our build for sim65, headless | `make test` (31 tests) |
 
 The new hardware and its Unix-style kernal do not exist as a target yet. The `sim` target stands
@@ -167,10 +166,10 @@ its text plus a table entry, so reuse an existing message where the meaning fits
 
 ### Build and test
 
-Run `make all`, `make test` and `make verify` in Git Bash. Tests type `tests/NAME.bas` into the
-sim and compare the output with `tests/NAME.out`. Every `src/` change gets a test, an entry in
+Run `make all` and `make test` in Git Bash. Tests type `tests/NAME.bas` into the sim and compare
+the output with `tests/NAME.out`. Every `src/` change gets a test, an entry in
 `docs/changes.md` in the same commit, and a size note in `docs/keywords.md` when a keyword
-changes. Changes that are not for `cbmbasic1`/`cbmbasic2` go behind `.ifdef`.
+changes.
 
 ## 3. A pre-pass at RUN: full names and CONST
 

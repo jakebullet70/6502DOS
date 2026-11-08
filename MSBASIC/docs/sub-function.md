@@ -224,7 +224,7 @@ first guess of 400. Keep the 400 in `docs/keywords.md` until the code shows the 
 ## Plan
 
 Each step gets tests in `tests/`, an entry in `docs/changes.md` and its own commit. The code
-goes in a new `sub.s` under `CONFIG_SUB`, so `cbmbasic1` and `cbmbasic2` stay unchanged.
+goes in a new `sub.s` under `CONFIG_SUB`.
 
 1. RAM stack: reserve it at cold start, add push and pop, reset it in `STKINI`. No keyword yet.
 2. `SUB` / `END SUB` with no parameters, `CALL name`. Skip bodies in normal flow. Test that

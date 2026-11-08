@@ -31,7 +31,7 @@
 		keyword_rts "REM", REM, TOKEN_REM
 .endif
 		keyword_rts "STOP", STOP
-		keyword_rts "ON", ON
+		keyword_rts "ON", ON, TOKEN_ON
 .ifdef CONFIG_NULL
 		keyword_rts "NULL", NULL
 .endif
@@ -71,9 +71,9 @@
 		keyword_rts "CONT", CONT
 		keyword_rts "LIST", LIST
 .ifdef CONFIG_CBM_ALL
-		keyword_rts "CLR", CLEAR
+		keyword_rts "CLR", CLEAR, TOKEN_CLEAR
 .else
-		keyword_rts "CLEAR", CLEAR
+		keyword_rts "CLEAR", CLEAR, TOKEN_CLEAR
 .endif
 .ifdef CONFIG_FILE
 		keyword_rts "CMD", CMD
@@ -103,11 +103,22 @@
 .ifdef CONFIG_VERA
 		keyword_rts "VPOKE", VPOKE
 		keyword_rts "SCREEN", SCREEN
+		keyword_rts "PSET", PSET
+		keyword_rts "LINE", LINE
+		keyword_rts "FRAME", FRAME
+		keyword_rts "RECT", RECT
+		keyword_rts "CIRCLE", CIRCLE
+		keyword_rts "CHAR", CHAR
+		keyword_rts "VMEMSET", VMEMSET
+		keyword_rts "MEMCPYMV", MEMCPYMV
+		keyword_rts "MEMCPYVM", MEMCPYVM
+		keyword_rts "VLOAD", VLOAD
+		keyword_rts "SPRITE", SPRITE, TOKEN_SPRITE
 .endif
 .ifdef CONFIG_SCREEN
 		keyword_rts "CLS", CLS
 		keyword_rts "LOCATE", LOCATE
-		keyword_rts "COLOR", COLOR
+		keyword_rts "COLOR", COLOR, TOKEN_COLOR
 .endif
 .ifdef CONFIG_QUIT
 		keyword_rts "QUIT", QUIT
@@ -149,6 +160,20 @@
 		keyword	">", TOKEN_GREATER
 		keyword	"=", TOKEN_EQUAL
 		keyword	"<"
+.ifdef CONFIG_VERA
+; SPRITE's clause words, in the order of SPR_TABLE (vera.s). They crunch only in
+; a SPRITE statement (program.s). Before TOKEN_SGN, so FRM_ELEMENT gives ?SYNTAX.
+		keyword	"OFF", TOKEN_OFF
+		keyword	"AT"
+		keyword	"SHAPE"
+		keyword	"LOWCOL"
+		keyword	"HICOL"
+		keyword	"XYSIZE"
+		keyword	"XYFLIP"
+		keyword	"ZDEPTH"
+		keyword	"MASK"
+		keyword	"HIT", TOKEN_HIT
+.endif
 
         .segment "VECTORS"
 UNFNC:
@@ -206,9 +231,12 @@ UNFNC_ATN:
 		keyword_addr "UCASE$", UCASESTR
 		keyword_addr "LCASE$", LCASESTR
 .endif
+.ifdef CONFIG_VERA
+		keyword_addr "SPRITEHIT", SPRITEHIT
+.endif
 		keyword_addr "LEFT$", LEFTSTR, TOKEN_LEFTSTR
 		keyword_addr "RIGHT$", RIGHTSTR
-		keyword_addr "MID$", MIDSTR
+		keyword_addr "MID$", MIDSTR, TOKEN_MIDSTR
 .ifdef CONFIG_INSTR
 		keyword	"INSTR", TOKEN_INSTR
 .endif
@@ -225,6 +253,7 @@ UNFNC_ATN:
 .endif
 .ifdef CONFIG_VERA
 		keyword	"VPEEK", TOKEN_VPEEK
+		keyword	"POINT", TOKEN_POINT
 .endif
 .ifdef CONFIG_2
 		keyword	"GO", TOKEN_GO

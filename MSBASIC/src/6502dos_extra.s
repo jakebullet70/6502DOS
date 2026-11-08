@@ -204,30 +204,187 @@ K_JIFFY:
 .endif
 
 .ifdef CONFIG_VERA
-; K_VPEEK: A = bank, LINNUM = address; returns the byte in A.
+; K_VPEEK: A = bit 16, LINNUM = bits 0 to 15; returns the byte in A. Call 61's vpeek.
 K_VPEEK:
-        jsr     DOS_VADDR
-        lda     VERA_DATA0
-        rts
+        ldy     #VERA_VPEEK
+        jsr     DOS_VREG
+        jmp     API_VERA
 
-; K_VPOKE: A = bank, LINNUM = address, X = byte.
+; K_VPOKE: A = bit 16, LINNUM = bits 0 to 15, X = byte. Call 61's vpoke.
 K_VPOKE:
-        jsr     DOS_VADDR
-        stx     VERA_DATA0
-; K_SCREEN: X = mode. Does nothing: the console keeps its 80x30 text mode.
+        phx
+        ldy     #VERA_VPOKE
+        jsr     DOS_VREG
+        pla				; the byte
+        jmp     API_VERA
+
+; K_SCREEN: X = the screen, 0 to 3. Call 62's mode.
 K_SCREEN:
+        txa
+        ldy     #GFX_MODE
+        jmp     API_GFX
+
+; K_CIRCLE: VADR = x, VARG = y, LINNUM = the radius, A = the color. Call 62's circle.
+K_CIRCLE:
+        ldy     #GFX_CIRCLE
+        .byte   $2C			; skips the ldy
+
+; K_PSET: VADR = x, VARG = y, A = the color. Call 62's pset.
+K_PSET:
+        ldy     #GFX_PSET
+        pha
+        jsr     DOS_VBLK
+        pla
+        jmp     API_GFX
+
+; K_POINT: A:Y = x, X = y; returns A = the color. Call 62's point.
+; Trap: r1's high byte is left as it is; gfx_at reads only r1's low byte.
+K_POINT:
+        sty     r0
+        sta     r0+1
+        stx     r1
+        ldy     #GFX_POINT
+        jmp     API_GFX
+
+; K_SHAPE: VXY = x1, y1, VADR = x2, VARG = y2, A = the color, Y = GFX_LINE,
+; GFX_FRAME or GFX_RECT. Call 62's line, frame or rect.
+K_SHAPE:
+        pha
+        ldx     #7
+@copy:
+        lda     VXY,x			; r0 to r3
+        sta     r0,x
+        dex
+        bpl     @copy
+        pla
+        jmp     API_GFX
+        .assert GFX_LINE = 4 && GFX_FRAME = 5 && GFX_RECT = 6, error, "vera.s's LINE, FRAME and RECT need GFX_LINE = 4, GFX_FRAME = 5, GFX_RECT = 6"
+
+; K_CHAR: VADR = x, VARG = y, VBANK = the color, INDEX = the text, A = its length.
+; Call 62's char for each character, 8 pixels apart.
+K_CHAR:
+        tax
+        beq     @end			; no characters
+        stx     VXY			; the characters left
+        jsr     DOS_VBLK		; r0 = x, r1 = y
+@next:
+        lda     (INDEX)
+        sta     r2
+        inc     INDEX
+        bne     @draw
+        inc     INDEX+1
+@draw:
+        lda     VBANK
+        ldy     #GFX_CHAR
+        jsr     API_GFX			; r0 = the next x
+        dec     VXY
+        bne     @next
+@end:
         rts
 
-; Points VERA's address 0 at bank A, bit 0 only, and LINNUM, with no
-; increment. Keeps X.
-DOS_VADDR:
-        and     #$01
-        stz     VERA_CTRL		; ADDRSEL 0
-        sta     VERA_ADDR_H
+; Sets call 61's address: r0 = LINNUM, X = A, bit 16. Keeps Y.
+DOS_VREG:
+        tax
         lda     LINNUM
-        sta     VERA_ADDR_L
+        sta     r0
         lda     LINNUM+1
-        sta     VERA_ADDR_M
+        sta     r0+1
+        rts
+
+; K_VMEMSET: VADR and VBANK = the address, VARG = the byte, LINNUM = the count.
+; Call 61's vfill.
+K_VMEMSET:
+        jsr     DOS_VBLK
+        lda     LINNUM
+        sta     r1
+        lda     LINNUM+1
+        sta     r1+1
+        lda     VARG
+        ldy     #VERA_VFILL
+        jmp     API_VERA
+
+; K_VWRITE: VADR and VBANK = the video address, VARG = the RAM address,
+; LINNUM = the count. Call 61's vwrite.
+K_VWRITE:
+        ldy     #VERA_VWRITE
+        .byte   $2C		; skips the ldy
+
+; K_VREAD: as K_VWRITE, the other way. Call 61's vread.
+K_VREAD:
+        ldy     #VERA_VREAD
+        jsr     DOS_VBLK
+        jmp     API_VERA
+
+; K_VLOAD: the name at HIO_NAMELEN, VADR and VBANK = the video address.
+; Reads the file $8000 bytes a call 61 vload, to its end or to a read error,
+; then closes it. A missing file is ?FILE NOT FOUND ERROR.
+K_VLOAD:
+        lda     #0			; read
+        jsr     K_OPEN			; DOS_X = handle
+        bcc     @opened
+        jmp     DOS_NOTFOUND
+@opened:
+        stz     VARG			; the count, $8000
+        lda     #$80
+        sta     VARG+1
+@next:
+        ldy     #VERA_VLOAD
+        jsr     DOS_VBLK
+        txa				; A = bit 16
+        ldx     DOS_X
+        jsr     API_VERA
+        bcs     @close
+        lda     r1+1
+        bpl     @close			; under $8000 read: the end
+        lda     VADR+1
+        eor     #$80
+        sta     VADR+1
+        bmi     @next
+        inc     VBANK
+        bra     @next
+@close:
+        ldx     DOS_X
+        jmp     K_CLOSE
+
+; The sprite primitives. VBANK = the sprite.
+; K_SPRSET: A = the field, VADR = the value. Call 61's sprset.
+; K_SPRMOVE: VADR = x, VARG = y. Call 61's sprmove.
+; K_SPRSHAPE: VADR = the shape's video address / 32. Call 61's sprshape.
+; K_SPRCLEAR: call 61's sprclear.
+; K_SPRHITS: returns A = the collision groups hit, bits 0 to 3. Call 61's sprhits.
+K_SPRSET:
+        ldy     #VERA_SPRSET
+        .byte   $2C		; skips the ldy
+K_SPRMOVE:
+        ldy     #VERA_SPRMOVE
+        .byte   $2C		; skips the ldy
+K_SPRSHAPE:
+        ldy     #VERA_SPRSHAPE
+        .byte   $2C		; skips the ldy
+K_SPRCLEAR:
+        ldy     #VERA_SPRCLEAR
+        .byte   $2C		; skips the ldy
+K_SPRHITS:
+        ldy     #VERA_SPRHITS
+        pha
+        jsr     DOS_VBLK
+        pla
+        jmp     API_VERA
+
+; Sets r0 = VADR, r1 = VARG, r2 = LINNUM, X = VBANK. Keeps Y.
+; Trap: VARG must follow VADR in vera.s.
+DOS_VBLK:
+        ldx     #3
+@copy:
+        lda     VADR,x
+        sta     r0,x
+        dex
+        bpl     @copy
+        lda     LINNUM
+        sta     r2
+        lda     LINNUM+1
+        sta     r2+1
+        ldx     VBANK
         rts
 .endif
 

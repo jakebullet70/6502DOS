@@ -163,8 +163,10 @@ DPB_TOP       = 6               ; the first cluster of the directory \ names, 4 
 DPB_TOP_LEN   = 10              ; the length of that directory's path from the volume's root
 DPB_SIZE      = 16
 
+IO_PAGE       = $9F00           ; $9F00-$9FFF: the I/O registers. A read into it streams.
+
 ; VIA 1
-VIA1_PRA      = $9F01           ; bit 0 I2C data, bit 1 I2C clock
+VIA1_PRA     = $9F01           ; bit 0 I2C data, bit 1 I2C clock
 VIA1_DDRA     = $9F03
 
 ; VERA
@@ -180,6 +182,22 @@ VERA_DC_VIDEO = $9F29           ; DC_ registers: with DCSEL 0 in VERA_CTRL
 VERA_DC_HSCALE = $9F2A
 VERA_DC_VSCALE = $9F2B
 VERA_DC_BORDER = $9F2C
+VERA_DC_VSTART = $9F2B          ; with DCSEL 1
+VERA_DC_VSTOP = $9F2C           ; with DCSEL 1
+VERA_DC_VER0  = $9F29           ; with DCSEL 63: 'V', then the major, minor and build numbers
+VERA_DC_VER1  = $9F2A
+VERA_DC_VER2  = $9F2B
+VERA_DC_VER3  = $9F2C
+VERA_FX_CTRL  = $9F29           ; with DCSEL 2
+VERA_FX_X_INCR_L = $9F29        ; with DCSEL 3, write only
+VERA_FX_X_INCR_H = $9F2A
+VERA_FX_CACHE_L = $9F29         ; with DCSEL 6, write only: the 32-bit cache, low byte first
+VERA_FX_CACHE_M = $9F2A
+VERA_FX_CACHE_H = $9F2B
+VERA_FX_CACHE_U = $9F2C
+VERA_L0_CONFIG = $9F2D
+VERA_L0_TILEBASE = $9F2F
+VERA_L0_HSCROLL_H = $9F31
 VERA_L1_CONFIG = $9F34
 VERA_L1_MAPBASE = $9F35
 VERA_L1_TILEBASE = $9F36
@@ -191,9 +209,13 @@ VERA_SPI_DATA = $9F3E
 VERA_SPI_CTRL = $9F3F           ; bit 0 selects the SD card, bit 1 the slow clock, bit 7 busy
 
 ; VRAM
+BITMAP        = $00000          ; layer 0 bitmap: 240 rows of 160 bytes; screen 3 200 rows of 320
+BITMAP_SIZE   = 38400           ; screens 1 and 2
+BITMAP3_SIZE  = 64000           ; screen 3
 SCREEN_MAP    = $10000          ; layer 1 text: 64 rows of 128 cells, a character and a color
 CHARSET       = $1F000          ; the font: 256 glyphs of 8 bytes
 PALETTE       = $1FA00          ; palette entry 0
+SPRITES       = $1FC00          ; sprite 0's attributes: 128 sprites of 8 bytes
 
 ; I2C
 SMC           = $42             ; the I2C address of the SMC

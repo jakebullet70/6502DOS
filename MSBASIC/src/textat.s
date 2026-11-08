@@ -20,11 +20,7 @@ TEXTAT:
         txa
         pha
         jsr     CHKCOM
-        jsr     FRMEVL
-        bit     VALTYP
-        bmi     L_TA1
-        jsr     CHRSTUB		; code: make CHR$(code)
-L_TA1:
+        jsr     FRMSTRCHR	; A$, or CHR$(code)
         lda     FAC_LAST-1	; keep the descriptor address
         pha
         lda     FAC_LAST
@@ -151,12 +147,15 @@ TA_GOTO:
         lda     #'H'
         jmp     MONCOUT
 
-.ifndef CONFIG_RPT
-; CHR$ AS A SUBROUTINE: CHRSTR DROPS ONE RETURN ADDRESS (UNARY'S), SO IT
-; RETURNS TO OUR CALLER. RPT.S HAS THE SAME STUB.
-CHRSTUB:
-        jsr     CHRSTR
-.endif
+; EVALUATES A STRING OR A CHARACTER CODE (TEXTAT, RPT$, CHAR): RETURNS THE
+; STRING'S DESCRIPTOR IN FAC, OR CHR$(CODE)'S. CHRSTR DROPS ONE RETURN
+; ADDRESS (UNARY'S), SO IT RETURNS TO OUR CALLER. RPT.S HAS A COPY FOR A
+; BUILD WITHOUT TEXTAT.
+FRMSTRCHR:
+        jsr     FRMEVL
+        bit     VALTYP
+        bmi     L_TA5		; a string
+        jsr     CHRSTR		; a code
 
 ; PRINT A AS THREE DECIMAL DIGITS
 TA_DEC:

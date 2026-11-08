@@ -34,12 +34,13 @@
 .export con_init, api_con_line, api_con_edit, api_con_screen, api_con_status, api_con_out, api_con_in, api_con_cursor
 .export api_con_getkey
 .export api_con_colour, api_con_break, con_hide
-.export CHRIN, CHROUT
+.export CHRIN, CHROUT, clear
+.exportzp con_last_row, con_last_col
 .import font, i2c_read_byte, sft_find, bank_restore, api_read, exec_break
 .importzp ticks
 
-COLUMNS       = 80
-ROWS          = 30
+COLUMNS       = 80              ; at boot; then con_last_col + 1
+ROWS          = 30              ; at boot; then con_last_row + 1
 MAP_ROWS      = 64
 CON_COLOUR    = $05             ; at boot: background 0 black, foreground 5 green
 BLINK         = 30              ; frames between cursor blinks
@@ -74,8 +75,10 @@ BELL_LOOPS    = 0               ; passes of 256 of bell's wait; 0 means 256
 
 .segment "KERNELZP" : zeropage
 
-con_row:      .res 1            ; the cursor's screen row, 0 to ROWS - 1
-con_col:      .res 1            ; the cursor's column, 0 to COLUMNS - 1
+con_row:      .res 1            ; the cursor's screen row, 0 to con_last_row
+con_col:      .res 1            ; the cursor's column, 0 to con_last_col
+con_last_row: .res 1            ; the screen's rows less 1
+con_last_col: .res 1            ; the screen's columns less 1
 con_top:      .res 1            ; the map row shown on screen row 0
 con_key:      .res 1            ; the character con_status read, 0 when none
 con_scan:     .res 1            ; the scan code of an extended key before its 0, 0 when none
@@ -153,6 +156,10 @@ con_init:
         lda #CON_COLOUR
         sta con_colour
         sta con_default
+        lda #ROWS - 1
+        sta con_last_row
+        lda #COLUMNS - 1
+        sta con_last_col
         ; fall through
 
 ; clear: blanks the whole map and puts the cursor home. Changes A, X and Y.
@@ -279,10 +286,10 @@ put:
         sta VERA_DATA0
         lda con_colour
         sta VERA_DATA0
-        inc con_col
         lda con_col
-        cmp #COLUMNS
-        bne @done
+        cmp con_last_col        ; carry set in the last column
+        inc con_col
+        bcc @done
         stz con_col
         bra lf
 @done:
@@ -290,7 +297,7 @@ put:
 
 lf:
         lda con_row
-        cmp #ROWS - 1
+        cmp con_last_row
         beq @scroll
         inc con_row
         rts
@@ -300,10 +307,11 @@ lf:
         and #MAP_ROWS - 1
         sta con_top
         jsr vscroll
-        ldx #ROWS - 1
+        ldx con_last_row
         ldy #0
         jsr point
-        ldx #COLUMNS
+        ldx con_last_col
+        inx
         ; fall through
 
 ; blank: writes X blank cells, 256 when X is 0, at the VERA address. Returns X = 0.
@@ -384,11 +392,12 @@ ansi:
         beq @first              ; 0 means 1
         dec
 @first:
-        cmp ansi_last,x
+        cmp con_last_row,x
         bcc @store
-        lda ansi_last,x
+        lda con_last_row,x
 @store:
         .assert con_col = con_row + 1, error, "ansi needs con_col right after con_row"
+        .assert con_last_col = con_last_row + 1, error, "ansi needs con_last_col right after con_last_row"
         sta con_row,x
         dex
         bpl @axis
@@ -398,10 +407,11 @@ ansi:
         ldx con_row
         ldy con_col
         jsr point
-        lda #COLUMNS
+        lda con_last_col
         sec
         sbc con_col
         tax
+        inx
         jmp blank
 @erase_screen:
         lda ansi_params
@@ -624,16 +634,18 @@ api_con_break:
         rts
 
 ; api_con_cursor: with carry set returns the cursor's row in X and column in Y, and the screen's
-; rows in r0L and columns in r0H. With carry clear moves the cursor to row X, below ROWS, and
-; column Y, below COLUMNS. With carry clear and X = $80 or above, stores X in con_hide and
-; leaves the cursor where it is: bit 6 set hides the cursor while con_in waits, clear shows it.
-; Returns carry clear.
+; rows in r0L and columns in r0H. With carry clear moves the cursor to row X, below the rows,
+; and column Y, below the columns. With carry clear and X = $80 or above, stores X in con_hide
+; and leaves the cursor where it is: bit 6 set hides the cursor while con_in waits, clear shows
+; it. Returns carry clear.
 api_con_cursor:
         bcc @move
-        lda #ROWS
-        sta r0
-        lda #COLUMNS
-        sta r0+1
+        ldx con_last_row
+        inx
+        stx r0
+        ldy con_last_col
+        iny
+        sty r0+1
         ldx con_row
         ldy con_col
         clc
@@ -916,7 +928,7 @@ api_con_screen:
         pla
 @over:
         ldy con_col
-        cpy #COLUMNS - 1
+        cpy con_last_col
         beq @last
         jsr CHROUT              ; shows it and moves on
         bra @key
@@ -1026,9 +1038,10 @@ scr_close:
         stz VERA_CTRL
         iny
         jsr point
+        dey
 @cell:
-        cpy #COLUMNS
-        beq @last
+        cpy con_last_col        ; Y: the cell port 1 writes
+        bcs @last
         lda VERA_DATA0
         sta VERA_DATA1
         lda VERA_DATA0
@@ -1073,7 +1086,7 @@ scr_up:
 
 scr_down:
         lda con_row
-        cmp #ROWS - 1
+        cmp con_last_row
         beq scr_done
         inc con_row
         rts
@@ -1087,7 +1100,7 @@ scr_left:
 ; scr_right: the cursor one right. Returns carry set in the last column.
 scr_right:
         lda con_col
-        cmp #COLUMNS - 1
+        cmp con_last_col
         bcs scr_done
         inc con_col
 scr_done:
@@ -1100,9 +1113,9 @@ scr_home:
 
 scr_end_key:                    ; after the text, or the last column
         jsr scr_end
-        cpy #COLUMNS
+        cpy con_last_col
         bcc @column
-        dey
+        ldy con_last_col
 @column:
         sty con_col
         rts
@@ -1137,19 +1150,19 @@ scr_word_right:                 ; to the start of the next word, or the last col
         jsr scr_cell
         cmp #' '
         beq @blank
+        cpy con_last_col        ; carry set in the last column
         iny
-        cpy #COLUMNS
         bcc @word
         bra @last
 @blank:
         jsr scr_cell
         cmp #' '
         bne @column
+        cpy con_last_col
         iny
-        cpy #COLUMNS
         bcc @blank
 @last:
-        ldy #COLUMNS - 1
+        ldy con_last_col
 @column:
         sty con_col
         rts
@@ -1169,7 +1182,7 @@ scr_start:
 ; when the row is blank. Changes A and X.
 scr_end:
         ldx con_row
-        ldy #COLUMNS - 1
+        ldy con_last_col
         jsr point
         lda #$28 | ^SCREEN_MAP  ; increment 2, down: the characters right to left
         sta VERA_ADDR_H
@@ -1213,9 +1226,9 @@ scr_open:
         ldx pointer+1
         stx VERA_DATA1
         sta pointer+1
+        cpy con_last_col        ; carry set in the last column
         iny
-        cpy #COLUMNS
-        bne @cell
+        bcc @cell
         rts
 
 ; kbd_get: reads one keycode from the SMC. Returns its character in A, or 0 when there is
@@ -1389,10 +1402,6 @@ kbd_special_chars:
 kbd_ctrl_scans:
         .byte $73, $74, $75, $76, $77, $84
 kbd_ctrl_scans_end:
-
-; The last row and the last column, for ansi.
-ansi_last:
-        .byte ROWS - 1, COLUMNS - 1
 
 ; The X16 palette entries of ANSI colours 0 to 7.
 ansi_colours:

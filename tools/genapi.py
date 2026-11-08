@@ -69,7 +69,9 @@ def check():
 def function_tables():
     """The calls that run a function by Y: (prefix, call number, call name, note, functions)."""
     return [("DB", 57, "db", api.DB_FUNCTIONS_NOTE, api.DB_FUNCTIONS),
-            ("FP", 58, "fp", api.FP_FUNCTIONS_NOTE, api.FP_FUNCTIONS)]
+            ("FP", 58, "fp", api.FP_FUNCTIONS_NOTE, api.FP_FUNCTIONS),
+            ("VERA", 61, "vera", api.VERA_FUNCTIONS_NOTE, api.VERA_FUNCTIONS),
+            ("GFX", 62, "gfx", api.GFX_FUNCTIONS_NOTE, api.GFX_FUNCTIONS)]
 
 
 def count():

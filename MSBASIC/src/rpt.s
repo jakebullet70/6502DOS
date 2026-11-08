@@ -8,11 +8,7 @@
 RPTSTR:
         jsr     CHRGET
         jsr     CHKOPN
-        jsr     FRMEVL
-        bit     VALTYP
-        bmi     L_RPT1
-        jsr     CHRSTUB		; C: make CHR$(C), then repeat it
-L_RPT1:
+        jsr     FRMSTRCHR	; A$, or CHR$(C)
         lda     FAC_LAST-1	; keep the descriptor address
         pha
         lda     FAC_LAST
@@ -56,7 +52,13 @@ L_RPT4:
 L_RPT5:
         jmp     PUTNEW
 
-; CHR$ AS A SUBROUTINE (ALSO USED BY TEXTAT). CHRSTR DROPS ONE RETURN
-; ADDRESS (UNARY'S), SO IT RETURNS TO OUR CALLER WITH THE DESCRIPTOR IN FAC.
-CHRSTUB:
-        jsr     CHRSTR
+.ifndef CONFIG_TEXTAT
+; FRMSTRCHR: AS IN TEXTAT.S, FOR A BUILD WITHOUT TEXTAT.
+FRMSTRCHR:
+        jsr     FRMEVL
+        bit     VALTYP
+        bmi     L_RPT6		; a string
+        jsr     CHRSTR		; a code: returns to our caller
+L_RPT6:
+        rts
+.endif

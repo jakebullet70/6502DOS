@@ -15,7 +15,7 @@
 .export api_exec, api_exec_rest, api_exit, api_exitcode, api_keep, api_progpath, exec_break
 .import handles_inherit, handles_close, heap_exec, heap_exit, CHROUT, con_hide
 .import api_bank_alloc, api_bank_free, bank_exit
-.import jsrfar, bank0, lib_open, lib_read, lib_close
+.import jsrfar, bank0, lib_open, lib_read, lib_close, gfx_mode
 .importzp file_size, saved_bank
 .exportzp exec_depth
 
@@ -118,7 +118,7 @@ api_exec:
         stz SYS_P               ; a UXCBASIC program's first SYS loads P from it
         jsr @start
         lda #0                  ; RTS from the program: exit code 0
-        bra exit_normal
+        jmp exit_normal
 @start:
         jmp (exec_entry)
 @bad_format:
@@ -142,7 +142,7 @@ exec_fail:                      ; A = the error; the child has not run
         jsr exec_close
         pla
         sec
-        bra exec_unwind
+        jmp exec_unwind
 
 ; api_exec_rest: exec_rest, call 52. Reads r1 bytes of the running program's file to r0, or
 ; closes the file for r1 = 0.
@@ -230,6 +230,15 @@ exec_quit:
         txs
         sta exit_code
         stz con_hide
+        pha
+        lda #$10                ; DC_VIDEO bit 4, layer 0 off: gfx screen 0
+        trb VERA_DC_VIDEO
+        bit VERA_DC_HSCALE      ; bit 7 set: 80 columns, screen 0 or 1
+        bmi @columns
+        lda #0
+        FARCALL gfx_mode        ; from screen 2 or 3
+@columns:
+        pla
         cld
         clc
         ; fall through

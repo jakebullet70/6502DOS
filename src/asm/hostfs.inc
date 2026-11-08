@@ -647,7 +647,8 @@ host_seek:
 
 ; host_advance: after MACPTR or MCIOUT moved X and Y (high) bytes: takes them from fat32_ptr2,
 ; the bytes left, adds them to krn_ptr1, the bytes moved, and moves fat32_ptr on, keeping it in
-; $A000-$BFFF when it was there. Returns Z set when no bytes moved. Changes A.
+; $A000-$BFFF when it was there, and in place in IO_PAGE. Returns Z set when no bytes moved.
+; Changes A.
 host_advance:
         txa
         clc
@@ -665,6 +666,9 @@ host_advance:
         sty host_ptr_save
         sbc host_ptr_save
         sta fat32_ptr2+1
+        lda fat32_ptr+1
+        cmp #>IO_PAGE           ; a stream
+        beq @held
         txa
         clc
         adc fat32_ptr
@@ -676,6 +680,7 @@ host_advance:
         sbc #>(ROM - BANKED_RAM) ; carry set
 @kept:
         sta fat32_ptr+1
+@held:
         txa
         bne @done
         tya
@@ -728,6 +733,10 @@ host_read:
         beq @end
         stz host_status
         jsr host_block
+        cpy #>IO_PAGE           ; equal: carry set, a stream
+        beq @stream
+        clc
+@stream:
         jsr MACPTR
         bcs @end                ; x16emu has no such file open
         jsr host_advance

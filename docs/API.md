@@ -80,13 +80,15 @@ Conventions:
 | `fp` | 58 | `$03EE` | none | `Y` function<br>`X r0-r2` by function | `A X r0-r2` by function | 1, 13 | yes |
 | `progpath` | 59 | `$03F1` | none | `r0` buffer, 84 bytes | `r0` buffer, filled with a length-prefixed path | none | yes |
 | `subst` | 60 | `$03F4` | none | `carry` set: get, clear: set<br>`A` drive: 0 A:, 1 B:<br>`r0` to set: path; to get: buffer, 256 bytes | `r0` to get: buffer, filled with a length-prefixed path | 1, 3, 15, 16, 21 | yes |
+| `vera` | 61 | `$03F7` | none | `Y` function<br>`A X r0-r3` by function | `A` by function<br>`r1` by function | 1, 5, 6, 21, 30 | yes |
+| `gfx` | 62 | `$03FA` | none | `Y` function<br>`A r0-r3` by function | `A r0 r1 r4-r7` by function | 1 | yes |
 
 ## What each call does
 
 - `create`: Creates a file, or empties it if it exists, and opens it for reading and writing. The attributes take read only, hidden, system and archive. A directory, a read-only file, or a full drive gives error 5. A device name opens the device.
 - `open`: Opens a file or a device. Access 1 or 2 on a read-only file gives error 5.
 - `close`: Closes a handle. The directory entry of a file written through it takes the file's size and the archive bit.
-- `read`: Reads bytes from a handle into memory.
+- `read`: Reads bytes from a handle into memory. For a file, a buffer in the I/O page, $9F00-$9FFF, takes every byte at that one address.
 - `write`: Writes bytes from memory to a handle. A write past the end of a file makes it longer. On a full drive r1 is less than the count.
 - `seek`: Moves the position of a handle. A position may pass the end of the file; a read there gives 0 bytes. A device stays at 0.
 - `delete`: Deletes a file. A read-only file gives error 5, a directory error 2. The kernel does not check for open handles: close the file first.
@@ -144,6 +146,8 @@ Conventions:
 - `fp`: The float library in ROM bank 5, MSBASIC's arithmetic. Runs function Y of FP_FUNCTIONS. A value is MSBASIC's 5-byte float: the exponent, then the mantissa, high byte first, whose top bit is the sign. A Y past the last gives error 1. An overflow gives error 13.
 - `progpath`: Gives the path `exec` ran the program with, as the caller gave it, cut to 83 characters. It holds a folder only when the caller's path did: a program found in the current directory may have a bare name. A path that does not start at a root is relative to the current directory at the program's start.
 - `subst`: Gets a drive's substitution with carry set, sets it with carry clear. The drive is A:, B: or a letter past the card's. A set with a path makes the drive a substituted drive whose \ names that directory; with an empty path it makes the drive no drive. A set on the current drive gives error 16. A get copies the directory's path, as `getcwd` gives a path; a drive not substituted gives error 15. `getcwd` on a substituted drive gives the path below that directory. Host files give error 1. On a substituted drive, .. in its \ directory goes above it, `ioctl` and `absread` are not supported, and `rename` to or from another drive gives error 17.
+- `vera`: VRAM, the sprites and the palette, in ROM bank 1. Runs function Y of VERA_FUNCTIONS. A Y past the last gives error 1.
+- `gfx`: The bitmap on VERA's layer 0, under the console's text, in ROM bank 1. Runs function Y of GFX_FUNCTIONS. A Y past the last gives error 1. `exit` puts screen 0 back.
 
 ## Errors
 
@@ -232,3 +236,38 @@ Call 58, `fp`, runs function Y. `r0` and `r1` point at a value or a length-prefi
 | 8 | `FP_FROM_LONG` | `r0` value<br>`r1 r2` signed 32-bit number | `r0`'s value: the number | yes |
 | 9 | `FP_TO_LONG` | `r0` value | `r1 r2` the value rounded down, as a signed 32-bit number; error 13 at 2^31 or more in size | yes |
 | 10 | `FP_FIX` | `r0` value<br>`r1` buffer, 13 bytes<br>`X` decimals, 0 to 9 | the buffer, filled with the value rounded to `X` decimals as length-prefixed text: `-` when it is below 0, the digits, and a point before the decimals; error 13 when the size times 10^`X` rounds to 2^31 or more | yes |
+
+## The vera functions
+
+Call 61, `vera`, runs function Y. A VRAM address is 17 bits: bits 0 to 15 in `r0`, bit 16 in `X`, 0 or 1, or in `A` where a function says so. A sprite is 0 to 127. A function changes VERA's data port 0 address.
+
+| Y | Asm name | In | Out | Written |
+|---|---|---|---|---|
+| 0 | `VERA_VPEEK` | `r0` `X` VRAM address | `A` the byte | yes |
+| 1 | `VERA_VPOKE` | `r0` `X` VRAM address<br>`A` byte | none | yes |
+| 2 | `VERA_VFILL` | `r0` `X` VRAM address<br>`A` byte<br>`r1` count, 0 for none | VRAM: `r1` bytes of `A` from the address | yes |
+| 3 | `VERA_VWRITE` | `r0` `X` VRAM address<br>`r1` RAM address<br>`r2` count, 0 for none | VRAM: the `r2` bytes of RAM at `r1`, from the address | yes |
+| 4 | `VERA_VREAD` | `r0` `X` VRAM address<br>`r1` RAM address<br>`r2` count, 0 for none | RAM at `r1`: the `r2` bytes of VRAM from the address | yes |
+| 5 | `VERA_VLOAD` | `r0` VRAM address, bit 16 in `A`<br>`X` a file's handle<br>`r1` count | `r1` bytes read, 0 at the end of the file; VRAM: the bytes from the address | yes |
+| 6 | `VERA_SPRSET` | `X` sprite<br>`A` field: 0 depth 0-3, 1 flip (bit 0 across, bit 1 down), 2 collision mask 0-15, 3 palette offset 0-15, 4 width and 5 height (0 8, 1 16, 2 32, 3 64 pixels), 6 mode (0 4 bpp, 1 8 bpp)<br>`r0` value | none; the sprite's other fields stay | yes |
+| 7 | `VERA_SPRMOVE` | `X` sprite<br>`r0` x<br>`r1` y | none | yes |
+| 8 | `VERA_SPRSHAPE` | `X` sprite<br>`r0` the shape's VRAM address / 32 | none; the mode stays | yes |
+| 9 | `VERA_SPRHITS` | none | `A` bits 0 to 3: the collision mask bits of the sprites that collided since the last `sprclear` | yes |
+| 10 | `VERA_SPRCLEAR` | none | none; `sprhits` gives 0 | yes |
+| 11 | `VERA_PALETTE` | `X` entry<br>`r0` color, $0RGB | none | yes |
+
+## The gfx functions
+
+Call 62, `gfx`, runs function Y. Screen 1 is the console's 80 by 30 text over a 640 by 240 bitmap of 4 colors, 2 bits a pixel, at VRAM $00000-$095FF. Screen 2 is 40 by 30 text over a 320 by 240 bitmap of 16 colors, 4 bits a pixel, at $00000-$095FF. Screen 3 is 40 by 25 text over a 320 by 200 bitmap of 256 colors, a byte a pixel, at $00000-$0F9FF, with borders above and below. A function changes VERA's data port 0 address.
+
+| Y | Asm name | In | Out | Written |
+|---|---|---|---|---|
+| 0 | `GFX_MODE` | `A` screen: 0 the 80 by 30 text alone, 1 to 3 the text over a bitmap | none; the text cleared, the cursor home; screens 1 to 3 clear the bitmap to color 0 | yes |
+| 1 | `GFX_CLEAR` | `A` color: 0 to 3 on screen 1, 0 to 15 on screen 2, 0 to 255 on screen 3 | none; the whole bitmap is the color | yes |
+| 2 | `GFX_PSET` | `A` color, in the ranges of `clear`<br>`r0` x<br>`r1` y | none; the pixel is the color | yes |
+| 3 | `GFX_POINT` | `r0` x<br>`r1` y | `A` the pixel's color | yes |
+| 4 | `GFX_LINE` | `A` color, in the ranges of `clear`<br>`r0` x<br>`r1` y<br>`r2` x<br>`r3` y | none; the pixels from `r0` `r1` to `r2` `r3`, both ends included, are the color; `r0` `r1` = `r2` `r3`; `r4` to `r7` changed | yes |
+| 5 | `GFX_FRAME` | `A` color, in the ranges of `clear`<br>`r0` x<br>`r1` y<br>`r2` x, not below `r0`<br>`r3` y, not below `r1` | none; the edge of the box from `r0` `r1` to `r2` `r3` is the color; `r4` to `r7` changed | yes |
+| 6 | `GFX_RECT` | as `frame` | none; the box from `r0` `r1` to `r2` `r3` is the color; `r4` to `r7` changed | yes |
+| 7 | `GFX_CIRCLE` | `A` color, in the ranges of `clear`<br>`r0` x of the center<br>`r1` y of the center<br>`r2` the radius, the whole circle on the bitmap | none; the circle is the color; `r4` to `r7` changed | yes |
+| 8 | `GFX_CHAR` | `A` color, in the ranges of `clear`<br>`r0` x of the top left<br>`r1` y of the top left<br>`r2` the character, 0 to 255, the whole 8 by 8 glyph on the bitmap | `r0` = x + 8; the glyph's set bits are the color, its clear bits keep the bitmap; `r4` to `r6` changed | yes |

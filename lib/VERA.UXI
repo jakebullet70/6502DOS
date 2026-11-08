@@ -1,11 +1,13 @@
-' VERA.UXI: direct reads and writes of the text screen in VERA, in namespace VERA, and a stack
-' of saved screen boxes in VRAM.
+' VERA.UXI: direct reads and writes of the text screen in VERA, in namespace VERA, a stack of
+' saved screen boxes in VRAM, call 61's VRAM, sprite and palette functions, and call 62's
+' screens and drawing.
 '
 ' The code runs from region 3, a RAM bank of its own at $A000. A SUB or FUNCTION adds bytes
 ' only when called. ROW and COLUMN count from 0 at the screen's top left. The screen map is at
 ' VRAM $10000: 64 rows of 256 bytes, 128 cells a row, each a character then its color. A color
 ' is the background times 16 plus the foreground. The map row of a screen row follows layer 1's
-' vertical scroll. VRAM $00000 to $0FFFF holds the saved boxes.
+' vertical scroll. The saved boxes lie in VRAM from the end of the bitmap to $0FFFF: from $00000
+' on screen 0, from $09600 on screens 1 and 2, from $0FA00 on screen 3. SCREEN empties the stack.
 '
 ' DIM CELL AS UWORD
 ' VERA.PUT_CELL(2, 5, 65, $1F)    ' an A, white on blue, at row 2, column 5
@@ -25,13 +27,31 @@ NAMESPACE VERA
   DIM ADDRESS_HIGH AS UBYTE AT $9F22, DATA0 AS UBYTE AT $9F23, DATA1 AS UBYTE AT $9F24
   DIM CONTROL AS UBYTE AT $9F25, SCROLL_LOW AS UBYTE AT $9F39, SCROLL_HIGH AS UBYTE AT $9F3A
 
-  ' The VRAM address of the stack's first free byte, 0 when the stack is empty. A box on the
-  ' stack is its cells, row by row, then 6 bytes: the address of its cells, low byte first,
-  ' then its row, column, width and height.
+  ' The VRAM address of the stack's first free byte, STACK_BASE times 256 when the stack is
+  ' empty. A box on the stack is its cells, row by row, then 6 bytes: the address of its cells,
+  ' low byte first, then its row, column, width and height.
   DIM STACK_TOP AS UWORD
+
+  ' The high byte of the stack's first VRAM address. SCREEN sets it.
+  DIM STACK_BASE AS UBYTE
 
   ' A pointer for (zp),Y. It is the runtime's temporary, free inside an ASM block.
   DIM POINTER AS UWORD AT $24
+
+  ' $03F7, call 61, vera, runs function Y with r0 to r2. A VRAM address is 0 to $1FFFF. A
+  ' sprite is 0 to 127.
+  DIM R0 AS UWORD AT $02, R1 AS UWORD AT $04, R2 AS UWORD AT $06, R3 AS UWORD AT $08
+
+  ' The fields of SPRITE_SET. DEPTH 0 hides the sprite, 1 to 3 put it behind layer 0, between
+  ' the layers, and in front. FLIP: bit 0 across, bit 1 down. MASK: the collision groups, 0 to
+  ' 15. PALETTE: the palette offset, 0 to 15. WIDTH and HEIGHT: 0 for 8 pixels to 3 for 64.
+  ' MODE: 0 for 4 bits a pixel, 1 for 8.
+  ENUM SPRITE_FIELD
+    DEPTH, FLIP, MASK, PALETTE, WIDTH, HEIGHT, MODE
+  END ENUM
+
+  ' VLOAD sets it: 0, or the DOS error number of the read.
+  DIM ERROR AS UBYTE
 
   ' Returns the map row of screen row 0: the vertical scroll over 8, AND 63.
   FUNCTION MAP_TOP() AS UBYTE
@@ -294,8 +314,10 @@ NAMESPACE VERA
   SUB RESTORE_RECT()
     DIM ROW AS UBYTE, COLUMN AS UBYTE, HEIGHT AS UBYTE, TOP AS UBYTE, BYTES AS UBYTE
     ASM
-        lda @STACK_TOP
-        ora @STACK_TOP + 1
+        lda @STACK_TOP          ' empty when STACK_TOP is the stack's base
+        bne pop
+        lda @STACK_TOP + 1
+        cmp @STACK_BASE
         bne pop
         jmp done
     pop: sec                    ' port 0 at the header
@@ -353,6 +375,403 @@ NAMESPACE VERA
         dec @HEIGHT
         bne row
     done:
+    END ASM
+  END SUB
+
+  ' Returns the VRAM byte at ADDRESS.
+  FUNCTION VPEEK(ADDRESS AS ULONG) AS UBYTE
+    DIM VALUE AS UBYTE
+    ASM
+        phx
+        lda @ADDRESS
+        sta @R0
+        lda @ADDRESS + 1
+        sta @R0 + 1
+        ldx @ADDRESS + 2
+        ldy #0                  ' vpeek
+        jsr $03F7
+        sta @VALUE
+        plx
+    END ASM
+    RETURN VALUE
+  END FUNCTION
+
+  ' Writes VALUE to the VRAM byte at ADDRESS.
+  SUB VPOKE(ADDRESS AS ULONG, VALUE AS UBYTE)
+    ASM
+        phx
+        lda @ADDRESS
+        sta @R0
+        lda @ADDRESS + 1
+        sta @R0 + 1
+        ldx @ADDRESS + 2
+        lda @VALUE
+        ldy #1                  ' vpoke
+        jsr $03F7
+        plx
+    END ASM
+  END SUB
+
+  ' Writes VALUE to COUNT VRAM bytes from ADDRESS. COUNT 0 writes none.
+  SUB VMEMSET(ADDRESS AS ULONG, VALUE AS UBYTE, COUNT AS UWORD)
+    ASM
+        phx
+        lda @ADDRESS
+        sta @R0
+        lda @ADDRESS + 1
+        sta @R0 + 1
+        lda @COUNT
+        sta @R1
+        lda @COUNT + 1
+        sta @R1 + 1
+        ldx @ADDRESS + 2
+        lda @VALUE
+        ldy #2                  ' vfill
+        jsr $03F7
+        plx
+    END ASM
+  END SUB
+
+  ' Copies COUNT bytes from RAM at SOURCE to VRAM at ADDRESS. COUNT 0 copies none.
+  SUB MEMCPYMV(SOURCE AS UWORD, ADDRESS AS ULONG, COUNT AS UWORD)
+    ASM
+        phx
+        lda @ADDRESS
+        sta @R0
+        lda @ADDRESS + 1
+        sta @R0 + 1
+        lda @SOURCE
+        sta @R1
+        lda @SOURCE + 1
+        sta @R1 + 1
+        lda @COUNT
+        sta @R2
+        lda @COUNT + 1
+        sta @R2 + 1
+        ldx @ADDRESS + 2
+        ldy #3                  ' vwrite
+        jsr $03F7
+        plx
+    END ASM
+  END SUB
+
+  ' Copies COUNT bytes from VRAM at ADDRESS to RAM at TARGET. COUNT 0 copies none.
+  SUB MEMCPYVM(ADDRESS AS ULONG, TARGET AS UWORD, COUNT AS UWORD)
+    ASM
+        phx
+        lda @ADDRESS
+        sta @R0
+        lda @ADDRESS + 1
+        sta @R0 + 1
+        lda @TARGET
+        sta @R1
+        lda @TARGET + 1
+        sta @R1 + 1
+        lda @COUNT
+        sta @R2
+        lda @COUNT + 1
+        sta @R2 + 1
+        ldx @ADDRESS + 2
+        ldy #4                  ' vread
+        jsr $03F7
+        plx
+    END ASM
+  END SUB
+
+  ' Reads up to COUNT bytes of the open file HANDLE into VRAM from ADDRESS. Returns the bytes
+  ' read, fewer at the end of the file, and sets ERROR. HANDLE must be a file, not a device.
+  FUNCTION VLOAD(HANDLE AS UWORD, ADDRESS AS ULONG, COUNT AS UWORD) AS UWORD
+    ASM
+        phx
+        stz @ERROR
+        lda @ADDRESS
+        sta @R0
+        lda @ADDRESS + 1
+        sta @R0 + 1
+        lda @COUNT
+        sta @R1
+        lda @COUNT + 1
+        sta @R1 + 1
+        ldx @HANDLE
+        lda @ADDRESS + 2
+        ldy #5                  ' vload
+        jsr $03F7
+        bcc read
+        sta @ERROR
+        stz @R1                 ' an error reads none
+        stz @R1 + 1
+    read: plx
+    END ASM
+    RETURN R1
+  END FUNCTION
+
+  ' Sets field FIELD of SPRITE to VALUE. The sprite's other fields stay.
+  SUB SPRITE_SET(SPRITE AS UBYTE, FIELD AS ENUM.SPRITE_FIELD, VALUE AS UBYTE)
+    ASM
+        phx
+        lda @VALUE
+        sta @R0
+        ldx @SPRITE
+        lda @FIELD
+        ldy #6                  ' sprset
+        jsr $03F7
+        plx
+    END ASM
+  END SUB
+
+  ' Puts the top left of SPRITE at LEFT and TOP, in pixels.
+  SUB SPRITE_MOVE(SPRITE AS UBYTE, LEFT AS WORD, TOP AS WORD)
+    ASM
+        phx
+        lda @LEFT
+        sta @R0
+        lda @LEFT + 1
+        sta @R0 + 1
+        lda @TOP
+        sta @R1
+        lda @TOP + 1
+        sta @R1 + 1
+        ldx @SPRITE
+        ldy #7                  ' sprmove
+        jsr $03F7
+        plx
+    END ASM
+  END SUB
+
+  ' Points SPRITE at the shape at VRAM address SHAPE times 32. The mode stays.
+  SUB SPRITE_SHAPE(SPRITE AS UBYTE, SHAPE AS UWORD)
+    ASM
+        phx
+        lda @SHAPE
+        sta @R0
+        lda @SHAPE + 1
+        sta @R0 + 1
+        ldx @SPRITE
+        ldy #8                  ' sprshape
+        jsr $03F7
+        plx
+    END ASM
+  END SUB
+
+  ' Returns the collision groups hit since the last CLEAR_HITS, in bits 0 to 3.
+  FUNCTION SPRITE_HITS() AS UBYTE
+    DIM HITS AS UBYTE
+    ASM
+        phx
+        ldy #9                  ' sprhits
+        jsr $03F7
+        sta @HITS
+        plx
+    END ASM
+    RETURN HITS
+  END FUNCTION
+
+  ' Clears the collision groups hit.
+  SUB CLEAR_HITS()
+    ASM
+        phx
+        ldy #10                 ' sprclear
+        jsr $03F7
+        plx
+    END ASM
+  END SUB
+
+  ' Sets palette entry ENTRY to COLOR, $0RGB.
+  SUB PALETTE(ENTRY AS UBYTE, COLOR AS UWORD)
+    ASM
+        phx
+        lda @COLOR
+        sta @R0
+        lda @COLOR + 1
+        sta @R0 + 1
+        ldx @ENTRY
+        ldy #11                 ' palette
+        jsr $03F7
+        plx
+    END ASM
+  END SUB
+
+  ' $03FA, call 62, gfx, runs function Y with A and r0 to r3. Screen 1 is 640 by 240 pixels of
+  ' 4 colors, screen 2 320 by 240 of 16, screen 3 320 by 200 of 256. X counts from 0 at the
+  ' left, Y from 0 at the top. COLOR is 0 to 3 on screen 1, 0 to 15 on screen 2, 0 to 255 on
+  ' screen 3. A shape lies wholly on the bitmap.
+
+  ' Shows screen MODE: 0 the 80 by 30 text alone, 1 to 3 the text over a bitmap. The text is
+  ' cleared and the cursor home; screens 1 to 3 clear the bitmap to color 0. The stack of saved
+  ' boxes is emptied, and starts past the bitmap.
+  SUB SCREEN(MODE AS UBYTE)
+    ASM
+        phx
+        lda @MODE
+        ldy #0                  ' mode
+        jsr $03FA
+        plx
+        lda @MODE               ' the stack's base: $0000 on screen 0
+        beq based
+        cmp #3
+        lda #$96                ' $9600 on screens 1 and 2, past 38400 bytes
+        bcc based
+        lda #$FA                ' $FA00 on screen 3, past 64000 bytes
+    based: sta @STACK_BASE
+        sta @STACK_TOP + 1
+        stz @STACK_TOP
+    END ASM
+  END SUB
+
+  ' Sets the whole bitmap to COLOR.
+  SUB CLEAR(COLOR AS UBYTE)
+    ASM
+        phx
+        lda @COLOR
+        ldy #1                  ' clear
+        jsr $03FA
+        plx
+    END ASM
+  END SUB
+
+  ' Sets the pixel at X and Y to COLOR.
+  SUB PSET(X AS UWORD, Y AS UBYTE, COLOR AS UBYTE)
+    ASM
+        phx
+        lda @X
+        sta @R0
+        lda @X + 1
+        sta @R0 + 1
+        lda @Y
+        sta @R1
+        lda @COLOR
+        ldy #2                  ' pset
+        jsr $03FA
+        plx
+    END ASM
+  END SUB
+
+  ' Returns the color of the pixel at X and Y.
+  FUNCTION POINT(X AS UWORD, Y AS UBYTE) AS UBYTE
+    DIM VALUE AS UBYTE
+    ASM
+        phx
+        lda @X
+        sta @R0
+        lda @X + 1
+        sta @R0 + 1
+        lda @Y
+        sta @R1
+        ldy #3                  ' point
+        jsr $03FA
+        sta @VALUE
+        plx
+    END ASM
+    RETURN VALUE
+  END FUNCTION
+
+  ' Draws the line from X1 and Y1 to X2 and Y2 in COLOR, both ends included.
+  SUB LINE(X1 AS UWORD, Y1 AS UBYTE, X2 AS UWORD, Y2 AS UBYTE, COLOR AS UBYTE)
+    ASM
+        phx
+        lda @X1
+        sta @R0
+        lda @X1 + 1
+        sta @R0 + 1
+        lda @Y1
+        sta @R1
+        lda @X2
+        sta @R2
+        lda @X2 + 1
+        sta @R2 + 1
+        lda @Y2
+        sta @R3
+        lda @COLOR
+        ldy #4                  ' line
+        jsr $03FA
+        plx
+    END ASM
+  END SUB
+
+  ' Draws the edge of the box from X1 and Y1 to X2 and Y2 in COLOR. X2 is not below X1, and Y2
+  ' not below Y1.
+  SUB FRAME(X1 AS UWORD, Y1 AS UBYTE, X2 AS UWORD, Y2 AS UBYTE, COLOR AS UBYTE)
+    ASM
+        phx
+        lda @X1
+        sta @R0
+        lda @X1 + 1
+        sta @R0 + 1
+        lda @Y1
+        sta @R1
+        lda @X2
+        sta @R2
+        lda @X2 + 1
+        sta @R2 + 1
+        lda @Y2
+        sta @R3
+        lda @COLOR
+        ldy #5                  ' frame
+        jsr $03FA
+        plx
+    END ASM
+  END SUB
+
+  ' Fills the box from X1 and Y1 to X2 and Y2 with COLOR. X2 is not below X1, and Y2 not below
+  ' Y1.
+  SUB RECT(X1 AS UWORD, Y1 AS UBYTE, X2 AS UWORD, Y2 AS UBYTE, COLOR AS UBYTE)
+    ASM
+        phx
+        lda @X1
+        sta @R0
+        lda @X1 + 1
+        sta @R0 + 1
+        lda @Y1
+        sta @R1
+        lda @X2
+        sta @R2
+        lda @X2 + 1
+        sta @R2 + 1
+        lda @Y2
+        sta @R3
+        lda @COLOR
+        ldy #6                  ' rect
+        jsr $03FA
+        plx
+    END ASM
+  END SUB
+
+  ' Draws the circle of RADIUS around X and Y in COLOR. Radius 0 is one pixel.
+  SUB CIRCLE(X AS UWORD, Y AS UBYTE, RADIUS AS UBYTE, COLOR AS UBYTE)
+    ASM
+        phx
+        lda @X
+        sta @R0
+        lda @X + 1
+        sta @R0 + 1
+        lda @Y
+        sta @R1
+        lda @RADIUS
+        sta @R2
+        lda @COLOR
+        ldy #7                  ' circle
+        jsr $03FA
+        plx
+    END ASM
+  END SUB
+
+  ' Draws the 8 by 8 glyph of CHARACTER, from the font in use, with its top left at X and Y in
+  ' COLOR. The glyph's clear pixels keep the bitmap.
+  SUB CHAR(X AS UWORD, Y AS UBYTE, CHARACTER AS UBYTE, COLOR AS UBYTE)
+    ASM
+        phx
+        lda @X
+        sta @R0
+        lda @X + 1
+        sta @R0 + 1
+        lda @Y
+        sta @R1
+        lda @CHARACTER
+        sta @R2
+        lda @COLOR
+        ldy #8                  ' char
+        jsr $03FA
+        plx
     END ASM
   END SUB
 END NAMESPACE

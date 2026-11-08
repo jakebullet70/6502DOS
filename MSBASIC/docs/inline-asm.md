@@ -249,8 +249,7 @@ is loaded.
 ## Plan
 
 1. Phase A: `SYS` with registers, then `VARPTR`. Each with tests, an entry in
-   `docs/changes.md` and its own commit, behind `.ifdef` so `cbmbasic1` and `cbmbasic2` stay
-   unchanged.
+   `docs/changes.md` and its own commit, behind `.ifdef`.
 2. Phase B: the fixed code area in the sim memory map (cold-start RAM scan stops under it). The
    code top pointer and `ASM AUTO` come with the assembler, since they need `ASM`.
 3. Decide on the assembler after SUB and FUNCTION are built and their real size is known.

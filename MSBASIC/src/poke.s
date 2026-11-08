@@ -19,6 +19,22 @@ COMBYTE:
         jsr     CHKCOM
         jmp     GETBYT
 
+.ifdef CONFIG_VERA
+; ----------------------------------------------------------------------------
+; CONVERT (FAC) TO A VIDEO MEMORY ADDRESS, 0 TO $1FFFF:
+; LINNUM = BITS 0 TO 15, A = BIT 16
+; ----------------------------------------------------------------------------
+GETVADR:
+        lda     FACSIGN
+        bmi     GOIQ
+        lda     FAC
+        cmp     #$92
+        bcs     GOIQ
+        jsr     GETADR_QINT
+        lda     FAC_LAST-2
+        rts
+.endif
+
 ; ----------------------------------------------------------------------------
 ; CONVERT (FAC) TO A 16-BIT VALUE IN LINNUM
 ; ----------------------------------------------------------------------------
@@ -33,6 +49,7 @@ GETADR:
         lda     FAC
         cmp     #$91
         bcs     GOIQ
+GETADR_QINT:
         jsr     QINT
         lda     FAC_LAST-1
         ldy     FAC_LAST

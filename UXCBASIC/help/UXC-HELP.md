@@ -2189,6 +2189,129 @@ PRINT FP.TO_TEXT(AddrOf(PRICE)); " "; FP.FIXED(AddrOf(PRICE), 2)
 
 This prints 37.5 37.50.
 
+## The VERA library
+
+VERA.UXI, in lib/, reads and writes the text screen in VERA, keeps a stack of
+saved screen boxes in VRAM, and runs the 6502DOS calls vera (61) and gfx (62)
+for VRAM, sprites, the palette, the screens and drawing. Its names are in the
+namespace VERA.
+
+- VERA.UXI needs no other include. See [[Including files]].
+- Its code runs from region 3. A SUB or FUNCTION adds bytes only when called.
+  See [[Code in RAM banks]].
+- ROW and COLUMN count from 0 at the screen's top left. A color on the text
+  screen is the background times 16 plus the foreground.
+- A VRAM address is a ULONG, 0 to $1FFFF. A sprite is 0 to 127.
+
+### The text screen
+
+```
+FUNCTION GET_CELL(ROW AS UBYTE, COLUMN AS UBYTE) AS UWORD
+SUB PUT_CELL(ROW AS UBYTE, COLUMN AS UBYTE, CHARACTER AS UBYTE,
+             COLOR AS UBYTE)
+SUB PRINTAT(ROW AS UBYTE, COLUMN AS UBYTE, TEXT$ AS CONST, COLOR AS UBYTE)
+SUB FILL(ROW AS UBYTE, COLUMN AS UBYTE, WIDTH AS UBYTE, HEIGHT AS UBYTE,
+         CHARACTER AS UBYTE, COLOR AS UBYTE)
+FUNCTION SAVE_RECT(ROW AS UBYTE, COLUMN AS UBYTE, WIDTH AS UBYTE,
+                   HEIGHT AS UBYTE) AS UBYTE
+SUB RESTORE_RECT()
+FUNCTION MAP_TOP() AS UBYTE
+```
+
+- GET_CELL returns the cell's character in the low byte and its color in the
+  high byte.
+- PUT_CELL, PRINTAT and FILL do not move the console's cursor. PRINTAT writes
+  no cell past column 127. FILL with a WIDTH or HEIGHT of 1 draws a line;
+  WIDTH 0 or over 127, or HEIGHT 0, draws nothing.
+- SAVE_RECT pushes the box onto the stack and returns 1. It returns 0, with
+  nothing pushed, when WIDTH or HEIGHT is 0, WIDTH is over 127, or the stack
+  has no room for 2 bytes a cell and 6 more.
+- RESTORE_RECT pops the last box and writes it back where it was. An empty
+  stack does nothing.
+- MAP_TOP returns the map row of screen row 0.
+- The stack lies in VRAM from the end of the bitmap to $0FFFF: from $00000 on
+  screen 0, from $09600 on screens 1 and 2, from $0FA00 on screen 3. SCREEN
+  empties it.
+
+### VRAM, sprites and the palette
+
+```
+FUNCTION VPEEK(ADDRESS AS ULONG) AS UBYTE
+SUB VPOKE(ADDRESS AS ULONG, VALUE AS UBYTE)
+SUB VMEMSET(ADDRESS AS ULONG, VALUE AS UBYTE, COUNT AS UWORD)
+SUB MEMCPYMV(SOURCE AS UWORD, ADDRESS AS ULONG, COUNT AS UWORD)
+SUB MEMCPYVM(ADDRESS AS ULONG, TARGET AS UWORD, COUNT AS UWORD)
+FUNCTION VLOAD(HANDLE AS UWORD, ADDRESS AS ULONG, COUNT AS UWORD) AS UWORD
+SUB SPRITE_SET(SPRITE AS UBYTE, FIELD AS ENUM.SPRITE_FIELD, VALUE AS UBYTE)
+SUB SPRITE_MOVE(SPRITE AS UBYTE, LEFT AS WORD, TOP AS WORD)
+SUB SPRITE_SHAPE(SPRITE AS UBYTE, SHAPE AS UWORD)
+FUNCTION SPRITE_HITS() AS UBYTE
+SUB CLEAR_HITS()
+SUB PALETTE(ENTRY AS UBYTE, COLOR AS UWORD)
+```
+
+- A COUNT of 0 writes or copies none. MEMCPYMV copies RAM to VRAM, MEMCPYVM
+  VRAM to RAM.
+- VLOAD reads up to COUNT bytes of the open file HANDLE into VRAM and returns
+  the bytes read, fewer at the end of the file. It sets VERA.ERROR: 0, or the
+  DOS error number of the read. HANDLE must be a file, not a device.
+- SPRITE_SET sets one field of the sprite; its other fields stay. The fields
+  are ENUM SPRITE_FIELD: DEPTH 0 hides the sprite, 1 to 3 put it behind layer
+  0, between the layers, and in front; FLIP bit 0 across, bit 1 down; MASK the
+  collision groups, 0 to 15; PALETTE the palette offset, 0 to 15; WIDTH and
+  HEIGHT 0 for 8 pixels to 3 for 64; MODE 0 for 4 bits a pixel, 1 for 8.
+- SPRITE_MOVE puts the sprite's top left at LEFT and TOP, in pixels.
+- SPRITE_SHAPE points the sprite at the shape at VRAM address SHAPE times 32.
+  The mode stays.
+- SPRITE_HITS returns the collision groups hit since the last CLEAR_HITS, in
+  bits 0 to 3.
+- PALETTE sets an entry to COLOR, $0RGB.
+
+### Screens and drawing
+
+```
+SUB SCREEN(MODE AS UBYTE)
+SUB CLEAR(COLOR AS UBYTE)
+SUB PSET(X AS UWORD, Y AS UBYTE, COLOR AS UBYTE)
+FUNCTION POINT(X AS UWORD, Y AS UBYTE) AS UBYTE
+SUB LINE(X1 AS UWORD, Y1 AS UBYTE, X2 AS UWORD, Y2 AS UBYTE, COLOR AS UBYTE)
+SUB FRAME(X1 AS UWORD, Y1 AS UBYTE, X2 AS UWORD, Y2 AS UBYTE,
+          COLOR AS UBYTE)
+SUB RECT(X1 AS UWORD, Y1 AS UBYTE, X2 AS UWORD, Y2 AS UBYTE, COLOR AS UBYTE)
+SUB CIRCLE(X AS UWORD, Y AS UBYTE, RADIUS AS UBYTE, COLOR AS UBYTE)
+SUB CHAR(X AS UWORD, Y AS UBYTE, CHARACTER AS UBYTE, COLOR AS UBYTE)
+```
+
+- SCREEN 0 shows the 80 by 30 text alone. Screens 1 to 3 show the text over a
+  bitmap: screen 1 is 640 by 240 pixels of 4 colors, screen 2 320 by 240 of
+  16, screen 3 320 by 200 of 256. SCREEN clears the text, puts the cursor
+  home, clears the bitmap to color 0 and empties the stack of saved boxes.
+- X counts from 0 at the left, Y from 0 at the top. COLOR is 0 to 3 on screen
+  1, 0 to 15 on screen 2, 0 to 255 on screen 3.
+- A shape lies wholly on the bitmap. Screen 0 is out of the drawing routines'
+  contract.
+- CLEAR sets the whole bitmap to COLOR.
+- LINE includes both ends. FRAME draws the edge of the box, RECT fills it;
+  for both, X2 is not below X1 and Y2 not below Y1.
+- CIRCLE of radius 0 is one pixel.
+- CHAR draws the 8 by 8 glyph of CHARACTER from the font in use, its top
+  left at X and Y. The glyph's clear pixels keep the bitmap.
+
+### Example
+
+```
+#INCLUDE "VERA.UXI"
+VERA.SCREEN(2)
+VERA.RECT(0, 0, 319, 239, 1)
+VERA.CIRCLE(160, 120, 50, 14)
+VERA.CHAR(8, 8, 65, 15)
+PRINT VERA.POINT(160, 70)
+```
+
+This fills screen 2 with color 1, draws a circle in color 14 and an A in color
+15, then prints 14, the color of the circle's top pixel. [[GFXDEMO.UXB]] draws
+more.
+
 # The compiler
 
 ## Compiling

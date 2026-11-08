@@ -1,0 +1,49 @@
+' VERAGFX: VERA.UXI's stack of saved boxes on the graphics screens. Line 1, screen 2: the full
+' screens that fit the stack (5), then the bitmap's first and last pixels, set before the saves
+' (5, 6), and the cell at 0, 0 after FILL, all the RESTORE_RECTs and one more (8001). Line 2,
+' screen 3: the full screens that fit (0), the boxes of 40 by 10 that fit (1), and the first and
+' last pixels (200, 201). Line 3, screen 0 again: the full screens that fit (13).
+#INCLUDE "VERA.UXI"
+DIM COUNT AS UBYTE, FIRST AS UBYTE, LAST AS UBYTE, CELL AS UWORD
+DIM COUNT3 AS UBYTE, SMALL3 AS UBYTE, FIRST3 AS UBYTE, LAST3 AS UBYTE, COUNT0 AS UBYTE
+
+VERA.SCREEN(2)
+VERA.PSET(0, 0, 5)
+VERA.PSET(319, 239, 6)
+VERA.PUT_CELL(0, 0, 65, $1F)
+COUNT = 0
+DO WHILE VERA.SAVE_RECT(0, 0, 80, 30) = 1
+  COUNT = COUNT + 1
+LOOP
+FIRST = VERA.POINT(0, 0)
+LAST = VERA.POINT(319, 239)
+VERA.FILL(0, 0, 80, 29, 90, $30)
+REPEAT COUNT
+  VERA.RESTORE_RECT()
+END REPEAT
+VERA.RESTORE_RECT()
+CELL = VERA.GET_CELL(0, 0)
+
+VERA.SCREEN(3)
+VERA.PSET(0, 0, 200)
+VERA.PSET(319, 199, 201)
+COUNT3 = 0
+DO WHILE VERA.SAVE_RECT(0, 0, 80, 30) = 1
+  COUNT3 = COUNT3 + 1
+LOOP
+SMALL3 = 0
+DO WHILE VERA.SAVE_RECT(0, 0, 40, 10) = 1
+  SMALL3 = SMALL3 + 1
+LOOP
+FIRST3 = VERA.POINT(0, 0)
+LAST3 = VERA.POINT(319, 199)
+
+VERA.SCREEN(0)
+COUNT0 = 0
+DO WHILE VERA.SAVE_RECT(0, 0, 80, 30) = 1
+  COUNT0 = COUNT0 + 1
+LOOP
+
+PRINT COUNT; " "; FIRST; " "; LAST; " "; CELL
+PRINT COUNT3; " "; SMALL3; " "; FIRST3; " "; LAST3
+PRINT COUNT0
