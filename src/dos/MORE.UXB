@@ -12,8 +12,8 @@
 ' -- With no file, MORE ends when handle 0 has nothing to read, so MORE alone at the prompt
 ' -- prints nothing.
 ' -- -H or -? as the first parameter runs HELP MORE.
-' -- A second name prints Too many parameters and gives exit code 1. A file that does not open
-' -- prints its error message and gives exit code 2. Exit code 0 otherwise.
+' -- A second name prints Too many parameters and gives exit code 4. A file that does not open
+' -- prints its error message and gives exit code 1. Exit code 0 otherwise.
 ' --
 ' -- From a prompt:
 ' --     MORE DOCS\README.TXT
@@ -22,8 +22,8 @@
 #INCLUDE "DOS.UXI"
 #INCLUDE "HEAP.UXI"
 #INCLUDE "CONS.UXI"
-#INCLUDE "HELPSW.UXI"
-CONST SLOT_P1 AS UBYTE = 0, SLOT_P2 AS UBYTE = 1
+#INCLUDE "ARGS.UXI"
+CONST SLOT_P2 AS UBYTE = 1
 CONST BUFFER_SIZE AS UWORD = 512
 CONST BS AS UBYTE = 8, TAB AS UBYTE = 9, LF AS UBYTE = 10, FF AS UBYTE = 12, CR AS UBYTE = 13
 CONST BEL AS UBYTE = 7, SHIFT_IN AS UBYTE = 15, CTRL_Z AS UBYTE = 26
@@ -55,17 +55,17 @@ SUB NEXT_PAGE()
   ROWS = 0
 END SUB
 
-HELP_SWITCH("MORE")
-FILE_NAME = HEAP.SYS_STRINGS_GET(SLOT_P1)
+ARGS.HELP_SWITCH("MORE")
+FILE_NAME = HEAP.SYS_STRINGS_GET(ARGS.SLOT_P1)
 IF HEAP.SYS_STRINGS_GET(SLOT_P2) <> "" THEN
-  PRINT "Too many parameters"
-  END 1
+  PRINT ARGS.TOO_MANY$
+  END ARGS.EXIT_CODE.BAD_PARAMETER
 END IF
 IF FILE_NAME <> "" THEN
   INPUT_FILE = DOS.OPEN_FILE(FILE_NAME, DOS.ACCESS_READ)
   IF INPUT_FILE = NOFILE THEN
     PRINT DOS.ERRMSG(DOS.ERROR)
-    END 2
+    END ARGS.EXIT_CODE.FAILED
   END IF
 END IF
 PAGE_ROWS = CONS.SCREEN_ROWS() - 1

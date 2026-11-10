@@ -20,7 +20,7 @@
 ' -- between folders. With no names, every entry is picked.
 ' -- -H or -? as the first parameter runs HELP UNZIP.
 ' -- No archive, or -d with no folder, prints Required parameter missing, and a switch but -l,
-' -- -o and -d prints Invalid switch. Each gives exit code 1. An archive that does not open
+' -- -o and -d prints Invalid switch. Each gives exit code 4. An archive that does not open
 ' -- prints its error message, a file with no end record prints Not a ZIP archive, and a ZIP64
 ' -- or split archive prints ZIP64 and split archives are not supported. Each gives exit code
 ' -- 2, as does an archive that ends inside an entry. A file that cannot be written prints its
@@ -36,7 +36,7 @@
 #INCLUDE "HEAP.UXI"
 #INCLUDE "BANK.UXI"
 #INCLUDE "ZIPFILE.UXI"
-#INCLUDE "HELPSW.UXI"
+#INCLUDE "ARGS.UXI"
 CONST BLANKS AS STRING = "         "
 CONST DASHES AS STRING = "---------"
 CONST HEX_DIGITS AS STRING = "0123456789abcdef"
@@ -48,7 +48,7 @@ CONST WINDOW_BANKS AS UBYTE = 4, WINDOW_START AS UWORD = $A000
 DIM ARGUMENT AS STRING * 255, ARCHIVE_NAME AS STRING * 255, ENTRY_NAME AS STRING * 255
 DIM FOLDER AS STRING * 255, TARGET_NAME AS STRING * 255, MADE_FOLDER AS STRING * 255
 DIM ANSWER AS STRING * 8
-DIM SLOT AS UBYTE, LIST_ONLY AS UBYTE, REPLACE AS UBYTE, SWITCH AS UBYTE
+DIM LIST_ONLY AS UBYTE, REPLACE AS UBYTE, SWITCH AS UBYTE
 DIM NAME_SLOTS AS UWORD                            ' bit n set: P(n+1)$ is a name to pick
 DIM TARGET AS UWORD, EXIT_CODE AS UBYTE, WRITE_ERROR AS UBYTE
 DIM COUNT AS UWORD, SKIP AS UWORD, DATA_AT AS ULONG
@@ -144,7 +144,7 @@ END FUNCT
 FUNCT PICKED() AS UBYTE
   DIM NAME_SLOT AS UBYTE
   IF NAME_SLOTS = 0 THEN RETURN 1
-  FOR NAME_SLOT = SLOT_P1 TO SLOT_P9
+  FOR NAME_SLOT = ARGS.SLOT_P1 TO ARGS.SLOT_P9
     IF NAME_SLOTS AND (1 << NAME_SLOT) THEN
       IF MATCHES(HEAP.SYS_STRINGS_GET(NAME_SLOT), ENTRY_NAME) THEN RETURN 1
     END IF
@@ -862,34 +862,25 @@ SUB EXTRACT_ENTRY()
 END SUB
 
 ' ---- the arguments ----
-HELP_SWITCH("UNZIP")
-SLOT = SLOT_P1
-DO WHILE SLOT <= SLOT_P9
-  ARGUMENT = HEAP.SYS_STRINGS_GET(SLOT)
-  SLOT = SLOT + 1
-  IF ARGUMENT = "" THEN CONTINUE
-  IF ASC(ARGUMENT) = ASC("-") THEN
-    SWITCH = 0
-    IF LEN(ARGUMENT) = 2 THEN SWITCH = ASC(MID$(ARGUMENT, 2)) OR $20
-    IF SWITCH = ASC("l") THEN
-      LIST_ONLY = 1
-    ELSEIF SWITCH = ASC("o") THEN
-      REPLACE = REPLACE_ALL
-    ELSEIF SWITCH = ASC("d") THEN
-      IF SLOT > SLOT_P9 THEN FAIL("Required parameter missing", 1)
-      FOLDER = HEAP.SYS_STRINGS_GET(SLOT)
-      SLOT = SLOT + 1
-      IF FOLDER = "" THEN FAIL("Required parameter missing", 1)
-    ELSE
-      FAIL("Invalid switch", 1)
-    END IF
+ARGS.HELP_SWITCH("UNZIP")
+DO
+  ARGUMENT = ARGS.PARAMETER()
+  IF ARGUMENT = "" THEN EXIT DO
+  SWITCH = ARGS.SWITCH(ARGUMENT, "lod")
+  IF SWITCH = ASC("l") THEN
+    LIST_ONLY = 1
+  ELSEIF SWITCH = ASC("o") THEN
+    REPLACE = REPLACE_ALL
+  ELSEIF SWITCH = ASC("d") THEN
+    FOLDER = ARGS.PARAMETER()
+    IF FOLDER = "" THEN ARGS.FAIL(BAD_PARAMETER, ARGS.MISSING$)
   ELSEIF ARCHIVE_NAME = "" THEN
     ARCHIVE_NAME = ARGUMENT
   ELSE
-    NAME_SLOTS = NAME_SLOTS OR (1 << (SLOT - 1))
+    NAME_SLOTS = NAME_SLOTS OR (1 << (ARGS.SLOT - 1))
   END IF
 LOOP
-IF ARCHIVE_NAME = "" THEN FAIL("Required parameter missing", 1)
+IF ARCHIVE_NAME = "" THEN ARGS.FAIL(BAD_PARAMETER, ARGS.MISSING$)
 
 ' ---- the archive ----
 ARCHIVE = DOS.OPEN_FILE(ARCHIVE_NAME, DOS.ACCESS_READ)

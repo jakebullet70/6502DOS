@@ -17,8 +17,8 @@
 ' -- -H or -? as the first parameter runs HELP GREP.
 ' -- Exit code 0 when a line is written or counted, 1 when none is. No pattern prints Required
 ' -- parameter missing, a [ with no ] prints Invalid parameter, another switch prints Invalid
-' -- switch, and a third name prints Too many parameters. A file that does not open prints
-' -- its error message. Each gives exit code 2.
+' -- switch, and a third name prints Too many parameters; each gives exit code 4. A file that
+' -- does not open prints its error message and gives exit code 2.
 ' --
 ' -- From a prompt:
 ' --     GREP -n "^Line 0[1-3]" DOCS\LONG.TXT
@@ -26,13 +26,12 @@
 '=============================================================================================
 #INCLUDE "DOS.UXI"
 #INCLUDE "HEAP.UXI"
-#INCLUDE "HELPSW.UXI"
-CONST SLOT_P1 AS UBYTE = 0, SLOT_P9 AS UBYTE = 8
+#INCLUDE "ARGS.UXI"
 CONST BUFFER_SIZE AS UWORD = 512, LINE_SIZE AS UWORD = 512
 CONST LF AS UBYTE = 10, CR AS UBYTE = 13, CTRL_Z AS UBYTE = 26
 
 DIM ARGUMENT AS STRING * 255, PATTERN AS STRING * 255, FILE_NAME AS STRING * 255
-DIM SLOT AS UBYTE, INDEX AS UBYTE, CODE AS UBYTE, HAVE_PATTERN AS UBYTE
+DIM INDEX AS UBYTE, CODE AS UBYTE, HAVE_PATTERN AS UBYTE
 DIM IGNORE_CASE AS UBYTE, NUMBER_LINES AS UBYTE, INVERT AS UBYTE, COUNT_ONLY AS UBYTE
 DIM INPUT_FILE AS UWORD                            ' 0 is handle 0, the input with no file
 DIM BUFFER(BUFFER_SIZE) AS UBYTE, BUFFER_COUNT AS UWORD, BUFFER_INDEX AS UWORD
@@ -55,11 +54,6 @@ DIM ATOM_COUNT AS UBYTE, RANGE_COUNT AS UBYTE, ANCHOR_START AS UBYTE, ANCHOR_END
 DIM STATES(512) AS UBYTE, MARK(256) AS UBYTE
 DIM CURRENT_START AS UWORD, CURRENT_COUNT AS UWORD, NEXT_START AS UWORD, NEXT_COUNT AS UWORD
 DIM ACCEPTED AS UBYTE, TEXT_CHARACTER AS UBYTE
-
-SUB FAIL(MESSAGE AS STRING)
-  PRINT MESSAGE
-  END 2
-END SUB
 
 ' The character at POSITION, from 1, of PATTERN.
 FUNCT PATTERN_AT(POSITION AS UWORD) AS UBYTE
@@ -109,7 +103,7 @@ SUB COMPILE_PATTERN()
       END IF
       FIRST_IN_SET = 1
       DO
-        IF POSITION > PATTERN_LENGTH THEN FAIL("Invalid parameter")
+        IF POSITION > PATTERN_LENGTH THEN ARGS.FAIL(BAD_PARAMETER, ARGS.INVALID$)
         CODE = PATTERN_AT(POSITION)
         POSITION = POSITION + 1
         IF CODE = ASC("]") AND FIRST_IN_SET = 0 THEN EXIT DO
@@ -226,14 +220,12 @@ SUB END_LINE()
 END SUB
 
 ' ---- the arguments ----
-HELP_SWITCH("GREP")
-SLOT = SLOT_P1
-DO WHILE SLOT <= SLOT_P9
-  ARGUMENT = HEAP.SYS_STRINGS_GET(SLOT)
-  SLOT = SLOT + 1
-  IF ARGUMENT = "" THEN CONTINUE
+ARGS.HELP_SWITCH("GREP")
+DO
+  ARGUMENT = ARGS.PARAMETER()
+  IF ARGUMENT = "" THEN EXIT DO
   IF ASC(ARGUMENT) = ASC("-") THEN
-    IF LEN(ARGUMENT) = 1 THEN FAIL("Invalid switch")
+    IF LEN(ARGUMENT) = 1 THEN ARGS.FAIL(BAD_PARAMETER, ARGS.INVALID_SWITCH$)
     FOR INDEX = 2 TO LEN(ARGUMENT)
       CODE = ASC(MID$(ARGUMENT, INDEX)) OR $20
       IF CODE = ASC("i") THEN
@@ -245,7 +237,7 @@ DO WHILE SLOT <= SLOT_P9
       ELSEIF CODE = ASC("c") THEN
         COUNT_ONLY = 1
       ELSE
-        FAIL("Invalid switch")
+        ARGS.FAIL(BAD_PARAMETER, ARGS.INVALID_SWITCH$)
       END IF
     NEXT
   ELSEIF HAVE_PATTERN = 0 THEN
@@ -254,10 +246,10 @@ DO WHILE SLOT <= SLOT_P9
   ELSEIF FILE_NAME = "" THEN
     FILE_NAME = ARGUMENT
   ELSE
-    FAIL("Too many parameters")
+    ARGS.FAIL(BAD_PARAMETER, ARGS.TOO_MANY$)
   END IF
 LOOP
-IF HAVE_PATTERN = 0 THEN FAIL("Required parameter missing")
+IF HAVE_PATTERN = 0 THEN ARGS.FAIL(BAD_PARAMETER, ARGS.MISSING$)
 
 ' ---- the pattern ----
 IF IGNORE_CASE = 1 THEN
@@ -273,7 +265,10 @@ NEXT_START = 256
 ' ---- the input ----
 IF FILE_NAME <> "" THEN
   INPUT_FILE = DOS.OPEN_FILE(FILE_NAME, DOS.ACCESS_READ)
-  IF INPUT_FILE = NOFILE THEN FAIL(DOS.ERRMSG(DOS.ERROR))
+  IF INPUT_FILE = NOFILE THEN
+    PRINT DOS.ERRMSG(DOS.ERROR)
+    END 2
+  END IF
 END IF
 
 ' ---- the lines ----

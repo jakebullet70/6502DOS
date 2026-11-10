@@ -16,8 +16,8 @@
 ' -- A line ends at CR, LF or CR LF. A tab goes to the next column that is a multiple of 8.
 ' -- BS, BEL, FF, $0F and Esc show as ".". A line is 255 characters at most; the rest is cut.
 ' -- -H or -? as the first parameter runs HELP VIEW.
-' -- No file name prints Required parameter missing and gives exit code 1. A file that does
-' -- not open prints its error message and gives exit code 2. Exit code 0 otherwise.
+' -- No file name prints Required parameter missing and gives exit code 4. A file that does
+' -- not open prints its error message and gives exit code 1. Exit code 0 otherwise.
 ' --
 ' -- From a prompt:
 ' --     VIEW DOCS\README.TXT
@@ -26,8 +26,7 @@
 #INCLUDE "HEAP.UXI"
 #INCLUDE "KEYS.UXI"
 #INCLUDE "CONS.UXI"
-#INCLUDE "HELPSW.UXI"
-CONST SLOT_P1 AS UBYTE = 0
+#INCLUDE "ARGS.UXI"
 ' A theme file's bytes, and the places of STATUS and CONSOLE in them. NO_THEME_FOOTER is black on
 ' light grey.
 ' Checklist: the size of COLORS$ and the places in ENUM ROLE in lib/GUI.UXI.
@@ -357,16 +356,16 @@ SUB SCROLL_DOWN()
   SHOW_FOOTER()
 END SUB
 
-HELP_SWITCH("VIEW")
-FILE_NAME = HEAP.SYS_STRINGS_GET(SLOT_P1)
+ARGS.HELP_SWITCH("VIEW")
+FILE_NAME = HEAP.SYS_STRINGS_GET(ARGS.SLOT_P1)
 IF FILE_NAME = "" THEN
-  PRINT "Required parameter missing"
-  END 1
+  PRINT ARGS.MISSING$
+  END ARGS.EXIT_CODE.BAD_PARAMETER
 END IF
 VIEWED_FILE = DOS.OPEN_FILE(FILE_NAME, DOS.ACCESS_READ)
 IF VIEWED_FILE = NOFILE THEN
   PRINT DOS.ERRMSG(DOS.ERROR)
-  END 2
+  END ARGS.EXIT_CODE.FAILED
 END IF
 READ_THEME()
 INDEXED = 1

@@ -62,8 +62,8 @@ NAMESPACE ARGS
     DIM LETTER AS UBYTE, INDEX AS UBYTE, PLACE AS UWORD
     IF ASC(ARGUMENT$) <> ASC("-") THEN RETURN 0
     IF LEN(ARGUMENT$) <> 2 THEN FAIL(BAD_PARAMETER, INVALID_SWITCH$)
-    LETTER = ContentsAt(AddrOf(ARGUMENT$) + 2) OR $20
-    PLACE = AddrOf(LETTERS$)
+    LETTER = ContentsAt(AddrOf(ARGUMENT$) + 3) OR $20   ' the block: size, length, then the text
+    PLACE = AddrOf(LETTERS$) + 1                       ' the length byte
     INDEX = ContentsAt(PLACE)
     DO WHILE INDEX
       PLACE = PLACE + 1

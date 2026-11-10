@@ -16,7 +16,7 @@
 ' -- to ZIPTEMP.$$$, then deletes the old one and renames the work file.
 ' -- -H or -? as the first parameter runs HELP ZIP.
 ' -- No archive or no files prints Required parameter missing, and a switch but -r prints
-' -- Invalid switch, each exit code 1. An old archive that is not a ZIP archive, or is ZIP64
+' -- Invalid switch, each exit code 4. An old archive that is not a ZIP archive, or is ZIP64
 ' -- or split, prints its error, as UNZIP does, exit code 2. A name that matches nothing prints
 ' -- zip warning: name not matched, and a file that does not open zip warning: could not open
 ' -- for reading; each gives exit code 3 at the end. No file to add prints zip error: Nothing
@@ -31,7 +31,7 @@
 #INCLUDE "HEAP.UXI"
 #INCLUDE "BANK.UXI"
 #INCLUDE "ZIPFILE.UXI"
-#INCLUDE "HELPSW.UXI"
+#INCLUDE "ARGS.UXI"
 CONST TEMP_FILE AS STRING = "ZIPTEMP.$$$", LIST_FILE AS STRING = "ZIPLIST.$$$"
 ' Version 2.0 made on MS-DOS, so the low byte of the external attributes is the FAT's.
 CONST VERSION_MADE AS UBYTE = 20, VERSION_STORED AS UBYTE = 10, VERSION_DEFLATED AS UBYTE = 20
@@ -47,7 +47,7 @@ DIM ARGUMENT AS STRING * 255, ARCHIVE_NAME AS STRING * 255, ENTRY_NAME AS STRING
 DIM TEMP_NAME AS STRING * 255, LIST_NAME AS STRING * 255, WALK_PATH AS STRING * 255
 DIM FILE_PATH AS STRING * 255, CHECK_NAME AS STRING * 255, KEY_TEXT AS STRING * 255
 DIM ARCHIVE_KEY AS STRING * 255, TEMP_KEY AS STRING * 255, LIST_KEY AS STRING * 255
-DIM SLOT AS UBYTE, SWITCH AS UBYTE, RECURSE AS UBYTE, EXIT_CODE AS UBYTE, OLD_EXISTS AS UBYTE
+DIM SLOT AS UBYTE, RECURSE AS UBYTE, EXIT_CODE AS UBYTE, OLD_EXISTS AS UBYTE
 DIM LINE_OPEN AS UBYTE, WRITE_ERROR AS UBYTE
 DIM FILE_SLOTS AS UWORD                            ' bit n set: P(n+1)$ is a file to add
 DIM TEMP AS UWORD, LIST AS UWORD, SOURCE AS UWORD
@@ -1296,31 +1296,23 @@ SUB FINISH()
 END SUB
 
 ' ---- the arguments ----
-HELP_SWITCH("ZIP")
+ARGS.HELP_SWITCH("ZIP")
 ARCHIVE = NOFILE
 TEMP = NOFILE
 LIST = NOFILE
 SOURCE = NOFILE
-SLOT = SLOT_P1
-DO WHILE SLOT <= SLOT_P9
-  ARGUMENT = HEAP.SYS_STRINGS_GET(SLOT)
-  SLOT = SLOT + 1
-  IF ARGUMENT = "" THEN CONTINUE
-  IF ASC(ARGUMENT) = ASC("-") THEN
-    SWITCH = 0
-    IF LEN(ARGUMENT) = 2 THEN SWITCH = ASC(MID$(ARGUMENT, 2)) OR $20
-    IF SWITCH = ASC("r") THEN
-      RECURSE = 1
-    ELSE
-      FAIL("Invalid switch", 1)
-    END IF
+DO
+  ARGUMENT = ARGS.PARAMETER()
+  IF ARGUMENT = "" THEN EXIT DO
+  IF ARGS.SWITCH(ARGUMENT, "r") THEN
+    RECURSE = 1
   ELSEIF ARCHIVE_NAME = "" THEN
     ARCHIVE_NAME = ARGUMENT
   ELSE
-    FILE_SLOTS = FILE_SLOTS OR (1 << (SLOT - 1))
+    FILE_SLOTS = FILE_SLOTS OR (1 << (ARGS.SLOT - 1))
   END IF
 LOOP
-IF ARCHIVE_NAME = "" OR FILE_SLOTS = 0 THEN FAIL("Required parameter missing", 1)
+IF ARCHIVE_NAME = "" OR FILE_SLOTS = 0 THEN ARGS.FAIL(BAD_PARAMETER, ARGS.MISSING$)
 IF INSTR(MID$(ARCHIVE_NAME, FOLDER_LENGTH(ARCHIVE_NAME) + 1), ".", 1) = 0 THEN
   ARCHIVE_NAME = ARCHIVE_NAME + ".ZIP"
 END IF
@@ -1366,7 +1358,7 @@ LIST = DOS.CREATE_FILE(LIST_NAME, 0)
 IF LIST = NOFILE THEN ABORT(DOS.ERRMSG(DOS.ERROR), 3)
 
 ' ---- the files ----
-FOR SLOT = SLOT_P1 TO SLOT_P9
+FOR SLOT = ARGS.SLOT_P1 TO ARGS.SLOT_P9
   IF FILE_SLOTS AND (1 << SLOT) THEN
     ARGUMENT = HEAP.SYS_STRINGS_GET(SLOT)
     ADD_ARGUMENT()

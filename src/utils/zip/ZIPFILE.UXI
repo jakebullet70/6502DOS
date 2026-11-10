@@ -1,6 +1,5 @@
 ' ZIPFILE.UXI: the ZIP records, CRC-32 and the end record search, for ZIP and UNZIP.
 ' Include DOS.UXI first.
-CONST SLOT_P1 AS UBYTE = 0, SLOT_P9 AS UBYTE = 8
 CONST FROM_START AS UBYTE = 0, FROM_POSITION AS UBYTE = 1, FROM_END AS UBYTE = 2
 CONST BUFFER_SIZE AS UWORD = 512
 ' The end record: its signature PK 5 6, then these offsets.

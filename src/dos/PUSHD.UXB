@@ -6,9 +6,9 @@
 ' -- -L lists the stack, the newest first. -C empties it. -H or -? runs HELP PUSHD. A switch
 ' -- takes either case, and goes alone.
 ' -- A full stack prints Directory stack full. A folder that does not exist prints its error
-' -- message. Both leave the stack and the current folder as they were. A switch other than
-' -- these prints Invalid switch, and a second parameter prints Too many parameters. Each gives
-' -- exit code 1. Exit code 0 otherwise.
+' -- message. Both leave the stack and the current folder as they were, and give exit code 1.
+' -- A switch other than these prints Invalid switch, and a second parameter prints Too many
+' -- parameters; each gives exit code 4. Exit code 0 otherwise.
 ' --
 ' -- From a prompt:
 ' --     PUSHD C:\DOCS
@@ -16,10 +16,12 @@
 '=============================================================================================
 #INCLUDE "DOS.UXI"
 #INCLUDE "HEAP.UXI"
+#INCLUDE "ARGS.UXI"
 #INCLUDE "DIRSTACK.UXI"
 
+ARGS.HELP_SWITCH("PUSHD")
 READ_ARGUMENTS(1)
-RUN_SWITCH("PUSHD")
+RUN_SWITCH()
 COUNT_STACK()
 IF DEPTH = STACK_SIZE THEN FAIL("Directory stack full")
 SAVED = CURRENT_FOLDER()

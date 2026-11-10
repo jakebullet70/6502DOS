@@ -41,7 +41,7 @@
 ' -- A larger file prints File too large, and one with no RAM bank left Insufficient memory;
 ' -- both give exit code 2. A file that does not exist gives an empty text, and the
 ' -- status row says New file. No file name prints Required parameter missing, and a second
-' -- name prints Too many parameters; each gives exit code 1. A file that does not open for
+' -- name prints Too many parameters; each gives exit code 4. A file that does not open for
 ' -- another reason prints its error message and gives exit code 2. Exit code 0 otherwise.
 ' --
 ' -- From a prompt:
@@ -53,8 +53,8 @@
 #INCLUDE "KEYS.UXI"
 #INCLUDE "CONS.UXI"
 #INCLUDE "BANK.UXI"
-#INCLUDE "HELPSW.UXI"
-CONST SLOT_P1 AS UBYTE = 0, SLOT_P2 AS UBYTE = 1
+#INCLUDE "ARGS.UXI"
+CONST SLOT_P2 AS UBYTE = 1
 
 ' A theme file's bytes, and the places of STATUS and CONSOLE in them. NO_THEME_STATUS is black on
 ' light grey.
@@ -1043,16 +1043,10 @@ END FUNCT
 
 
 '--- program starts here -------------------------------------------
-HELP_SWITCH("TED")
-FILE_NAME = HEAP.SYS_STRINGS_GET(SLOT_P1)
-IF FILE_NAME = "" THEN
-  PRINT "Required parameter missing"
-  END 1
-END IF
-IF HEAP.SYS_STRINGS_GET(SLOT_P2) <> "" THEN
-  PRINT "Too many parameters"
-  END 1
-END IF
+ARGS.HELP_SWITCH("TED")
+FILE_NAME = HEAP.SYS_STRINGS_GET(ARGS.SLOT_P1)
+IF FILE_NAME = "" THEN ARGS.FAIL(BAD_PARAMETER, ARGS.MISSING$)
+IF HEAP.SYS_STRINGS_GET(SLOT_P2) <> "" THEN ARGS.FAIL(BAD_PARAMETER, ARGS.TOO_MANY$)
 QUIT = LOAD()
 IF QUIT <> 0 THEN END QUIT
 READ_THEME()

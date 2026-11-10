@@ -21,8 +21,9 @@
 ' --      3246 KB available on disk
 ' -- A drive that is not a letter, or that the kernel does not know, prints Invalid drive. A
 ' -- switch prints Invalid switch, and a second drive Too many parameters. Each gives exit code
-' -- 1. A card without a FAT32 volume prints Not a FAT32 volume, too few RAM banks for a bitmap
-' -- Insufficient memory, and a read error its error message; each gives exit code 2. Exit code 3 after a problem, 0 otherwise.
+' -- 4. A card without a FAT32 volume prints Not a FAT32 volume, too few RAM banks for a bitmap
+' -- Insufficient memory, and a read error its error message; each gives exit code 1. Exit code
+' -- 3 after a problem, 0 otherwise.
 ' --
 ' -- From a prompt:
 ' --     CHKDSK C:
@@ -30,7 +31,7 @@
 #INCLUDE "DOS.UXI"
 #INCLUDE "HEAP.UXI"
 #INCLUDE "BANK.UXI"
-CONST SLOT_P1 AS UBYTE = 0, SLOT_P9 AS UBYTE = 8
+#INCLUDE "ARGS.UXI"
 CONST SECTOR_ENTRIES AS UBYTE = 16, MAX_DEPTH AS UBYTE = 32, PATH_MAX AS UBYTE = 240
 CONST END_MARK AS ULONG = $0FFFFFF8, NO_COUNT AS ULONG = $FFFFFFFF
 CONST INFO_LEAD AS ULONG = $41615252, INFO_MIDDLE AS ULONG = $61417272   ' RRaA, rrAa
@@ -38,7 +39,7 @@ CONST INFO_LEAD AS ULONG = $41615252, INFO_MIDDLE AS ULONG = $61417272   ' RRaA,
 ' shown at WINDOW_START.
 CONST WINDOW_START AS UWORD = $A000, WINDOW_LAST AS UWORD = $BFFF, BANK_BYTES AS UWORD = 8192
 
-DIM ARGUMENT AS STRING * 255, SLOT AS UBYTE, DRIVE AS UBYTE, GOT_DRIVE AS UBYTE
+DIM ARGUMENT AS STRING * 255, DRIVE AS UBYTE, GOT_DRIVE AS UBYTE
 DIM LETTER AS STRING * 2
 DIM SECTOR(512) AS UBYTE, FAT_SECTOR(512) AS UBYTE
 ' FAT_LOADED is the card sector in FAT_SECTOR.
@@ -68,14 +69,9 @@ DIM COMPARE AS UBYTE, OFFSET AS UWORD, BIT AS UBYTE, FIRST_INDEX AS UBYTE, COUNT
 DIM SECTOR_FREE AS UBYTE, SECTOR_BAD AS UBYTE, SECTOR_LOST AS UBYTE, ENTRY_TOP AS UBYTE
 DIM FAT_POINTER AS UWORD AT $02, MAP_POINTER AS UWORD AT $04
 
-SUB FAIL(MESSAGE AS STRING)
-  PRINT MESSAGE
-  END 1
-END SUB
-
-SUB FAIL_CARD(MESSAGE AS STRING)
-  PRINT MESSAGE
-  END 2
+SUB FAIL_CARD(MESSAGE$ AS CONST)
+  PRINT MESSAGE$
+  END ARGS.EXIT_CODE.FAILED
 END SUB
 
 ' Reads card sector NUMBER into memory at BUFFER. A read error prints its message and ends the
@@ -268,16 +264,16 @@ END SUB
 
 ' ---- the arguments ----
 DRIVE = DOS.GETDRIVE()
-FOR SLOT = SLOT_P1 TO SLOT_P9
-  ARGUMENT = HEAP.SYS_STRINGS_GET(SLOT)
-  IF ARGUMENT = "" THEN CONTINUE
-  IF ASC(ARGUMENT) = ASC("-") THEN FAIL("Invalid switch")
-  IF GOT_DRIVE THEN FAIL("Too many parameters")
+DO
+  ARGUMENT = ARGS.PARAMETER()
+  IF ARGUMENT = "" THEN EXIT DO
+  IF ASC(ARGUMENT) = ASC("-") THEN ARGS.FAIL(BAD_PARAMETER, ARGS.INVALID_SWITCH$)
+  IF GOT_DRIVE THEN ARGS.FAIL(BAD_PARAMETER, ARGS.TOO_MANY$)
   ' a to z give 0 to 25. Any other first character wraps past 25.
   DRIVE = (ASC(ARGUMENT) OR $20) - ASC("a")
-  IF DRIVE > 25 OR (MID$(ARGUMENT, 2) <> "" AND MID$(ARGUMENT, 2) <> ":") THEN FAIL("Invalid drive")
+  IF DRIVE > 25 OR (MID$(ARGUMENT, 2) <> "" AND MID$(ARGUMENT, 2) <> ":") THEN ARGS.FAIL(BAD_PARAMETER, "Invalid drive")
   GOT_DRIVE = 1
-NEXT
+LOOP
 LETTER = CHR$(DRIVE + ASC("A")) + ":"
 CALLER_BANK = BANK.CURRENT()
 FAT_LOADED = NO_COUNT
@@ -286,7 +282,7 @@ FAT_LOADED = NO_COUNT
 ' ---- the volume ----
 ' The first FAT32 partition of the MBR, or a volume from sector 0 when there is none.
 DOS.ABSREAD(DRIVE, @SECTOR, 0, 1)
-IF DOS.ERROR = DOS.ERR_BAD_DRIVE THEN FAIL("Invalid drive")
+IF DOS.ERROR = DOS.ERR_BAD_DRIVE THEN ARGS.FAIL(BAD_PARAMETER, "Invalid drive")
 IF DOS.ERROR <> 0 THEN FAIL_CARD(DOS.ERRMSG(DOS.ERROR))
 FOR INDEX = 0 TO 3
   PLACE = @SECTOR + $1BE + INDEX * 16

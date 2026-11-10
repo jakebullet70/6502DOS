@@ -13,16 +13,15 @@
 ' -- -H or -? as the first parameter runs HELP TREE.
 ' -- A drive that is not a letter, or that the kernel does not know, prints Invalid drive. A path
 ' -- that is not a directory prints Invalid path. A switch other than -F prints Invalid switch,
-' -- and a second path prints Too many parameters. Each gives exit code 1. A read error prints
-' -- its error message and gives exit code 2. Exit code 0 otherwise.
+' -- and a second path prints Too many parameters. Each gives exit code 4. A read error prints
+' -- its error message and gives exit code 1. Exit code 0 otherwise.
 ' --
 ' -- From a prompt:
 ' --     TREE C:\DOCS -F
 '=============================================================================================
 #INCLUDE "DOS.UXI"
 #INCLUDE "HEAP.UXI"
-#INCLUDE "HELPSW.UXI"
-CONST SLOT_P1 AS UBYTE = 0, SLOT_P9 AS UBYTE = 8
+#INCLUDE "ARGS.UXI"
 CONST BRANCH$ = " +- ", BAR$ = " |  ", NO_BAR$ = "    "
 CONST MAX_DEPTH AS UBYTE = 32, PATH_MAX AS UBYTE = 250
 ' A find buffer's search state is its bytes before FIND_ATTR. STATES keeps one a level.
@@ -30,7 +29,7 @@ CONST STATE_SIZE AS UBYTE = 41
 CONST STATES_SIZE AS UWORD = 1312                  ' MAX_DEPTH * STATE_SIZE
 
 DIM ARGUMENT AS STRING * 255, START AS STRING * 255
-DIM SLOT AS UBYTE, SHOW_FILES AS UBYTE, DRIVE AS UBYTE, PREFIX AS STRING * 2
+DIM SHOW_FILES AS UBYTE, DRIVE AS UBYTE, PREFIX AS STRING * 2
 DIM OLD_DIRECTORY AS STRING * 255
 ' PATH is the directory being walked, from the root without the drive: "" at the root,
 ' \MANY\SUB.DIR below it.
@@ -40,16 +39,11 @@ DIM BARS AS STRING * 255, DIRECTORY_NAME AS STRING * 32
 DIM DEPTH AS UBYTE, ANY_DIRECTORY AS UBYTE, INDEX AS UBYTE, STATE_START AS UWORD
 DIM STATES(STATES_SIZE) AS UBYTE, PATH_LENGTHS(MAX_DEPTH) AS UBYTE
 
-SUB FAIL(MESSAGE AS STRING)
-  PRINT MESSAGE
-  END 1
-END SUB
-
 ' Ends the program on a find error that is not the end of the directory.
 SUB CHECK_FIND_ERROR()
   IF DOS.ERROR = 0 OR DOS.ERROR = DOS.ERR_NOT_FOUND OR DOS.ERROR = DOS.ERR_NO_MORE THEN RETURN
   PRINT DOS.ERRMSG(DOS.ERROR)
-  END 2
+  END ARGS.EXIT_CODE.FAILED
 END SUB
 
 ' Gives 1 when the found name is a directory other than . and ..
@@ -108,33 +102,33 @@ SUB RESUME_SEARCH()
 END SUB
 
 ' ---- the arguments ----
-HELP_SWITCH("TREE")
-FOR SLOT = SLOT_P1 TO SLOT_P9
-  ARGUMENT = HEAP.SYS_STRINGS_GET(SLOT)
-  IF ARGUMENT = "" THEN CONTINUE
+ARGS.HELP_SWITCH("TREE")
+DO
+  ARGUMENT = ARGS.PARAMETER()
+  IF ARGUMENT = "" THEN EXIT DO
   IF ASC(ARGUMENT) = ASC("-") THEN
-    IF LEN(ARGUMENT) <> 2 OR (ASC(MID$(ARGUMENT, 2)) OR $20) <> ASC("f") THEN FAIL("Invalid switch")
+    IF LEN(ARGUMENT) <> 2 OR (ASC(MID$(ARGUMENT, 2)) OR $20) <> ASC("f") THEN ARGS.FAIL(BAD_PARAMETER, ARGS.INVALID_SWITCH$)
     SHOW_FILES = 1
   ELSE
-    IF START <> "" THEN FAIL("Too many parameters")
+    IF START <> "" THEN ARGS.FAIL(BAD_PARAMETER, ARGS.TOO_MANY$)
     START = ARGUMENT
   END IF
-NEXT
+LOOP
 
 ' ---- the start directory ----
 IF MID$(START, 2, 1) = ":" THEN
   ' a to z give 1 to 26. Any other first character gives 0 or wraps past 26.
   DRIVE = (ASC(START) OR $20) - ASC("a") + 1
-  IF DRIVE = 0 OR DRIVE > 26 THEN FAIL("Invalid drive")
+  IF DRIVE = 0 OR DRIVE > 26 THEN ARGS.FAIL(BAD_PARAMETER, "Invalid drive")
   PREFIX = CHR$(DRIVE + ASC("A") - 1) + ":"
   START = MID$(START, 3)
 END IF
 OLD_DIRECTORY = DOS.GETCWD(DRIVE)
-IF DOS.ERROR <> 0 THEN FAIL("Invalid drive")
+IF DOS.ERROR <> 0 THEN ARGS.FAIL(BAD_PARAMETER, "Invalid drive")
 IF START <> "" THEN
   ' CHDIR checks the path, and GETCWD gives it from the root with no . or .. in it.
   DOS.CHDIR(PREFIX + START)
-  IF DOS.ERROR <> 0 THEN FAIL("Invalid path")
+  IF DOS.ERROR <> 0 THEN ARGS.FAIL(BAD_PARAMETER, "Invalid path")
   PATH = DOS.GETCWD(DRIVE)
   DOS.CHDIR(PREFIX + "\" + OLD_DIRECTORY)
   IF PATH <> "" THEN PATH = "\" + PATH

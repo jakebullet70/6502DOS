@@ -10,8 +10,8 @@
 ' -- -H or -? as the first parameter runs HELP TAIL.
 ' -- -n with no count prints Required parameter missing, a count that is not a number up to
 ' -- 65535 prints Invalid parameter, another switch prints Invalid switch, and a second name
-' -- prints Too many parameters. Each gives exit code 1. A file that does not open prints its
-' -- error message and gives exit code 2. Exit code 0 otherwise.
+' -- prints Too many parameters. Each gives exit code 4. A file that does not open prints its
+' -- error message and gives exit code 1. Exit code 0 otherwise.
 ' --
 ' -- From a prompt:
 ' --     TAIL -n 20 DOCS\LONG.TXT
@@ -19,14 +19,13 @@
 '=============================================================================================
 #INCLUDE "DOS.UXI"
 #INCLUDE "HEAP.UXI"
-#INCLUDE "HELPSW.UXI"
-CONST SLOT_P1 AS UBYTE = 0, SLOT_P9 AS UBYTE = 8
+#INCLUDE "ARGS.UXI"
 CONST BUFFER_SIZE AS UWORD = 512
 CONST LF AS UBYTE = 10, CR AS UBYTE = 13, CTRL_Z AS UBYTE = 26
 CONST FROM_START AS UBYTE = 0, FROM_POSITION AS UBYTE = 1, FROM_END AS UBYTE = 2
 
 DIM ARGUMENT AS STRING * 255, FILE_NAME AS STRING * 255
-DIM SLOT AS UBYTE, INDEX AS UBYTE
+DIM INDEX AS UBYTE
 DIM COUNT AS UWORD
 DIM INPUT_FILE AS UWORD                            ' 0 is handle 0, the input with no file
 DIM BUFFER(BUFFER_SIZE) AS UBYTE, BUFFER_COUNT AS UWORD, BUFFER_INDEX AS UWORD
@@ -39,34 +38,25 @@ DIM GAP_LOW AS UWORD, GAP_HIGH AS UWORD
 DIM LINES AS UWORD, CHARACTER AS UBYTE, NEXT_CHARACTER AS UBYTE, LAST_BYTE AS UBYTE
 DIM DONE AS UBYTE
 
-SUB FAIL(MESSAGE AS STRING)
-  PRINT MESSAGE
-  END 1
-END SUB
-
 ' ---- the arguments ----
-HELP_SWITCH("TAIL")
+ARGS.HELP_SWITCH("TAIL")
 COUNT = 10
-SLOT = SLOT_P1
-DO WHILE SLOT <= SLOT_P9
-  ARGUMENT = HEAP.SYS_STRINGS_GET(SLOT)
-  SLOT = SLOT + 1
-  IF ARGUMENT = "" THEN CONTINUE
+DO
+  ARGUMENT = ARGS.PARAMETER()
+  IF ARGUMENT = "" THEN EXIT DO
   IF ASC(ARGUMENT) = ASC("-") THEN
-    IF LEN(ARGUMENT) <> 2 OR (ASC(MID$(ARGUMENT, 2)) OR $20) <> ASC("n") THEN FAIL("Invalid switch")
-    IF SLOT > SLOT_P9 THEN FAIL("Required parameter missing")
-    ARGUMENT = HEAP.SYS_STRINGS_GET(SLOT)
-    SLOT = SLOT + 1
-    IF ARGUMENT = "" THEN FAIL("Required parameter missing")
+    IF LEN(ARGUMENT) <> 2 OR (ASC(MID$(ARGUMENT, 2)) OR $20) <> ASC("n") THEN ARGS.FAIL(BAD_PARAMETER, ARGS.INVALID_SWITCH$)
+    ARGUMENT = ARGS.PARAMETER()
+    IF ARGUMENT = "" THEN ARGS.FAIL(BAD_PARAMETER, ARGS.MISSING$)
     COUNT = 0
     FOR INDEX = 1 TO LEN(ARGUMENT)
       CHARACTER = ASC(MID$(ARGUMENT, INDEX)) - ASC("0")  ' a byte below "0" wraps past 9
-      IF CHARACTER > 9 THEN FAIL("Invalid parameter")
-      IF COUNT > 6553 OR (COUNT = 6553 AND CHARACTER > 5) THEN FAIL("Invalid parameter")
+      IF CHARACTER > 9 THEN ARGS.FAIL(BAD_PARAMETER, ARGS.INVALID$)
+      IF COUNT > 6553 OR (COUNT = 6553 AND CHARACTER > 5) THEN ARGS.FAIL(BAD_PARAMETER, ARGS.INVALID$)
       COUNT = COUNT * 10 + CHARACTER
     NEXT
   ELSE
-    IF FILE_NAME <> "" THEN FAIL("Too many parameters")
+    IF FILE_NAME <> "" THEN ARGS.FAIL(BAD_PARAMETER, ARGS.TOO_MANY$)
     FILE_NAME = ARGUMENT
   END IF
 LOOP
@@ -76,7 +66,7 @@ IF FILE_NAME <> "" THEN
   INPUT_FILE = DOS.OPEN_FILE(FILE_NAME, DOS.ACCESS_READ)
   IF INPUT_FILE = NOFILE THEN
     PRINT DOS.ERRMSG(DOS.ERROR)
-    END 2
+    END ARGS.EXIT_CODE.FAILED
   END IF
 END IF
 DOS.SEEK(INPUT_FILE, FROM_POSITION, 0, 0)
