@@ -38,7 +38,8 @@ import uxc_tpl as T
 from uxc_state import er_mismatch, er_stop, er_syntax, g
 
 _Z_FROM_A = (T.T_LDB_C, T.T_LDB_V, T.T_LDB_AY, T.T_PEEK, T.T_SLEN, T.T_ADDB, T.T_SUBB, T.T_ANDB,
-             T.T_ORB, T.T_XORB, T.T_ADDB_C, T.T_SUBB_C, T.T_NOTB, T.T_CTRUE, T.T_CFALSE, T.T_ZTRUE,
+             T.T_ORB, T.T_XORB, T.T_ADDB_C, T.T_SUBB_C, T.T_ADDB_V, T.T_SUBB_V, T.T_ANDB_C,
+             T.T_ANDB_V, T.T_ORB_C, T.T_ORB_V, T.T_XORB_C, T.T_XORB_V, T.T_NOTB, T.T_CTRUE, T.T_CFALSE, T.T_ZTRUE,
              T.T_ZFALSE)
 
 _OPERAND = 1
@@ -908,14 +909,14 @@ def ex_mixed():
 
 
 def ex_fast():
-    """EX.FAST. A compare, + or - whose right side needs no code: the left side is loaded
-    into A or A/Y, and the right side is the operand of the template. g.ex_fd = 1 when it
+    """EX.FAST. A compare, +, -, AND, OR or XOR whose right side needs no code: the left side
+    is loaded into A or A/Y, and the right side is the operand of the template. g.ex_fd = 1 when it
     was done. UXC-EXPR.BL has how > and <= are turned round."""
     if g.ex_cw == 2:
         uxc_long.ex_long_fast()
         return
     g.ex_fd = 0
-    if g.ex_o == K_EO_ADD or g.ex_o == K_EO_SUB:
+    if g.ex_o == K_EO_ADD or g.ex_o == K_EO_SUB or (g.ex_o >= K_EO_OR and g.ex_o <= K_EO_AND):
         ex_fast_add()
         return
     if g.ex_o < K_EO_EQ or g.ex_o > K_EO_GE:
@@ -991,17 +992,50 @@ def ex_fast_cmp():
 
 
 def ex_fast_add():
-    g.ex_kr = g.ex_vk[g.ex_ir]
-    if g.ex_kr != K_EK_CONST and g.ex_kr != K_EK_ADDR:
+    """EX.FAST.ADD. +, -, AND, OR or XOR with a constant, an address or a variable of the
+    operator's width on the right. The _C record takes the constant, the _V record the
+    variable's address."""
+    g.ex_i = g.ex_ir
+    ex_fast_ok()
+    if g.ex_ok == 0:
         return
     ex_fast_left()
-    g.ex_tp = T.T_ADDB_C
-    if g.ex_cw == 1:
-        g.ex_tp = T.T_ADDW_C
+    g.ex_c = 0
+    if g.ex_kr == K_EK_MEM:
+        g.ex_c = 1
+    if g.ex_o == K_EO_ADD:
+        g.ex_pb = T.T_ADDB_C
+        g.ex_pw = T.T_ADDW_C
+        if g.ex_c == 1:
+            g.ex_pb = T.T_ADDB_V
+            g.ex_pw = T.T_ADDW_V
     if g.ex_o == K_EO_SUB:
-        g.ex_tp = T.T_SUBB_C
-        if g.ex_cw == 1:
-            g.ex_tp = T.T_SUBW_C
+        g.ex_pb = T.T_SUBB_C
+        g.ex_pw = T.T_SUBW_C
+        if g.ex_c == 1:
+            g.ex_pb = T.T_SUBB_V
+            g.ex_pw = T.T_SUBW_V
+    if g.ex_o == K_EO_AND:
+        g.ex_pb = T.T_ANDB_C
+        g.ex_pw = T.T_ANDW_C
+        if g.ex_c == 1:
+            g.ex_pb = T.T_ANDB_V
+            g.ex_pw = T.T_ANDW_V
+    if g.ex_o == K_EO_OR:
+        g.ex_pb = T.T_ORB_C
+        g.ex_pw = T.T_ORW_C
+        if g.ex_c == 1:
+            g.ex_pb = T.T_ORB_V
+            g.ex_pw = T.T_ORW_V
+    if g.ex_o == K_EO_XOR:
+        g.ex_pb = T.T_XORB_C
+        g.ex_pw = T.T_XORW_C
+        if g.ex_c == 1:
+            g.ex_pb = T.T_XORB_V
+            g.ex_pw = T.T_XORW_V
+    g.ex_tp = g.ex_pb
+    if g.ex_cw == 1:
+        g.ex_tp = g.ex_pw
     emit(g.ex_tp)
     g.ex_rk = K_EK_REG
     g.ex_rv = 0

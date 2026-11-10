@@ -151,7 +151,16 @@ def fx_read():
 
 def emit(record_id):
     """EM.EMIT. The record's code is read out of the table first, into g.em_b, because the
-    code buffer is in another bank. em_fix reads each fixup from the table at g.em_fa."""
+    code buffer is in another bank. em_fix reads each fixup from the table at g.em_fa.
+    g.em_fx is the fixup count at the record's start. The record before the last is kept as
+    g.em_pid, g.em_pstart, g.em_pend, g.em_ps, g.em_pv and g.em_pfx, for sm_step."""
+    g.em_pid = g.em_id
+    g.em_pstart = g.em_start
+    g.em_pend = g.em_end
+    g.em_ps = g.em_s
+    g.em_pv = g.em_v
+    g.em_pfx = g.em_fx
+    g.em_fx = g.fx_n
     g.em_id = record_id
     g.ram = g.tp_bank
     g.em_a = g.ram[g.tp_ix + g.em_id * 2] + 256 * g.ram[g.tp_ix + g.em_id * 2 + 1]

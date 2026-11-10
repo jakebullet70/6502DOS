@@ -21,7 +21,7 @@
 .export heap_init, heap_exec, heap_exit
 .importzp exec_depth
 
-.segment "KERNELZP" : zeropage
+.segment "STRZP" : zeropage     ; call-scoped: the overlay in rom.cfg
 
 gc_from:      .res 2            ; heap_gc: the block it looks at; room: the end of the new block
 gc_to:        .res 2            ; heap_gc: where the next live block goes; room: the new block

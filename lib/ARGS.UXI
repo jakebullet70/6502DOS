@@ -1,0 +1,89 @@
+' ARGS.UXI: the command line of a program: the help switch, the parameters P1$ to P9$ in
+' turn, the switch letters, a count, the exit codes and the messages of a bad command line.
+' Include DOS.UXI and HEAP.UXI first.
+
+NAMESPACE ARGS
+  ' DONE: the program did its work. FAILED: an error stopped it. CANCELLED: the user said no
+  ' at a question. BAD_PARAMETER: a parameter is missing, unknown, not a number or one too
+  ' many.
+  ENUM EXIT_CODE
+    DONE = 0, FAILED = 1, CANCELLED = 2, BAD_PARAMETER = 4
+  END ENUM
+
+  CONST MISSING$ = "Required parameter missing", INVALID_SWITCH$ = "Invalid switch"
+  CONST INVALID$ = "Invalid parameter", TOO_MANY$ = "Too many parameters"
+  CONST HELP_TAIL AS UWORD = $0781          ' the command tail's text, which ends with a CR
+  CONST SLOT_P1 AS UBYTE = 0, SLOT_P9 AS UBYTE = 8
+  DIM SLOT AS UBYTE                         ' the slot PARAMETER reads next
+
+  ' Prints TEXT$ and ends the program with exit code CODE.
+  SUB FAIL(CODE AS ENUM.EXIT_CODE, TEXT$ AS CONST)
+    PRINT TEXT$
+    END CODE
+  END SUB
+
+  ' Runs HELP TOPIC and ends the program with HELP's exit code when the first parameter of
+  ' the command tail is -H or -?, in either case. Returns otherwise. HELP that does not run
+  ' prints its error message and gives exit code FAILED. HELP takes TOPIC from its tail, as
+  ' P1$ is still -H. TOPIC$ passes to EXEC.
+  SUB HELP_SWITCH(TOPIC$ AS CONST)
+    DIM PLACE AS UWORD, CHARACTER AS UBYTE
+    PLACE = HELP_TAIL
+    DO WHILE ContentsAt(PLACE) = ASC(" ")
+      PLACE = PLACE + 1
+    LOOP
+    IF ContentsAt(PLACE) <> ASC("-") THEN RETURN
+    CHARACTER = ContentsAt(PLACE + 1) OR $20
+    IF CHARACTER <> ASC("h") AND CHARACTER <> ASC("?") THEN RETURN
+    IF ContentsAt(PLACE + 2) > ASC(" ") THEN RETURN
+    DOS.EXEC("C:\sys\HELP.COM", TOPIC$)
+    IF DOS.ERROR <> 0 THEN
+      PRINT DOS.ERRMSG(DOS.ERROR)
+      END EXIT_CODE.FAILED
+    END IF
+    END DOS.EXITCODE()
+  END SUB
+
+  ' The next parameter that is not empty, from P1$ on, or "" when none is left. SYS_STRINGS_GET
+  ' leaves the text in DOS.CALL_TEXT, which saves a second read.
+  FUNCT PARAMETER() AS STRING
+    DO WHILE SLOT <= SLOT_P9
+      HEAP.SYS_STRINGS_GET(SLOT)
+      SLOT = SLOT + 1
+      IF DOS.CALL_TEXT <> "" THEN RETURN DOS.CALL_TEXT
+    LOOP
+    RETURN ""
+  END FUNCT
+
+  ' The lower-case letter of ARGUMENT$ when it is a switch, - and one letter of LETTERS$ in
+  ' either case, or 0 when ARGUMENT$ does not start with -. A switch that is not in LETTERS$
+  ' ends the program with Invalid switch and BAD_PARAMETER. LETTERS$ is lower case.
+  FUNCT SWITCH(ARGUMENT$ AS CONST, LETTERS$ AS CONST) AS UBYTE
+    DIM LETTER AS UBYTE, INDEX AS UBYTE, PLACE AS UWORD
+    IF ASC(ARGUMENT$) <> ASC("-") THEN RETURN 0
+    IF LEN(ARGUMENT$) <> 2 THEN FAIL(BAD_PARAMETER, INVALID_SWITCH$)
+    LETTER = ContentsAt(AddrOf(ARGUMENT$) + 2) OR $20
+    PLACE = AddrOf(LETTERS$)
+    INDEX = ContentsAt(PLACE)
+    DO WHILE INDEX
+      PLACE = PLACE + 1
+      IF ContentsAt(PLACE) = LETTER THEN RETURN LETTER
+      INDEX = INDEX - 1
+    LOOP
+    FAIL(BAD_PARAMETER, INVALID_SWITCH$)
+  END FUNCT
+
+  ' TEXT$ as a number, 0 to 65535; "" is 0. A character that is not a digit, or a value past
+  ' 65535, ends the program with Invalid parameter and BAD_PARAMETER.
+  FUNCT NUMBER(TEXT$ AS CONST) AS UWORD
+    DIM VALUE AS UWORD, INDEX AS UBYTE, DIGIT AS UBYTE
+    VALUE = 0
+    FOR INDEX = 1 TO LEN(TEXT$)
+      DIGIT = ASC(MID$(TEXT$, INDEX)) - ASC("0")    ' a byte below "0" wraps past 9
+      IF DIGIT > 9 THEN FAIL(BAD_PARAMETER, INVALID$)
+      IF VALUE > 6553 OR (VALUE = 6553 AND DIGIT > 5) THEN FAIL(BAD_PARAMETER, INVALID$)
+      VALUE = VALUE * 10 + DIGIT
+    NEXT
+    RETURN VALUE
+  END FUNCT
+END NAMESPACE

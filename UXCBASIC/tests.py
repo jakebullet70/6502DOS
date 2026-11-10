@@ -34,7 +34,8 @@ TESTS = os.path.join(HERE, "tests")
 INCLUDE_FOLDERS = [TESTS]
 DOS_REPO = os.path.dirname(HERE)
 DRIVE = os.path.join(DOS_REPO, "build", "uxctests")
-EMU = r"C:\8bitProgramming\x16emu\x16emu.exe"
+# The environment variable EMU is the path of x16emu.exe.
+EMU = os.environ.get("EMU", r"C:\8bitProgramming\x16emu\x16emu.exe")
 ROM = os.path.join(DOS_REPO, "build", "6502DOS.ROM")
 SD_FOLDER = os.path.join(DRIVE, "sd")
 PROGRAM = os.path.join(DRIVE, "TEST.COM")

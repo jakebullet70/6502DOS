@@ -137,6 +137,16 @@ T_DECB_V .block
         #endtpl
         .endblock
 
+; The WORD variable S0 + 1.
+T_INCW_V .block
+        #tpl
+        #ab inc, S0
+        bne done
+        #ab inc, S0, 1
+done
+        #endtpl
+        .endblock
+
 ; The WORD variable S0 - 1. A is lost.
 T_DECW_V .block
         #tpl
@@ -185,6 +195,162 @@ T_SUBW_C .block
         pha
         tya
         #hi sbc, S0
+        tay
+        pla
+        #endtpl
+        .endblock
+
+; A = A + the BYTE variable S0. C = the add carried.
+T_ADDB_V .block
+        #tpl
+        clc
+        #ab adc, S0
+        #endtpl
+        .endblock
+
+; A = A - the BYTE variable S0. C clear = the subtract borrowed.
+T_SUBB_V .block
+        #tpl
+        sec
+        #ab sbc, S0
+        #endtpl
+        .endblock
+
+; A/Y = A/Y + the WORD variable S0. C = the add carried.
+T_ADDW_V .block
+        #tpl
+        clc
+        #ab adc, S0
+        pha
+        tya
+        #ab adc, S0, 1
+        tay
+        pla
+        #endtpl
+        .endblock
+
+; A/Y = A/Y - the WORD variable S0. C clear = the subtract borrowed.
+T_SUBW_V .block
+        #tpl
+        sec
+        #ab sbc, S0
+        pha
+        tya
+        #ab sbc, S0, 1
+        tay
+        pla
+        #endtpl
+        .endblock
+
+; A = A AND the BYTE constant S0
+T_ANDB_C .block
+        #tpl
+        #lo and, S0
+        #endtpl
+        .endblock
+
+; A = A AND the BYTE variable S0
+T_ANDB_V .block
+        #tpl
+        #ab and, S0
+        #endtpl
+        .endblock
+
+; A/Y = A/Y AND the WORD constant S0
+T_ANDW_C .block
+        #tpl
+        #lo and, S0
+        pha
+        tya
+        #hi and, S0
+        tay
+        pla
+        #endtpl
+        .endblock
+
+; A/Y = A/Y AND the WORD variable S0
+T_ANDW_V .block
+        #tpl
+        #ab and, S0
+        pha
+        tya
+        #ab and, S0, 1
+        tay
+        pla
+        #endtpl
+        .endblock
+
+; A = A OR the BYTE constant S0
+T_ORB_C .block
+        #tpl
+        #lo ora, S0
+        #endtpl
+        .endblock
+
+; A = A OR the BYTE variable S0
+T_ORB_V .block
+        #tpl
+        #ab ora, S0
+        #endtpl
+        .endblock
+
+; A/Y = A/Y OR the WORD constant S0
+T_ORW_C .block
+        #tpl
+        #lo ora, S0
+        pha
+        tya
+        #hi ora, S0
+        tay
+        pla
+        #endtpl
+        .endblock
+
+; A/Y = A/Y OR the WORD variable S0
+T_ORW_V .block
+        #tpl
+        #ab ora, S0
+        pha
+        tya
+        #ab ora, S0, 1
+        tay
+        pla
+        #endtpl
+        .endblock
+
+; A = A XOR the BYTE constant S0
+T_XORB_C .block
+        #tpl
+        #lo eor, S0
+        #endtpl
+        .endblock
+
+; A = A XOR the BYTE variable S0
+T_XORB_V .block
+        #tpl
+        #ab eor, S0
+        #endtpl
+        .endblock
+
+; A/Y = A/Y XOR the WORD constant S0
+T_XORW_C .block
+        #tpl
+        #lo eor, S0
+        pha
+        tya
+        #hi eor, S0
+        tay
+        pla
+        #endtpl
+        .endblock
+
+; A/Y = A/Y XOR the WORD variable S0
+T_XORW_V .block
+        #tpl
+        #ab eor, S0
+        pha
+        tya
+        #ab eor, S0, 1
         tay
         pla
         #endtpl

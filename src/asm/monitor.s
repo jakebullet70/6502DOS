@@ -32,11 +32,14 @@ TYPE_CHUNK    = 128             ; TYPE reads this many bytes to MONITOR_OUT at a
 
 .segment "KERNELZP" : zeropage
 
+mon_dump:     .res 2            ; where D goes on from
+
+.segment "MONZP" : zeropage     ; call-scoped: the overlay in rom.cfg
+
 mon_value:    .res 2            ; the last number get_hex read
 mon_start:    .res 2
 mon_end:      .res 2
 mon_number    = mon_start       ; 4 bytes, mon_start and mon_end: put_decimal's number
-mon_dump:     .res 2            ; where D goes on from
 mon_mark:     .res 1
 mon_count:    .res 1            ; the bytes in the list
 mon_quote:    .res 1

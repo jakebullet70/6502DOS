@@ -61,7 +61,8 @@ import mksd  # noqa: E402
 import uxb  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-EMU = r"C:\8bitProgramming\x16emu\x16emu.exe"
+# The environment variable EMU is the path of x16emu.exe.
+EMU = os.environ.get("EMU", r"C:\8bitProgramming\x16emu\x16emu.exe")
 ROM = os.path.join(ROOT, "build", "TEST.ROM")
 SHELL_ROM = os.path.join(ROOT, "build", "6502DOS.ROM")
 SHELL_ROM_TESTS = ("SHBOOT",)   # these boot 6502DOS.ROM, into the shell

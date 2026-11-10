@@ -18,7 +18,7 @@ BYTES_FP       = 5
 MANTISSA_BYTES = BYTES_FP - 1
 MAX_EXPON      = 10
 
-.segment "KERNELZP" : zeropage
+.segment "FPZP" : zeropage      ; call-scoped: the overlay in rom.cfg
 
 fp_sp:        .res 1            ; the stack pointer at api_fp, for fp_bad_data
 TMPEXP:

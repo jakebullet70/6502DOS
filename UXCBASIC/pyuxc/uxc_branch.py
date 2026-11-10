@@ -21,13 +21,15 @@ offset in an ASM block or a template needs none: it stays inside the block or th
 neither holds a logged jump.
 
 A SUB can move to another ROM bank, so the target must be in the same SUB as the jump, or in the
-main code with no SUB between them. Trap: g.rg_pins holds offsets into a SUB, so a program with
-#REGION_SLOT keeps its long jumps. A full log keeps them too.
+main code with no SUB between them. A full log keeps every long jump. g.rg_pins holds offsets
+into a SUB; rg_moved moves them with the cut. Trap: rg_split needs the JMP around each SUB of a
+region, so a program with #REGION_SLOT keeps those JMPs.
 """
 
 from uxc_code import cb_get, cb_put, fx_put, fx_read
 from uxc_defs import K_BR_MAX, K_F_ABS, K_SEC_CODE, K_SEC_LABEL, K_SK_LABEL, K_SK_SUB
 import uxc_dead
+import uxc_ramreg
 import uxc_sym
 from uxc_state import g
 
@@ -77,7 +79,7 @@ def br_moved():
 
 def br_relax():
     g.br_bytes = 0
-    if g.br_full != 0 or len(g.rg_subs) != 0:
+    if g.br_full != 0:
         return
     br_subs()
     br_targets()
@@ -94,6 +96,7 @@ def br_relax():
     br_write()
     br_offsets()
     br_moved()
+    uxc_ramreg.rg_moved()
     uxc_dead.dd_fixups()
     uxc_dead.dd_records()
     uxc_dead.dd_code()

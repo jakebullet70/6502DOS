@@ -26,12 +26,15 @@ PROGRAM_SIZE  = PROGRAM_END + 1 - PROGRAM
 
 exec_depth:   .res 1            ; the programs running under exec, 0 to EXEC_LEVELS
 exit_code:    .res 1            ; the code of the last program that ended
+save_bank:    .res EXEC_LEVELS  ; the first bank of each level's save
+exec_open:    .res 1            ; bit 7 set while the running program's file is open
+
+.segment "EXECZP" : zeropage    ; call-scoped: the overlay in rom.cfg
+
 copy_low:     .res 2            ; parent_copy: a page from PSP to PROGRAM_END
 copy_high:    .res 2            ; parent_copy: a page of the save
 copy_back:    .res 1            ; parent_copy: bit 7 set to copy to the parent
 exec_entry:   .res 2            ; the load address, then the program's start
-save_bank:    .res EXEC_LEVELS  ; the first bank of each level's save
-exec_open:    .res 1            ; bit 7 set while the running program's file is open
 
 .segment "KERNELRAM"
 

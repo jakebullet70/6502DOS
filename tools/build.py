@@ -18,6 +18,8 @@ src/bank3/bank.s and bank.cfg; src/bank3/stub.s assembles to build/bas/NAME.COM,
 it. Bank 5, the table library, follows bank 4. ROM banks 6, 7 and 8 are src/bank6/XBASE.UXB, with
 #ROMBANKS 6, 7, 8, built the same way to build/bas/XBASE.COM. ca65 and ld65 come from tools/cc65/bin only. Includes are found in src/asm and build/gen. The map is
 build/6502DOS.MAP, the label file build/6502DOS.LBL, and each listing build/obj/NAME.LST.
+MSBASIC's map is build/MSBASIC.MAP. tools/romspace.py prints the free bytes of each bank and RAM
+area once the banks are built, and the change since the last build.
 build/TEST.ROM is the same image with boot_shell cleared: it boots to the monitor, not the shell.
 
 UXCBASIC/tpl/MKTPL.PY rebuilds the template tables when a UXCBASIC/tpl or UXCBASIC/tpl/UXDOS
@@ -64,6 +66,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import api  # noqa: E402
 import genapi  # noqa: E402
 import mksd  # noqa: E402
+import romspace  # noqa: E402
 import uxb  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -87,9 +90,9 @@ RELEASE_FILES = os.path.join(ROOT, "tools", "release")
 RELEASE_ZIPS = os.path.join(ROOT, "release")
 # The files of the folder card left off the release card.
 RELEASE_SKIP = ("WIDE.TXT", "TEST")
-# x16emu and the DLLs it loads, copied to build/release/x16emu. Their licences are in
-# tools/release/x16emu.
-EMU = r"C:\8bitProgramming\x16emu"
+# x16emu and the DLLs it loads, copied to build/release/x16emu from the folder of x16emu.exe,
+# whose path is the environment variable EMU. Their licences are in tools/release/x16emu.
+EMU = os.path.dirname(os.environ.get("EMU", r"C:\8bitProgramming\x16emu\x16emu.exe"))
 EMU_FILES = ("x16emu.exe", "SDL2.dll", "zlib1.dll", "libwinpthread-1.dll")
 BAS = os.path.join(ROOT, "src", "bas")
 BAS_OUT = os.path.join(BUILD, "bas")
@@ -274,7 +277,7 @@ def build_basic():
     run([CA65, "-D", "DOS6502", "-I", MSBASIC_SRC, "-I", ASM, "-I", GEN, "-o", obj,
          "-l", os.path.join(OBJ, "MSBASIC.LST"), os.path.join(MSBASIC_SRC, "msbasic.s")])
     run([LD65, "-C", os.path.join(MSBASIC_SRC, "6502dos.cfg"), "-o", image,
-         "-Ln", os.path.join(BUILD, "MSBASIC.LBL"), obj])
+         "-m", os.path.join(BUILD, "MSBASIC.MAP"), "-Ln", os.path.join(BUILD, "MSBASIC.LBL"), obj])
     bank2 = open(image, "rb").read()
     if os.path.getsize(ROM) != 2 * BANK_SIZE or len(bank2) != BANK_SIZE:
         sys.exit("build: banks 0, 1 or 2 are not 16 KB each")
@@ -452,6 +455,7 @@ def main():
     with open(ROM, "ab") as out:
         out.write(image[2 * BANK_SIZE:])
     database = build_rom_program(6, 3)
+    romspace.main()
     make_test_rom()
     for name in ("LICENSE", "NOTICE"):
         shutil.copyfile(os.path.join(ROOT, name), os.path.join(BUILD, name))

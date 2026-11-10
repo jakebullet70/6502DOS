@@ -15,6 +15,7 @@
                   argument: what the code between names stays in low RAM
     rg_forward()  in sb_call_argument, before sg_pass: a STRING parameter passed on as an
                   address is noted
+    rg_moved()    in br_relax, after the cut's tables are set: each pin moves with its code
     rg_store()    sm_store to the constant address 0: stops the compile in a SUB of a region
     rg_asm()      in as_instruction, after as_choose: a write to $00 stops the compile in a SUB
                   of a region
@@ -150,6 +151,25 @@ def rg_forward(callee):
             if (g.sy_flags & K_SY_READ_ONLY) == 0 or g.sg_read_only != 0:
                 g.rg_forwards.append((g.sb_current, callee))
             return
+
+
+def rg_moved():
+    """RG.MOVED. In br_relax, after the cut's tables are set and before dd_records moves the
+    SUB values: each pin's offsets are from its SUB's value after the cut."""
+    pins = []
+    for record, pin_from, pin_to, callee in g.rg_pins:
+        g.sy_r = record
+        uxc_sym.sy_get()
+        g.dd_at = g.sy_val
+        uxc_dead.dd_shift()
+        base = g.dd_at
+        g.dd_at = g.sy_val + pin_from
+        uxc_dead.dd_shift()
+        pin_from = g.dd_at - base
+        g.dd_at = g.sy_val + pin_to
+        uxc_dead.dd_shift()
+        pins.append((record, pin_from, g.dd_at - base, callee))
+    g.rg_pins = pins
 
 
 def rg_leaky():

@@ -422,14 +422,57 @@ def sm_store():
         return
     if g.sm_ty == K_TY_BYTE:
         uxc_expr.ex_tob()
-        g.sl_s[0] = g.sm_sec
-        g.sl_v[0] = g.sm_ad
-        emit(T.T_STB_V)
+        g.sm_st = T.T_STB_V
+        g.sm_ld = T.T_LDB_V
+        g.sm_inc = T.T_INCB_V
+        g.sm_dec = T.T_DECB_V
+        g.sm_add = T.T_ADDB_C
+        g.sm_sub = T.T_SUBB_C
     else:
         uxc_expr.ex_tow()
-        g.sl_s[0] = g.sm_sec
-        g.sl_v[0] = g.sm_ad
-        emit(T.T_STW_V)
+        g.sm_st = T.T_STW_V
+        g.sm_ld = T.T_LDW_V
+        g.sm_inc = T.T_INCW_V
+        g.sm_dec = T.T_DECW_V
+        g.sm_add = T.T_ADDW_C
+        g.sm_sub = T.T_SUBW_C
+    g.sl_s[0] = g.sm_sec
+    g.sl_v[0] = g.sm_ad
+    sm_step()
+    if g.sm_done == 1:
+        return
+    emit(g.sm_st)
+
+
+def sm_step():
+    """SM.STEP. v = v + 1 and v = v - 1 become g.sm_inc or g.sm_dec, the INC or DEC of the
+    variable in slot 0, and g.sm_done = 1. The last record was g.sm_add or g.sm_sub with the
+    constant 1 and ended at g.cb_n. The record before it ended where it started and was g.sm_ld
+    of the variable, or g.sm_st to it, the store that let ex_held drop the load. The code goes
+    back to the load's start, or the add's, and the fixups added since go with it.
+    Trap: a DIM ... AT address, K_SEC_CONST, stays out, as in ex_held: it can be a port."""
+    g.sm_done = 0
+    if g.sm_sec == K_SEC_CONST or g.em_end != g.cb_n:
+        return
+    if g.em_id != g.sm_add and g.em_id != g.sm_sub:
+        return
+    if g.em_s != K_SEC_CONST or g.em_v != 1:
+        return
+    if g.em_pend != g.em_start or g.em_ps != g.sm_sec or g.em_pv != g.sm_ad:
+        return
+    if g.em_pid == g.sm_ld:
+        g.cb_n = g.em_pstart
+        g.fx_n = g.em_pfx
+    elif g.em_pid == g.sm_st:
+        g.cb_n = g.em_start
+        g.fx_n = g.em_fx
+    else:
+        return
+    if g.em_id == g.sm_add:
+        emit(g.sm_inc)
+    else:
+        emit(g.sm_dec)
+    g.sm_done = 1
 
 
 def sm_let_element():

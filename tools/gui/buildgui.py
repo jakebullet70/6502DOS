@@ -35,7 +35,7 @@ from tkinter import ttk
 
 if getattr(sys, "frozen", False):
     ROOT = os.path.dirname(sys.executable)
-    PYTHON = r"C:\Users\Admin\AppData\Local\Programs\Python\Python313\python.exe"
+    PYTHON = os.environ.get("PYTHON", r"C:\Users\Admin\AppData\Local\Programs\Python\Python313\python.exe")
 else:
     ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     PYTHON = sys.executable

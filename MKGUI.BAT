@@ -1,6 +1,6 @@
 @echo off
 rem Builds BUILDGUI.EXE in the repo root from tools\gui\buildgui.py with PyInstaller.
-set PYTHON=C:\Users\Admin\AppData\Local\Programs\Python\Python313\python.exe
+if "%PYTHON%"=="" set PYTHON=C:\Users\Admin\AppData\Local\Programs\Python\Python313\python.exe
 "%PYTHON%" -m PyInstaller --version >nul 2>&1
 if errorlevel 1 (
     echo PyInstaller is missing. Install it with: "%PYTHON%" -m pip install pyinstaller
