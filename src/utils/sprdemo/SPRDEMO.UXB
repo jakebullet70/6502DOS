@@ -1,0 +1,118 @@
+'=============================================================================================
+' -- SPRDEMO
+' -- moves a ball, sprite 1, over the text screen with the keys that KEYS.HELD_KEYS reads:
+' --     the arrows   move the ball 1 pixel a frame; two held together move it on a slant
+' --     Ctrl         held with the arrows, moves it 4 pixels a frame
+' --     Space        steps its palette offset, 0 to 15, which changes its colors
+' --     Enter        puts it behind the text or in front
+' --     Esc          ends the program
+' -- The ball is a 16 by 8 shape of 4 bits a pixel at VRAM $14000, past the text map. The
+' -- screen is 640 by 240 pixels, each twice as tall as wide, so the ball shows round. Sprite 0
+' -- stays free for a mouse pointer.
+' -- Exit code 0.
+' --
+' -- From a prompt:
+' --     C:\sys\SPRDEMO
+'=============================================================================================
+#INCLUDE "DOS.UXI"
+#INCLUDE "KEYS.UXI"
+#INCLUDE "VERA.UXI"
+
+CONST BALL_SPRITE AS UBYTE = 1
+CONST SHAPE_ADDRESS AS ULONG = $14000
+CONST SHAPE_NUMBER AS UWORD = $A00              ' SHAPE_ADDRESS / 32
+CONST BALL_WIDTH AS WORD = 16, BALL_HEIGHT AS WORD = 8
+CONST SCREEN_WIDTH AS WORD = 640, SCREEN_HEIGHT AS WORD = 240
+CONST SLOW_STEP AS WORD = 1, FAST_STEP AS WORD = 4
+CONST IN_FRONT AS UBYTE = 3, BEHIND_TEXT AS UBYTE = 2
+
+DIM BALL_LEFT AS WORD, BALL_TOP AS WORD, STEP_SIZE AS WORD
+DIM HELD AS UBYTE, LAST_HELD AS UBYTE, PRESSED AS UBYTE
+DIM PALETTE_OFFSET AS UBYTE, BALL_DEPTH AS UBYTE
+DIM TICK AS UWORD, LAST_TICK AS UWORD
+
+' Returns the color of a pixel written as CHARACTER: "." is 0, "1" to "9" and "A" to "F" are 1
+' to 15.
+FUNCTION PIXEL_COLOR(CHARACTER AS UBYTE) AS UBYTE
+  IF CHARACTER = 46 THEN RETURN 0               ' "."
+  IF CHARACTER <= 57 THEN RETURN CHARACTER - 48 ' "1" to "9"
+  RETURN CHARACTER - 55                         ' "A" is 65, color 10
+END FUNCTION
+
+' Writes row ROW, 0 to 7, of the ball's shape from PIXELS$, 16 pixels as PIXEL_COLOR reads
+' them. A byte holds 2 pixels, the left one in the high 4 bits.
+SUB PUT_ROW(ROW AS UBYTE, PIXELS$ AS CONST)
+  DIM COLUMN AS UBYTE
+  DIM PAIR AS UBYTE
+  FOR COLUMN = 0 TO 7
+    PAIR = PIXEL_COLOR(ASC(MID$(PIXELS$, COLUMN * 2 + 1, 1))) << 4
+    PAIR = PAIR OR PIXEL_COLOR(ASC(MID$(PIXELS$, COLUMN * 2 + 2, 1)))
+    VERA.VPOKE(SHAPE_ADDRESS + ROW * 8 + COLUMN, PAIR)
+  NEXT
+END SUB
+
+VERA.SCREEN(0)
+PRINT "SPRDEMO: the arrows move the ball, and with Ctrl held they move it fast."
+PRINT "Space changes its colors, Enter puts it behind this text or in front, Esc ends."
+
+' The ball in palette offset 0: 1 white, 7 yellow, 8 orange.
+PUT_ROW(0, "....88888888....")
+PUT_ROW(1, "..887777777788..")
+PUT_ROW(2, ".87711777777778.")
+PUT_ROW(3, "8771177777777778")
+PUT_ROW(4, "8777777777777778")
+PUT_ROW(5, ".87777777777778.")
+PUT_ROW(6, "..887777777788..")
+PUT_ROW(7, "....88888888....")
+
+VERA.SPRITE_SHAPE(BALL_SPRITE, SHAPE_NUMBER)
+VERA.SPRITE_SET(BALL_SPRITE, WIDTH, 1)          ' 16 pixels
+VERA.SPRITE_SET(BALL_SPRITE, HEIGHT, 0)         ' 8 pixels
+BALL_LEFT = (SCREEN_WIDTH - BALL_WIDTH) / 2
+BALL_TOP = (SCREEN_HEIGHT - BALL_HEIGHT) / 2
+VERA.SPRITE_MOVE(BALL_SPRITE, BALL_LEFT, BALL_TOP)
+BALL_DEPTH = IN_FRONT
+VERA.SPRITE_SET(BALL_SPRITE, DEPTH, BALL_DEPTH)
+LAST_TICK = DOS.TICKS()
+
+' A pass a frame: wait for the next VSYNC, read the keys, move the ball.
+DO
+  DO
+    TICK = DOS.TICKS()
+  LOOP UNTIL TICK <> LAST_TICK
+  LAST_TICK = TICK
+  HELD = KEYS.HELD_KEYS()
+  ' The keys down now and up the frame before. NOT gives 0 or 1, not the bits flipped.
+  PRESSED = (HELD XOR LAST_HELD) AND HELD
+  LAST_HELD = HELD
+  IF HELD AND KEYS.HELD_KEY.ESC THEN EXIT DO
+  STEP_SIZE = SLOW_STEP
+  IF HELD AND KEYS.HELD_KEY.CTRL THEN STEP_SIZE = FAST_STEP
+  IF HELD AND KEYS.HELD_KEY.LEFT THEN BALL_LEFT = BALL_LEFT - STEP_SIZE
+  IF HELD AND KEYS.HELD_KEY.RIGHT THEN BALL_LEFT = BALL_LEFT + STEP_SIZE
+  IF HELD AND KEYS.HELD_KEY.UP THEN BALL_TOP = BALL_TOP - STEP_SIZE
+  IF HELD AND KEYS.HELD_KEY.DOWN THEN BALL_TOP = BALL_TOP + STEP_SIZE
+  ' The ball stops at the screen's edges.
+  IF BALL_LEFT < 0 THEN BALL_LEFT = 0
+  IF BALL_LEFT > SCREEN_WIDTH - BALL_WIDTH THEN BALL_LEFT = SCREEN_WIDTH - BALL_WIDTH
+  IF BALL_TOP < 0 THEN BALL_TOP = 0
+  IF BALL_TOP > SCREEN_HEIGHT - BALL_HEIGHT THEN BALL_TOP = SCREEN_HEIGHT - BALL_HEIGHT
+  VERA.SPRITE_MOVE(BALL_SPRITE, BALL_LEFT, BALL_TOP)
+  IF PRESSED AND KEYS.HELD_KEY.SPACE THEN
+    PALETTE_OFFSET = (PALETTE_OFFSET + 1) AND 15
+    VERA.SPRITE_SET(BALL_SPRITE, PALETTE, PALETTE_OFFSET)
+  ENDIF
+  IF PRESSED AND KEYS.HELD_KEY.ENTER THEN
+    IF BALL_DEPTH = IN_FRONT THEN
+      BALL_DEPTH = BEHIND_TEXT
+    ELSE
+      BALL_DEPTH = IN_FRONT
+    ENDIF
+    VERA.SPRITE_SET(BALL_SPRITE, DEPTH, BALL_DEPTH)
+  ENDIF
+LOOP
+
+' HELD_KEYS leaves the run's first character key waiting for GETKEY. Reading the keys here keeps
+' it from the prompt. The DOS hides the sprites when the program ends.
+DO WHILE KEYS.GETEXTKEY() <> 0
+LOOP

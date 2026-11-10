@@ -191,9 +191,11 @@ vera_vload:
         rts                     ; carry and A from the read
 
 ; vera_sprset: sets field A of sprite X, 0 to 127, to the value in r0's low byte. The other
-; bits of the attribute byte stay.
+; bits of the attribute byte stay. It turns the sprites on; exec_quit turns them off.
 vera_sprset:
         tay                     ; Y = the field
+        lda #$40                ; DC_VIDEO bit 6: the sprites on
+        tsb VERA_DC_VIDEO
         lda vera_field_byte,y
         jsr vera_sprite_at
         lda r0

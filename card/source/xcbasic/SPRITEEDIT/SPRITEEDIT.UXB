@@ -1,0 +1,1255 @@
+'=============================================================================================
+' -- SPRITEEDIT [file]
+' -- edits a sheet of sprite frames of 8, 16, 32 or 64 pixels across and down, at 4 bits a
+' -- pixel (16 colors) or 8 (256 colors). The frames of a sheet share one size and mode.
+' -- The left of the screen is the grid: the sprite zoomed to fill 256 by 256 screen pixels on
+' -- its longer side, 4 by 4 each for a side of 64, 32 by 32 for a side of 8. The right is the
+' -- sprite at its own size, as a program shows it. Under the grid are the 16 colors of the
+' -- palette slice, the palette entries from the slice times 16, with their digits; the pen's
+' -- digit is marked. A gray checker shows color 0, which is see-through.
+' --     Arrows      move in the grid
+' --     Space       paint the grid's pixel in the pen's color; held with the arrows, paint
+' --                 each pixel the cursor moves to
+' --     F           fill the area of the cursor's pixel in the pen's color: the pixels of its
+' --                 color joined to it across and down through pixels of that color
+' --     [ ]       the pen's color before or after, in the slice
+' --     - +         the slice before or after; at 4 bits a pixel it is the sprite's palette
+' --                 offset, and the pixels take its colors
+' --     P           edit the pen's color in the color frame: Up and Down pick red, green or
+' --                 blue, Left and Right step it from 0 to 15, Esc closes. The palette entry
+' --                 changes at once, wherever it shows
+' --     W H        the next width or height of every frame: 8, 16, 32, 64, then 8 again; a
+' --                 frame loses its pixels past a smaller size and takes color 0 past a larger
+' --                 one. Not when the frames would not fit the sheet
+' --     M           4 or 8 bits a pixel, for every frame. At 8 a pixel takes its color's
+' --                 palette entry, the slice times 16 plus its value; at 4 it keeps its low 4
+' --                 bits. Not when the frames would not fit the sheet
+' --     PgUp PgDn   the frame before or after, from the last to the first and back
+' --     A           add a copy of the frame after it, and go to the copy; not when the sheet
+' --                 is full
+' --     D           delete the frame, and go to the one after it, or before it for the last;
+' --                 not the only frame
+' --     F2          save under the file's name; when UNTITLED, as F4
+' --     F3          open a .SPR file from the file dialog in place of the sheet; asks first
+' --                 when the sheet is not saved. A file that does not load shows why, and the
+' --                 sheet stays
+' --     F4         save under a name from the file dialog, .SPR when it has no extension;
+' --                 asks before it writes over a file
+' --     F5          save the slice's 16 colors under a name from the file dialog, .PAL when it
+' --                 has no extension; asks before it writes over a file
+' --     F6          load a .PAL file from the file dialog into the slice's 16 colors. A file
+' --                 that is not 32 bytes long shows why, and the colors stay
+' --     Esc        end the program; asks first when the sheet is not saved: Yes saves, No
+' --                 does not, Esc stays
+' --     F10         open the menu bar's first menu; Alt with a menu's hot letter opens that
+' --                 menu. The bar is row 0: File, Draw, Frame, Sprite and Palette. Each item
+' --                 does what its key does
+' -- The status frame shows Changed after a change to the sheet, until it is saved or a file
+' -- is loaded. The footer, the screen's last 2 lines, shows on its first line what the last of
+' -- A, D, F, W, H, M and the file keys did, or why it did nothing, and F10 menu at its right;
+' -- on its second, the .SPR file's name at the left and the last .PAL file's at the right. The
+' -- name takes the
+' -- extension .SPR when it has none. The file is loaded at the start when it exists; otherwise
+' -- the sheet starts with one frame, 16 by 16 at 4 bits, all color 0, and the name as the
+' -- parameter, or UNTITLED.SPR. A file that does not load prints why. The sheet holds 32 KB of
+' -- frames: 8 of 64 by 64 at 8 bits, 1024 of 8 by 8 at 4 bits.
+' -- A .SPR file is a 32-byte header, then the frames, each as its shape's bytes in VRAM. The
+' -- header: bytes 0 to 2 SPR, 3 the version 1, 4 the width code and 5 the height code (0 to 3
+' -- for 8 to 64 pixels), 6 the mode (0 for 4 bits a pixel, 1 for 8), 7 the palette offset (the
+' -- slice at 4 bits a pixel, 0 at 8), 8 and 9 the frame count, low byte first, 10 to 31 0.
+' -- A .PAL file is 16 palette entries, 32 bytes, as in VRAM: each entry green times 16 plus
+' -- blue, then red.
+' -- The file dialogs are PICKFILE's. The sprites are at depth 2, behind the text, and show
+' -- through its color-0 cells. A file key hides them while it runs, as a dialog holds color-0
+' -- cells. The menus leave them shown: the theme's selected item is white on gray here, not
+' -- black.
+' -- The sprites: 1 the sprite, 2 the cursor, 3 to 6 the colors, 8 to 15 the grid, 4 across
+' -- and 2 down of 64 by 64 at 8 bits. Sprite 0 stays free for a mouse pointer. VRAM: the grid
+' -- $14000-$1BFFF, the sprite $1C000-$1CFFF, the cursor $1D000-$1D7FF, the colors
+' -- $1D800-$1DFFF, a frame on its way between two places in the sheet $1E000-$1EFFF. Exit code
+' -- 0, or 1 when 5 RAM banks are not free or the file does not load. The palette is put back
+' -- as it was at the start when the program ends.
+' --
+' -- From a prompt:
+' --     SPRITEEDIT SHIPS
+'=============================================================================================
+#INCLUDE "DOS.UXI"
+#INCLUDE "HEAP.UXI"
+#INCLUDE "KEYS.UXI"
+#INCLUDE "CONS.UXI"
+#INCLUDE "VERA.UXI"
+#INCLUDE "GUI.UXI"
+#INCLUDE "BANK.UXI"
+#INCLUDE "PICKFILE.UXI"
+
+' The sprites.
+CONST SHAPE_SPRITE AS UBYTE = 1, CURSOR_SPRITE AS UBYTE = 2, COLORS_SPRITE AS UBYTE = 3
+CONST GRID_SPRITE AS UBYTE = 8
+' VRAM from $10000, as the offsets VERA's data port takes with ADDRESS_HIGH $11. The grid is 8
+' shapes of 64 by 64 at 8 bits, 4096 bytes each, shape B at GRID_AT + B * 4096: B AND 3 across,
+' B / 4 down. The sprite's shape takes up to 4096 bytes, the cursor's 64 by 32 at 8 bits 2048,
+' and the colors' 4 shapes of 64 by 8 at 8 bits 512 each.
+CONST VRAM_BANK AS ULONG = $10000
+CONST GRID_AT AS UWORD = $4000, SHAPE_AT AS UWORD = $C000, CURSOR_AT AS UWORD = $D000
+CONST COLORS_AT AS UWORD = $D800, GRID_BYTES AS UWORD = 32768, CURSOR_BYTES AS UWORD = 2048
+CONST SPARE_AT AS UWORD = $E000
+' The palette: 256 entries of 2 bytes from VRAM $1FA00, entry E at PALETTE_AT + E * 2. Byte 0
+' is green times 16 plus blue, byte 1 red.
+CONST PALETTE_AT AS UWORD = $FA00
+' The kernel's vera functions that move bytes between RAM and VRAM.
+ENUM VERA_CALL
+  WRITE_VRAM = 3
+  READ_VRAM
+END ENUM
+' The sheet: SHEET_BANKS RAM banks from SHEET_BANK, the frames in .SPR order, frame K at offset
+' K * FRAME_BYTES, in the bank SHEET_BANK + offset / 8192 at $A000 + offset AND $1FFF. A
+' frame's bytes are a power of 2 up to 4096, so no frame crosses a bank. The bank after the
+' sheet's, SHEET_BANK + SHEET_BANKS, holds the fill's stack.
+CONST SHEET_BANKS AS UBYTE = 4, SHEET_BYTES AS UWORD = 32768
+' The screen is 80 by 30 cells; a cell is 8 by 8 sprite pixels, each sprite pixel 1 by 2
+' screen pixels. The grid's frame is 34 by 18 cells, the grid's 32 by 16 inside from row 2,
+' column 2. The sprite's frame is 11 by 10 cells. The colors' frame is 34 by 4 cells: row 20
+' the colors, 2 cells each, row 21 their digits.
+CONST GRID_BOX_ROW AS UBYTE = 1, GRID_BOX_COLUMN AS UBYTE = 1
+CONST GRID_LEFT AS WORD = 16, GRID_TOP AS WORD = 16
+CONST SHAPE_BOX_ROW AS UBYTE = 1, SHAPE_BOX_COLUMN AS UBYTE = 36
+CONST SHAPE_LEFT AS WORD = 300, SHAPE_TOP AS WORD = 16
+CONST COLOR_BOX_ROW AS UBYTE = 19, COLOR_BOX_COLUMN AS UBYTE = 1
+CONST COLORS_LEFT AS WORD = 16, COLORS_TOP AS WORD = 160
+CONST DIGITS_ROW AS UBYTE = 21, DIGITS_COLUMN AS UBYTE = 2
+' The file's frame is 44 by 3 cells: the file's name. The footer is rows 28 and 29, all 80
+' columns. NAME_CELLS is the cells each name takes at most on row 29.
+CONST FILE_BOX_ROW AS UBYTE = 12, FILE_BOX_COLUMN AS UBYTE = 36, FOOTER_ROW AS UBYTE = 28
+CONST NAMES_ROW AS UBYTE = 29, NAME_CELLS AS UBYTE = 38
+' The status frame is 32 by 10 cells at row 1, column 48, beside the sprite's frame: 5 lines
+' from row 2, column 50.
+CONST STATUS_ROW AS UBYTE = 2, STATUS_COLUMN AS UBYTE = 50
+' The color frame is 44 by 6 cells at row 16, column 36, clear of the sprites, while P runs:
+' the red, green and blue lines, then a line of its keys. A line is the name, the level as a
+' hex digit, and a bar of 15 cells, the level's in full blocks and the rest in light shade.
+CONST PICKER_ROW AS UBYTE = 16, PICKER_COLUMN AS UBYTE = 36
+CONST LEVEL_NAMES$ = "Red  GreenBlue "
+CONST FULL_BLOCK AS UBYTE = $DB, LIGHT_SHADE AS UBYTE = $B0
+' The menu bar's handle, which PULL_MENU takes. A menu item's id is its key: a character code
+' below BY_SCAN, or BY_SCAN plus a scan code.
+CONST MENU_HANDLE AS UBYTE = 1, BY_SCAN AS UBYTE = 128
+CONST KEY_F2 AS UWORD = (KEYS.SCAN_F1 + 1) * 256, KEY_F3 AS UWORD = (KEYS.SCAN_F1 + 2) * 256
+CONST KEY_F4 AS UWORD = (KEYS.SCAN_F1 + 3) * 256, KEY_F5 AS UWORD = (KEYS.SCAN_F1 + 4) * 256
+CONST KEY_F6 AS UWORD = (KEYS.SCAN_F1 + 5) * 256
+' DOS.SEEK's origins.
+CONST FROM_START AS UBYTE = 0, FROM_END AS UBYTE = 2
+' VERA's DC_VIDEO while CONTROL is 0: bit 6 shows the sprites. The file keys hide them.
+DIM VIDEO AS UBYTE AT $9F29
+CONST SPRITES_SHOWN AS UBYTE = $40, SPRITES_HIDDEN AS UBYTE = $BF
+' A sprite's depth behind the text, in front of layer 0. A text cell of color 0 shows it.
+CONST BEHIND_TEXT AS UBYTE = 2
+' The selected menu item's color, white on gray. DARK's black text is color 0, which would
+' show the sprites through the letters.
+CONST SELECTED_COLOR AS UBYTE = $C1
+' The palette entries of the checker for color 0 and of the cursor's dashes: dark gray, gray,
+' white and black in the X16's palette at reset.
+CONST CHECKER_DARK AS UBYTE = 11, CHECKER_LIGHT AS UBYTE = 12
+CONST CURSOR_LIGHT AS UBYTE = 1, CURSOR_DARK AS UBYTE = 16
+CONST DIGITS$ = "0123456789ABCDEF"
+
+' The sprite's pixels: row R, column C is PIXELS(R * 64 + C), whatever the size. A pixel holds
+' its value: 0 to 15 at 4 bits a pixel, 0 to 255 at 8.
+DIM PIXELS(4096) AS UBYTE
+' The size: a code 0 to 3 for 8, 16, 32 or 64 pixels, and the pixels. EIGHT_BITS is 1 at 8 bits
+' a pixel. ZOOM_ACROSS by ZOOM_DOWN sprite pixels of the grid show a pixel of the sprite.
+DIM WIDTH_CODE AS UBYTE, HEIGHT_CODE AS UBYTE, EIGHT_BITS AS UBYTE
+DIM SPRITE_WIDTH AS UWORD, SPRITE_HEIGHT AS UWORD, ZOOM_ACROSS AS UBYTE, ZOOM_DOWN AS UBYTE
+' The palette slice, 0 to 15, and the pen's color in it, 0 to 15.
+DIM SLICE AS UBYTE, PEN AS UBYTE
+DIM CURSOR_ROW AS UWORD, CURSOR_COLUMN AS UWORD
+' The frame in the grid, 0 to FRAME_COUNT - 1, and the bytes of a frame in the sheet. The
+' sprite's shape holds the frame; the sheet's copy of it is current only after KEEP_FRAME.
+' CALLER_BANK is the bank selected at the start, selected again after each use of the sheet.
+DIM FRAME AS UWORD, FRAME_COUNT AS UWORD, FRAME_BYTES AS UWORD
+DIM SHEET_BANK AS UBYTE, CALLER_BANK AS UBYTE
+DIM PRESSED AS UWORD, START_COLOR AS UBYTE
+DIM TEXT AS STRING * 80, HEX_TEXT AS STRING * 2
+' PICKED gets the file dialog's path or the parameter. NAMED is 0 while FILE_NAME is UNTITLED.SPR. HEADER is a
+' .SPR file's header; its bytes 10 to 31 stay 0. MESSAGE is the footer's text. CHANGED is 1
+' after a change to the sheet, 0 after a save or a load. PALETTE_NAME is the last .PAL file
+' saved or loaded, empty before one.
+DIM FILE_NAME AS STRING * 80, PICKED AS STRING * 80, MESSAGE AS STRING * 40
+DIM PALETTE_NAME AS STRING * 80
+DIM NAMED AS UBYTE, CHANGED AS UBYTE, HEADER(32) AS UBYTE
+' The fill's colors, the area's value and the pen's, and the address past the top of its stack.
+DIM FILL_FROM AS UBYTE, FILL_TO AS UBYTE, FILL_TOP AS UWORD
+' The pen's color's levels in the color frame, 0 to 15: red, green, blue.
+DIM LEVELS(3) AS UBYTE
+' The palette at the start, put back at the end.
+DIM START_PALETTE(512) AS UBYTE
+' A .PAL file on its way between the slice and the file. The 33rd byte lets a read tell a
+' 32-byte file from a longer one.
+DIM SLICE_COLORS(33) AS UBYTE
+
+' Returns the theme's color for WHICH, a member of GUI.ROLE.
+FUNCTION ROLE_COLOR(WHICH AS UBYTE) AS UBYTE
+  RETURN ContentsAt(@GUI.COLORS$ + 2 + WHICH)
+END FUNCTION
+
+' Puts VALUE in HEX_TEXT as 2 hex digits.
+SUB HEX_OF(VALUE AS UBYTE)
+  HEX_TEXT = MID$(DIGITS$, VALUE / 16 + 1, 1) + MID$(DIGITS$, (VALUE AND 15) + 1, 1)
+END SUB
+
+' Draws the footer's 2 rows in the STATUS color. The first: MESSAGE from column 1 and F10 menu
+' from column 71, F10 in the HOT_KEY color's foreground. The second: the last NAME_CELLS
+' characters of FILE_NAME from column 1, and of PALETTE_NAME ending at column 78.
+SUB DRAW_FOOTER()
+  DIM COLOR AS UBYTE
+  COLOR = ROLE_COLOR(GUI.ROLE.STATUS)
+  VERA.FILL(FOOTER_ROW, 0, 80, 2, 32, COLOR)
+  VERA.PRINTAT(FOOTER_ROW, 1, MESSAGE, COLOR)
+  VERA.PRINTAT(NAMES_ROW, 1, RIGHT$(FILE_NAME, NAME_CELLS), COLOR)
+  TEXT = RIGHT$(PALETTE_NAME, NAME_CELLS)
+  VERA.PRINTAT(NAMES_ROW, 79 - LEN(TEXT), TEXT, COLOR)
+  VERA.PRINTAT(FOOTER_ROW, 75, "menu", COLOR)
+  COLOR = (COLOR AND $F0) OR (ROLE_COLOR(GUI.ROLE.HOT_KEY) AND 15)
+  VERA.PRINTAT(FOOTER_ROW, 71, "F10", COLOR)
+END SUB
+
+' Makes NEWS$, up to 40 characters, the footer's text and draws the footer.
+SUB SAY(NEWS$ AS CONST)
+  MESSAGE = NEWS$
+  DRAW_FOOTER()
+END SUB
+
+' Points VERA's data port 0 at VRAM $10000 + OFFSET, to step 1 a byte.
+SUB PORT_AT(OFFSET AS UWORD)
+  VERA.ADDRESS_LOW = OFFSET AND 255
+  VERA.ADDRESS_MIDDLE = OFFSET >> 8
+  VERA.ADDRESS_HIGH = $11
+END SUB
+
+' Moves COUNT bytes between VRAM $10000 + OFFSET and RAM at ADDRESS by the kernel's vera
+' function HOW.
+SUB VRAM_MOVE(OFFSET AS UWORD, ADDRESS AS UWORD, COUNT AS UWORD, HOW AS ENUM.VERA_CALL)
+  DOS.R0 = OFFSET
+  DOS.R1 = ADDRESS
+  DOS.R2 = COUNT
+  DOS.REG_X = 1
+  DOS.REG_Y = HOW
+  SYS DOS.API_VERA
+END SUB
+
+' Returns the shape number of VRAM $10000 + OFFSET, a multiple of 32.
+FUNCTION SHAPE_OF(OFFSET AS UWORD) AS UWORD
+  RETURN $800 + OFFSET / 32
+END FUNCTION
+
+' Returns the value of the slice's color SWATCH, 0 to 15, as a pixel holds it.
+FUNCTION VALUE_OF(SWATCH AS UBYTE) AS UBYTE
+  IF EIGHT_BITS <> 0 THEN RETURN SLICE * 16 + SWATCH
+  RETURN SWATCH
+END FUNCTION
+
+' Returns the palette entry that shows a pixel of value VALUE: at 4 bits a pixel the slice
+' times 16 plus VALUE, at 8 VALUE. 0 is see-through at both.
+FUNCTION ENTRY_OF(VALUE AS UBYTE) AS UBYTE
+  IF VALUE = 0 OR EIGHT_BITS <> 0 THEN RETURN VALUE
+  RETURN SLICE * 16 + VALUE
+END FUNCTION
+
+' Returns the color the grid shows for PIXELS(INDEX): its palette entry, or for 0 the
+' checker's dark gray when PARITY is even and its gray when odd.
+FUNCTION GRID_COLOR(INDEX AS UWORD, PARITY AS UWORD) AS UBYTE
+  DIM ENTRY AS UBYTE
+  ENTRY = ENTRY_OF(PIXELS(INDEX))
+  IF ENTRY <> 0 THEN RETURN ENTRY
+  IF (PARITY AND 1) = 0 THEN RETURN CHECKER_DARK
+  RETURN CHECKER_LIGHT
+END FUNCTION
+
+' Returns the VRAM offset of the grid's sprite pixel LEFT, TOP, 0 to 255 and 0 to 127 from the
+' grid's top left: shape (TOP / 64) * 4 + LEFT / 64, its row TOP AND 63 of 64 bytes, and byte
+' LEFT AND 63 of the row.
+FUNCTION GRID_OFFSET(LEFT AS UWORD, TOP AS UWORD) AS UWORD
+  RETURN GRID_AT + (TOP AND 64) * 256 + ((TOP AND 63) OR (LEFT AND 192)) * 64 + (LEFT AND 63)
+END FUNCTION
+
+' Writes the sprite's byte that holds the pixel at ROW and COLUMN to its shape. At 4 bits a
+' pixel a byte holds 2 pixels, the left one in the high 4 bits.
+SUB SEND_PIXEL(ROW AS UWORD, COLUMN AS UWORD)
+  DIM INDEX AS UWORD
+  INDEX = ROW * 64 + COLUMN
+  IF EIGHT_BITS <> 0 THEN
+    PORT_AT(SHAPE_AT + ROW * SPRITE_WIDTH + COLUMN)
+    VERA.DATA0 = PIXELS(INDEX)
+  ELSE
+    INDEX = INDEX AND $FFFE
+    PORT_AT(SHAPE_AT + (ROW * SPRITE_WIDTH + COLUMN) / 2)
+    VERA.DATA0 = (PIXELS(INDEX) << 4) OR PIXELS(INDEX + 1)
+  ENDIF
+END SUB
+
+' Draws the pixel at ROW and COLUMN in the grid, and writes it to the sprite's shape.
+SUB DRAW_PIXEL(ROW AS UWORD, COLUMN AS UWORD)
+  DIM LEFT AS UWORD, TOP AS UWORD, COLOR AS UBYTE
+  COLOR = GRID_COLOR(ROW * 64 + COLUMN, ROW + COLUMN)
+  LEFT = COLUMN * ZOOM_ACROSS
+  TOP = ROW * ZOOM_DOWN
+  REPEAT ZOOM_DOWN
+    PORT_AT(GRID_OFFSET(LEFT, TOP))
+    REPEAT ZOOM_ACROSS
+      VERA.DATA0 = COLOR
+    END REPEAT
+    TOP = TOP + 1
+  END REPEAT
+  SEND_PIXEL(ROW, COLUMN)
+END SUB
+
+' Draws every pixel of the sprite in the grid. The grid past the sprite's size stays as it is.
+SUB DRAW_GRID()
+  DIM ROW AS UWORD, COLUMN AS UWORD, INDEX AS UWORD, LEFT AS UWORD, TOP AS UWORD
+  DIM COLOR AS UBYTE
+  TOP = 0
+  FOR ROW = 0 TO SPRITE_HEIGHT - 1
+    REPEAT ZOOM_DOWN
+      LEFT = 0
+      INDEX = ROW * 64
+      FOR COLUMN = 0 TO SPRITE_WIDTH - 1
+        ' A row of a grid shape is 64 bytes; the next shape's row starts at its own offset.
+        IF (LEFT AND 63) = 0 THEN PORT_AT(GRID_OFFSET(LEFT, TOP))
+        COLOR = GRID_COLOR(INDEX, ROW + COLUMN)
+        REPEAT ZOOM_ACROSS
+          VERA.DATA0 = COLOR
+        END REPEAT
+        LEFT = LEFT + ZOOM_ACROSS
+        INDEX = INDEX + 1
+      NEXT
+      TOP = TOP + 1
+    END REPEAT
+  NEXT
+END SUB
+
+' Writes every pixel of the sprite to its shape.
+SUB SEND_SHAPE()
+  DIM ROW AS UWORD, COLUMN AS UWORD, INDEX AS UWORD
+  PORT_AT(SHAPE_AT)
+  FOR ROW = 0 TO SPRITE_HEIGHT - 1
+    INDEX = ROW * 64
+    IF EIGHT_BITS <> 0 THEN
+      FOR COLUMN = 0 TO SPRITE_WIDTH - 1
+        VERA.DATA0 = PIXELS(INDEX + COLUMN)
+      NEXT
+    ELSE
+      FOR COLUMN = 0 TO SPRITE_WIDTH - 1 STEP 2
+        VERA.DATA0 = (PIXELS(INDEX + COLUMN) << 4) OR PIXELS(INDEX + COLUMN + 1)
+      NEXT
+    ENDIF
+  NEXT
+END SUB
+
+' Reads the sprite's shape into the pixels, at the sprite's size. The pixels past it stay as
+' they are.
+SUB TAKE_SHAPE()
+  DIM ROW AS UWORD, COLUMN AS UWORD, INDEX AS UWORD, VALUE AS UBYTE
+  PORT_AT(SHAPE_AT)
+  FOR ROW = 0 TO SPRITE_HEIGHT - 1
+    INDEX = ROW * 64
+    IF EIGHT_BITS <> 0 THEN
+      FOR COLUMN = 0 TO SPRITE_WIDTH - 1
+        PIXELS(INDEX + COLUMN) = VERA.DATA0
+      NEXT
+    ELSE
+      FOR COLUMN = 0 TO SPRITE_WIDTH - 1 STEP 2
+        VALUE = VERA.DATA0
+        PIXELS(INDEX + COLUMN) = VALUE >> 4
+        PIXELS(INDEX + COLUMN + 1) = VALUE AND 15
+      NEXT
+    ENDIF
+  NEXT
+END SUB
+
+' Sets the format: WIDTH_CODE, HEIGHT_CODE and EIGHT_BITS, and from them SPRITE_WIDTH,
+' SPRITE_HEIGHT and FRAME_BYTES.
+SUB SET_FORMAT(NEW_WIDTH_CODE AS UBYTE, NEW_HEIGHT_CODE AS UBYTE, NEW_EIGHT_BITS AS UBYTE)
+  WIDTH_CODE = NEW_WIDTH_CODE
+  HEIGHT_CODE = NEW_HEIGHT_CODE
+  EIGHT_BITS = NEW_EIGHT_BITS
+  SPRITE_WIDTH = 8 << WIDTH_CODE
+  SPRITE_HEIGHT = 8 << HEIGHT_CODE
+  FRAME_BYTES = SPRITE_WIDTH * SPRITE_HEIGHT
+  IF EIGHT_BITS = 0 THEN FRAME_BYTES = FRAME_BYTES / 2
+END SUB
+
+' Selects the bank of frame NUMBER of the sheet and returns the frame's address in it. The
+' caller selects CALLER_BANK again. Trap: a call to a SUB of a region, such as VERA's, selects
+' the region's bank at $A000 until it returns, so the sheet's frames are out of reach in it.
+FUNCTION FRAME_ADDRESS(NUMBER AS UWORD) AS UWORD
+  DIM OFFSET AS UWORD
+  OFFSET = NUMBER * FRAME_BYTES
+  BANK.USE(SHEET_BANK + (OFFSET >> 13))
+  RETURN $A000 + (OFFSET AND $1FFF)
+END FUNCTION
+
+' Copies frame NUMBER of the sheet to VRAM $10000 + AT, with the kernel's vera function 3,
+' vwrite, called here in low RAM.
+SUB FETCH_FRAME(NUMBER AS UWORD, AT AS UWORD)
+  DOS.R1 = FRAME_ADDRESS(NUMBER)
+  DOS.R0 = AT
+  DOS.R2 = FRAME_BYTES
+  DOS.REG_X = 1
+  DOS.REG_Y = 3
+  SYS DOS.API_VERA
+  BANK.USE(CALLER_BANK)
+END SUB
+
+' Copies VRAM $10000 + AT to frame NUMBER of the sheet, with the kernel's vera function 4,
+' vread, called here in low RAM.
+SUB KEEP_FRAME(NUMBER AS UWORD, AT AS UWORD)
+  DOS.R1 = FRAME_ADDRESS(NUMBER)
+  DOS.R0 = AT
+  DOS.R2 = FRAME_BYTES
+  DOS.REG_X = 1
+  DOS.REG_Y = 4
+  SYS DOS.API_VERA
+  BANK.USE(CALLER_BANK)
+END SUB
+
+' Copies frame SOURCE of the sheet to frame TARGET, through the spare VRAM.
+SUB COPY_FRAME(SOURCE AS UWORD, TARGET AS UWORD)
+  FETCH_FRAME(SOURCE, SPARE_AT)
+  KEEP_FRAME(TARGET, SPARE_AT)
+END SUB
+
+' Writes one sprite pixel of the cursor's shape at LEFT and TOP, in white or black by its place
+' on the ring, so the dashes show on any color.
+SUB CURSOR_DOT(LEFT AS UBYTE, TOP AS UBYTE)
+  DIM OFFSET AS UWORD
+  OFFSET = TOP
+  PORT_AT(CURSOR_AT + OFFSET * 64 + LEFT)
+  IF ((LEFT + TOP) AND 2) = 0 THEN
+    VERA.DATA0 = CURSOR_LIGHT
+  ELSE
+    VERA.DATA0 = CURSOR_DARK
+  ENDIF
+END SUB
+
+' Draws the cursor's shape: a ring of ZOOM_ACROSS + 2 by ZOOM_DOWN + 2 sprite pixels, round the
+' grid's pixel.
+SUB MAKE_CURSOR()
+  DIM LEFT AS UBYTE, TOP AS UBYTE, RIGHT AS UBYTE, BOTTOM AS UBYTE
+  VERA.VMEMSET(VRAM_BANK + CURSOR_AT, 0, CURSOR_BYTES)
+  RIGHT = ZOOM_ACROSS + 1
+  BOTTOM = ZOOM_DOWN + 1
+  FOR LEFT = 0 TO RIGHT
+    CURSOR_DOT(LEFT, 0)
+    CURSOR_DOT(LEFT, BOTTOM)
+  NEXT
+  FOR TOP = 1 TO BOTTOM - 1
+    CURSOR_DOT(0, TOP)
+    CURSOR_DOT(RIGHT, TOP)
+  NEXT
+END SUB
+
+' Puts the cursor's ring round the grid's pixel at CURSOR_ROW and CURSOR_COLUMN.
+SUB PLACE_CURSOR()
+  DIM LEFT AS WORD, TOP AS WORD
+  LEFT = CURSOR_COLUMN * ZOOM_ACROSS
+  TOP = CURSOR_ROW * ZOOM_DOWN
+  VERA.SPRITE_MOVE(CURSOR_SPRITE, GRID_LEFT + LEFT - 1, GRID_TOP + TOP - 1)
+END SUB
+
+' Draws the slice's 16 colors, 16 by 8 sprite pixels each, 4 to a shape of 64 by 8, and their
+' digits under them, the pen's in the FIELD_FOCUS color. A color 0 shows 2 by 2 squares of the
+' checker.
+SUB DRAW_COLORS()
+  DIM SHAPE AS UBYTE, TOP AS UBYTE, SWATCH AS UBYTE, ENTRY AS UBYTE
+  DIM FIRST AS UBYTE, SECOND AS UBYTE, COLOR AS UBYTE
+  PORT_AT(COLORS_AT)
+  FOR SHAPE = 0 TO 3
+    FOR TOP = 0 TO 7
+      FOR SWATCH = SHAPE * 4 TO SHAPE * 4 + 3
+        ENTRY = ENTRY_OF(VALUE_OF(SWATCH))
+        IF ENTRY <> 0 THEN
+          REPEAT 16
+            VERA.DATA0 = ENTRY
+          END REPEAT
+        ELSE
+          FIRST = CHECKER_DARK
+          SECOND = CHECKER_LIGHT
+          IF TOP >= 4 THEN
+            FIRST = CHECKER_LIGHT
+            SECOND = CHECKER_DARK
+          ENDIF
+          REPEAT 8
+            VERA.DATA0 = FIRST
+          END REPEAT
+          REPEAT 8
+            VERA.DATA0 = SECOND
+          END REPEAT
+        ENDIF
+      NEXT
+    NEXT
+  NEXT
+  FOR SWATCH = 0 TO 15
+    COLOR = ROLE_COLOR(GUI.ROLE.TEXT)
+    IF SWATCH = PEN THEN COLOR = ROLE_COLOR(GUI.ROLE.FIELD_FOCUS)
+    VERA.PRINTAT(DIGITS_ROW, DIGITS_COLUMN + SWATCH * 2, MID$(DIGITS$, SWATCH + 1, 1) + " ", COLOR)
+  NEXT
+  HEX_OF(SLICE * 16)
+  TEXT = " Colors $" + HEX_TEXT
+  HEX_OF(SLICE * 16 + 15)
+  TEXT = TEXT + "-$" + HEX_TEXT + " "
+  VERA.PRINTAT(COLOR_BOX_ROW, COLOR_BOX_COLUMN + 2, TEXT, ROLE_COLOR(GUI.ROLE.TITLE))
+END SUB
+
+' Sets the sprite's mode and palette offset: the slice at 4 bits a pixel, 0 at 8.
+SUB SET_MODE()
+  VERA.SPRITE_SET(SHAPE_SPRITE, MODE, EIGHT_BITS)
+  IF EIGHT_BITS <> 0 THEN
+    VERA.SPRITE_SET(SHAPE_SPRITE, PALETTE, 0)
+  ELSE
+    VERA.SPRITE_SET(SHAPE_SPRITE, PALETTE, SLICE)
+  ENDIF
+END SUB
+
+' Makes NEW_SLICE, 0 to 15, the slice. At 4 bits a pixel the grid and the sprite take its
+' colors.
+SUB PICK_SLICE(NEW_SLICE AS UBYTE)
+  SLICE = NEW_SLICE AND 15
+  IF EIGHT_BITS = 0 THEN
+    CHANGED = 1
+    SET_MODE()
+    DRAW_GRID()
+  ENDIF
+  DRAW_COLORS()
+END SUB
+
+' Draws the color frame's line LINE, 0 to 2 for red, green and blue, from LEVELS(LINE); the
+' name and the digit in the FIELD_FOCUS color when LINE is PICK.
+SUB DRAW_LEVEL(LINE AS UBYTE, PICK AS UBYTE)
+  DIM COLOR AS UBYTE, LEVEL AS UBYTE, CELL AS UBYTE, CHARACTER AS UBYTE, ROW AS UBYTE
+  ROW = PICKER_ROW + 1 + LINE
+  LEVEL = LEVELS(LINE)
+  COLOR = ROLE_COLOR(GUI.ROLE.TEXT)
+  IF LINE = PICK THEN COLOR = ROLE_COLOR(GUI.ROLE.FIELD_FOCUS)
+  VERA.PRINTAT(ROW, PICKER_COLUMN + 2, MID$(LEVEL_NAMES$, LINE * 5 + 1, 5) + " " + MID$(DIGITS$, LEVEL + 1, 1), COLOR)
+  COLOR = ROLE_COLOR(GUI.ROLE.TEXT)
+  FOR CELL = 1 TO 15
+    CHARACTER = LIGHT_SHADE
+    IF CELL <= LEVEL THEN CHARACTER = FULL_BLOCK
+    VERA.PUT_CELL(ROW, PICKER_COLUMN + 10 + CELL, CHARACTER, COLOR)
+  NEXT
+END SUB
+
+' Edits the pen's palette entry, the slice times 16 plus the pen, in the color frame: Up and
+' Down pick a level, Left and Right step it within 0 to 15, Esc ends and clears the frame.
+' Each key writes the entry.
+SUB EDIT_COLOR()
+  DIM ENTRY AS UWORD, ADDRESS AS UWORD, PICK AS UBYTE, LINE AS UBYTE, PAIR AS UBYTE
+  DIM LEVEL AS UBYTE
+  ENTRY = SLICE * 16 + PEN
+  ADDRESS = PALETTE_AT + ENTRY * 2
+  PORT_AT(ADDRESS)
+  PAIR = VERA.DATA0
+  LEVELS(0) = VERA.DATA0 AND 15
+  LEVELS(1) = PAIR / 16
+  LEVELS(2) = PAIR AND 15
+  GUI.USE_COLOR(GUI.ROLE.FRAME)
+  GUI.BOX(PICKER_ROW, PICKER_COLUMN, 44, 6)
+  HEX_OF(ENTRY)
+  VERA.PRINTAT(PICKER_ROW, PICKER_COLUMN + 2, " Color $" + HEX_TEXT + " ", ROLE_COLOR(GUI.ROLE.TITLE))
+  VERA.PRINTAT(PICKER_ROW + 4, PICKER_COLUMN + 2, "Up Down pick, Left Right change, Esc done", ROLE_COLOR(GUI.ROLE.TEXT))
+  PICK = 0
+  DO
+    FOR LINE = 0 TO 2
+      DRAW_LEVEL(LINE, PICK)
+    NEXT
+    LEVEL = LEVELS(PICK)
+    SELECT CASE WAITKEY()
+      CASE KEYS.KEY_UP
+        IF PICK > 0 THEN PICK = PICK - 1
+      CASE KEYS.KEY_DOWN
+        IF PICK < 2 THEN PICK = PICK + 1
+      CASE KEYS.KEY_LEFT
+        IF LEVEL > 0 THEN LEVELS(PICK) = LEVEL - 1
+      CASE KEYS.KEY_RIGHT
+        IF LEVEL < 15 THEN LEVELS(PICK) = LEVEL + 1
+      CASE KEYS.ESC
+        EXIT DO
+    END SELECT
+    PORT_AT(ADDRESS)
+    VERA.DATA0 = LEVELS(1) * 16 + LEVELS(2)
+    VERA.DATA0 = LEVELS(0)
+  LOOP
+  VERA.FILL(PICKER_ROW, PICKER_COLUMN, 44, 6, 32, ROLE_COLOR(GUI.ROLE.PAGE))
+END SUB
+
+' Paints the cursor's pixel in the pen's color.
+SUB PAINT_CURSOR()
+  PIXELS(CURSOR_ROW * 64 + CURSOR_COLUMN) = VALUE_OF(PEN)
+  CHANGED = 1
+  DRAW_PIXEL(CURSOR_ROW, CURSOR_COLUMN)
+END SUB
+
+' Paints PIXELS(INDEX) in FILL_TO and puts INDEX on the fill's stack, at FILL_TOP, when the
+' pixel holds FILL_FROM. The fill's bank is selected.
+SUB FILL_PUSH(INDEX AS UWORD)
+  IF PIXELS(INDEX) <> FILL_FROM THEN RETURN
+  PIXELS(INDEX) = FILL_TO
+  ContentsAtW(FILL_TOP) = INDEX
+  FILL_TOP = FILL_TOP + 2
+END SUB
+
+' Fills the area of the cursor's pixel in the pen's color: the pixels of its value joined to it
+' across and down through pixels of that value, inside the sprite's size. Does nothing when the
+' pixel holds the pen's value. The fill's stack, from $A000 in the bank after the sheet's, holds
+' the pixels whose neighbors are still to be looked at. A pixel takes the pen's value as it goes
+' on, so it goes on once, and the stack holds up to 4096 UWORDs, the bank's 8 KB.
+SUB FILL_AREA()
+  DIM INDEX AS UWORD, ROW AS UWORD, COLUMN AS UWORD
+  INDEX = CURSOR_ROW * 64 + CURSOR_COLUMN
+  FILL_FROM = PIXELS(INDEX)
+  FILL_TO = VALUE_OF(PEN)
+  IF FILL_FROM = FILL_TO THEN RETURN
+  CHANGED = 1
+  BANK.USE(SHEET_BANK + SHEET_BANKS)
+  FILL_TOP = $A000
+  FILL_PUSH(INDEX)
+  DO WHILE FILL_TOP <> $A000
+    FILL_TOP = FILL_TOP - 2
+    INDEX = ContentsAtW(FILL_TOP)
+    ROW = INDEX >> 6
+    COLUMN = INDEX AND 63
+    IF ROW <> 0 THEN FILL_PUSH(INDEX - 64)
+    IF ROW + 1 < SPRITE_HEIGHT THEN FILL_PUSH(INDEX + 64)
+    IF COLUMN <> 0 THEN FILL_PUSH(INDEX - 1)
+    IF COLUMN + 1 < SPRITE_WIDTH THEN FILL_PUSH(INDEX + 1)
+  LOOP
+  BANK.USE(CALLER_BANK)
+  SEND_SHAPE()
+  DRAW_GRID()
+  SAY("Filled")
+END SUB
+
+' Moves the cursor to NEW_ROW and NEW_COLUMN, each wrapped to the sprite's size, and paints
+' the new pixel while Space is held. HELD_KEYS drops the key characters that wait, so a burst
+' of arrow repeats stops short.
+SUB MOVE_CURSOR(NEW_ROW AS UWORD, NEW_COLUMN AS UWORD)
+  CURSOR_ROW = NEW_ROW AND (SPRITE_HEIGHT - 1)
+  CURSOR_COLUMN = NEW_COLUMN AND (SPRITE_WIDTH - 1)
+  PLACE_CURSOR()
+  IF KEYS.HELD_KEYS() AND KEYS.HELD_KEY.SPACE THEN
+    PAINT_CURSOR()
+  ENDIF
+END SUB
+
+' Shows the sheet's frame FRAME in the sprite and the grid.
+SUB SHOW_FRAME()
+  FETCH_FRAME(FRAME, SHAPE_AT)
+  TAKE_SHAPE()
+  DRAW_GRID()
+END SUB
+
+' Keeps the frame in the sheet and shows frame NUMBER.
+SUB TURN_TO(NUMBER AS UWORD)
+  KEEP_FRAME(FRAME, SHAPE_AT)
+  FRAME = NUMBER
+  SHOW_FRAME()
+END SUB
+
+' Shows the sheet's frame FRAME in the sheet's format: clears the pixels past the size, sets the
+' zoom, keeps the cursor inside, and draws the grid, the cursor, the sprite and the colors.
+SUB SHOW_FORMAT()
+  DIM INDEX AS UWORD, LONGER AS UBYTE
+  FOR INDEX = 0 TO 4095
+    IF (INDEX >> 6) >= SPRITE_HEIGHT OR (INDEX AND 63) >= SPRITE_WIDTH THEN PIXELS(INDEX) = 0
+  NEXT
+  LONGER = WIDTH_CODE
+  IF HEIGHT_CODE > LONGER THEN LONGER = HEIGHT_CODE
+  ZOOM_ACROSS = 32 >> LONGER
+  ZOOM_DOWN = 16 >> LONGER
+  CURSOR_ROW = CURSOR_ROW AND (SPRITE_HEIGHT - 1)
+  CURSOR_COLUMN = CURSOR_COLUMN AND (SPRITE_WIDTH - 1)
+  VERA.VMEMSET(VRAM_BANK + GRID_AT, 0, GRID_BYTES)
+  MAKE_CURSOR()
+  PLACE_CURSOR()
+  SET_MODE()
+  VERA.SPRITE_SET(SHAPE_SPRITE, WIDTH, WIDTH_CODE)
+  VERA.SPRITE_SET(SHAPE_SPRITE, HEIGHT, HEIGHT_CODE)
+  SHOW_FRAME()
+  DRAW_COLORS()
+END SUB
+
+' Changes every frame of the sheet to NEW_WIDTH_CODE by NEW_HEIGHT_CODE, at 8 bits a pixel when
+' NEW_EIGHT_BITS is 1, and shows the frame with SHOW_FORMAT. A frame loses its pixels past a
+' smaller size and takes color 0 past a larger one. To 8 bits a pixel takes its palette entry;
+' to 4 it keeps its low 4 bits. Does nothing when the frames would not fit the sheet. The footer
+' says which.
+' Each frame goes through the pixels and the sprite's shape. The frames are laid out again in
+' place, the last first when they grow, the first first when they shrink, so no frame is
+' written over before it is read. The pixels past the old size stay 0 all the way through.
+SUB CHANGE_FORMAT(NEW_WIDTH_CODE AS UBYTE, NEW_HEIGHT_CODE AS UBYTE, NEW_EIGHT_BITS AS UBYTE)
+  DIM OLD_WIDTH_CODE AS UBYTE, OLD_HEIGHT_CODE AS UBYTE, OLD_EIGHT_BITS AS UBYTE
+  DIM OLD_BYTES AS UWORD, SPOT AS UWORD, NUMBER AS UWORD
+  DIM ROW AS UWORD, COLUMN AS UWORD, INDEX AS UWORD
+  KEEP_FRAME(FRAME, SHAPE_AT)
+  OLD_WIDTH_CODE = WIDTH_CODE
+  OLD_HEIGHT_CODE = HEIGHT_CODE
+  OLD_EIGHT_BITS = EIGHT_BITS
+  OLD_BYTES = FRAME_BYTES
+  SET_FORMAT(NEW_WIDTH_CODE, NEW_HEIGHT_CODE, NEW_EIGHT_BITS)
+  IF FRAME_COUNT > SHEET_BYTES / FRAME_BYTES THEN
+    SET_FORMAT(OLD_WIDTH_CODE, OLD_HEIGHT_CODE, OLD_EIGHT_BITS)
+    SAY("The frames would not fit the sheet")
+    RETURN
+  ENDIF
+  CHANGED = 1
+  ' FRAME_BYTES holds the new bytes at the top of each pass.
+  FOR SPOT = 0 TO FRAME_COUNT - 1
+    NUMBER = SPOT
+    IF FRAME_BYTES > OLD_BYTES THEN NUMBER = FRAME_COUNT - 1 - SPOT
+    SET_FORMAT(OLD_WIDTH_CODE, OLD_HEIGHT_CODE, OLD_EIGHT_BITS)
+    FETCH_FRAME(NUMBER, SHAPE_AT)
+    TAKE_SHAPE()
+    IF NEW_EIGHT_BITS <> EIGHT_BITS THEN
+      FOR ROW = 0 TO SPRITE_HEIGHT - 1
+        INDEX = ROW * 64
+        FOR COLUMN = 0 TO SPRITE_WIDTH - 1
+          IF EIGHT_BITS = 0 THEN
+            PIXELS(INDEX) = ENTRY_OF(PIXELS(INDEX))
+          ELSE
+            PIXELS(INDEX) = PIXELS(INDEX) AND 15
+          ENDIF
+          INDEX = INDEX + 1
+        NEXT
+      NEXT
+    ENDIF
+    SET_FORMAT(NEW_WIDTH_CODE, NEW_HEIGHT_CODE, NEW_EIGHT_BITS)
+    SEND_SHAPE()
+    KEEP_FRAME(NUMBER, SHAPE_AT)
+  NEXT
+  SHOW_FORMAT()
+  SAY("Format changed")
+END SUB
+
+' Puts a copy of the frame after it and makes the copy the frame. Does nothing when the sheet
+' is full. The footer says which. The frames after it move up one, the last first.
+SUB ADD_FRAME()
+  DIM NUMBER AS UWORD
+  IF FRAME_COUNT = SHEET_BYTES / FRAME_BYTES THEN
+    SAY("The sheet is full")
+    RETURN
+  ENDIF
+  KEEP_FRAME(FRAME, SHAPE_AT)
+  NUMBER = FRAME_COUNT
+  DO WHILE NUMBER > FRAME + 1
+    COPY_FRAME(NUMBER - 1, NUMBER)
+    NUMBER = NUMBER - 1
+  LOOP
+  FRAME = FRAME + 1
+  FRAME_COUNT = FRAME_COUNT + 1
+  CHANGED = 1
+  KEEP_FRAME(FRAME, SHAPE_AT)
+  SAY("Frame added")
+END SUB
+
+' Takes the frame out of the sheet and shows the one after it, or before it for the last.
+' Does nothing when the sheet has one frame. The footer says which. The frames after it move
+' down one, the first first.
+SUB DELETE_FRAME()
+  DIM NUMBER AS UWORD
+  IF FRAME_COUNT = 1 THEN
+    SAY("The only frame cannot be deleted")
+    RETURN
+  ENDIF
+  FRAME_COUNT = FRAME_COUNT - 1
+  CHANGED = 1
+  NUMBER = FRAME
+  DO WHILE NUMBER < FRAME_COUNT
+    COPY_FRAME(NUMBER + 1, NUMBER)
+    NUMBER = NUMBER + 1
+  LOOP
+  IF FRAME = FRAME_COUNT THEN FRAME = FRAME - 1
+  SHOW_FRAME()
+  SAY("Frame deleted")
+END SUB
+
+' Adds EXTENSION$, such as .SPR, to PICKED when the name after its last \ has no extension.
+SUB ADD_EXTENSION(EXTENSION$ AS CONST)
+  DIM SPOT AS UBYTE, CHARACTER AS UBYTE
+  FOR SPOT = LEN(PICKED) TO 1 STEP -1
+    CHARACTER = ContentsAt(@PICKED + 1 + SPOT)
+    IF CHARACTER = ASC(".") THEN RETURN
+    IF CHARACTER = ASC("\") THEN EXIT FOR
+  NEXT
+  PICKED = PICKED + EXTENSION$
+END SUB
+
+' Reads the sheet's frames from the file of HANDLE when READING is 1, or writes them to it when
+' 0: FRAME_COUNT * FRAME_BYTES bytes. Each bank of the sheet moves straight at $A000, the bank
+' selected, as the DOS reads and writes in the selected bank.
+SUB MOVE_FRAMES(HANDLE AS UWORD, READING AS UBYTE)
+  DIM LEFT AS UWORD, PART AS UWORD, GOT AS UWORD, PART_BANK AS UBYTE
+  LEFT = FRAME_COUNT * FRAME_BYTES
+  PART_BANK = SHEET_BANK
+  DO WHILE LEFT <> 0
+    PART = LEFT
+    IF PART > 8192 THEN PART = 8192
+    BANK.USE(PART_BANK)
+    IF READING <> 0 THEN
+      GOT = READ(HANDLE, $A000, PART)
+    ELSE
+      WRITE HANDLE, $A000, PART
+    ENDIF
+    PART_BANK = PART_BANK + 1
+    LEFT = LEFT - PART
+  LOOP
+  BANK.USE(CALLER_BANK)
+END SUB
+
+' Writes the sheet to file PICKED as a .SPR file, makes PICKED the file's name, clears CHANGED
+' and puts Saved in MESSAGE, or shows in a dialog that the file cannot be written.
+SUB SAVE_SHEET()
+  DIM HANDLE AS UWORD
+  HANDLE = OPEN(PICKED, O.WRITE)
+  IF HANDLE = NOFILE THEN
+    GUI.MSGBOX("Save", "Cannot write", PICKED)
+    RETURN
+  ENDIF
+  KEEP_FRAME(FRAME, SHAPE_AT)
+  HEADER(0) = ASC("S")
+  HEADER(1) = ASC("P")
+  HEADER(2) = ASC("R")
+  HEADER(3) = 1
+  HEADER(4) = WIDTH_CODE
+  HEADER(5) = HEIGHT_CODE
+  HEADER(6) = EIGHT_BITS
+  HEADER(7) = SLICE
+  IF EIGHT_BITS <> 0 THEN HEADER(7) = 0
+  HEADER(8) = FRAME_COUNT AND 255
+  HEADER(9) = FRAME_COUNT >> 8
+  WRITE HANDLE, @HEADER, 32
+  MOVE_FRAMES(HANDLE, 0)
+  CLOSE HANDLE
+  FILE_NAME = PICKED
+  NAMED = 1
+  CHANGED = 0
+  MESSAGE = "Saved"
+END SUB
+
+' Asks the file's name in the file dialog, and saves the sheet under it. A file that exists is
+' replaced only after Yes.
+SUB SAVE_AS()
+  IF GUI.PICKFILE("Save As", "*.SPR", PICKED) = 0 THEN RETURN
+  ADD_EXTENSION(".SPR")
+  IF DOS.EXISTS(PICKED) <> 0 THEN
+    IF GUI.YESNO("Save As", PICKED, "exists. Replace it?") = 0 THEN RETURN
+  ENDIF
+  SAVE_SHEET()
+END SUB
+
+' Saves the sheet under the file's name, or by SAVE_AS while it is UNTITLED.SPR.
+SUB SAVE_FILE()
+  IF NAMED = 0 THEN
+    SAVE_AS()
+  ELSE
+    PICKED = FILE_NAME
+    SAVE_SHEET()
+  ENDIF
+END SUB
+
+' Asks in a dialog whether to save the sheet when it has changed. Yes saves, No does not, and
+' Esc goes back to the sheet. Returns 1 to go on: for a sheet with no changes, after No, or
+' after Yes when the save worked.
+FUNCTION ASK_SAVE() AS UBYTE
+  IF CHANGED = 0 THEN RETURN 1
+  SELECT CASE GUI.MSGBOX("SPRITEEDIT", "The sheet is not saved.", "Save it now?", "", "&Yes", "&No")
+    CASE 1
+      SAVE_FILE()
+      RETURN CHANGED = 0
+    CASE 2
+      RETURN 1
+  END SELECT
+  RETURN 0
+END FUNCTION
+
+' Reads bytes 0 to 9 of the header of the file of HANDLE into HEADER, and checks that the file
+' is a .SPR file this program reads: SPR, version 1, the size codes 0 to 3, the mode 0 or 1,
+' the palette offset 0 to 15, 1 frame or more that fit the sheet, and 32 bytes plus the frames
+' long. Returns the frame count, or 0 when it is not. HEADER's bytes 10 to 31 stay 0.
+FUNCTION FRAMES_IN(HANDLE AS UWORD) AS UWORD
+  DIM COUNT AS UWORD, BYTES AS UWORD
+  IF READ(HANDLE, @HEADER, 10) <> 10 THEN RETURN 0
+  IF HEADER(0) <> ASC("S") OR HEADER(1) <> ASC("P") OR HEADER(2) <> ASC("R") THEN RETURN 0
+  IF HEADER(3) <> 1 OR HEADER(4) > 3 OR HEADER(5) > 3 OR HEADER(6) > 1 THEN RETURN 0
+  IF HEADER(7) > 15 THEN RETURN 0
+  BYTES = 32
+  BYTES = BYTES << (HEADER(4) + HEADER(5) + HEADER(6))
+  COUNT = ContentsAtW(@HEADER + 8)
+  IF COUNT = 0 OR COUNT > SHEET_BYTES / BYTES THEN RETURN 0
+  DOS.SEEK(HANDLE, FROM_END, 0, 0)
+  IF DOS.POSITION_LOW <> 32 + COUNT * BYTES OR DOS.POSITION_HIGH <> 0 THEN RETURN 0
+  RETURN COUNT
+END FUNCTION
+
+' Loads the .SPR file PICKED in place of the sheet, its first frame the frame, makes PICKED the
+' file's name, clears CHANGED and puts Loaded in MESSAGE. Returns 1 when it loads, or 0 with why in TEXT, the
+' sheet kept. The caller shows the sheet with SHOW_FORMAT.
+FUNCTION LOAD_SHEET() AS UBYTE
+  DIM HANDLE AS UWORD, COUNT AS UWORD
+  HANDLE = OPEN(PICKED, O.READ)
+  IF HANDLE = NOFILE THEN
+    TEXT = "Cannot read"
+    RETURN 0
+  ENDIF
+  COUNT = FRAMES_IN(HANDLE)
+  IF COUNT = 0 THEN
+    CLOSE HANDLE
+    TEXT = "Not a .SPR file"
+    RETURN 0
+  ENDIF
+  SET_FORMAT(HEADER(4), HEADER(5), HEADER(6))
+  SLICE = HEADER(7)
+  FRAME_COUNT = COUNT
+  FRAME = 0
+  DOS.SEEK(HANDLE, FROM_START, 32, 0)
+  MOVE_FRAMES(HANDLE, 1)
+  CLOSE HANDLE
+  FILE_NAME = PICKED
+  NAMED = 1
+  CHANGED = 0
+  MESSAGE = "Loaded"
+  RETURN 1
+END FUNCTION
+
+' Loads a .SPR file asked in the file dialog in place of the sheet, after ASK_SAVE, and shows
+' it. A file that does not load shows why in a dialog, and the sheet stays.
+SUB OPEN_SHEET()
+  IF ASK_SAVE() = 0 THEN RETURN
+  IF GUI.PICKFILE("Open", "*.SPR", PICKED) = 0 THEN RETURN
+  ADD_EXTENSION(".SPR")
+  IF LOAD_SHEET() = 0 THEN
+    GUI.MSGBOX("Open", TEXT, PICKED)
+    RETURN
+  ENDIF
+  SHOW_FORMAT()
+END SUB
+
+' Asks a file's name in the file dialog, and writes the slice's 16 colors to it as a .PAL file.
+' A file that exists is replaced only after Yes. Puts Palette saved in MESSAGE, or shows in a
+' dialog that the file cannot be written.
+SUB SAVE_PALETTE()
+  DIM HANDLE AS UWORD
+  IF GUI.PICKFILE("Save Palette", "*.PAL", PICKED) = 0 THEN RETURN
+  ADD_EXTENSION(".PAL")
+  IF DOS.EXISTS(PICKED) <> 0 THEN
+    IF GUI.YESNO("Save Palette", PICKED, "exists. Replace it?") = 0 THEN RETURN
+  ENDIF
+  HANDLE = OPEN(PICKED, O.WRITE)
+  IF HANDLE = NOFILE THEN
+    GUI.MSGBOX("Save Palette", "Cannot write", PICKED)
+    RETURN
+  ENDIF
+  VRAM_MOVE(PALETTE_AT + SLICE * 32, @SLICE_COLORS, 32, VERA_CALL.READ_VRAM)
+  WRITE HANDLE, @SLICE_COLORS, 32
+  CLOSE HANDLE
+  PALETTE_NAME = PICKED
+  MESSAGE = "Palette saved"
+END SUB
+
+' Loads a .PAL file asked in the file dialog into the slice's 16 colors, and puts Palette
+' loaded in MESSAGE. A file that does not load shows why in a dialog, and the colors stay.
+SUB OPEN_PALETTE()
+  DIM HANDLE AS UWORD, GOT AS UWORD
+  IF GUI.PICKFILE("Open Palette", "*.PAL", PICKED) = 0 THEN RETURN
+  ADD_EXTENSION(".PAL")
+  HANDLE = OPEN(PICKED, O.READ)
+  IF HANDLE = NOFILE THEN
+    GUI.MSGBOX("Open Palette", "Cannot read", PICKED)
+    RETURN
+  ENDIF
+  GOT = READ(HANDLE, @SLICE_COLORS, 33)
+  CLOSE HANDLE
+  IF GOT <> 32 THEN
+    GUI.MSGBOX("Open Palette", "Not a .PAL file", PICKED)
+    RETURN
+  ENDIF
+  VRAM_MOVE(PALETTE_AT + SLICE * 32, @SLICE_COLORS, 32, VERA_CALL.WRITE_VRAM)
+  PALETTE_NAME = PICKED
+  MESSAGE = "Palette loaded"
+END SUB
+
+' Clears the status frame's line LINE, 0 to 4, and prints TEXT there in the TEXT color.
+SUB STATUS_AT(LINE AS UBYTE)
+  DIM COLOR AS UBYTE
+  COLOR = ROLE_COLOR(GUI.ROLE.TEXT)
+  VERA.FILL(STATUS_ROW + LINE, STATUS_COLUMN, 29, 1, 32, COLOR)
+  VERA.PRINTAT(STATUS_ROW + LINE, STATUS_COLUMN, TEXT, COLOR)
+END SUB
+
+' Draws the status in the status frame, a line each: the size and the bits a pixel, the frame
+' and the frame count, the pen's value, the cursor's place and pixel, and Changed while CHANGED
+' is 1.
+SUB DRAW_STATUS()
+  TEXT = MID$(STR$(SPRITE_WIDTH), 2, 2) + " x" + STR$(SPRITE_HEIGHT)
+  IF EIGHT_BITS <> 0 THEN
+    TEXT = TEXT + ", 8 bits a pixel"
+  ELSE
+    TEXT = TEXT + ", 4 bits a pixel"
+  ENDIF
+  STATUS_AT(0)
+  TEXT = "Frame" + STR$(FRAME + 1) + " of" + STR$(FRAME_COUNT)
+  STATUS_AT(1)
+  HEX_OF(VALUE_OF(PEN))
+  TEXT = "Pen $" + HEX_TEXT
+  STATUS_AT(2)
+  HEX_OF(PIXELS(CURSOR_ROW * 64 + CURSOR_COLUMN))
+  TEXT = "X" + STR$(CURSOR_COLUMN) + " Y" + STR$(CURSOR_ROW) + " $" + HEX_TEXT
+  STATUS_AT(3)
+  TEXT = ""
+  IF CHANGED <> 0 THEN TEXT = "Changed"
+  STATUS_AT(4)
+END SUB
+
+' Draws the file's name, the last 40 characters of a longer one, in the file's frame.
+SUB DRAW_FILE()
+  DIM COLOR AS UBYTE
+  COLOR = ROLE_COLOR(GUI.ROLE.TEXT)
+  VERA.FILL(FILE_BOX_ROW + 1, FILE_BOX_COLUMN + 2, 40, 1, 32, COLOR)
+  VERA.PRINTAT(FILE_BOX_ROW + 1, FILE_BOX_COLUMN + 2, RIGHT$(FILE_NAME, 40), COLOR)
+END SUB
+
+' Prints TEXT$ at ROW from column 2 in the TEXT color. Each ~ takes no cell and switches between
+' the TEXT color and the hot-key color: the HOT_KEY color's foreground on the TEXT color's
+' background.
+SUB DRAW_KEYS(ROW AS UBYTE, TEXT$ AS CONST)
+  DIM TEXT_COLOR AS UBYTE, HOT_COLOR AS UBYTE, COLOR AS UBYTE
+  DIM COLUMN AS UBYTE, SPOT AS UBYTE, CHARACTER AS UBYTE, AT AS UWORD
+  TEXT_COLOR = ROLE_COLOR(GUI.ROLE.TEXT)
+  HOT_COLOR = (TEXT_COLOR AND $F0) OR (ROLE_COLOR(GUI.ROLE.HOT_KEY) AND 15)
+  COLOR = TEXT_COLOR
+  COLUMN = 2
+  AT = AddrOf(TEXT$) + 1
+  FOR SPOT = 1 TO LEN(TEXT$)
+    CHARACTER = ContentsAt(AT + SPOT)
+    IF CHARACTER = ASC("~") THEN
+      IF COLOR = TEXT_COLOR THEN
+        COLOR = HOT_COLOR
+      ELSE
+        COLOR = TEXT_COLOR
+      ENDIF
+    ELSE
+      VERA.PUT_CELL(ROW, COLUMN, CHARACTER, COLOR)
+      COLUMN = COLUMN + 1
+    ENDIF
+  NEXT
+END SUB
+
+' Makes the menu bar and its menus. An item's id is its key, as BY_SCAN gives it.
+SUB MAKE_MENUS()
+  GUI.MENUBAR(MENU_HANDLE)
+  GUI.BEGINMENU("&File")
+  GUI.MENUITEM("&Open...      F3", BY_SCAN + KEYS.SCAN_F1 + 2)
+  GUI.MENUITEM("&Save         F2", BY_SCAN + KEYS.SCAN_F1 + 1)
+  GUI.MENUITEM("Save &as...   F4", BY_SCAN + KEYS.SCAN_F1 + 3)
+  GUI.MENUITEM("-", 0)
+  GUI.MENUITEM("E&xit         Esc", KEYS.ESC)
+  GUI.ENDMENU()
+  GUI.BEGINMENU("&Draw")
+  GUI.MENUITEM("&Fill area    F", ASC("F"))
+  GUI.ENDMENU()
+  GUI.BEGINMENU("F&rame")
+  GUI.MENUITEM("&Next frame      PgDn", BY_SCAN + KEYS.SCAN_PGDN)
+  GUI.MENUITEM("&Previous frame  PgUp", BY_SCAN + KEYS.SCAN_PGUP)
+  GUI.MENUITEM("&Add a copy      A", ASC("A"))
+  GUI.MENUITEM("&Delete frame    D", ASC("D"))
+  GUI.ENDMENU()
+  GUI.BEGINMENU("&Sprite")
+  GUI.MENUITEM("Next &width        W", ASC("W"))
+  GUI.MENUITEM("Next &height       H", ASC("H"))
+  GUI.MENUITEM("&Mode 4 or 8 bits  M", ASC("M"))
+  GUI.ENDMENU()
+  GUI.BEGINMENU("&Palette")
+  GUI.MENUITEM("Edit &pen color  P", ASC("P"))
+  GUI.MENUITEM("Slice &before    -", ASC("-"))
+  GUI.MENUITEM("Slice a&fter     +", ASC("+"))
+  GUI.MENUITEM("-", 0)
+  GUI.MENUITEM("&Open .PAL...    F6", BY_SCAN + KEYS.SCAN_F1 + 5)
+  GUI.MENUITEM("&Save .PAL...    F5", BY_SCAN + KEYS.SCAN_F1 + 4)
+  GUI.ENDMENU()
+END SUB
+
+' Opens the menu for PRESSED, F10 or Alt with a menu's hot letter. Returns the key of the item
+' chosen, as its id gives it, or 0 after Esc or for another key.
+FUNCTION MENU_KEY(PRESSED AS UWORD) AS UWORD
+  DIM KEY AS UWORD
+  KEY = GUI.PULL_MENU(MENU_HANDLE, PRESSED)
+  IF KEY >= BY_SCAN THEN KEY = (KEY - BY_SCAN) * 256
+  RETURN KEY
+END FUNCTION
+
+' Clears the screen in the PAGE color and draws the menu bar, the frames, the colors, the file,
+' the status and the footer. The sprites draw over the text.
+SUB DRAW_SCREEN()
+  DIM COLOR AS UBYTE
+  GUI.USE_COLOR(GUI.ROLE.PAGE)
+  PRINT CONS.CLEAR_SCREEN$;
+  GUI.DRAW_BAR()
+  GUI.USE_COLOR(GUI.ROLE.FRAME)
+  GUI.BOX(GRID_BOX_ROW, GRID_BOX_COLUMN, 34, 18)
+  GUI.BOX(SHAPE_BOX_ROW, SHAPE_BOX_COLUMN, 11, 10)
+  GUI.BOX(COLOR_BOX_ROW, COLOR_BOX_COLUMN, 34, 4)
+  GUI.BOX(FILE_BOX_ROW, FILE_BOX_COLUMN, 44, 3)
+  GUI.BOX(STATUS_ROW - 1, STATUS_COLUMN - 2, 32, 10)
+  COLOR = ROLE_COLOR(GUI.ROLE.TITLE)
+  VERA.PRINTAT(GRID_BOX_ROW, GRID_BOX_COLUMN + 2, " Grid ", COLOR)
+  VERA.PRINTAT(SHAPE_BOX_ROW, SHAPE_BOX_COLUMN + 2, " Sprite ", COLOR)
+  VERA.PRINTAT(FILE_BOX_ROW, FILE_BOX_COLUMN + 2, " File ", COLOR)
+  VERA.PRINTAT(STATUS_ROW - 1, STATUS_COLUMN, " Status ", COLOR)
+  DRAW_COLORS()
+  DRAW_FILE()
+  DRAW_STATUS()
+  DRAW_FOOTER()
+END SUB
+
+' Sets up the sprites: the shapes, sizes and modes, their places, and their depth, behind the
+' text. SHOW_FORMAT sets the sprite's size and mode.
+SUB SET_SPRITES()
+  DIM SHAPE AS UWORD
+  FOR SHAPE = 0 TO 7
+    VERA.SPRITE_SHAPE(GRID_SPRITE + SHAPE, SHAPE_OF(GRID_AT + SHAPE * 4096))
+    VERA.SPRITE_SET(GRID_SPRITE + SHAPE, MODE, 1)
+    VERA.SPRITE_SET(GRID_SPRITE + SHAPE, WIDTH, 3)
+    VERA.SPRITE_SET(GRID_SPRITE + SHAPE, HEIGHT, 3)
+    VERA.SPRITE_MOVE(GRID_SPRITE + SHAPE, GRID_LEFT + (SHAPE AND 3) * 64, GRID_TOP + (SHAPE / 4) * 64)
+    VERA.SPRITE_SET(GRID_SPRITE + SHAPE, DEPTH, BEHIND_TEXT)
+  NEXT
+  FOR SHAPE = 0 TO 3
+    VERA.SPRITE_SHAPE(COLORS_SPRITE + SHAPE, SHAPE_OF(COLORS_AT + SHAPE * 512))
+    VERA.SPRITE_SET(COLORS_SPRITE + SHAPE, MODE, 1)
+    VERA.SPRITE_SET(COLORS_SPRITE + SHAPE, WIDTH, 3)
+    VERA.SPRITE_SET(COLORS_SPRITE + SHAPE, HEIGHT, 0)
+    VERA.SPRITE_MOVE(COLORS_SPRITE + SHAPE, COLORS_LEFT + SHAPE * 64, COLORS_TOP)
+    VERA.SPRITE_SET(COLORS_SPRITE + SHAPE, DEPTH, BEHIND_TEXT)
+  NEXT
+  VERA.SPRITE_SHAPE(CURSOR_SPRITE, SHAPE_OF(CURSOR_AT))
+  VERA.SPRITE_SET(CURSOR_SPRITE, MODE, 1)
+  VERA.SPRITE_SET(CURSOR_SPRITE, WIDTH, 3)
+  VERA.SPRITE_SET(CURSOR_SPRITE, HEIGHT, 2)
+  VERA.SPRITE_SET(CURSOR_SPRITE, DEPTH, BEHIND_TEXT)
+  VERA.SPRITE_SHAPE(SHAPE_SPRITE, SHAPE_OF(SHAPE_AT))
+  VERA.SPRITE_MOVE(SHAPE_SPRITE, SHAPE_LEFT, SHAPE_TOP)
+  VERA.SPRITE_SET(SHAPE_SPRITE, DEPTH, BEHIND_TEXT)
+END SUB
+
+CALLER_BANK = BANK.CURRENT()
+SHEET_BANK = BANK.ALLOC(SHEET_BANKS + 1)
+IF SHEET_BANK = 0 THEN
+  PRINT DOS.ERRMSG(DOS.ERROR)
+  END 1
+ENDIF
+START_COLOR = DOS.GET_COLOR()
+DOS.STOP_KEY(DOS.STOP.OFF)
+FILE_NAME = "UNTITLED.SPR"
+MESSAGE = "New file"
+SET_FORMAT(1, 1, 0)
+FRAME_COUNT = 1
+SEND_SHAPE()
+KEEP_FRAME(0, SHAPE_AT)
+PICKED = UCASE$(HEAP.SYS_STRINGS_GET(0))
+IF PICKED <> "" THEN
+  ADD_EXTENSION(".SPR")
+  FILE_NAME = PICKED
+  NAMED = 1
+  IF DOS.EXISTS(PICKED) <> 0 THEN
+    IF LOAD_SHEET() = 0 THEN
+      PRINT TEXT
+      END 1
+    ENDIF
+  ENDIF
+ENDIF
+VRAM_MOVE(PALETTE_AT, @START_PALETTE, 512, VERA_CALL.READ_VRAM)
+CURSOR OFF
+SET_SPRITES()
+SHOW_FORMAT()
+GUI.THEME(DARK)
+ContentsAt(@GUI.COLORS$ + 2 + GUI.ROLE.MENU_SELECTED) = SELECTED_COLOR
+MAKE_MENUS()
+DRAW_SCREEN()
+DO
+  PRESSED = WAITKEY()
+  ' F10 and Alt with a letter open a menu; the item chosen gives its key, and Esc no key.
+  IF PRESSED = KEYS.KEY_F10 OR GUI.ALT_LETTER(PRESSED) <> 0 THEN PRESSED = MENU_KEY(PRESSED)
+  SELECT CASE PRESSED
+    CASE KEYS.KEY_UP
+      MOVE_CURSOR(CURSOR_ROW - 1, CURSOR_COLUMN)
+    CASE KEYS.KEY_DOWN
+      MOVE_CURSOR(CURSOR_ROW + 1, CURSOR_COLUMN)
+    CASE KEYS.KEY_LEFT
+      MOVE_CURSOR(CURSOR_ROW, CURSOR_COLUMN - 1)
+    CASE KEYS.KEY_RIGHT
+      MOVE_CURSOR(CURSOR_ROW, CURSOR_COLUMN + 1)
+    CASE KEYS.SPACE
+      PAINT_CURSOR()
+    CASE ASC("F"), ASC("f")
+      FILL_AREA()
+    CASE ASC("[")
+      PEN = (PEN - 1) AND 15
+      DRAW_COLORS()
+    CASE ASC("]")
+      PEN = (PEN + 1) AND 15
+      DRAW_COLORS()
+    CASE ASC("-")
+      PICK_SLICE(SLICE - 1)
+    CASE ASC("+"), ASC("=")
+      PICK_SLICE(SLICE + 1)
+    CASE ASC("P"), ASC("p")
+      EDIT_COLOR()
+    CASE ASC("W"), ASC("w")
+      CHANGE_FORMAT((WIDTH_CODE + 1) AND 3, HEIGHT_CODE, EIGHT_BITS)
+    CASE ASC("H"), ASC("h")
+      CHANGE_FORMAT(WIDTH_CODE, (HEIGHT_CODE + 1) AND 3, EIGHT_BITS)
+    CASE ASC("M"), ASC("m")
+      CHANGE_FORMAT(WIDTH_CODE, HEIGHT_CODE, EIGHT_BITS XOR 1)
+    CASE KEYS.KEY_PGUP
+      IF FRAME = 0 THEN
+        TURN_TO(FRAME_COUNT - 1)
+      ELSE
+        TURN_TO(FRAME - 1)
+      ENDIF
+    CASE KEYS.KEY_PGDN
+      IF FRAME + 1 = FRAME_COUNT THEN
+        TURN_TO(0)
+      ELSE
+        TURN_TO(FRAME + 1)
+      ENDIF
+    CASE ASC("A"), ASC("a")
+      ADD_FRAME()
+    CASE ASC("D"), ASC("d")
+      DELETE_FRAME()
+    CASE KEY_F2, KEY_F3, KEY_F4, KEY_F5, KEY_F6, KEYS.ESC
+      VIDEO = VIDEO AND SPRITES_HIDDEN
+      IF PRESSED = KEYS.ESC THEN
+        IF ASK_SAVE() <> 0 THEN EXIT DO
+      ELSEIF PRESSED = KEY_F2 THEN
+        SAVE_FILE()
+      ELSEIF PRESSED = KEY_F3 THEN
+        OPEN_SHEET()
+      ELSEIF PRESSED = KEY_F4 THEN
+        SAVE_AS()
+      ELSEIF PRESSED = KEY_F5 THEN
+        SAVE_PALETTE()
+      ELSE
+        OPEN_PALETTE()
+      ENDIF
+      ' A dialog's field leaves the cursor on.
+      CURSOR OFF
+      VIDEO = VIDEO OR SPRITES_SHOWN
+      DRAW_FILE()
+      DRAW_FOOTER()
+  END SELECT
+  DRAW_STATUS()
+LOOP
+' The DOS hides the sprites when the program ends.
+VRAM_MOVE(PALETTE_AT, @START_PALETTE, 512, VERA_CALL.WRITE_VRAM)
+DOS.SET_COLOR(START_COLOR)
+PRINT CONS.CLEAR_SCREEN$;
+CURSOR ON
+END 0

@@ -748,8 +748,8 @@ Steps, one at a time:
   `tests/VERAGFX.OUT` is not committed. Still untested: VERAGFX, VERABOX, GFXDEMO.UXB, the G7l
   LF load, `make test` (no sim65).
 
-The sprite editor plan (the user, 2026-11-08). `SPRED`, a UXCBASIC program in
-`src/utils/spred`, builds `card/sys/SPRED.COM`, on the pattern of `FONTEDIT.UXB`. `SPRDEMO`
+The sprite editor plan (the user, 2026-11-08). `SPRITEEDIT`, a UXCBASIC program in
+`src/utils/spriteedit`, builds `card/sys/SPRITEEDIT.COM`, on the pattern of `FONTEDIT.UXB`. `SPRDEMO`
 moves a sprite with the keys: `src/utils/sprdemo/SPRDEMO.UXB` to `card/sys/SPRDEMO.COM`, and
 `card/source/basic/SPRDEMO.bas`. The user's answers:
 
@@ -766,7 +766,10 @@ moves a sprite with the keys: `src/utils/sprdemo/SPRDEMO.UXB` to `card/sys/SPRDE
 Steps: K1 the call (asm), K2 `KEYS.UXI` and an MSBASIC function, D1 `SPRDEMO.UXB`, D2
 `SPRDEMO.bas`, E1 to E3 the editor's grid, frames and files, E3a the palette, E4 the tools, E5
 the export, M the mouse, then one doc batch. Not in the plan: opening headerless `.SPR` files
-of other tools.
+of other tools. To do after the sprite editor (the user, 2026-11-09): `FONTEDIT` upgraded like
+`SPRITEEDIT`; the user picks the parts then. SPRITEEDIT's parts FONTEDIT lacks: the status
+frame (FONTEDIT has one status line: the name, the live option, Changed and the message), the
+keys in columns with hot keys in color, the fill.
 
 - K1 done: call 63 `con_keys` in `src/asm/console.s`, the last entry of the gate page; a next
   call needs another page or a function number. `api_con_keys` reads keycodes from the SMC
@@ -805,7 +808,255 @@ of other tools.
   breaks.
 - Read from the code, not tested, not fixed: MSBASIC `GET` waits in `con_in`, which returns on a caught Ctrl+C only for
   `api_con_screen`; so a Ctrl+C during `GET` breaks at the next key.
-- K1, K2 and the K1 fix are committed (local; the user pushes). Next: D1.
+- K1, K2 and the K1 fix are committed in bc67dfa (local; the user pushes). Next: D1.
+- S0, before D1, asm approved: no code set `DC_VIDEO` bit 6, so no sprite showed. `vera_sprset`
+  in `src/asm/vera.s` now sets it. `spr_zero` in `src/asm/console.s` zeroes the 1 KB of sprite
+  attributes at `SPRITES`; `con_init` calls it at boot, and `exec_quit` in `src/asm/exec.s`
+  calls it and clears bit 6 with bit 4. So a program starts with no sprite shown, and a
+  program's exit hides its sprites, a child's exit included. Bank 0 +33 (27 the routine, 3 each
+  call); bank 0 ends at `$ED23`, GATE included, 4732 free below `$FFA0`. Bank 1 +5; B1CODE ends
+  at `$FCA4`, 763 free. About 9200 cycles a clear, 1.2 ms at 8 MHz; 6 cycles more a sprset.
+  `build.py`: exit 0, 1.59 s, outer 1746 ms, the ROM only. Not committed. The user's test in
+  BASIC passed: `VMEMSET $14000,$11,128` then `SPRITE 1 SHAPE $A00 XYSIZE 16,16 AT 100,100 ON`
+  showed a white 16 by 16 square, gone after `QUIT`. Zeroing byte 6 alone was dropped: it would
+  leave the last program's mode, palette and size to the next. For the doc batch: the sprset
+  contract in `docs/API.md` and `VERA.UXI`, the `SPRITE` entry of `MSBASIC/docs/keywords.md`.
+- D1: `src/utils/sprdemo/SPRDEMO.UXB` builds `card/sys/SPRDEMO.COM`, 2544 bytes. Sprite 1, a 16
+  by 8 ball of 4 bits a pixel at VRAM `$14000` (shape `$A00`), drawn from 8 strings of hex
+  pixels. A pass a frame waits for `DOS.TICKS` to change, then reads `KEYS.HELD_KEYS`: the
+  arrows move it 1 pixel, 4 with Ctrl, and it stops at the edges of 640 by 240; Space steps the
+  palette offset; Enter swaps depth 3 and 2 (in front of the text, behind it); Esc ends, and the
+  keys left waiting are read off. `build.py`: exit 0, 2.42 s, outer 2588 ms, SPRDEMO and the
+  ROM. Not committed.
+- D1 fix: the user's run showed Space and Enter doing nothing. UXCBASIC's `NOT` is logical and
+  gives 0 or 1, so `HELD AND (NOT LAST_HELD)` kept bit 0 alone. `PRESSED = (HELD XOR LAST_HELD)
+  AND HELD` replaces it. `SPRDEMO.COM` is 2552 bytes. `build.py`: exit 0, 1.77 s, outer
+  1936 ms, the new baseline. For the doc batch: `UXC-HELP.md` lists `NOT` with the operators
+  and does not say it is logical. The user's second run passes.
+- D2: `card/source/basic/SPRDEMO.bas`, the same demo in MSBASIC, 45 lines, CR LF, longest 79.
+  `READ` takes the 8 rows from `DATA`; `VPOKE` writes the shape; one `SPRITE` line sets shape,
+  `LOWCOL`, size, `COLOR 0` and `ZDEPTH 3`, so a second `RUN` starts clean. A pass a frame is
+  `PAUSE 0`, then `KEYHELD(0)`. MSBASIC's `NOT` is bitwise, so `P=K AND (NOT L)` gives the keys
+  pressed. `L=KEYHELD(0)` before the loop keeps the Enter of `RUN` from counting. Enter swaps
+  depth 3 and 2 by `D=5-D`. Esc does `SPRITE 1 OFF` and reads off the keys left waiting; a
+  Ctrl+C break leaves the ball on. Clause words follow numbers only, never a variable. No ROM
+  change, no build. Not committed. The user's run passes.
+- E1, the grid, the user's pick of the sprite grid (2026-11-08): `src/utils/spriteedit/SPRITEEDIT.UXB`
+  builds `card/sys/SPRITEEDIT.COM`, 8810 bytes. The pixels are `PIXELS(4096)`, a byte each, row R
+  column C at R * 64 + C for every size. The grid is sprites 8 to 15, 4 across and 2 down of 64
+  by 64 at 8 bits, VRAM `$14000-$1BFFF`, depth 3, at sprite pixel 16, 16: the sprite zoomed
+  256 / its longer side across and half that down, so a pixel is square on screen. Color 0
+  shows a checker of entries 11 and 12. Sprite 1 is the sprite at its size, shape `$1C000`;
+  sprite 2 the cursor, a dashed ring of entries 1 and 16, shape `$1D000`, 64 by 32; sprites 3
+  to 6 the slice's 16 colors, `$1D800`. Keys: arrows, Space paints, `[ ]` the pen, `- +` the
+  slice (at 4 bits the palette offset), `W H` the size, `M` 4 or 8 bits, Esc. A size change
+  clears the pixels past it. Names are 16 characters at most (`NAME TOO LONG`). `build.py`:
+  exit 0, 2.14 s, outer 2304 ms, SPRITEEDIT and the ROM. Not committed; no test. The user's run
+  passes; painting is slow, one Space press a pixel. Dialogs (E3) must hide the depth-3
+  sprites, which cover text.
+- E1 paint while moving (2026-11-08, the user's "go"): `PAINT_CURSOR` paints the cursor's
+  pixel, for Space and for `MOVE_CURSOR`, which paints the new pixel while
+  `KEYS.HELD_KEYS() AND KEYS.HELD_KEY.SPACE`. HELD_KEYS drops the key characters that wait, so
+  a burst of arrow repeats stops short. `SPRITEEDIT.COM` 8855 bytes (+45). `build.py`: exit 0,
+  2.23 s, outer 2383 ms, the new baseline. Not committed; no test. Next: the user runs `SPRITEEDIT`,
+  holds Space and moves.
+- E1 hot keys (2026-11-08, the user's ask): `DRAW_KEY` prints a key in the HOT_KEY role's
+  foreground on the TEXT role's background, then its action in the TEXT color; seven calls
+  draw the two keys lines. `SPRITEEDIT.COM` 9220 bytes (+365). `build.py`: exit 0, 2.42 s, outer
+  2608 ms, the new baseline. Not committed; no test. Next: the user runs `SPRITEEDIT` and checks
+  the keys lines, and paint while moving.
+- E1 keys saving (2026-11-08): `DRAW_KEYS(ROW, TEXT$)` replaces `DRAW_KEY`. It writes one
+  string a keys line from column 2 cell by cell with `VERA.PUT_CELL`; each `~` takes no cell
+  and switches between the TEXT color and the hot-key color. Two calls draw the two lines.
+  `SPRITEEDIT.COM` 9068 bytes (-152). `build.py`: exit 0, 2.42 s, outer 2593 ms, the new baseline.
+  Not committed; no test. Next: the user runs `SPRITEEDIT` and checks the keys lines, and paint
+  while moving.
+- E2a, the frames (2026-11-08, the user's picks: RAM banks; PgUp PgDn A D): the sheet is 4 RAM
+  banks from `BANK.ALLOC(4)`, 32 KB, the frames packed in `.SPR` order, frame K at K *
+  `FRAME_BYTES`; no frame crosses a bank. The sprite's shape holds the frame in the grid;
+  `KEEP_FRAME` copies VRAM to the sheet with `VERA.MEMCPYVM`, `FETCH_FRAME` back with
+  `MEMCPYMV`, and `TAKE_SHAPE` unpacks the shape into `PIXELS`. PgUp PgDn turn, wrapping; `A`
+  puts a copy after the frame, not when full; `D` deletes, not the only frame. A frame moves
+  between two places through VRAM `$1E000-$1EFFF`. The status line shows `Frame n of m`, and a
+  third keys line the frame keys. W, H and M work only while the sheet has one frame; E2b
+  makes them change every frame. No 4 free banks: the error's text, exit code 1. `SPRITEEDIT.COM`
+  11504 bytes (+2436): the frame keys 1936 (PgUp PgDn 219, A 370, D 212, the shared sheet
+  code about 1135), the keys line 100, the status 93, the error 69. A `FOR ... STEP -1` form
+  (+46), one copy SUB with a direction (+39) and ULONG VRAM arguments (+14) came out bigger.
+  RAM +10 bytes, 32 KB of banks. `build.py`: exit 0, 2.30 s, outer 2461 ms, the new baseline.
+  Not committed; no test. Next: the user runs `SPRITEEDIT`: A, PgUp PgDn, paint, D.
+- E2b, the format of every frame (2026-11-08): W, H and M call `CHANGE_FORMAT(width code,
+  height code, eight bits)`, which replaces `RESIZE` and `SWITCH_MODE`; `SET_FORMAT` sets the
+  codes, the size and `FRAME_BYTES`. It keeps the frame, refuses when `FRAME_COUNT` passes
+  32768 / the new `FRAME_BYTES`, then lays the frames out again in place: the last first when
+  they grow, the first first when they shrink. Each frame goes sheet, shape, `TAKE_SHAPE` at
+  the old format, the mode change within the old size, `SEND_SHAPE` at the new, back to the
+  sheet. The pixels past the old size stay 0 all the way through; one pass clears the pixels
+  past the new size at the end. The start runs `SEND_SHAPE`, then `CHANGE_FORMAT(1, 1, 0)` on
+  the one frame. `SPRITEEDIT.COM` 12039 bytes (+535): no GROWS flag -18 and one flat clear loop
+  -30 (about 40 ms more a W, H or M) came off the first 12087. RAM about +17 bytes of locals.
+  `build.py`: exit 0, 2.27 s, outer 2424 ms, the new baseline. Not committed; no test. Next:
+  the user runs `SPRITEEDIT`: frames, then W, H, M, PgUp PgDn; a full sheet refuses a larger size.
+- E3 is three parts, FONTEDIT's keys: save (F2, F4), open (F3 and `SPRITEEDIT file`), then the
+  changed mark and the ask before Esc and F3.
+- E3 save (2026-11-08, the user's "go"): F2 saves under `FILE_NAME`, or as F4 while
+  `UNTITLED.SPR`; F4 asks a name in `GUI.PICKFILE`, adds `.SPR` when it has no extension, and
+  asks `GUI.YESNO` before it writes over a file. `SAVE_SHEET` keeps the frame, writes the
+  header from `HEADER(32)` (bytes 10 to 31 stay 0; byte 7 the slice at 4 bits, 0 at 8), then
+  each sheet bank straight from `$A000` with the bank selected: `lib_io` reads a buffer at
+  `$A000-$BFFF` in the caller's bank. A file that does not open shows `Cannot write`. A full
+  drive writes short with no message, as in FONTEDIT. The file keys clear `DC_VIDEO` bit 6 while
+  they run, so the sprites blink off on F2 too. A File frame, 44 by 4 cells at row 12, column
+  36, shows the last 40 characters of the name and `MESSAGE` (`New file`, `Saved`); a fourth
+  keys line shows F2 and F4. `SPRITEEDIT.COM` 27688 bytes (+15649): `PICKFILE` 6273, `MSGBOX` and
+  `YESNO` 7905, the save code 1471. Regions 1 to 3 (RAM banks) 6501, 1391 and 6313 bytes, 1691,
+  6801 and 1879 free. `DOS.CREATE_FILE` and `WRITE_FILE` came out 35 bytes bigger than `OPEN`
+  and `WRITE`; `RIGHT$` costs 19. RAM about +215 bytes: the two names, the message, the header.
+  `build.py`: exit 0, 2.65 s, outer 2807 ms, the new baseline. Not committed; no test. Next:
+  the user runs `SPRITEEDIT`: F4 to `TEST.SPR`, F2, F4 on it again (Replace?), then in BASIC
+  `VLOAD "TEST.SPR",$14000` and `SPRITE 1 SHAPE $A01`; then E3 open.
+- E2a fix (2026-11-08, the user's run: the sprites show, the screen is never drawn):
+  `VERA.MEMCPYMV` and `MEMCPYVM` run from region 3, and the call's gate selects region 3's bank
+  in place of the sheet's, so `KEEP_FRAME` wrote VRAM over region 3's own code. `FETCH_FRAME`
+  and `KEEP_FRAME` now call the kernel's vera functions 3 and 4 by `SYS DOS.API_VERA` in low
+  RAM, the sheet's bank selected; `FRAME_ADDRESS`'s contract names the trap. `SPRITEEDIT.COM` 27468
+  bytes (-220). `build.py`: exit 0, 2.76 s, outer 2917 ms, the new baseline. Not committed; no
+  test. Next: the user runs `SPRITEEDIT`, then the E2a, E2b and E3 save checks.
+- E3 open (2026-11-09; the user: SPRITEEDIT runs). F3 opens a `.SPR` file from the file dialog;
+  `SPRITEEDIT file` loads it at the start, or names the new sheet when it is not there (FONTEDIT's
+  rules, `.SPR` added). `FRAMES_IN` reads header bytes 0 to 9 only and checks SPR, version 1,
+  codes 0 to 3, mode 0 or 1, offset 0 to 15, 1 to the fitting count of frames, and the size by
+  `DOS.SEEK` to the end. `LOAD_SHEET` reads the frames with `MOVE_FRAMES`, the bank loop now
+  shared with `SAVE_SHEET`; a failure leaves the sheet, its reason in `TEXT` (a dialog for F3,
+  printed with exit 1 at the start). `SHOW_FORMAT` is `CHANGE_FORMAT`'s old tail; the start
+  calls it in place of `CHANGE_FORMAT(1, 1, 0)`, and `SET_SPRITES` no longer calls `SET_MODE`.
+  F3 joins the F2/F4 case. `SPRITEEDIT.COM` 29092 bytes (+1624: command line 301, of it `UCASE$`
+  78; `DOS.SEEK` 154; `READ` 124; the rest 1045). `build.py`: exit 0, 2.75 s, outer 2901 ms,
+  the new baseline. Not committed; no test.
+- The name (2026-11-09, the user's ask): `SPRED` is `SPRITEEDIT`.
+  `src/utils/spriteedit/SPRITEEDIT.UXB` builds `card/sys/SPRITEEDIT.COM`, 29092 bytes, and
+  the build copies it to `card/source/xcbasic/SPRITEEDIT`. A command name holds no space: the
+  shell reads the command word up to the first space and takes no quotes there (`READ_WORD`
+  in `CMDSHELL.UXI`). `build.py`: exit 0, 2.88 s, outer 3034 ms, the new baseline. Not
+  committed; no test.
+- The status frame (2026-11-09, the user's ask: the status line to the upper right). The
+  status line at row 29 is a Status frame of 33 by 10 cells at row 1, column 47, beside the
+  Sprite frame: from row 2, column 49, the size and bits a pixel, `Frame n of m`, `Pen $nn`,
+  and `X n Y n $nn`. `STATUS_AT(LINE)` clears a line and prints `TEXT` there; `DRAW_STATUS`
+  calls it four times. The keys stay at rows 24 to 27. `SPRITEEDIT.COM` 29300 bytes (+208;
+  one `FILL` of four rows and four `PRINTAT`s were +223). `build.py`: exit 0, 2.68 s, outer
+  2840 ms, the new baseline. Not committed; no test. Next: the user checks the screen, then
+  the E2a, E2b, E3 save and E3 open checks; then E3 ask.
+- The cursor after a dialog (2026-11-09, the user's run: the text cursor shows after a save;
+  PgUp PgDn do nothing). A field of a GUI dialog leaves the cursor on, so the file keys end
+  with `CURSOR OFF`. The user's `TEST.SPR` holds 1 frame of 32 by 32 at 4 bits, painted, so
+  `KEEP_FRAME` works; with 1 frame PgUp and PgDn turn to the same frame. `SPRITEEDIT.COM`
+  29305 bytes (+5). `build.py`: exit 0, 2.92 s, outer 3093 ms, the new baseline. Not
+  committed; no test. Next: the user checks the cursor after F2, F3 and F4, and PgUp PgDn
+  after A and a paint.
+- The fill and the footer (2026-11-09, the user: frames work; asks for a fill, and a footer of
+  messages). F fills the area of the cursor's pixel in the pen's value: 4-way, inside the
+  sprite's size, nothing when the pixel holds the pen's value. `FILL_AREA` keeps a stack of
+  pixel indexes, a UWORD each, from $A000 in a fifth RAM bank, `SHEET_BANK + SHEET_BANKS`; a
+  pixel takes the pen's value as it goes on, so the stack holds at most 4096, the bank's 8 KB.
+  Then `SEND_SHAPE` and `DRAW_GRID`. The start takes 5 banks, exit code 1 without them. The
+  footer is row 29, 80 columns in the `STATUS` color, `MESSAGE` (40 characters) from column 1;
+  `SAY` sets and draws it. A: Frame added, The sheet is full. D: Frame deleted, The only frame
+  cannot be deleted. W H M: Format changed, The frames would not fit the sheet. F: Filled. The
+  file keys: New file, Loaded, Saved. The message stays until the next. The file frame is 44 by
+  3, the name only. Keys row 27 adds F. `SPRITEEDIT.COM` 30274 bytes (+969). `build.py`: exit 0,
+  2.79 s, outer 2948 ms, the new baseline. Not committed; no test. Next: the user runs F on
+  open and closed areas, at 4 and 8 bits, and A, D, W, H, M and F2 for the footer.
+- The keys in columns (2026-11-09, the user: line the keys up). The keys are 5 rows from row 24,
+  3 columns from column 2, 5 cells apart: the drawing keys and the colors' keys; W H, M and
+  the frames' keys; the file keys and Esc. Each column's key field is its longest key plus 2.
+  `SPRITEEDIT.COM` 30367 bytes (+93). `build.py`: exit 0, 2.74 s, outer 2892 ms, the new
+  baseline. Not committed; no test. Next: the user looks at the keys, then the fill and footer
+  checks above.
+- The sprite's frame one column wider (2026-11-09, the user: the frame 1 column larger, the size
+  line off by 1). The sprite's frame is 11 by 10 cells; the sprite sits at x 300, centered in it.
+  The status frame is 32 by 10 cells at column 48, its lines from column 50. The size line drops
+  STR$'s leading space with MID$. `SPRITEEDIT.COM` 30396 bytes (+29). `build.py`: exit 0,
+  2.83 s, outer 2980 ms, the new baseline. Not committed; no test. Next: the user looks at the
+  frames, then the keys, fill and footer checks above.
+- E3 ask (2026-11-09, the user: SPRITEEDIT good, the checks above pass). `CHANGED` is set by a
+  paint, a fill that paints, W H M that change, A and D that work, and - + at 4 bits a pixel
+  (the slice is header byte 7); `SAVE_SHEET` and `LOAD_SHEET` clear it. Status line 5 shows
+  `Changed`. `ASK_SAVE`, FONTEDIT's: "The sheet is not saved. Save it now?" with Yes, No and
+  Esc; Yes runs `SAVE_FILE` (F2's save, now its own SUB) and goes on only when it worked. F3
+  asks before the file dialog; Esc joins the file keys' case, so the sprites hide for the ask,
+  and ends the program after the ask, or at once when nothing changed. `SPRITEEDIT.COM` 30703
+  bytes (+307); RAM +1. `build.py`: exit 0, 2.77 s, outer 2928 ms, the new baseline. Not
+  committed; no test. The user's checks pass. Next: E3a, the palette.
+- E3a, the user's picks (2026-11-09): P opens a color frame; F5 saves and F6 opens a `.PAL`
+  file of the slice; the palette is put back at the end. The ROM sets the palette only at boot,
+  in `con_init`. E3a1 is P and the restore, E3a2 F5 and F6.
+- E3a1 (2026-11-09). P edits the pen's palette entry, the slice times 16 plus the pen, in a
+  color frame of 44 by 6 cells at row 16, column 36, clear of the sprites, so the grid and the
+  colors change as it goes: the red, green and blue lines (the name, a hex digit, a bar of 15
+  cells in $DB and $B0), then a line of the frame's keys. Up and Down pick a line, Left and
+  Right step it from 0 to 15, Esc closes and clears the frame. `EDIT_COLOR` writes the entry
+  through the data port after each key; `DRAW_LEVEL` draws a line. The start reads the 512
+  bytes of palette at $1FA00 to `START_PALETTE` with the kernel's vera function 4; the end
+  writes them back with function 3. The keys are 6 rows from row 23; P is column 1's sixth.
+  Editing slice 0 changes the editor's own colors: the text, the checker (11, 12) and the
+  cursor (1, 16). `SPRITEEDIT.COM` 32037 bytes (+1334): the color frame 1196, the keys line
+  44, the palette's copies 94. A `FOR` loop a copy was 87 bytes; the kernel's call is 47. One
+  read of `LEVELS(PICK)` a key and the entry's address kept saved 55. `FILL` bars came out 3
+  bytes bigger than the `PUT_CELL` loop. RAM +515 (the palette, the levels). Regions 1 to 3
+  1691, 6801 and 1961 bytes free, as before. `build.py`: exit 0, 3.68 s, outer 3947 ms, the new
+  baseline; the step's first build took 5.81 s. Not committed. The user's run: P showed levels
+  that did not match the entry's color.
+- E3a1 fix, the palette at boot (2026-11-09). VERA's palette is write-only: a read of $1FA00
+  gives the VRAM under it, random at power-up. `con_init` now writes all 512 bytes from
+  `default_palette`, VERA's power-up palette as 256 `.word`s of $0RGB (the stock `rom.bin`
+  holds it in bank 8 at $E100), so a read gives the palette. Before, it wrote entry 0 only.
+  ROM bank 0 +526: the table 512, the two loops 20 in place of two `stz`, 6. `CODE` ends at
+  $E318, `RODATA` at $EF04, 4251 bytes free below $FFA0. Boot +6.7k cycles, about 0.8 ms.
+  RAM 0. `build.py` (the ROM only): exit 0, 1.58 s, outer 1768 ms, the new baseline. Not
+  committed; no test. The user's run: works.
+- E3a2, the .PAL files (2026-11-09). F5 asks a name in PICKFILE's dialog (`*.PAL`, `.PAL` added
+  when there is no extension, Yes before it replaces a file) and writes the slice's 32 bytes of
+  palette, read with the kernel's vera function 4. F6 asks a name, reads up to 33 bytes into
+  `SLICE_COLORS(33)`, takes the file only at exactly 32, and writes them to the slice with
+  function 3. The footer says Palette saved or Palette loaded; a file that fails shows why in
+  a dialog. `VRAM_MOVE` holds the kernel call, and the palette's copy at the start and the end
+  use it too; `ENUM VERA_CALL` names functions 3 and 4. `ADD_EXTENSION` takes the extension.
+  The keys: column 3 is F2 to F6, then Esc. `SPRITEEDIT.COM` 33042 bytes (+1005). RAM +33.
+  Regions 1 to 3 1691, 6801 and 1961 bytes free, as before. `build.py`: exit 0, 3.13 s, outer
+  3300 ms, the new baseline. Not committed. The user's run: works.
+- G1, the menu bar (2026-11-09, the user's go on the plan of menus and hot keys). Row 0 is
+  GUI.UXI's menu bar, menu handle 1 with no form: File (Open F3, Save F2, Save as F4, Exit Esc),
+  Draw (Fill F), Frame (Next PgDn, Previous PgUp, Add a copy A, Delete D), Sprite (Next width W,
+  Next height H, Mode M), Palette (Edit pen color P, Slice before -, Slice after +, Open .PAL
+  F6, Save .PAL F5). An item's id is its key: a character code, or `BY_SCAN` 128 plus a scan
+  code; `MENU_KEY` turns the id back into the key, and the main `SELECT CASE` does it. F10 and
+  Alt with a letter go to `MENU_KEY`, which hides the sprites while the menu is open. The keys
+  legend, rows 23 to 28, is gone; the footer shows F10 menu at column 71. The sprites stay at
+  depth 3: at depth 2 the DARK theme's colors with a 0 (TEXT 0,15, FIELD 15,0, BUTTON 12,0,
+  MENU_SELECTED 12,0, SHADOW 0,0) let the sprites show through dialogs and the selected item.
+  Not in G1: File > New, Frame > Go to, Help (Keys, About). `SPRITEEDIT.COM` 35229 bytes
+  (+2187): region 2 +1830, the menus. Regions 1 to 3 1697, 4971 and 1961 bytes free.
+  `build.py`: exit 0, 3.18 s, outer 3351 ms, the new baseline. Not committed. Next: the user
+  runs F10, Alt+F/D/R/S/P, each item, Left and Right, Esc. Then G2, the drop-downs.
+- G1a, the sprites behind the text (2026-11-09). The user's run of G1: the grid, the sprite
+  and the colors vanish while a menu is open. The sprites now sit at depth 2, `BEHIND_TEXT`,
+  and the text's color-0 cells show them; no text overlaps them on the main screen. `MENU_KEY`
+  no longer hides them. The theme is DARK with MENU_SELECTED $C1, white on gray, set at start
+  through `GUI.THEME(DARK)` and a write to `GUI.COLORS$`, as DARK's black text, color 0, would
+  show the sprites through the selected item's letters. The file keys still hide the sprites,
+  as a dialog holds color-0 cells. A menu's shadow, SHADOW 0,0, shows the sprites under it.
+  `SPRITEEDIT.COM` 35289 bytes (+60, `GUI.THEME` now kept). Regions 1 to 3 1615, 4971 and
+  1961 bytes free. `build.py`: exit 0, 3.19 s, outer 3372 ms, the new baseline. Not
+  committed. Next: the user runs the menus over the grid and the sprite.
+- G1b, the footer's names line (2026-11-09). The footer is now rows 28 and 29, `FOOTER_ROW`
+  28 and `NAMES_ROW` 29, both drawn by `DRAW_FOOTER`. Row 28 is the message and F10 menu as
+  before. Row 29 has the last 38 characters (`NAME_CELLS`) of `FILE_NAME` from column 1, and
+  of the new `PALETTE_NAME` ending at column 78. `SAVE_PALETTE` and `OPEN_PALETTE` set
+  `PALETTE_NAME` to the file on success; it is empty before. `SPRITEEDIT.COM` 35424 bytes
+  (+135). Regions 1 to 3 1615, 4971 and 1961 bytes free, unchanged. `build.py`: exit 0,
+  3.23 s, outer 3406 ms, the new baseline. Not committed. Next: the user runs the footer
+  with F3, F4, F5 and F6.
 
 9. Older, still open: UXC-HELP topics for `PICKFILE.UXI` and `CONS.UXI`; the
    GUI.UXI contract fixes; PLAN section 11 steps 8 to 10, after beta 1.

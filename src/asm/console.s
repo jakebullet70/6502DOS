@@ -34,7 +34,7 @@
 .export con_init, api_con_line, api_con_edit, api_con_screen, api_con_status, api_con_out, api_con_in, api_con_cursor
 .export api_con_getkey, api_con_keys
 .export api_con_colour, api_con_break, con_hide
-.export CHRIN, CHROUT, clear
+.export CHRIN, CHROUT, clear, spr_zero
 .exportzp con_last_row, con_last_col
 .import font, i2c_read_byte, sft_find, bank_restore, api_read, exec_break
 .importzp ticks
@@ -106,6 +106,24 @@ scr_insert:   .res 1            ; api_con_screen: bit 7 set in insert mode
 
 .segment "CODE"
 
+; spr_zero: zeroes the attributes of the 128 sprites, which hides them. Changes A, X and Y.
+spr_zero:
+        lda #$10 | ^SPRITES     ; increment 1
+        sta VERA_ADDR_H
+        lda #>SPRITES
+        sta VERA_ADDR_M
+        .assert <SPRITES = 0, error, "stz VERA_ADDR_L needs SPRITES on a page boundary"
+        stz VERA_ADDR_L
+        ldx #4                  ; pages: 128 sprites of 8 bytes
+        ldy #0
+@page:
+        stz VERA_DATA0
+        dey
+        bne @page
+        dex
+        bne @page
+        rts
+
 ; con_init: sets up VERA, loads the font and clears the screen. Changes A, X and Y.
 con_init:
         stz VERA_CTRL           ; trap: bit 7 resets VERA, so never write it set here
@@ -115,8 +133,19 @@ con_init:
         sta VERA_ADDR_M
         lda #$10 | ^PALETTE     ; increment 1
         sta VERA_ADDR_H
-        stz VERA_DATA0          ; entry 0 black: green and blue 0
-        stz VERA_DATA0          ; red 0
+        ; Trap: the palette is write-only, and a read of it gives the VRAM under it. All 512
+        ; bytes are written so that a read gives the palette.
+        ldx #0
+@palette_low:
+        lda default_palette,x
+        sta VERA_DATA0
+        inx
+        bne @palette_low
+@palette_high:
+        lda default_palette + 256,x
+        sta VERA_DATA0
+        inx
+        bne @palette_high
         lda #$80                ; 1 to 1 across
         sta VERA_DC_HSCALE
         lsr a                   ; 2 to 1 down: 640 by 240
@@ -153,7 +182,8 @@ con_init:
         inc pointer+1
         dex
         bne @font
-        lda #$21                ; VGA output, layer 1 on
+        jsr spr_zero
+        lda #$21                ; VGA output, layer 1 on, the sprites off
         sta VERA_DC_VIDEO
         lda #CON_COLOUR
         sta con_colour
@@ -1482,6 +1512,26 @@ kbd_ctrl_scans_end:
 ; The X16 palette entries of ANSI colours 0 to 7.
 ansi_colours:
         .byte 0, 2, 5, 9, 6, 4, 3, 15                   ; brown for yellow, light grey for white
+
+; VERA's palette at power-up, entries 0 to 255 as $0RGB: byte 0 is green times 16 plus blue,
+; byte 1 red.
+default_palette:
+        .word $000, $FFF, $800, $AFE, $C4C, $0C5, $00A, $EE7, $D85, $640, $F77, $333, $777, $AF6, $08F, $BBB
+        .word $000, $111, $222, $333, $444, $555, $666, $777, $888, $999, $AAA, $BBB, $CCC, $DDD, $EEE, $FFF
+        .word $211, $433, $644, $866, $A88, $C99, $FBB, $211, $422, $633, $844, $A55, $C66, $F77, $200, $411
+        .word $611, $822, $A22, $C33, $F33, $200, $400, $600, $800, $A00, $C00, $F00, $221, $443, $664, $886
+        .word $AA8, $CC9, $FEB, $211, $432, $653, $874, $A95, $CB6, $FD7, $210, $431, $651, $862, $A82, $CA3
+        .word $FC3, $210, $430, $640, $860, $A80, $C90, $FB0, $121, $343, $564, $786, $9A8, $BC9, $DFB, $121
+        .word $342, $463, $684, $8A5, $9C6, $BF7, $120, $241, $461, $582, $6A2, $8C3, $9F3, $120, $240, $360
+        .word $480, $5A0, $6C0, $7F0, $121, $343, $465, $686, $8A8, $9CA, $BFC, $121, $242, $364, $485, $5A6
+        .word $6C8, $7F9, $020, $141, $162, $283, $2A4, $3C5, $3F6, $020, $041, $061, $082, $0A2, $0C3, $0F3
+        .word $122, $344, $466, $688, $8AA, $9CC, $BFF, $122, $244, $366, $488, $5AA, $6CC, $7FF, $022, $144
+        .word $166, $288, $2AA, $3CC, $3FF, $022, $044, $066, $088, $0AA, $0CC, $0FF, $112, $334, $456, $668
+        .word $88A, $9AC, $BCF, $112, $224, $346, $458, $56A, $68C, $79F, $002, $114, $126, $238, $24A, $35C
+        .word $36F, $002, $014, $016, $028, $02A, $03C, $03F, $112, $334, $546, $768, $98A, $B9C, $DBF, $112
+        .word $324, $436, $648, $85A, $96C, $B7F, $102, $214, $416, $528, $62A, $83C, $93F, $102, $204, $306
+        .word $408, $50A, $60C, $70F, $212, $434, $646, $868, $A8A, $C9C, $FBE, $211, $423, $635, $847, $A59
+        .word $C6B, $F7D, $201, $413, $615, $826, $A28, $C3A, $F3C, $201, $403, $604, $806, $A08, $C09, $F0B
 
 ; The character of keycodes 1 to KEY_SPACE, without and with Shift. 0: no character.
 kbd_lower:

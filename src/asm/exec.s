@@ -15,7 +15,7 @@
 .export api_exec, api_exec_rest, api_exit, api_exitcode, api_keep, api_progpath, exec_break
 .import handles_inherit, handles_close, heap_exec, heap_exit, CHROUT, con_hide
 .import api_bank_alloc, api_bank_free, bank_exit
-.import jsrfar, bank0, lib_open, lib_read, lib_close, gfx_mode
+.import jsrfar, bank0, lib_open, lib_read, lib_close, gfx_mode, spr_zero
 .importzp file_size, saved_bank
 .exportzp exec_depth
 
@@ -231,8 +231,9 @@ exec_quit:
         sta exit_code
         stz con_hide
         pha
-        lda #$10                ; DC_VIDEO bit 4, layer 0 off: gfx screen 0
+        lda #$50                ; DC_VIDEO bits 6 and 4: the sprites and layer 0 off, gfx screen 0
         trb VERA_DC_VIDEO
+        jsr spr_zero
         bit VERA_DC_HSCALE      ; bit 7 set: 80 columns, screen 0 or 1
         bmi @columns
         lda #0
