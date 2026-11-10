@@ -30,13 +30,14 @@
 
 .include "mem.inc"
 .include "api.inc"
+.include "far.inc"
 
 .export con_init, api_con_line, api_con_edit, api_con_screen, api_con_status, api_con_out, api_con_in, api_con_cursor
 .export api_con_getkey, api_con_keys
 .export api_con_colour, api_con_break, con_hide
 .export CHRIN, CHROUT, clear, spr_zero
 .exportzp con_last_row, con_last_col
-.import font, i2c_read_byte, sft_find, bank_restore, api_read, exec_break
+.import font_stream, jsrfar, i2c_read_byte, sft_find, bank_restore, api_read, exec_break
 .importzp ticks
 
 COLUMNS       = 80              ; at boot; then con_last_col + 1
@@ -85,7 +86,7 @@ con_scan:     .res 1            ; the scan code of an extended key before its 0,
 con_cursor:   .res 1            ; bit 0 set while the cursor shows
 con_blink:    .res 1            ; the low byte of ticks at the last blink
 kbd_mods:     .res 1            ; MOD_ bits
-pointer:      .res 2            ; con_init: the font; api_con_line: the buffer
+pointer:      .res 2            ; api_con_line: the buffer
 con_limit:    .res 1            ; api_con_line: the buffer offset of the last character, then the end key
 con_end_key:  .res 1            ; api_con_line: $09 when Tab ends the line, $FF in api_con_screen, else $0D
 con_after_cr: .res 1            ; 1 when the last byte written was CR
@@ -168,20 +169,7 @@ con_init:
         sta VERA_ADDR_M
         lda #$10 | ^CHARSET
         sta VERA_ADDR_H
-        lda #<font
-        sta pointer
-        lda #>font
-        sta pointer+1
-        ldx #8                  ; pages: 256 glyphs of 8 bytes
-        ldy #0
-@font:
-        lda (pointer),y
-        sta VERA_DATA0
-        iny
-        bne @font
-        inc pointer+1
-        dex
-        bne @font
+        FARCALL font_stream     ; bank 5: the font into VRAM
         jsr spr_zero
         lda #$21                ; VGA output, layer 1 on, the sprites off
         sta VERA_DC_VIDEO

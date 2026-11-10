@@ -1,4 +1,4 @@
-; 6502DOS ROM bank 1: call 61, vera. VRAM, the sprites and the palette, through VERA's data
+; 6502DOS ROM bank 5: call 61, vera. VRAM, the sprites and the palette, through VERA's data
 ; port 0.
 ;
 ; Trap: the console keeps VERA_CTRL at 0, so ADDRSEL selects port 0; these routines rely on it.
@@ -12,7 +12,7 @@
 .import sprite_hits, gfx_mode, gfx_clear, gfx_pset, gfx_point, gfx_line, gfx_frame, gfx_rect, gfx_circle, gfx_char
 .importzp gate_a
 
-.segment "B1CODE"
+.segment "B5CODE"
 
 ; api_gfx: call 62. Y = the function; A and r0 to r3 by function. Runs function Y of gfx.s, as api_vera.
 api_gfx:

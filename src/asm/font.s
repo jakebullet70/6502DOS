@@ -1,7 +1,7 @@
 ; The CP437 font: 256 glyphs of 8 by 8 pixels, 8 bytes each, from character 0 up.
 ;
 ; Ported from x16-rom, charset/ascii-cp437.s, github.com/X16Community/x16-rom. The glyph data
-; is unchanged. The header and the segment are 6502DOS's.
+; is unchanged. The header, font_stream and the segment are 6502DOS's.
 ; x16-rom's LICENSE.md puts the code it does not list under the 2-clause BSD licence. This
 ; file is not listed. Its author in x16-rom's history is Tom Wilson, 2024.
 ;
@@ -36,9 +36,31 @@
 ; This is suitable for ANSI BBS and conversion of GW-BASIC programs.
 ;
 
-.export font
+.include "mem.inc"
 
-.segment "RODATA"
+.export font, font_stream
+.importzp gate_vector
+
+.segment "B5CODE"
+
+; font_stream: writes the font, 2048 bytes, to VERA data port 0, at the address the caller set
+; with increment 1. con_init calls it by FARCALL. Changes A, X, Y and gate_vector.
+font_stream:
+        lda #<font
+        sta gate_vector
+        lda #>font
+        sta gate_vector+1
+        ldx #8                  ; pages: 256 glyphs of 8 bytes
+        ldy #0
+@page:
+        lda (gate_vector),y
+        sta VERA_DATA0
+        iny
+        bne @page
+        inc gate_vector+1
+        dex
+        bne @page
+        rts
 
 font:
 ; $00

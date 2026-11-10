@@ -1,4 +1,4 @@
-; 6502DOS ROM bank 1: the functions of call 62, gfx, which api_gfx in vera.s runs. The bitmap
+; 6502DOS ROM bank 5: the functions of call 62, gfx, which api_gfx in vera.s runs. The bitmap
 ; on VERA's layer 0, under the console's text on layer 1.
 ;
 ; Trap: the console keeps VERA_CTRL at 0, so DCSEL selects DC_VIDEO and ADDRSEL data port 0;
@@ -11,10 +11,14 @@
 .include "far.inc"
 
 .export gfx_mode, gfx_clear, gfx_pset, gfx_point, gfx_line, gfx_frame, gfx_rect, gfx_circle, gfx_char
-.import jsrfar1, clear
-.importzp con_last_row, con_last_col
+.import clear, gate_far
+.importzp con_last_row, con_last_col, gate_a, gate_x, gate_vector
 
-.segment "B1CODE"
+.segment "B5CODE"
+
+; jsrfar5: JSRFAR in far.inc, for bank 5. FARCALL with entry jsrfar5 calls it.
+jsrfar5:
+        JSRFAR
 
 ; gfx_mode: shows screen A, clears the text and puts the cursor home. 0: 80 by 30 text alone.
 ; 1: 80 by 30 text over 640 by 240, 2 bpp. 2: 40 by 30 text over 320 by 240, 4 bpp. 3: 40 by 25
@@ -48,7 +52,7 @@ gfx_mode:
         lda #0
         jsr gfx_clear
 @text:
-        FARCALL clear, jsrfar1
+        FARCALL clear, jsrfar5
         clc
         rts
 

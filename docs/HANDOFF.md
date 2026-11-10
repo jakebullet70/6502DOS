@@ -19,7 +19,11 @@ Remind the user to `/compact` when a change is done.
 
 ## Open questions
 
-Resume here (2026-11-04), `XBASE.COM`, `BROWSE` and cmdlets:
+Resume here (2026-11-10), the review in `docs/REVIEW.md`, change 1:
+
+- Review change 1, steps a and b, built, a tested with `SPRDEMO.COM`, b not tested, not committed. Step a: `src/asm/vera.s` and `src/asm/gfx.s` are in segment `B5CODE`, ROM bank 5, with `jsrfar5` in `gfx.s` for `gfx_mode`'s call to `clear`. `api_table` takes the bank from `.bank()`, so nothing else changed. Step b: `src/asm/font.s` is in `B5CODE` too, with `font_stream`, which writes the 2048 bytes to `VERA_DATA0` through `gate_vector` as its pointer; `con_init` in `console.s` sets the VERA address and calls it by `FARCALL`. Bank 0 has 6,318 bytes free, bank 1 2,796, bank 5 5,533. Build 1.34 s, outer 1493 ms, the new baseline. Next: the user tests b, any screen boot shows the font; then step c, the call-scoped zero page overlay of `fp`, the monitor, `exec` and `strings`.
+
+Before that (2026-11-04), `XBASE.COM`, `BROWSE` and cmdlets:
 
 - Cmdlet step 4, `APPFROM.COM`, built, not tested, not committed: `src/utils/appfrom/APPFROM.UXB`, to `card/sys/xbase` through `XBASE_PROGRAMS` in `tools/build.py`. `APPFROM target source`, read from `P1$`, adds each record of source that is not deleted to the end of target; each name gets `.DB` when it has no extension. Each field of target takes the field of source with its name, by `MODSTRU`'s `COPY_RULE`s; a field with no match, or of another type, stays blank. A value that fails stops the copy and prints its record and field; the records added before it stay. It prints `n records added`. Exit 0, 1 for a name missing or one table named twice, 2 for a file error. Both tables closed first, and target's indexes need `REINDEX` after, in the contract and not checked. Names are compared as typed, so two spellings of one table copy until the card is full. The word `APPEND FROM` does not reach it: `APPEND` is internal. No ROM change. `APPFROM.COM` is 4,355 bytes. Build 1.62 s, outer 1763 ms. Next: the user tests; then step 5, `COPY TO` to `COPY.COM` with `P2$` set to the table in use, about 990 bytes of ROM saved; `PACK` and `ZAP` stay in ROM.
 
