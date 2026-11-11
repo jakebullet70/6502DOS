@@ -1,41 +1,43 @@
 '=============================================================================================
-' -- HELP [topic | -R]
-' -- prints the help on topic from C:\sys\HELP.HLP. With no topic it lists the topic names.
-' -- A small letter in topic is the same as a capital.
-' -- In HELP.HLP a line :NAME starts the topic NAME, in capitals. The lines after it, up to the
-' -- next :NAME line, are its text. A line is 80 characters at most; the rest is cut.
-' -- C:\sys\HELP.IDX indexes HELP.HLP. Its first line is the size of HELP.HLP, such as 22387,
-' -- after a space. Each line after it is a topic name, a space and the byte position of its
-' -- :NAME line, such as PUSHD 21034. Lines end with CR LF. tools/build.py writes the same file.
+' -- HELP [-F file] [topic | -R]
+' -- prints the help on topic from C:\sys\HELP.HLP, or from file with -F. With no topic it lists
+' -- the topic names, a new line before a name that would pass column 79. A small letter in topic
+' -- is the same as a capital.
+' -- In the help file a line :NAME starts the topic NAME, in capitals. The lines after it, up to
+' -- the next :NAME line, are its text. A line is 80 characters at most; the rest is cut.
+' -- file is 128 characters at most and ends in HLP. Its index is the same name with IDX in place
+' -- of HLP: C:\sys\HELP.IDX for HELP.HLP. The index's first line is the size of the help file,
+' -- such as 22387, after a space. Each line after it is a topic name, a space and the byte
+' -- position of its :NAME line, such as PUSHD 21034. Lines end with CR LF. tools/build.py writes
+' -- the same file.
 ' -- HELP finds a topic by the index and reads only its text. A missing index, or one whose size
-' -- is not the size of HELP.HLP, makes HELP read HELP.HLP from the start, as does a position
-' -- that does not hold the topic's :NAME line.
-' -- -R, or -r, writes HELP.IDX anew from HELP.HLP and prints the count of topics.
-' -- With P1$ -H or -?, in either case, the topic is the first word of the command tail, or
-' -- HELP when that word starts with -. ARGS.HELP_SWITCH runs HELP with the topic as its tail,
-' -- which exec makes P1$: TREE -? runs HELP TREE.
-' -- No help for topic prints No help for TOPIC and gives exit code 1. No HELP.HLP prints File
-' -- not found and gives exit code 2, and a HELP.IDX that cannot be written prints its error
+' -- is not the size of the help file, makes HELP read the help file from the start, as does a
+' -- position that does not hold the topic's :NAME line.
+' -- -R, or -r, writes the index anew from the help file and prints the count of topics.
+' -- P1$ -H or -?, in either case, is the topic HELP. ARGS.HELP_SWITCH runs HELP with the topic
+' -- as its tail, which exec makes P1$: TREE -? runs HELP TREE.
+' -- No help for topic prints No help for TOPIC and gives exit code 1. No help file prints File
+' -- not found and gives exit code 2, and an index that cannot be written prints its error
 ' -- message and gives exit code 2. Exit code 0 otherwise.
 ' --
 ' -- From a prompt:
 ' --     HELP
 ' --     HELP diskfree
+' --     HELP -F C:\sys\basic\HELPBAS.HLP print
 ' --     HELP -R
 '=============================================================================================
 #INCLUDE "DOS.UXI"
 #INCLUDE "HEAP.UXI"
 CONST SLOT_P1 AS UBYTE = 0, BLOCK_SIZE AS UBYTE = 255, LF AS UBYTE = 10, CR AS UBYTE = 13
-CONST HELP_NAME$ = "C:\sys\HELP.HLP", INDEX_NAME$ = "C:\sys\HELP.IDX"
+DIM HELP_NAME AS STRING * 128, INDEX_NAME AS STRING * 128
 DIM TOPIC AS STRING * 80, TEXT_LINE AS STRING * 80, HEADING AS STRING * 81
-CONST COMMAND_TAIL AS UWORD = $0780        ' a length byte, the text, then a CR
-DIM HELP_FILE AS UWORD, INDEX_FILE AS UWORD, FOUND AS UBYTE, PLACE AS ULONG, TAIL_PLACE AS UWORD
+DIM HELP_FILE AS UWORD, INDEX_FILE AS UWORD, FOUND AS UBYTE, COLUMN AS UBYTE, PLACE AS ULONG
 DIM BLOCK(BLOCK_SIZE) AS UBYTE
 
-' Opens HELP.HLP into HELP_FILE and puts its size in PLACE, or ends the program with File not
+' Opens the help file into HELP_FILE and puts its size in PLACE, or ends the program with File not
 ' found.
 SUB OPEN_HELP()
-  HELP_FILE = OPEN(HELP_NAME$, O.READ)
+  HELP_FILE = OPEN(HELP_NAME, O.READ)
   IF HELP_FILE = NOFILE THEN
     PRINT "File not found"
     END 2
@@ -46,12 +48,12 @@ SUB OPEN_HELP()
   DOS.SEEK(HELP_FILE, 0, 0, 0)
 END SUB
 
-' Writes HELP.IDX from HELP.HLP, prints the count of topics, and ends the program.
+' Writes the index from the help file, prints the count of topics, and ends the program.
 SUB WRITE_INDEX()
   DIM COUNT AS UWORD, SPOT AS UWORD, TOPICS AS UWORD, START AS ULONG
   DIM CHARACTER AS UBYTE, AT_LINE_START AS UBYTE, IN_HEADING AS UBYTE
   OPEN_HELP()
-  INDEX_FILE = DOS.CREATE_FILE(INDEX_NAME$, 0)
+  INDEX_FILE = DOS.CREATE_FILE(INDEX_NAME, 0)
   IF DOS.ERROR <> 0 THEN
     PRINT DOS.ERRMSG(DOS.ERROR)
     END 2
@@ -90,26 +92,29 @@ SUB WRITE_INDEX()
   END 0
 END SUB
 
-TOPIC = UCASE$(HEAP.SYS_STRINGS_GET(SLOT_P1))
-IF TOPIC = "-R" THEN WRITE_INDEX()
-IF TOPIC = "-H" OR TOPIC = "-?" THEN
-  TAIL_PLACE = COMMAND_TAIL + 1
-  DO WHILE ContentsAt(TAIL_PLACE) = ASC(" ")
-    TAIL_PLACE = TAIL_PLACE + 1
-  LOOP
-  IF ContentsAt(TAIL_PLACE) = ASC("-") THEN
-    TOPIC = "HELP"
-  ELSE
-    TOPIC = ""
-    DO WHILE ContentsAt(TAIL_PLACE) > ASC(" ")
-      TOPIC = TOPIC + CHR$(ContentsAt(TAIL_PLACE))
-      TAIL_PLACE = TAIL_PLACE + 1
-    LOOP
+' Prints NAME, a topic name and a space, on the list, after a new line when it would pass
+' column 79.
+SUB LIST_NAME(NAME AS STRING)
+  IF COLUMN + LEN(NAME) > 79 THEN
+    PRINT
+    COLUMN = 0
   END IF
+  PRINT NAME;
+  COLUMN = COLUMN + LEN(NAME)
+END SUB
+
+HELP_NAME = "C:\sys\HELP.HLP"
+TOPIC = UCASE$(HEAP.SYS_STRINGS_GET(SLOT_P1))
+IF TOPIC = "-F" THEN
+  HELP_NAME = HEAP.SYS_STRINGS_GET(SLOT_P1 + 1)
+  TOPIC = UCASE$(HEAP.SYS_STRINGS_GET(SLOT_P1 + 2))
 END IF
+INDEX_NAME = LEFT$(HELP_NAME, LEN(HELP_NAME) - 3) + "IDX"
+IF TOPIC = "-R" THEN WRITE_INDEX()
+IF TOPIC = "-H" OR TOPIC = "-?" THEN TOPIC = "HELP"
 OPEN_HELP()
 ' The index: list the topics, or seek HELP_FILE to the topic's :NAME line and set FOUND.
-INDEX_FILE = OPEN(INDEX_NAME$, O.READ)
+INDEX_FILE = OPEN(INDEX_NAME, O.READ)
 IF INDEX_FILE <> NOFILE THEN
   LINPUT #INDEX_FILE, TEXT_LINE
   IF LVAL(TEXT_LINE) = PLACE THEN
@@ -117,7 +122,7 @@ IF INDEX_FILE <> NOFILE THEN
     DO WHILE NOT EOF(INDEX_FILE)
       LINPUT #INDEX_FILE, TEXT_LINE
       IF TOPIC = "" THEN
-        PRINT LEFT$(TEXT_LINE, INSTR(TEXT_LINE, " "));
+        LIST_NAME(LEFT$(TEXT_LINE, INSTR(TEXT_LINE, " ")))
       ELSEIF LEFT$(TEXT_LINE, LEN(HEADING)) = HEADING THEN
         PLACE = LVAL(MID$(TEXT_LINE, LEN(HEADING) + 1))
         FOUND = 1
@@ -147,7 +152,7 @@ DO WHILE NOT EOF(HELP_FILE)
   LINPUT #HELP_FILE, TEXT_LINE
   IF ASC(TEXT_LINE) = ASC(":") THEN
     IF TOPIC = "" THEN
-      PRINT MID$(TEXT_LINE, 2); " ";
+      LIST_NAME(MID$(TEXT_LINE, 2) + " ")
     ELSE
       IF FOUND = 1 THEN EXIT DO
       IF MID$(TEXT_LINE, 2) = TOPIC THEN FOUND = 1
