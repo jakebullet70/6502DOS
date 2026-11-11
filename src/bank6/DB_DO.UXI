@@ -487,10 +487,7 @@ SUB DO_MODIFY()
     SYNTAX_ERROR()
     RETURN
   ENDIF
-  ' Trap: EDIT reads its file name from P1$ and P2$, which the shell sets, not from the tail.
   TOKEN = WITH_EXTENSION(TOKEN, ".PRG")
-  HEAP.SYS_STRINGS_SET(0, TOKEN)
-  HEAP.SYS_STRINGS_SET(1, "")
   DOS.EXEC("C:\sys\EDIT.COM", " " + TOKEN)
   IF DOS.ERROR THEN FILE_ERROR()
 END SUB

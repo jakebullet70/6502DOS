@@ -1,7 +1,8 @@
 ; Programs: the calls exec, exit and exitcode (PLAN section 7).
 ;
 ; exec copies the parent's PSP, memory and zero page to RAM banks, gives the child copies of the
-; parent's handles and the command tail in the same PSP, loads the program and calls its start.
+; parent's handles and the command tail in the same PSP, splits the tail into P1$ to P9$, loads
+; the program and calls its start.
 ; exit, or RTS from the start, closes the child's handles and copies the parent back. keep does
 ; the same but keeps the child's banks. A file that fills $0801-$9EFF stays open, and exec_rest
 ; reads the rest of it.
@@ -13,7 +14,7 @@
 .include "far.inc"
 
 .export api_exec, api_exec_rest, api_exit, api_exitcode, api_keep, api_progpath, exec_break
-.import handles_inherit, handles_close, heap_exec, heap_exit, CHROUT, con_hide
+.import handles_inherit, handles_close, heap_exec, heap_exit, api_str_alloc, CHROUT, con_hide
 .import api_bank_alloc, api_bank_free, bank_exit
 .import jsrfar, bank0, lib_open, lib_read, lib_close, gfx_mode, spr_zero
 .importzp file_size, saved_bank
@@ -21,6 +22,7 @@
 
 SYS_TOKEN     = $9E             ; BASIC's SYS
 PROGRAM_SIZE  = PROGRAM_END + 1 - PROGRAM
+ARGUMENT_SLOTS = 9             ; P1$ to P9$: VARBANK's system descriptors 0 to 8
 
 .segment "KERNELZP" : zeropage
 
@@ -41,6 +43,8 @@ exec_entry:   .res 2            ; the load address, then the program's start
 exec_result:  .res 1            ; exec_unwind: A to return
 exit_how:     .res 1            ; how the last program ended: 0 exit, 1 break, 3 keep
 exec_file:    .res 1            ; the program file's context in the FAT32 library
+fill_slot:    .res 1            ; slots_fill: the descriptor's offset from HEAP_SYSTEM
+fill_mode:    .res 1            ; word_walk: bit 7 set to store the word, bit 6 inside quotes
 
 .segment "CODE"
 
@@ -76,6 +80,7 @@ api_exec:
         jsr tail_copy           ; r0 and r1 are the caller's up to here
         jsr handles_inherit
         jsr heap_exec
+        jsr slots_fill
         lda #<exec_entry
         sta r0
         lda #>exec_entry
@@ -335,6 +340,95 @@ tail_copy:
         dey
         bne @char
 @done:
+        rts
+
+; slots_fill: sets P1$ to P9$ to the first 9 words of COMMAND_TAIL. A space ends a word. A "
+; turns quoting on or off and is not part of the word, so "MY FILE.TXT" is one word. A word of
+; no characters, "", leaves its slot empty. The slots after the last word are empty. A word with
+; no room in VARBANK leaves its slot and the ones after it empty. VARBANK must be selected.
+; Changes A, X, Y, r0, r1 and the STRZP overlay.
+slots_fill:
+        ldx #ARGUMENT_SLOTS * 2 - 1
+@clear:                         ; a block whose owner no longer points at it is free
+        stz HEAP_SYSTEM,x
+        dex
+        bpl @clear
+        stz fill_slot
+        ldy #0
+@space:
+        lda COMMAND_TAIL+1,y
+        iny
+        cmp #' '
+        beq @space
+        dey
+        cmp #$0D
+        beq @done
+        lda fill_slot
+        cmp #ARGUMENT_SLOTS * 2
+        bcs @done
+        phy
+        stz fill_mode           ; count
+        jsr word_walk
+        txa
+        beq @empty
+        clc
+        lda fill_slot
+        adc #<HEAP_SYSTEM
+        sta r0
+        lda #>HEAP_SYSTEM
+        sta r0+1
+        txa
+        jsr api_str_alloc       ; r1: the length byte
+        ply
+        bcs @done
+        lda #$80                ; store
+        sta fill_mode
+        jsr word_walk
+        bra @next
+@empty:
+        pla
+@next:
+        inc fill_slot
+        inc fill_slot
+        bra @space
+@done:
+        rts
+        .assert <HEAP_SYSTEM + ARGUMENT_SLOTS * 2 < 256, error, "slots_fill adds to <HEAP_SYSTEM alone"
+
+; word_walk: walks the word at COMMAND_TAIL+1,y to a space outside quotes, which it passes, or to
+; the CR. Returns X = its length without the quotes. With bit 7 of fill_mode set it stores the word
+; at r1 + 1 on. Changes A.
+word_walk:
+        ldx #0
+@char:
+        lda COMMAND_TAIL+1,y
+        cmp #$0D
+        beq @end
+        iny
+        cmp #'"'
+        bne @text
+        lda fill_mode
+        eor #$40
+        sta fill_mode
+        bra @char
+@text:
+        cmp #' '
+        bne @keep
+        bit fill_mode
+        bvc @end                ; a space outside quotes
+@keep:
+        inx
+        bit fill_mode
+        bpl @char
+        phy
+        pha
+        txa
+        tay
+        pla
+        sta (r1),y
+        ply
+        bra @char
+@end:
         rts
 
 ; find_start: sets exec_entry to n when the program starts with the BASIC line SYS n, else to

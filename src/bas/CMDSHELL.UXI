@@ -1139,7 +1139,8 @@ END SUB
 
 ' Runs the program or script named in STRING_RESULT with the arguments at CURSOR, each read as
 ' a file argument. P1$ to P9$ are set empty, then take the arguments, one each. The command
-' tail is the arguments, each after a space.
+' tail is the arguments, each after a space, and an argument that holds a space or is empty in
+' quotes, so that exec splits the tail into the same P1$ to P9$.
 SUB RUN_PROGRAM()
   DIM INDEX AS UBYTE, CODE AS UBYTE
   PROGRAM_NAME = STRING_RESULT
@@ -1168,6 +1169,7 @@ SUB RUN_PROGRAM()
       IF FAILED THEN RETURN
       INDEX = INDEX + 1
     ENDIF
+    IF STRING_RESULT = "" OR INSTR(STRING_RESULT, " ") THEN STRING_RESULT = CHR$(34) + STRING_RESULT + CHR$(34)
     TAIL_TEXT = TAIL_TEXT + " " + STRING_RESULT
   LOOP
   IF LEN(PROGRAM_PATH) > 4 AND MID$(PROGRAM_PATH, LEN(PROGRAM_PATH) - 3) = ".CMD"

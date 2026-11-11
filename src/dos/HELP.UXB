@@ -12,8 +12,8 @@
 ' -- that does not hold the topic's :NAME line.
 ' -- -R, or -r, writes HELP.IDX anew from HELP.HLP and prints the count of topics.
 ' -- With P1$ -H or -?, in either case, the topic is the first word of the command tail, or
-' -- HELP when that word starts with -. ARGS.HELP_SWITCH of ARGS.UXI runs HELP so: TREE -? passes
-' -- the tail TREE, and P1$ is still -?.
+' -- HELP when that word starts with -. ARGS.HELP_SWITCH runs HELP with the topic as its tail,
+' -- which exec makes P1$: TREE -? runs HELP TREE.
 ' -- No help for topic prints No help for TOPIC and gives exit code 1. No HELP.HLP prints File
 ' -- not found and gives exit code 2, and a HELP.IDX that cannot be written prints its error
 ' -- message and gives exit code 2. Exit code 0 otherwise.

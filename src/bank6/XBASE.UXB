@@ -942,9 +942,7 @@ DO WHILE RUNNING
         DOS.EXEC("C:\sys\ROMSHELL.COM", " -" + REST)
         IF DOS.ERROR THEN FILE_ERROR()
       CASE COMMAND.HELP_WORD
-        ' HELP [topic] runs HELPXBASE.COM in the program's folder. Trap: HELPXBASE reads the topic from
-        ' P1$, not the tail.
-        HEAP.SYS_STRINGS_SET(0, REST)
+        ' HELP [topic] runs HELPXBASE.COM in the program's folder.
         DOS.EXEC(DOS.PROGRAM_FOLDER() + "HELPXBASE.COM", " " + REST)
         IF DOS.ERROR THEN FILE_ERROR()
       CASE COMMAND.SAVE_WORD
@@ -967,9 +965,8 @@ DO WHILE RUNNING
         ELSE
           ' name [tail] runs name.COM, else name.CMD through the shell, else name.PRG with the tail in
           ' ARGS, in CMDLET_FOLDER$.
-          ' Trap: the program reads P1$ or the tail. DOS.EXISTS sets DOS.ERROR when it finds nothing.
+          ' exec splits the tail into P1$ to P9$. DOS.EXISTS sets DOS.ERROR when it finds nothing.
           NEXT_WORD()
-          HEAP.SYS_STRINGS_SET(0, REST)
           DOS.EXEC(CMDLET_FOLDER$ + TOKEN + ".COM", " " + REST)
           IF DOS.ERROR = DOS.ERR_NOT_FOUND
             IF DOS.EXISTS(CMDLET_FOLDER$ + TOKEN + ".CMD")

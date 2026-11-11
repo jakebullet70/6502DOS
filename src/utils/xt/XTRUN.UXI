@@ -6,7 +6,7 @@
 ' path whole.
 
 ' P1$ to P9$ are system strings 0 to 8.
-CONST ARGUMENT_SLOTS AS UBYTE = 9, QUOTE_CODE AS UBYTE = 34
+CONST QUOTE_CODE AS UBYTE = 34
 ' The field of Alt-X's prompt.
 CONST RUN_WIDTH AS UBYTE = 72
 
@@ -15,56 +15,12 @@ CONST RUN_WIDTH AS UBYTE = 72
 DIM START_FOLDER AS STRING * 255, START_DRIVE AS UBYTE
 ' What the last child gave: EXEC's error, and its exit code when it ran.
 DIM CHILD_ERROR AS UBYTE, CHILD_EXIT AS UBYTE
-DIM RUN_TEXT AS STRING * 72, RUN_WORD AS STRING * 72, RUN_TAIL AS STRING * 73
+DIM RUN_TEXT AS STRING * 72
 
 #REGION_SLOT 9
 
-' Empties P1$ to P9$.
-SUB CLEAR_ARGUMENTS()
-  DIM SLOT AS UBYTE
-  SLOT = 0
-  DO WHILE SLOT < ARGUMENT_SLOTS
-    HEAP.SYS_STRINGS_SET(SLOT, "")
-    SLOT = SLOT + 1
-  LOOP
-END SUB
-
-' Splits RUN_TEXT as the shell splits a command's words: spaces end a word, and a word that starts with
-' a quote runs to the next quote or the end. Puts the first 9 words in P1$ to P9$, and every word, each
-' after a space, in RUN_TAIL.
-SUB SET_ARGUMENTS()
-  DIM PLACE AS UBYTE, FIRST AS UBYTE, LENGTH AS UBYTE, SLOT AS UBYTE, ENDING AS UBYTE
-  CLEAR_ARGUMENTS()
-  RUN_TAIL = ""
-  LENGTH = LEN(RUN_TEXT)
-  SLOT = 0
-  PLACE = 1
-  DO
-    DO WHILE PLACE <= LENGTH AND ContentsAt(@RUN_TEXT + 1 + PLACE) = ASC(" ")
-      PLACE = PLACE + 1
-    LOOP
-    IF PLACE > LENGTH THEN EXIT DO
-    ENDING = ASC(" ")
-    IF ContentsAt(@RUN_TEXT + 1 + PLACE) = QUOTE_CODE THEN
-      ENDING = QUOTE_CODE
-      PLACE = PLACE + 1
-    END IF
-    FIRST = PLACE
-    DO WHILE PLACE <= LENGTH AND ContentsAt(@RUN_TEXT + 1 + PLACE) <> ENDING
-      PLACE = PLACE + 1
-    LOOP
-    RUN_WORD = MID$(RUN_TEXT, FIRST, PLACE - FIRST)
-    PLACE = PLACE + 1
-    IF SLOT < ARGUMENT_SLOTS THEN
-      HEAP.SYS_STRINGS_SET(SLOT, RUN_WORD)
-      SLOT = SLOT + 1
-    END IF
-    RUN_TAIL = RUN_TAIL + " " + RUN_WORD
-  LOOP
-END SUB
-
 ' Clears the screen, runs the program at PATH$ with the tail TAIL$, and brings back the folder and the
-' drive. Sets CHILD_ERROR and CHILD_EXIT. A fifth level of programs gives error 8.
+' drive. exec splits TAIL$ into P1$ to P9$. Sets CHILD_ERROR and CHILD_EXIT. A fifth level of programs gives error 8.
 SUB RUN_CHILD(PATH$ AS CONST, TAIL$ AS CONST)
   DOS.SET_COLOR(START_COLOR)
   PRINT CONS.CLEAR_SCREEN$;
@@ -98,17 +54,14 @@ END SUB
 
 ' Acts on F1: runs VIEW on XT.HLP, in XT's own folder.
 SUB RUN_HELP()
-  CLEAR_ARGUMENTS()
-  HEAP.SYS_STRINGS_SET(0, DOS.PROGRAM_FOLDER() + "XT.HLP")
-  RUN_CHILD(DOS.PROGRAM_FOLDER() + "VIEW.COM", " " + DOS.PROGRAM_FOLDER() + "XT.HLP")
+  RUN_CHILD(DOS.PROGRAM_FOLDER() + "VIEW.COM", " " + CHR$(QUOTE_CODE) + DOS.PROGRAM_FOLDER() + "XT.HLP" + CHR$(QUOTE_CODE))
   SHOW_CHILD_END("HELP:")
 END SUB
 
-' Runs PROGRAM$, from XT's own folder, on the file that FOLDER_PATH and ROW_NAME name.
+' Runs PROGRAM$, from XT's own folder, on the file that FOLDER_PATH and ROW_NAME name. The path goes in
+' quotes, as a long name may hold a space.
 SUB RUN_ON_NAME(PROGRAM$ AS CONST)
-  CLEAR_ARGUMENTS()
-  HEAP.SYS_STRINGS_SET(0, FOLDER_PATH + ROW_NAME)
-  RUN_CHILD(DOS.PROGRAM_FOLDER() + PROGRAM$, " " + FOLDER_PATH + ROW_NAME)
+  RUN_CHILD(DOS.PROGRAM_FOLDER() + PROGRAM$, " " + CHR$(QUOTE_CODE) + FOLDER_PATH + ROW_NAME + CHR$(QUOTE_CODE))
 END SUB
 
 ' Acts on V and E: runs PROGRAM$ on the highlighted file, and shows why under LABEL$ when it fails. The
@@ -162,9 +115,8 @@ SUB RUN_PROGRAM_KEY()
   END IF
   RUN_TEXT = ""
   IF ASK_TEXT("RUN:", "Parameters for " + ROW_NAME, RUN_TEXT, RUN_WIDTH, "RUN") = 0 THEN RETURN
-  SET_ARGUMENTS()
   GO_TO_SELECTED()
-  RUN_CHILD(FOLDER_PATH + ROW_NAME, RUN_TAIL)
+  RUN_CHILD(FOLDER_PATH + ROW_NAME, " " + RUN_TEXT)
   IF CHILD_ERROR = 0 THEN WAIT_UNDER_CHILD()
   SHOW_CHILD_END("RUN:")
 END SUB
