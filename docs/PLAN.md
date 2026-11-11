@@ -273,8 +273,8 @@ only; numbers stay at fixed addresses in the program.
 - `PSP_HEAP`, byte `$01` of the PSP, holds the bank of the running program's heap. Boot and
   `exec` set it to VARBANK.
 - VARBANK's system descriptors 0 to 8 are the slots `P1$` to `P9$`, 9 is `PATH$`, 10 is
-  `PROMPT$`, 11 is `EDITOR$`, 12 holds the shell's `BIND` aliases, 13 is `TEMP$`, and 14 to 21
-  hold the shell's command history (section 8). Their addresses are constants in
+  `PROMPT$`, 11 is `EDITOR$`, 12 holds the shell's `BIND` aliases, 13 is `TEMP$`, and 14 to 31
+  are unused. Their addresses are constants in
   `lib/HEAP.UXI`: descriptor n is at `$A00C + 2n`.
 - `HEAP.UXI`'s `SYS_STRINGS_GET(slot)` reads system descriptor `slot`, 0 to 31, and
   `SYS_STRINGS_SET(slot, text)` sets it. Each sets `PSP_HEAP` to VARBANK for the call and
@@ -324,7 +324,7 @@ Calls, with the MS-DOS 2.0 function each matches:
 | `mkdir`, `rmdir`, `chdir`, `getcwd` | 39h, 3Ah, 3Bh, 47h | directories |
 | `getdrive`, `setdrive`, `diskfree` | 19h, 0Eh, 36h | the current drive and its free space |
 | `con_line` | 0Ah | reads a line from the console with editing; Tab does nothing |
-| `con_edit` | none; 0Ah with a template | edits the line kept in the buffer, and ends on Enter, Tab or an extended key |
+| `con_edit` | none; 0Ah with a template | edits the line kept in the buffer, recalls the lines kept at r1 with Up and Down, and ends on Enter, Tab or an extended key |
 | `con_status` | 0Bh | whether a key is waiting |
 | `con_screen` | none | reads a line with the full-screen editor |
 | `con_out`, `con_in` | 02h, 08h | write a character; wait for a key, with no echo |
@@ -1292,10 +1292,13 @@ Tab completion:
 
 Command history:
 
-- The shell keeps the last 8 lines typed at the prompt, in VARBANK system descriptors 14 to
-  21 (section 3). Up brings back the line before, and Down the line after. Down past the
-  newest gives an empty line.
-- An empty line, or a repeat of the newest, is not kept.
+- The shell keeps the last 8 lines typed at the prompt in its own RAM, as records of 128
+  bytes, and passes them to `con_edit` through `DOS.CON_PROMPT`. Up brings back the line
+  before, and Down the line after. Down past the newest gives an empty line.
+- An empty line, a line over 127 characters, or a repeat of the newest, is not kept.
+- `exec` saves the history with the shell. It ends when the shell ends.
+- XBASE keeps its last 10 lines the same way, at `$BB00` of its variables' bank, reads them
+  from `C:\sys\xbase\cmds.bin` at start and saves them there at `QUIT`.
 
 ## 9. Reuse
 
@@ -1622,6 +1625,6 @@ change.
 - The 65C816: not in the first version.
 - What `xms_move` does when the source and the destination overlap.
 - How a program reads the bank list of a block, for a UXCBASIC array that spans banks.
-- String heaps (section 3): which of VARBANK's system descriptors 22 to 31 go to which use;
+- String heaps (section 3): which of VARBANK's system descriptors 14 to 31 go to which use;
   whether `str_free` of the last block lowers the bump pointer, so a temporary string costs no
   GC; how UXCBASIC's strings use a heap.

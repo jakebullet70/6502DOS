@@ -360,8 +360,19 @@ CALLS = [
           "the text in the buffer: byte 1 holds its length, 0 for none, and the text follows "
           "it. The call shows the text first. Enter, Tab or an extended key ends the line. Tab "
           "and the extended key are not echoed, and leave the cursor after the text. The "
-          "registers come back as `con_getkey` gives them."),
-         in_=[("r0", "buffer")],
+          "registers come back as `con_getkey` gives them. With X nonzero, r1 holds the lines "
+          "kept: X records of 128 bytes, oldest first, each a length byte, 0 for no line, then "
+          "the text. Up shows the line before the one shown and Down the line after it, or an "
+          "empty line after the newest; neither ends the line. Enter keeps the line as the "
+          "newest, in place of the oldest, unless it is empty, over 127 characters or the same "
+          "as the newest. With carry set, the line the last call returned is still on screen, "
+          "the cursor after it: the call clears it and shows the buffer in its place, and Up "
+          "goes on from the line shown then. With carry clear the call shows the buffer at the "
+          "cursor."),
+         in_=[("r0", "buffer"),
+              ("r1", "the lines kept, when X is nonzero"),
+              ("X", "the records at r1, 0 for none"),
+              ("carry", "clear: show the buffer at the cursor, set: in place of the last line")],
          out=[("A", "the key that ended the line: $0D Enter, $09 Tab, 0 an extended key"),
               ("X", "scan code, 0 for Enter and Tab"),
               ("Y", "modifiers: $01 Shift, $04 Caps Lock on, $40 Alt, $80 Ctrl")],
