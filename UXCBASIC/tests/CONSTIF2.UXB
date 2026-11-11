@@ -1,0 +1,7 @@
+' A GOTO into a branch that a constant condition cuts stops the compile.
+CONST NO AS UBYTE = 0
+IF NO THEN
+INSIDE:
+  PRINT "X"
+END IF
+GOTO INSIDE

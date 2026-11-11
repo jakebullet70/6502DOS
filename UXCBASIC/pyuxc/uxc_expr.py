@@ -815,6 +815,13 @@ def ex_binary():
         if g.ex_o == K_EO_ADD or g.ex_o == K_EO_SUB:
             uxc_fold.ex_fold_address()
             return
+    # x + 0, x - 0, x OR 0 and x XOR 0 are x, when the 0 is no wider than x and is signed
+    # only when x is.
+    if g.ex_kr == K_EK_CONST and g.ex_vv[g.ex_ir] == 0 and g.ex_kl <= K_EK_STK:
+        if g.ex_o == K_EO_ADD or g.ex_o == K_EO_SUB or g.ex_o == K_EO_OR or g.ex_o == K_EO_XOR:
+            if g.ex_yr <= g.ex_yl and g.ex_yr != K_TY_LONG and g.ex_vg[g.ex_ir] <= g.ex_vg[g.ex_il]:
+                g.ex_vn = g.ex_vn - 1
+                return
     # The width: g.ex_w for the result, g.ex_cw for the code. g.ex_g = 1 for a signed
     # operator.
     g.ex_w = 0

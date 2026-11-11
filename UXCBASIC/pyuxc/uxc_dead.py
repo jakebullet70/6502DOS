@@ -1,10 +1,14 @@
-"""UXC-DEAD.BL: leave out the SUBs and FUNCTIONs that nothing calls, and the global variables
-that nothing names.
+"""UXC-DEAD.BL: leave out the SUBs and FUNCTIONs that nothing calls, the branches of an IF that
+never run, and the global variables that nothing names.
 
     dd_strip()   at the start of the link step: cut the code of every SUB that the main
-                 program does not reach through a chain of calls, and count the runtime
-                 records again. Out: g.dd_subs, the SUBs left out, and g.dd_bytes, the bytes
-                 of code and runtime records saved. g.dd_keep_subs set keeps every SUB.
+                 program does not reach through a chain of calls, and of every branch logged
+                 by dd_branch_add, and count the runtime records again. Out: g.dd_subs, the
+                 SUBs left out, g.dd_bytes, the bytes of their code and of runtime records
+                 saved, g.dd_branches, the branches left out, and g.dd_branch_bytes, their
+                 bytes. g.dd_keep_subs set keeps every SUB, not the branches.
+    dd_branch_add() in g.dd_cut_from and g.dd_cut_to, a code range: log a branch that never
+                 runs, from uxc_flow
     dd_keep_line() a line that starts with #, with the token at the #: #KEEP or #ENDKEEP,
                    or #REGION_SLOT (uxc_ramreg). #ORG, #DATA and #ROMBANKS lines are
                    skipped; dd_place_scan read them
@@ -23,6 +27,11 @@ that nothing names.
     #KEEP ALL              keeps every SUB, as g.dd_keep_subs does
     #KEEP ... #ENDKEEP     keeps each SUB whose SUB line is between them
 A SUB kept has K_SY_LIVE set before the link step.
+
+A call in a branch left out does not keep its SUB. A branch inside another one left out, or
+inside a SUB left out, goes with it. A jump into a branch left out from code kept stops the
+compile with JUMP INTO A BRANCH LEFT OUT: the GOTO of a label placed in it, or an ASM
+reference into it.
 
     #ORG address    the code starts at the address. The file has no BASIC line and no load
                     address: g.lk_raw is 1.
@@ -67,16 +76,21 @@ from uxc_state import er_stop, er_syntax, g
 def dd_strip():
     g.dd_subs = 0
     g.dd_bytes = 0
-    if g.dd_keep_subs != 0:
-        return
-    dd_live()
+    g.dd_branches = 0
+    g.dd_branch_bytes = 0
+    dd_branch_sort()
+    if g.dd_keep_subs == 0:
+        dd_live()
     dd_ranges()
     if g.dd_n == 0:
         return
     dd_owned()
     dd_runtime_bytes()
     g.dd_runtime_before = g.dd_runtime
+    dd_into()
     dd_fixups()
+    if g.dd_branches != 0:
+        uxc_ramreg.rg_moved()
     dd_records()
     uxc_branch.br_offsets()
     uxc_branch.br_moved()
@@ -96,7 +110,10 @@ def dd_live():
         for g.fx_i in range(g.fx_n):
             fx_read()
             if g.fx_s == K_SEC_LABEL:
-                dd_follow()
+                g.dd_at = g.fx_at
+                dd_branch_inside()
+                if g.dd_inside == 0:
+                    dd_follow()
 
 
 def dd_follow():
@@ -122,33 +139,125 @@ def dd_follow():
 
 
 def dd_ranges():
-    """DD.RANGES. The code range of each SUB not live, in g.dd_from and g.dd_to, in code
-    order, and g.dd_sum(k), the bytes cut up to the end of range k. Each such SUB becomes
-    K_SK_DEAD."""
+    """DD.RANGES. The code range of each SUB not live and of each branch logged, in g.dd_from
+    and g.dd_to, in code order, and g.dd_sum(k), the bytes cut up to the end of range k. A
+    range inside another is dropped. Each such SUB becomes K_SK_DEAD."""
+    ranges = []
+    if g.dd_keep_subs == 0:
+        for g.dd_record in range(1, g.sy_n + 1):
+            g.sy_r = g.dd_record
+            uxc_sym.sy_get()
+            if g.sy_kind == K_SK_SUB and (g.sy_flags & K_SY_LIVE) == 0:
+                g.ram[g.sy_ad + 2] = K_SK_DEAD
+                uxc_sym.sy_end_get()
+                ranges.append((g.sy_val - 3, g.sy_end, 1))
+                g.dd_subs = g.dd_subs + 1
+    for k in range(g.dd_branch_n):
+        ranges.append((g.dd_branch_from[k], g.dd_branch_to[k], 0))
+    if len(ranges) > K_DD_MAX:
+        er_stop("TOO MANY SUBS TO LEAVE OUT")
+    ranges.sort()
     g.dd_n = 0
     g.dd_last = 0
-    for g.dd_record in range(1, g.sy_n + 1):
-        g.sy_r = g.dd_record
-        uxc_sym.sy_get()
-        if g.sy_kind == K_SK_SUB and (g.sy_flags & K_SY_LIVE) == 0:
-            dd_range()
+    cut = 0
+    for start, end, is_sub in ranges:
+        if start < g.dd_last:
+            continue
+        g.dd_from[g.dd_n] = start
+        g.dd_to[g.dd_n] = end
+        cut = cut + end - start
+        g.dd_sum[g.dd_n] = cut
+        g.dd_n = g.dd_n + 1
+        g.dd_last = end
+        if is_sub == 1:
+            g.dd_bytes = g.dd_bytes + end - start
+        else:
+            g.dd_branches = g.dd_branches + 1
+            g.dd_branch_bytes = g.dd_branch_bytes + end - start
 
 
-def dd_range():
-    if g.dd_n >= K_DD_MAX:
-        er_stop("TOO MANY SUBS TO LEAVE OUT")
-    g.dd_from[g.dd_n] = g.sy_val - 3
-    g.ram[g.sy_ad + 2] = K_SK_DEAD
-    uxc_sym.sy_end_get()
-    g.dd_to[g.dd_n] = g.sy_end
-    # SB.SCAN adds the SUB records in source order, which is code order.
-    if g.dd_from[g.dd_n] < g.dd_last:
-        er_stop("SUBS OUT OF ORDER")
-    g.dd_last = g.dd_to[g.dd_n]
-    g.dd_bytes = g.dd_bytes + g.dd_to[g.dd_n] - g.dd_from[g.dd_n]
-    g.dd_sum[g.dd_n] = g.dd_bytes
-    g.dd_n = g.dd_n + 1
-    g.dd_subs = g.dd_subs + 1
+def dd_branch_add():
+    if g.dd_cut_to <= g.dd_cut_from:
+        return
+    if g.dd_branch_n >= K_DD_MAX:
+        er_stop("TOO MANY BRANCHES TO LEAVE OUT")
+    g.dd_branch_from[g.dd_branch_n] = g.dd_cut_from
+    g.dd_branch_to[g.dd_branch_n] = g.dd_cut_to
+    g.dd_branch_n = g.dd_branch_n + 1
+
+
+def dd_branch_sort():
+    """DD.BRANCH.SORT. The branches logged in code order, without those inside another. An
+    inner branch is logged before the one around it. With the short branch log full
+    (g.br_full), a short branch across a cut cannot get its new offset, so no branch is cut."""
+    if g.br_full != 0:
+        g.dd_branch_n = 0
+    ranges = sorted((g.dd_branch_from[k], g.dd_branch_to[k]) for k in range(g.dd_branch_n))
+    g.dd_branch_n = 0
+    g.dd_last = 0
+    for start, end in ranges:
+        if start < g.dd_last:
+            continue
+        g.dd_branch_from[g.dd_branch_n] = start
+        g.dd_branch_to[g.dd_branch_n] = end
+        g.dd_branch_n = g.dd_branch_n + 1
+        g.dd_last = end
+
+
+def dd_branch_inside():
+    """DD.BRANCH.INSIDE. In g.dd_at, a code offset; out g.dd_inside, 1 when it is in a branch
+    logged, after dd_branch_sort, and g.dd_low, the branches that end at or before it."""
+    g.dd_low = 0
+    g.dd_high = g.dd_branch_n
+    while g.dd_low < g.dd_high:
+        g.dd_mid = (g.dd_low + g.dd_high) // 2
+        if g.dd_branch_to[g.dd_mid] <= g.dd_at:
+            g.dd_low = g.dd_mid + 1
+        else:
+            g.dd_high = g.dd_mid
+    g.dd_inside = 0
+    if g.dd_low < g.dd_branch_n and g.dd_branch_from[g.dd_low] <= g.dd_at:
+        g.dd_inside = 1
+
+
+def dd_into():
+    """DD.INTO. Before dd_fixups: no fixup or logged short branch outside the cut may name a
+    place past the start of a branch left out, nor a label placed there."""
+    if g.dd_branches == 0:
+        return
+    for g.dd_i in range(g.br_byte_n):
+        g.dd_at = g.br_byte[g.dd_i]
+        dd_shift()
+        if g.dd_inside != 0:
+            continue
+        g.cb_at = g.br_byte[g.dd_i]
+        cb_get()
+        g.dd_at = g.cb_at + 1 + g.cb_b
+        if g.cb_b > 127:
+            g.dd_at = g.dd_at - 256
+        dd_branch_inside()
+        if g.dd_inside != 0 and g.dd_branch_from[g.dd_low] != g.dd_at:
+            er_stop("JUMP INTO A BRANCH LEFT OUT")
+    for g.dd_i in range(g.fx_n):
+        g.fx_i = g.dd_i
+        fx_read()
+        g.dd_at = g.fx_at
+        dd_shift()
+        if g.dd_inside != 0:
+            continue
+        g.dd_at = -1
+        if g.fx_s == K_SEC_CODE:
+            g.dd_at = g.fx_v
+        if g.fx_s == K_SEC_LABEL:
+            g.sy_r = g.fx_v
+            uxc_sym.sy_get()
+            if g.sy_kind == K_SK_LABEL and (g.sy_flags & 1) != 0:
+                g.dd_at = g.sy_val
+        if g.dd_at < 0:
+            continue
+        dd_branch_inside()
+        if g.dd_inside != 0 and g.dd_branch_from[g.dd_low] != g.dd_at:
+            er_stop("JUMP INTO A BRANCH LEFT OUT")
 
 
 def dd_owned():

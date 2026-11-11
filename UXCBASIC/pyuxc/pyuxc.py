@@ -8,7 +8,8 @@ the source's folder). #INCLUDE looks in the source's folder, then in each -I fol
 The program calls the 6502DOS API, with the template table tpl/UXDOS/UXC.TPL.BIN.
 The compiler's screen output is printed, then the result line:
 
-    OK,<prg>,<bytes>[,REMOVED <n> SUBS <m> BYTES][,REMOVED <n> VARS <m> BYTES]
+    OK,<prg>,<bytes>[,REMOVED <n> SUBS <m> BYTES][,REMOVED <n> BRANCHES <m> BYTES]
+                    [,REMOVED <n> VARS <m> BYTES]
                     [,REMOVED <n> STRINGS <m> BYTES]
     ERROR,<line>,<message>
 

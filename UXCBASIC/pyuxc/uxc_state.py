@@ -56,7 +56,7 @@ def dim():
         setattr(g, name, [0] * (K_EX_MAX + 1))
     for name in ("ns_k", "ns_no", "ns_p", "ns_sn", "ns_top", "ns_ex", "ns_ct", "ns_fl", "ns_el",
                  "ns_va", "ns_vt", "ns_lc", "ns_lv", "ns_st", "ns_vs", "ns_nb", "ns_ha", "hv_ad", "ns_sk",
-                 "ns_sg",
+                 "ns_sg", "ns_cut", "ns_tk",
                  "sb_saved_hidden"):
         setattr(g, name, [0] * (K_NS_MAX + 1))
     g.ns_l = [""] * (K_NS_MAX + 1)
@@ -78,6 +78,8 @@ def dim():
     g.dd_from = [0] * K_DD_MAX
     g.dd_to = [0] * K_DD_MAX
     g.dd_sum = [0] * K_DD_MAX
+    g.dd_branch_from = [0] * K_DD_MAX
+    g.dd_branch_to = [0] * K_DD_MAX
     g.br_at = [0] * K_BR_MAX
     g.br_to = [0] * K_BR_MAX
     g.br_go = [0] * K_BR_MAX
@@ -100,7 +102,7 @@ def dim():
                  "nm_type_enum", "sb_enum", "sb_default_count", "sb_filling", "sb_read_only",
                  "sg_read_only", "nm_type_sig", "sb_sig", "sb_pointer_at", "sg_direct_on",
                  "br_n", "br_byte_n", "br_full", "em_id", "em_end", "em_start", "em_s", "em_v",
-                 "em_fx"):
+                 "em_fx", "dd_branch_n", "cn_lone"):
         setattr(g, name, 0)
     g.sg_last_text = ""
     g.dd_region_text = ""

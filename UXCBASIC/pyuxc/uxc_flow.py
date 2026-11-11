@@ -6,6 +6,11 @@ keeps its line for errors, its exit list g.ns_ex[] (EXIT, and the end of each IF
 continue list g.ns_ct[], the false list of an IF in g.ns_fl[], and the top of a loop in
 g.ns_top[].
 
+A branch of an IF that a constant condition never runs is cut in the link step: g.ns_cut[] is
+where the open cut of an IF starts, or -1, and g.ns_tk[] is 1 once a branch of the IF always
+runs, so every later branch is cut. uxc_dead.dd_branch_add logs each cut. IF 0 THEN ... ENDIF
+leaves no code, and IF 1 THEN A ELSE B leaves only A.
+
     ns_push()     in g.ns_kn: a new entry of that kind, for the line being compiled
     ns_topk()     in g.ns_kn, g.ct_w: the innermost entry must be of kind g.ns_kn, out g.ct_i
     ns_find()     in g.ns_kn: out g.ns_i, the innermost entry of that kind, or of any loop
@@ -24,6 +29,7 @@ from uxc_defs import K_EK_CONST, K_JP_CODE, K_JP_LABEL, K_JP_LIST, K_NS_CASE, K_
     K_TT_EOL, K_TT_NAME, K_TY_BYTE, K_TY_WORD
 import uxc_branch
 import uxc_cond
+import uxc_dead
 import uxc_expr
 import uxc_fold
 import uxc_lex
@@ -49,6 +55,8 @@ def ns_push():
     g.ns_fl[g.ns_d] = 0
     g.ns_p[g.ns_d] = 0
     g.ns_el[g.ns_d] = 0
+    g.ns_cut[g.ns_d] = -1
+    g.ns_tk[g.ns_d] = 0
 
 
 def ns_topk():
@@ -118,10 +126,13 @@ def ct_if():
     if g.tk_t == K_TT_EOL:
         g.jp_k = K_JP_LIST
         g.jp_h = 0
+        g.ct_at = g.cb_n
         uxc_cond.cn_jf()
         g.ns_kn = K_NS_IFB
         ns_push()
         g.ns_fl[g.ns_d] = g.jp_h
+        g.ct_i = g.ns_d
+        ct_known()
         return
     if g.tk_t != K_TT_NAME:
         er_syntax()
@@ -144,10 +155,13 @@ def ct_if():
         return
     g.jp_k = K_JP_LIST
     g.jp_h = 0
+    g.ct_at = g.cb_n
     uxc_cond.cn_jf()
     g.ns_kn = K_NS_IFL
     ns_push()
     g.ns_fl[g.ns_d] = g.jp_h
+    g.ct_i = g.ns_d
+    ct_known()
     uxc_stmt.sm_stmt()
     if g.ns_k[g.ns_d] != K_NS_IFL:
         er_stop("BLOCK STATEMENT AFTER THEN")
@@ -155,7 +169,31 @@ def ct_if():
         er_stop("NO ELSE IN A ONE-LINE IF")
     g.jp_l = g.ns_fl[g.ns_d]
     uxc_cond.jp_here()
+    g.ct_i = g.ns_d
+    ct_cut_end()
     g.ns_d = g.ns_d - 1
+
+
+def ct_known():
+    """CT.KNOWN. In g.ct_i, an IF, and g.ct_at, where the jump of its condition starts, just
+    compiled by cn_jf: a constant false cuts the branch from g.ct_at, and a constant true cuts
+    every later branch."""
+    if g.cn_lone == 0:
+        return
+    if g.cn_ck == 0:
+        g.ns_cut[g.ct_i] = g.ct_at
+    if g.cn_ck == 1:
+        g.ns_tk[g.ct_i] = 1
+
+
+def ct_cut_end():
+    """CT.CUT.END. In g.ct_i, an IF: the open cut, if any, ends here."""
+    if g.ns_cut[g.ct_i] < 0:
+        return
+    g.dd_cut_from = g.ns_cut[g.ct_i]
+    g.dd_cut_to = g.cb_n
+    uxc_dead.dd_branch_add()
+    g.ns_cut[g.ct_i] = -1
 
 
 def ct_if_next():
@@ -165,6 +203,8 @@ def ct_if_next():
     ns_topk()
     if g.ns_el[g.ct_i] != 0:
         er_stop(g.sm_w + " AFTER ELSE")
+    if g.ns_tk[g.ct_i] == 1 and g.ns_cut[g.ct_i] < 0:
+        g.ns_cut[g.ct_i] = g.cb_n
     uxc_stmt.sm_unreached()
     if g.sm_skip == 0:
         g.jp_k = K_JP_LIST
@@ -175,6 +215,8 @@ def ct_if_next():
     g.jp_l = g.ns_fl[g.ct_i]
     uxc_cond.jp_here()
     g.ns_fl[g.ct_i] = 0
+    if g.ns_tk[g.ct_i] == 0:
+        ct_cut_end()
 
 
 def ct_elseif():
@@ -188,8 +230,11 @@ def ct_elseif():
         er_syntax()
     g.jp_k = K_JP_LIST
     g.jp_h = 0
+    g.ct_at = g.cb_n
     uxc_cond.cn_jf()
     g.ns_fl[g.ct_i] = g.jp_h
+    if g.ns_tk[g.ct_i] == 0:
+        ct_known()
 
 
 def ct_else():
@@ -208,6 +253,7 @@ def ct_endif():
     uxc_cond.jp_here()
     g.jp_l = g.ns_ex[g.ct_i]
     uxc_cond.jp_here()
+    ct_cut_end()
     g.ns_d = g.ns_d - 1
     uxc_lex.lx_next()
 

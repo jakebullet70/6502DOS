@@ -117,6 +117,9 @@ def finish():
     if g.dd_subs > 0:
         g.ui_line = g.ui_line + ",REMOVED " + str(g.dd_subs) + " SUBS " + str(g.dd_bytes) + \
             " BYTES"
+    if g.dd_branches > 0:
+        g.ui_line = g.ui_line + ",REMOVED " + str(g.dd_branches) + " BRANCHES " + \
+            str(g.dd_branch_bytes) + " BYTES"
     if g.dv_bytes > 0:
         g.ui_line = g.ui_line + ",REMOVED " + str(g.dv_vars) + " VARS " + str(g.dv_bytes) + \
             " BYTES"

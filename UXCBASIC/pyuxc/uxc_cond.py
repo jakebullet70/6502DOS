@@ -270,10 +270,14 @@ def cn_jt():
 def cn_jump():
     """CN.JUMP. Jump when the top entry is g.cn_sn (1 true, 0 false). The entry is dropped.
     g.cn_ck is 1 or 0 for a condition known now, else -1, and g.cn_bt is the branch taken
-    when the condition is true."""
+    when the condition is true. g.cn_lone is 1 when no jump of an AND or OR leaves the
+    condition, so a known condition decides every path through it."""
     g.ex_i = g.ex_vn - 1
     g.cn_lt = g.ex_jt[g.ex_i]
     g.cn_lf = g.ex_jf[g.ex_i]
+    g.cn_lone = 0
+    if g.cn_lt == 0 and g.cn_lf == 0:
+        g.cn_lone = 1
     g.cn_k = g.ex_vk[g.ex_i]
     g.cn_ck = -1
     if g.cn_k == K_EK_ADDR:

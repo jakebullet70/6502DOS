@@ -15,7 +15,8 @@
                   argument: what the code between names stays in low RAM
     rg_forward()  in sb_call_argument, before sg_pass: a STRING parameter passed on as an
                   address is noted
-    rg_moved()    in br_relax, after the cut's tables are set: each pin moves with its code
+    rg_moved()    in dd_strip and br_relax, after the cut's tables are set: each pin moves with
+                  its code
     rg_store()    sm_store to the constant address 0: stops the compile in a SUB of a region
     rg_asm()      in as_instruction, after as_choose: a write to $00 stops the compile in a SUB
                   of a region
@@ -154,8 +155,9 @@ def rg_forward(callee):
 
 
 def rg_moved():
-    """RG.MOVED. In br_relax, after the cut's tables are set and before dd_records moves the
-    SUB values: each pin's offsets are from its SUB's value after the cut."""
+    """RG.MOVED. In dd_strip when it cuts a branch, and in br_relax, after the cut's tables
+    are set and before dd_records moves the SUB values: each pin's offsets are from its SUB's
+    value after the cut. A pin in a cut goes."""
     pins = []
     for record, pin_from, pin_to, callee in g.rg_pins:
         g.sy_r = record
@@ -165,6 +167,8 @@ def rg_moved():
         base = g.dd_at
         g.dd_at = g.sy_val + pin_from
         uxc_dead.dd_shift()
+        if g.dd_inside != 0:
+            continue
         pin_from = g.dd_at - base
         g.dd_at = g.sy_val + pin_to
         uxc_dead.dd_shift()
