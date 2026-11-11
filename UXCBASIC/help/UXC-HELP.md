@@ -114,6 +114,8 @@ This prints 300000 -14285 -5, then 16960.
 - Constants fold at 32 bits when a side is a LONG, and wrap at 32 bits:
   4294967295 + 1 is 0, and 70000 * 70000 is 605032704. Two constants that are
   not LONG fold at 16 bits.
+- x + 0, x - 0, x OR 0 and x XOR 0 compile as x when the 0 is no wider than x,
+  is not a LONG, and is signed only when x is.
 - A LONG constant where the compiler needs 16 bits stops the compile with
   NUMBER TOO BIG: an array size, a DIM ... AT, PEEK or POKE address, an ENUM
   value, a REPEAT count, an ASM operand.
@@ -716,6 +718,18 @@ IF N > 100 GOTO DONE
 
 A part before ELSEIF or ELSE that ends in RETURN, GOTO, EXIT, CONTINUE or END
 has no jump to ENDIF.
+
+A part whose condition is a constant that is never true is left out of the
+PRG, and so are the parts after a condition that is always true. A SUB called
+only from a part left out is left out too.
+
+```
+CONST DEBUG AS UBYTE = 0
+IF DEBUG THEN PRINT "TRACE"    ' no code
+```
+
+- A GOTO or GOSUB into a part left out stops the compile with JUMP INTO A
+  BRANCH LEFT OUT, at line 0.
 
 ## SELECT CASE
 
@@ -2353,6 +2367,8 @@ lines start with UXCBASIC 0.1 and COMPILING NAME.UXB.
   space.
 - The string literals that no code names are left out. The result line then
   gets REMOVED n STRINGS m BYTES.
+- The IF parts that a constant condition never runs are left out. The result
+  line then gets REMOVED n BRANCHES m BYTES.
 - With #ROMBANKS it prints ROM BANK a n BYTES, ROM BANK b m BYTES, and with a
   third bank ROM BANK c k BYTES: the bytes each bank uses. The result line
   gets SECOND NAME.PR2 size after the size, then THIRD NAME.PR3 size with a

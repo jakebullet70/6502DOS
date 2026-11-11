@@ -826,7 +826,8 @@ Short names:
   counts. Each script starts with `ONERROR(0)`. At the prompt `ONERROR` does nothing.
 - `END` ends the script. `RUN name` ends the script, then runs `name`.
 - `C:\STARTUP.CMD` runs when the shell starts. `C:` is the boot drive. A shell run as a child
-  runs it too. It gets no arguments, and the slots keep their values.
+  runs it too. Its slots hold the words of the shell's command tail, as `exec` sets them: all
+  empty with no tail, and `-S` in `P1$` when it is stepped.
 - The shell's command tail takes one switch. `-N` skips `STARTUP.CMD`. `-S` steps through it,
   asking `[Y,N]?` before each line. `-C line` skips it, runs `line` and the script that line
   starts, then ends the shell. DB's `!`, `RUN` and `SHELL` use `-N` and `-C`.
@@ -879,8 +880,11 @@ Short names:
 - The slots are `P1$` to `P9$`, strings of up to 255 characters. There are no number slots.
 - They are VARBANK's system descriptors 0 to 8 (section 3), so they outlast the program's
   `exit`. A program reaches them with the string heap calls; the kernel has no slot call.
-- Before it runs a program the shell sets every slot to empty. It then puts the arguments in
-  `P1$`, `P2$` and on, one word each.
+- `exec` sets `P1$` to `P9$` to the first 9 words of the command tail, and the slots after the
+  last word to empty. A `"` turns quoting on and off, so `"MY FILE.TXT"` is one word.
+- The shell puts an argument that holds a space, or is empty, in quotes in the tail.
+- Before it runs a script the shell sets every slot to empty. It then puts the arguments in
+  `P1$`, `P2$` and on, one each.
 - A program may change any slot. The shell reads them back when the program ends.
 - The convention: `P1$` holds the main result.
 - The convention: a commandlet given the argument `SILENT` prints nothing and gives its result in
@@ -1008,8 +1012,8 @@ Short names:
     BEL, FF, `$0F` and Esc show as `.`. A line is 255 characters at most; the rest is cut.
   - It keeps an index entry for every 16th line, 1024 entries in 3072 bytes, so it seeks to any
     of the first 16384 lines. A line past them reads on from the last entry.
-  - No name prints `Required parameter missing` and gives exit code 1. A file that does not open
-    prints its error message and gives exit code 2. The exit code is 0 otherwise.
+  - No name prints `Required parameter missing` and gives exit code 4. A file that does not open
+    prints its error message and gives exit code 1. The exit code is 0 otherwise.
 - `TED name` is a DOS utility, `TED.COM`, for the command line. It edits a text file on the full
   screen: 29 rows of text and a status row. The keys are in the header of `src/dos/TED.UXB`
   and in `C:\sys\TED.HLP`, which F1 shows.
@@ -1019,7 +1023,9 @@ Short names:
   - The text takes the RAM from the program's end to `$96FF`, and the clipboard `$9700` to
     `$9EFF`, 2048 bytes.
   - A save writes `TED.$$$` in the file's directory, then gives it the file's name.
-  - No name gives exit code 1, a file too large or one that does not open exit code 2.
+  - No name prints `Required parameter missing`, and a second name prints `Too many
+    parameters`. Each gives exit code 4. A file too large, or one that does not open, gives
+    exit code 2.
 - `EDIT [name]` is a DOS utility, `EDIT.COM`, for the command line, after MS-DOS EDIT. It is
   TED with GUI Forms: a menu bar, a box of 26 rows of 78 columns, a status row, and dialogs for
   Find, Change, the file and the save question. The keys and menus are in the header of
@@ -1048,8 +1054,8 @@ Short names:
     entered. The `F` may be small.
   - A drive that is not a letter, or that the kernel does not know, prints `Invalid drive`. A
     path that is not a directory prints `Invalid path`. A switch other than `-F` prints
-    `Invalid switch`, and a second path prints `Too many parameters`. Each gives exit code 1.
-    A read error prints its error message and gives exit code 2. The exit code is 0 otherwise.
+    `Invalid switch`, and a second path prints `Too many parameters`. Each gives exit code 4.
+    A read error prints its error message and gives exit code 1. The exit code is 0 otherwise.
 - `MORE [file]` is a DOS utility, `MORE.COM`, for the command line. It shows `file`, or with no
   file the input on handle 0, a screen at a time.
   - After each screen of rows less 1 it prints `-- More --` on the last row and waits for a
@@ -1061,8 +1067,8 @@ Short names:
     column. Ctrl+Z ends the text.
   - With no file, `MORE` ends when handle 0 has nothing to read, so `MORE` alone at the prompt
     prints nothing.
-  - A second name prints `Too many parameters` and gives exit code 1. A file that does not open
-    prints its error message and gives exit code 2. The exit code is 0 otherwise.
+  - A second name prints `Too many parameters` and gives exit code 4. A file that does not open
+    prints its error message and gives exit code 1. The exit code is 0 otherwise.
 - `HEAD [-n count] [file]` is a DOS utility, `HEAD.COM`, for the command line. It writes the
   first `count` lines of `file`, or with no file of the input on handle 0.
   - `count` is 0 to 65535, 10 when left out. A file with fewer lines is written whole. The
@@ -1072,8 +1078,8 @@ Short names:
     prints nothing.
   - `-n` with no count prints `Required parameter missing`, a count that is not a number up to
     65535 prints `Invalid parameter`, another switch prints `Invalid switch`, and a second name
-    prints `Too many parameters`. Each gives exit code 1. A file that does not open prints its
-    error message and gives exit code 2. The exit code is 0 otherwise.
+    prints `Too many parameters`. Each gives exit code 4. A file that does not open prints its
+    error message and gives exit code 1. The exit code is 0 otherwise.
 - `TAIL [-n count] [file]` is a DOS utility, `TAIL.COM`, for the command line. It writes the
   last `count` lines of `file`, or with no file of the input on handle 0. It takes the count,
   the line ends and the errors as `HEAD` does.
@@ -1104,7 +1110,8 @@ Short names:
   - The exit code is 0 when a line is written or counted, and 1 when none is. No pattern
     prints `Required parameter missing`, a `[` with no `]` prints `Invalid parameter`,
     another switch prints `Invalid switch`, and a third name prints `Too many parameters`.
-    A file that does not open prints its error message. Each gives exit code 2.
+    Each gives exit code 4. A file that does not open prints its error message and gives exit
+    code 2.
 - `XCOPY source [target] [-s] [-e] [-p] [-l] [-y]` is a DOS utility, `XCOPY.COM`, for the
   command line. It copies the files of a directory, and with `-s` the directories below it.
   - A source that names a directory copies every file in it. Any other source is a directory

@@ -125,6 +125,12 @@ Building needs Windows, Python 3.13 and x16emu R49. ca65, ld65 and 64tass are in
 | `BUILDGUI.EXE` | A window to run builds and single tests, with a log pane and a Stop button |
 | `RUNCARD.BAT` | Starts x16emu in a window on `build/6502DOS.ROM`, with the card `build/SD.IMG` as `C:` |
 | `RUNHOST.BAT` | Starts x16emu in a window on `build/6502DOS.ROM`, with the folder `card` as `C:`. Files saved on the X16 are files in `card` |
+| `python tools/romspace.py` | Prints the free bytes of each ROM bank and RAM area, and the change since the last build. `build.py` runs it after the banks |
+
+The environment variable `EMU` is the path of `x16emu.exe`, for `build.py`, the tests,
+`RUNCARD.BAT` and `RUNHOST.BAT`. The default is
+`C:\8bitProgramming\x16emu\x16emu.exe`. `PYTHON` is the path of `python.exe`, for `BUILD.BAT`,
+`MKGUI.BAT`, `RUNUXCTESTS.BAT`, `BUILDGUI.EXE` and the MSBASIC `Makefile`.
 
 The folder `card` is the whole card, with the test programs in `\TEST`. Git tracks all of it but
 its empty folders and `card/sys/temp`. Files saved on `build/SD.IMG` stay in it, and the next
@@ -137,7 +143,7 @@ its empty folders and `card/sys/temp`. Files saved on `build/SD.IMG` stay in it,
 | `src/asm` | The ROM's asm: the boot, the console, the drivers, FAT32, the API, the monitor |
 | `src/bas`, `src/bank3` | The shell, and small programs the tests run |
 | `src/dos`, `src/scom`, `src/utils` | The utilities, the commandlets, the programs in `C:\sys` |
-| `lib` | The UXCBASIC library the programs include |
+| `lib` | The UXCBASIC library the programs include. `ARGS.UXI` reads a program's command line: the help switch, `P1$` to `P9$`, switches, the exit codes |
 | `card` | The whole card, `C:` |
 | `tests` | Test programs, their keys and their expected output |
 | `tools` | The build, the tests, the card writer `mksd.py`, the checker `fatcheck.py` |
