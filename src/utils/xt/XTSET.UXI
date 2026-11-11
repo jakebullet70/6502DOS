@@ -8,7 +8,7 @@
 
 ' Makes the theme that THEME_NAME names the current one, and sets the colors from it.
 SUB APPLY_THEME()
-  THEME_PATH = "C:\sys\themes\" + THEME_NAME + ".GTH"
+  THEME_PATH = DOS.THEME_PATH(THEME_NAME)
   GUI.THEME_FILE(THEME_PATH)
   TITLE_COLOR = COLOR_OF(GUI.ROLE.STATUS)
   MENU_COLOR = COLOR_OF(GUI.ROLE.MENU)
@@ -26,7 +26,7 @@ END SUB
 ' THEME_NAME has no file. No file leaves it as it is.
 SUB NEXT_THEME()
   DIM PASSED AS UBYTE
-  DOS.FINDFIRST("C:\sys\themes\*.GTH", 0)
+  DOS.FINDFIRST(DOS.THEME_PATH("*"), 0)
   IF DOS.ERROR <> 0 THEN RETURN
   FIRST_THEME = DOS.FOUND_NAME
   THEME_WANTED = UCASE$(THEME_NAME) + ".GTH"

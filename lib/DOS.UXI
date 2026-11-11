@@ -578,4 +578,28 @@ NAMESPACE DOS
     CLOSE_FILE(SOURCE_HANDLE)
     ERROR = CODE
   END SUB
+
+  ' ---- theme files ----
+
+  ' A theme file's size, and the places of the STATUS and CONSOLE colors in it.
+  ' Checklist: the size of COLORS$ and the places in ENUM ROLE in lib/GUI.UXI.
+  CONST THEME_SIZE AS UBYTE = 15, THEME_STATUS AS UBYTE = 12, THEME_CONSOLE AS UBYTE = 14
+
+  ' The path of the theme NAME$: "DARK" gives C:\sys\themes\DARK.GTH, and "*" the pattern of
+  ' every theme.
+  FUNCT THEME_PATH(NAME$ AS CONST) AS STRING
+    RETURN "C:\sys\themes\" + NAME$ + ".GTH"
+  END FUNCT
+
+  ' Reads up to THEME_SIZE bytes of the theme file PATH to memory at COLORS, one color a role
+  ' in the order of GUI's ENUM ROLE. Returns the count read, 0 with ERROR set when PATH does
+  ' not open.
+  FUNCT READ_THEME(PATH AS STRING, COLORS AS UWORD) AS UWORD
+    DIM HANDLE AS UWORD, COUNT AS UWORD
+    HANDLE = OPEN_FILE(PATH, ACCESS_READ)
+    IF ERROR <> 0 THEN RETURN 0
+    COUNT = READ_FILE(HANDLE, COLORS, THEME_SIZE)
+    CLOSE_FILE(HANDLE)
+    RETURN COUNT
+  END FUNCT
 END NAMESPACE
