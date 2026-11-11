@@ -6,8 +6,6 @@
 CONST HISTORY_FILE$ = "C:\sys\xbase\cmds.bin"
 CONST HISTORY_SIZE AS UBYTE = 10, HISTORY_CHARS AS UBYTE = 128
 CONST HISTORY_BYTES AS UWORD = 1280
-' The column the line starts in, the lines Up went back, 0 for the line typed.
-DIM PROMPT_COLUMN AS UBYTE, HISTORY_BACK AS UBYTE
 ' Tab at the prompt. Between Tabs REST is the word Tab completes and TEXT_BUFFER the line as the
 ' last Tab left it; no command runs then, so neither is in use. COMPLETE_START is the word's
 ' position in the line, 0 before the first Tab of a line. COMPLETE_COMMAND is 1 when the word is
@@ -37,39 +35,6 @@ SUB SAVE_HISTORY()
   IF DOS.ERROR THEN RETURN
   COUNT = DOS.WRITE_FILE(HANDLE, HISTORY_START, HISTORY_BYTES)
   DOS.CLOSE_FILE(HANDLE)
-END SUB
-
-' The address StringAt takes for the line BACK lines before the next one kept, from 1, the newest.
-' It is a byte before the record, as a string block starts a byte before its length.
-FUNCT HISTORY_LINE(BACK AS UBYTE) AS UWORD
-  DIM RECORD AS UWORD
-  RECORD = HISTORY_SIZE - BACK
-  RETURN HISTORY_START - 1 + (RECORD << 7)
-END FUNCT
-
-' Keeps COMMAND_LINE as the newest line, in place of the oldest. An empty line, a repeat of the
-' newest or a line over the 127 characters of a record is not kept.
-SUB KEEP_LINE()
-  IF LEN(COMMAND_LINE) > 127 THEN RETURN
-  IF COMMAND_LINE = "" OR COMMAND_LINE = StringAt(HISTORY_LINE(1)) THEN RETURN
-  COPY_BYTES(HISTORY_START, HISTORY_START + HISTORY_CHARS, HISTORY_BYTES - HISTORY_CHARS)
-  COPY_BYTES(HISTORY_LINE(1) + 1, @COMMAND_LINE + 1, HISTORY_CHARS)
-END SUB
-
-' Up: COMMAND_LINE becomes the line before the one shown. Down: the line after it, or an empty
-' line after the newest. Any other key leaves it.
-SUB RECALL_LINE(PRESSED AS UWORD)
-  IF PRESSED = KEYS.KEY_UP
-    IF HISTORY_BACK = HISTORY_SIZE THEN RETURN
-    IF StringAt(HISTORY_LINE(HISTORY_BACK + 1)) = "" THEN RETURN
-    HISTORY_BACK = HISTORY_BACK + 1
-    COMMAND_LINE = StringAt(HISTORY_LINE(HISTORY_BACK))
-  ELSEIF PRESSED = KEYS.KEY_DOWN
-    IF HISTORY_BACK = 0 THEN RETURN
-    HISTORY_BACK = HISTORY_BACK - 1
-    COMMAND_LINE = ""
-    IF HISTORY_BACK THEN COMMAND_LINE = StringAt(HISTORY_LINE(HISTORY_BACK))
-  ENDIF
 END SUB
 
 ' Counts the match in MATCH_NAME. Returns 1 when it is match MATCH_WANTED.
@@ -178,38 +143,16 @@ SUB COMPLETE_WORD()
   TEXT_BUFFER = COMMAND_LINE
 END SUB
 
-' Clears COMMAND_LINE from the screen, the cursor at its end, and puts the cursor where it started,
-' for CON_EDIT to show the line again.
-SUB CLEAR_LINE()
-  DIM ROW AS UBYTE, COUNT AS UBYTE
-  ROW = POS(1) - (PROMPT_COLUMN + LEN(COMMAND_LINE)) / POS(3)
-  POS(1) = ROW
-  POS(0) = PROMPT_COLUMN
-  COUNT = LEN(COMMAND_LINE)
-  DO WHILE COUNT > 0
-    PRINT " ";
-    COUNT = COUNT - 1
-  LOOP
-  POS(1) = ROW
-  POS(0) = PROMPT_COLUMN
-END SUB
-
 ' Reads a line at the prompt into COMMAND_LINE, and keeps it.
 SUB READ_COMMAND()
-  DIM PRESSED AS UWORD
-  PROMPT_COLUMN = POS(0)
+  DIM PRESSED AS UWORD, AGAIN AS UBYTE
   COMMAND_LINE = ""
-  HISTORY_BACK = 0
   COMPLETE_START = 0
+  AGAIN = 0
   DO
-    PRESSED = DOS.CON_EDIT(COMMAND_LINE)
+    PRESSED = DOS.CON_PROMPT(COMMAND_LINE, HISTORY_START, HISTORY_SIZE, AGAIN)
     IF PRESSED = KEYS.ENTER THEN EXIT DO
-    CLEAR_LINE()
-    IF PRESSED = KEYS.TAB
-      COMPLETE_WORD()
-    ELSE
-      RECALL_LINE(PRESSED)
-    ENDIF
+    IF PRESSED = KEYS.TAB THEN COMPLETE_WORD()
+    AGAIN = 1
   LOOP
-  KEEP_LINE()
 END SUB

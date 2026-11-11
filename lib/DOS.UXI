@@ -374,6 +374,24 @@ NAMESPACE DOS
   ' CON_STATUS returns them.
   FUNCT CON_EDIT(LINE AS STRING) AS UWORD
     R0 = @LINE
+    REG_X = 0
+    REG_P = 0
+    SYS API_CON_EDIT
+    CON_EDIT_MODS = REG_Y
+    READ_ERR_STATUS()
+    RETURN REG_AX
+  END FUNCT
+
+  ' CON_EDIT with the lines kept at KEPT: COUNT records of 128 bytes, oldest first, each a length
+  ' byte, 0 for no line, then the text. Up and Down recall them, and Enter keeps the line as the
+  ' newest unless it is empty, over 127 characters or the same as the newest. AGAIN is 1 when the
+  ' line the last call returned is still on screen, the cursor after it: LINE is shown in its
+  ' place. Tab and the other extended keys end the line.
+  FUNCT CON_PROMPT(LINE AS STRING, KEPT AS UWORD, COUNT AS UBYTE, AGAIN AS UBYTE) AS UWORD
+    R0 = @LINE
+    R1 = KEPT
+    REG_X = COUNT
+    REG_P = AGAIN
     SYS API_CON_EDIT
     CON_EDIT_MODS = REG_Y
     READ_ERR_STATUS()

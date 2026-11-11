@@ -60,6 +60,8 @@ KEY_SPACE     = $3D             ; the last keycode in kbd_lower and kbd_upper
 KEY_F1        = $70             ; F1 to F10 are keycodes KEY_F1 to KEY_F1 + 9
 SCAN_F1       = $3B             ; F1 to F10 are scan codes SCAN_F1 to SCAN_F1 + 9
 SCAN_ALT_1    = $78             ; Alt+1 to Alt+= are scan codes SCAN_ALT_1 to SCAN_ALT_1 + 11
+SCAN_UP       = $48
+SCAN_DOWN     = $50
 EXTENDED      = $80             ; in kbd_special_chars: the low 7 bits are a scan code
 KBD_EXTENDED  = $E0             ; in KBD_QUEUE: the scan code of an extended key comes next, as the
                                 ; IBM PC BIOS gives the grey keys; x16emu -bas pastes \XE0\X48 as Up.
@@ -104,6 +106,9 @@ ansi_params:  .res ANSI_PARAMS  ; the parameters, each modulo 256
 scr_row:      .res 1            ; api_con_screen: the row and column the line started at
 scr_col:      .res 1
 scr_insert:   .res 1            ; api_con_screen: bit 7 set in insert mode
+con_lines:    .res 1            ; api_con_edit: the records of the lines kept at r1, 0 for none
+con_back:     .res 1            ; api_con_edit: the lines Up went back, 0 for the line typed
+con_shown:    .res 1            ; api_con_edit: the characters of the line the last call returned
 
 .segment "CODE"
 
@@ -781,15 +786,31 @@ api_con_keys:
 ; key ends the line. Sets the length, and a CR after the text. Returns as api_con_getkey does:
 ; the key that ended the line in A, $0D, $09 or 0 for an extended key; its scan code in X, 0 for
 ; Enter and Tab; kbd_mods in Y. Returns carry clear.
+; With X nonzero, r1 holds the lines kept: X records of 128 bytes, oldest first, each a length
+; byte, 0 for no line, then the text. Up shows the line before the one shown and Down the line
+; after it, or an empty line after the newest. Enter keeps the line as the newest, in place of
+; the oldest, unless it is empty, over 127 characters or the same as the newest.
+; With carry set, the line the last call returned is still on screen, the cursor after it: it is
+; cleared and the buffer shown in its place, and Up goes on from the line shown then. With carry
+; clear the buffer is shown at the cursor.
 ; api_con_line: api_con_edit of an empty line; Tab and the extended keys are dropped.
 ; When handle 0 is a file, both read the line from it without echo, from offset 2. They skip
 ; LF and drop the characters past the most; the end of the file ends the line.
 ; Trap: keys come through CHRIN, $FFCF, and the echo through CHROUT, so x16emu -bas pastes
 ; and -echo shows them.
 api_con_edit:
+        stx con_lines
+        bcs @again
+        stz con_back
+        bra @tab
+@again:
+        ldx con_shown
+        jsr con_erase
+@tab:
         lda #$09                ; Tab ends the line too
         bra con_read
 api_con_line:
+        stz con_lines
         ldy #1
         lda #0
         sta (r0),y              ; no kept text
@@ -800,7 +821,9 @@ con_read:
         sta con_limit
         inc con_limit           ; the offset of the last CR
         jsr con_file
-        bpl @file
+        bmi @device
+        jmp @file
+@device:
         ldy #1
         lda (r0),y
         tax                     ; X = the kept characters left to show
@@ -833,6 +856,11 @@ con_read:
         ldx con_end_key
         cpx #$0D
         beq @key                ; api_con_line drops it
+        ldx con_lines
+        beq @extended
+        jsr con_recall
+        bcc @show
+@extended:
         tax
         lda #0
         bra @done
@@ -857,6 +885,12 @@ con_read:
         jsr CHROUT              ; keeps A, X and Y
         lda #$0A
         jsr CHROUT
+        ldx con_lines
+        beq @kept
+        phy
+        jsr con_keep
+        ply
+@kept:
         lda #$0D
 @tab:
         ldx #0                  ; no scan code
@@ -867,6 +901,7 @@ con_read:
         dey
         dey
         tya
+        sta con_shown
         ldy #1
         sta (r0),y
         lda con_limit
@@ -914,6 +949,190 @@ con_read:
         sta r0+1
         lda #$0D
         bra @tab
+
+; con_recall: A = the scan code of an extended key, Y = the offset after the text in the buffer at
+; r0. For Up and Down returns carry clear: with the line recalled cleared from the screen and put
+; at offset 2, X = its characters and Y = 2; with no line to go to, X = 0 and Y kept. For any other
+; key returns carry set and A kept.
+con_recall:
+        ldx #0
+        cmp #SCAN_UP
+        beq @up
+        cmp #SCAN_DOWN
+        beq @down
+        sec
+        rts
+@up:
+        lda con_back
+        cmp con_lines
+        beq @none               ; no older record
+        inc
+        jsr con_line_at
+        beq @none               ; no line in it
+        inc con_back
+        bra @recall
+@down:
+        lda con_back
+        beq @none
+        dec con_back
+        dec
+        beq @recall             ; A = 0: the empty line after the newest
+        jsr con_line_at
+@recall:                        ; A = the characters of the line at pointer
+        pha
+        tya
+        sec
+        sbc #2
+        tax
+        jsr con_erase
+        plx
+        ldy #2
+@copy:                          ; Y = the buffer offset, X = the characters left
+        txa
+        beq @fit
+        cpy con_limit
+        bcs @fit                ; full
+        dey
+        lda (pointer),y
+        iny
+        sta (r0),y
+        iny
+        dex
+        bra @copy
+@fit:
+        tya
+        sec
+        sbc #2
+        tax
+        ldy #2
+@none:
+        clc
+        rts
+
+; con_line_at: A = the lines back from the next one kept, 1 for the newest. Sets pointer to its
+; record of the con_lines at r1. Returns its length in A, Z set for no line.
+con_line_at:
+        eor #$FF
+        sec
+        adc con_lines           ; con_lines - A
+        stz pointer
+        lsr
+        ror pointer             ; and clears carry
+        adc r1+1
+        sta pointer+1
+        lda pointer
+        adc r1
+        sta pointer
+        bcc @low
+        inc pointer+1
+@low:
+        lda (pointer)
+        rts
+
+; con_keep: Y = the offset after the text in the buffer at r0. Keeps the text as the newest of
+; the con_lines records at r1, in place of the oldest, unless it is empty, over 127 characters or
+; the same as the newest. Changes A, X and Y.
+con_keep:
+        dey
+        dey
+        tya
+        beq @done               ; empty
+        bmi @done               ; over 127
+        tax                     ; X = the length
+        lda #1
+        jsr con_line_at
+        txa
+        cmp (pointer)
+        bne @new
+        tay
+@same:                          ; Y = the record offset; the buffer offset is one more
+        iny
+        lda (r0),y
+        dey
+        cmp (pointer),y
+        bne @new
+        dey
+        bne @same
+@done:
+        rts
+@new:
+        lda r1
+        sta pointer
+        lda r1+1
+        sta pointer+1
+        phx
+        ldx con_lines
+@record:                        ; moves the record after pointer to pointer
+        dex
+        beq @newest
+        ldy #$80
+@byte:
+        lda (pointer),y
+        pha
+        tya
+        eor #$80
+        tay
+        pla
+        sta (pointer),y
+        tya
+        eor #$80
+        tay
+        iny
+        bne @byte
+        lda pointer
+        eor #$80
+        sta pointer
+        bmi @record             ; no carry
+        inc pointer+1
+        bra @record
+@newest:
+        pla
+        sta (pointer)
+        tay
+@put:
+        iny
+        lda (r0),y
+        dey
+        sta (pointer),y
+        dey
+        bne @put
+        rts
+
+; con_erase: clears the X characters before the cursor, and puts the cursor where they start.
+; Changes A and X.
+con_erase:
+        phx
+        jsr con_back_x
+        plx
+        phx
+@blank:
+        txa
+        beq @blanked
+        lda #' '
+        jsr CHROUT
+        dex
+        bra @blank
+@blanked:
+        plx
+        ; fall through
+
+; con_back_x: moves the cursor back X cells, from column 0 to the last column of the row above.
+; Changes A and X.
+con_back_x:
+        txa
+        beq @done
+        dex
+        lda con_col
+        beq @row
+        dec con_col
+        bra con_back_x
+@row:
+        lda con_last_col
+        sta con_col
+        dec con_row
+        bra con_back_x
+@done:
+        rts
 
 ; con_file: returns N clear when handle 0 is a file, N set when it is a device or closed. Changes
 ; A, X and Y.
