@@ -2,7 +2,7 @@ PRINT "GOTO"
 GOTO START
 BACK:
 PRINT "BACK"
-END
+EXIT
   start :
 PRINT "START"
 goto back

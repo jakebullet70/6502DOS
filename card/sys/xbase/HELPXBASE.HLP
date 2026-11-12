@@ -2,7 +2,7 @@
 ! [command line]
   Runs C:\sys\ROMSHELL.COM, the shell, without C:\STARTUP.CMD. ! and RUN are
   the same command.
-  Alone, it gives the shell's prompt, and the shell's END comes back to DB.
+  Alone, it gives the shell's prompt, and the shell's EXIT comes back to DB.
   With a command line, the shell runs that line, and the script it starts,
   then comes back. The table in use and the current record are kept.
   ! DIR *.DB
@@ -588,6 +588,8 @@ PUSH
 QUIT
   Ends every command file, closes the tables of both work areas, and ends
   DB.
+:EXIT
+EXIT is the same command as QUIT. See HELP QUIT.
 :READ
 READ
   Edits the pending GETs in turn, from the first. HELPXBASE KEYS gives the

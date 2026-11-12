@@ -1,6 +1,6 @@
 ' CMDSHELL.UXB -- the 6502DOS shell, a small BASIC (PLAN section 8). Reads a line at the prompt
 ' and runs its statement: name = expression, PRINT, INPUT, CLS, LOCATE, BEEP, WAIT, PAUSE,
-' VERSION, SETSYS, BIND, END, the file statements FILES, LIST, COPY, DELETE, RENAME, MKDIR,
+' VERSION, SETSYS, BIND, EXIT, the file statements FILES, LIST, COPY, DELETE, RENAME, MKDIR,
 ' RMDIR, CHDIR or CD, RUN, IF and ENDIF, and
 ' in a script ONERROR, GOTO, GOSUB, RETURN, REPEAT and ENDREP. NAME: is a label. Any other name
 ' runs its BIND alias, or else the program of that name. TO file after a statement sends its

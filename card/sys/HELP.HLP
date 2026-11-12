@@ -1,7 +1,9 @@
 :HELP
-HELP [topic]
+HELP [-F file] [topic | -R]
   Prints the help on topic. With no topic it lists the topics.
   HELP SHELL tells about the shell's statements.
+  -F file reads the help file file, whose name ends in HLP, in place of
+  C:\sys\HELP.HLP. Its index is the same name with IDX in place of HLP.
   HELP -R remakes the topic index, C:\sys\HELP.IDX, after HELP.HLP is
   edited. Without a good index HELP still works, more slowly.
   A program with a topic here shows it for -H or -? first: TREE -? is
@@ -195,7 +197,7 @@ IF condition [THEN] ... ENDIF   (Script only)
     IF A > 9 THEN PRINT "Big"
     IF P1$ = ""
       PRINT "Give a name"
-      END
+      EXIT
     ENDIF
 :ENDIF
 ENDIF ends an IF block. See HELP IF.
@@ -218,7 +220,7 @@ GOTO label                      (Script only)
   Example:
     IF P1$ = "" GOTO usage
     PRINT "Name: " + P1$
-    END
+    EXIT
     usage:
     PRINT "Give a name"
 :GOSUB
@@ -227,7 +229,7 @@ GOSUB label                     (Script only)
   GOSUBs nest. RETURN with no GOSUB gives RETURN without GOSUB.
   Example:
     GOSUB show
-    END
+    EXIT
     show:
     PRINT "In show"
     RETURN
@@ -241,8 +243,8 @@ ONERROR 1   or   ONERROR 0      (Script only)
     ONERROR 1
     DELETE OLD.TXT
     ONERROR 0
-:END
-END                             (Command line or Script)
+:EXIT
+EXIT                            (Command line or Script)
   Ends the script. At the prompt it ends the shell.
 :REM
 REM text   or   ' text   or   // text
@@ -256,7 +258,7 @@ RUN name [arguments]            (Command line or Script)
 :CALL
 CALL name [arguments]           (Command line or Script)
   Runs the program or script name, as typing name does. A script called
-  from a script runs to its end or its END. Then the first script goes on
+  from a script runs to its end or its EXIT. Then the first script goes on
   at the line after the CALL, with its ONERROR, GOSUBs and loops.
   P1$ to P9$ hold the called script's words, not the first script's.
   A called script cannot CALL. That gives Insufficient memory.
