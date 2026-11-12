@@ -72,6 +72,8 @@ def lk_link():
     uxc_sym.sy_set()
     g.lk_start = g.cb_n
     uxc_code.rt_close()
+    if g.rb_on != 0:
+        uxc_rombank.rb_copy()
     if g.rg_on != 0:
         uxc_ramreg.rg_load()
     if g.lk_apart != 0 and g.vr_n + g.bs_n > 0:
@@ -94,10 +96,12 @@ def lk_link():
     g.rt_data_at = g.bs_n
     g.bs_n = g.bs_n + g.rt_dn_all
     uxc_code.rt_data_zero()
+    g.lk_top_fx = g.fx_n
     if g.target == "6502dos":
         g.sl_s[0] = K_SEC_BSS
         g.sl_v[0] = g.bs_n
         emit(T.T_TOP)
+    g.lk_top_fx_end = g.fx_n
     if g.cb_n > g.lk_start:
         emit(T.T_RTS)
     else:
@@ -111,10 +115,13 @@ def lk_link():
     g.lk_i = 0
     while g.lk_i < g.rt_n:
         uxc_code.rt_place()
-        if g.rt_dn == 0 and (g.rb_on == 0 or g.rb_need[g.rt_id] != 0) and \
+        if g.rt_dn == 0 and (g.rb_on == 0 or (g.rb_need[g.rt_id] != 0 and
+                                              g.rb_ram[g.rt_id] == 0)) and \
                 (g.rg_on == 0 or (g.rt_id != T.R_ERROR and g.rg_runtime_k[g.rt_id] == 0)):
             emit(g.rt_id)
         g.lk_i = g.lk_i + 1
+    if g.rb_on != 0:
+        uxc_rombank.rb_ram_place()
     # The strings, out of their own bank. With #DATA the startup copies them to its address.
     g.lk_str = g.lk_org + g.cb_n
     if g.lk_apart != 0 and g.sp_n > 0:
@@ -152,6 +159,8 @@ def lk_link():
         er_stop("#DATA OVERLAPS THE CODE")
     g.rt_data_at = g.lk_bss + g.rt_data_at
     uxc_code.rt_data_place()
+    if g.rb_on != 0:
+        uxc_rombank.rb_ram_address()
     for g.fx_i in range(g.fx_n):
         lk_fix()
 
