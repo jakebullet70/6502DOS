@@ -630,7 +630,7 @@ KERNAL entries:
 | Group | Statements |
 |---|---|
 | Screen | `PRINT`, `INPUT`, `CLS`, `LOCATE row,column`, `COLOR foreground[,background]`, `BEEP`, `WAIT seconds` |
-| Flow | `IF`, `ENDIF`, `GOTO`, `GOSUB`, `RETURN`, `REPEAT n`, `ENDREP`, `END`, `ONERROR(n)` |
+| Flow | `IF`, `ENDIF`, `GOTO`, `GOSUB`, `RETURN`, `REPEAT n`, `ENDREP`, `EXIT`, `ONERROR(n)` |
 | Files | `FILES [pattern]`, `LIST file`, `COPY from to`, `DELETE file`, `RENAME old new`, `MKDIR`, `RMDIR`, `CHDIR` |
 | System | `VERSION`, `PAUSE`, `SETSYS`, `BIND`, `RUN`, `CALL` |
 
@@ -658,9 +658,9 @@ Short names:
 - `IF condition [THEN]` with nothing after it starts a block, and `ENDIF` ends it. There is no
   `ELSE`. Blocks work in a script only (Scripts, below).
 - `REPEAT n` runs the lines up to `ENDREP` n times, in a script only.
-- `END` ends the script. At the prompt it ends the shell.
+- `EXIT` ends the script. At the prompt it ends the shell.
 - `RUN name` ends the script, then runs the program or script `name`.
-- `CALL name` runs the program or script `name`. A called script runs to its end or its `END`;
+- `CALL name` runs the program or script `name`. A called script runs to its end or its `EXIT`;
   then the calling script goes on at the line after the `CALL`, with its `ONERROR`, `GOSUB`s and
   loops. `P1$` to `P9$` hold the called script's words. A called script cannot `CALL`: that
   gives `Insufficient memory`. An error or Ctrl+C that ends the called script ends the caller.
@@ -824,7 +824,7 @@ Short names:
 - `ONERROR(1)` makes an error go on to the next line, with no line number printed. `ONERROR(0)`
   makes an error end the script. The argument is a number expression, of which the low byte
   counts. Each script starts with `ONERROR(0)`. At the prompt `ONERROR` does nothing.
-- `END` ends the script. `RUN name` ends the script, then runs `name`.
+- `EXIT` ends the script. `RUN name` ends the script, then runs `name`.
 - `C:\STARTUP.CMD` runs when the shell starts. `C:` is the boot drive. A shell run as a child
   runs it too. Its slots hold the words of the shell's command tail, as `exec` sets them: all
   empty with no tail, and `-S` in `P1$` when it is stepped.
@@ -997,9 +997,10 @@ Short names:
     name cut to 24 characters, the number of the top line, `Wrap` or the first column shown,
     and the keys.
   - The registry key `THEME` names the theme: `THEME = DARK` reads `C:\sys\themes\DARK.GTH`, and
-    a missing key reads `DARK`. The text takes the theme's `CONSOLE` color, and the footer and
-    the `Find:` prompt its `STATUS` color. With no theme file, the text keeps the console's color
-    and the footer is black on light grey. The console's color comes back at the end.
+    a missing key reads `DARK`. `DOS.READ_THEME` reads the file. The text takes the theme's
+    `CONSOLE` color, and the footer and the `Find:` prompt its `STATUS` color. With no theme file,
+    or one shorter than 15 bytes, the text keeps the console's color and the footer is black on
+    light grey. The console's color comes back at the end.
   - Up and Down move one line, PgUp and PgDn a page, Space a page down. Home goes to the first
     line, End to the last page. Left and Right move the view 8 columns sideways.
   - W turns wrap on and off. A wrapped line takes 1 to 4 rows, and Left and Right do nothing.
@@ -1018,8 +1019,8 @@ Short names:
   screen: 29 rows of text and a status row. The keys are in the header of `src/dos/TED.UXB`
   and in `C:\sys\TED.HLP`, which F1 shows.
   - The registry key `THEME` names the theme, as in `VIEW`. The text takes the theme's `CONSOLE`
-    color and the status row its `STATUS` color. With no theme file, the text keeps the console's
-    color and the status row is black on light grey. The console's color comes back at the end.
+    color and the status row its `STATUS` color. With no theme file, or one shorter than 15
+    bytes, the text keeps the console's color and the status row is black on light grey. The console's color comes back at the end.
   - The text takes the RAM from the program's end to `$96FF`, and the clipboard `$9700` to
     `$9EFF`, 2048 bytes.
   - A save writes `TED.$$$` in the file's directory, then gives it the file's name.
@@ -1213,12 +1214,12 @@ Short names:
     exit code is 0.
 - `THEMED [name]` is a utility, `THEMED.COM`, for the command line. It builds a color theme of
   GUI Forms and saves it as a theme file, which `GUI.THEME_FILE` loads.
-  - A theme file holds 13 bytes, one color a role in `GUI.ROLE`'s order, each the background
+  - A theme file holds 15 bytes, one color a role in `GUI.ROLE`'s order, each the background
     times 16 plus the foreground.
   - The name starts as `name` in capitals, or `CUSTOM`. A name with no extension, given or
     typed, takes `.GTH`. That file loads at the start when it exists; else the theme starts as
     DARK.
-  - The left of the screen is a sample form in the theme. The right lists the 13 roles, each
+  - The left of the screen is a sample form in the theme. The right lists the 15 roles, each
     with a sample and its background and foreground as hex digits. A change shows at once.
   - Up and Down choose a role. Left and Right step its background or foreground through the 16
     colors. Tab switches between the background and the foreground. 1, 2 and 3 start again
@@ -1281,7 +1282,7 @@ Tab completion:
   `.COM` and `.CMD` files that match in each directory of `PATH$`, shown without the extension.
 - The statement names are `BUILTIN_NAMES$` in `CMDSHELL.UXI`. It leaves out the script
   statements `ENDIF`, `ENDREP`, `GOSUB`, `GOTO`, `IF`, `INPUT`, `ONERROR`, `PAUSE`, `REM`,
-  `REPEAT`, `RETURN` and `WAIT`. `END` is in it.
+  `REPEAT`, `RETURN` and `WAIT`. `EXIT` is in it.
 - After a first word `CD`, `CHDIR`, `RD` or `RMDIR`, Tab gives directories only.
 - Each Tab puts the next match in place of the word, and Shift+Tab the one before. After the
   last comes the first. A word with no match stays as it is.

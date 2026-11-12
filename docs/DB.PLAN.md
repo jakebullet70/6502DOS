@@ -348,7 +348,7 @@ the order.
   level it prints `Stack empty`. A record past the last of the table now in use is past the
   last. The table, the filter and the indexes are not saved. A word after `PUSH` or `POP` is
   `Syntax error`.
-- `QUIT` closes the tables of both areas.
+- `QUIT` closes the tables of both areas. `EXIT` is the same command as `QUIT`.
 
 #### Settings
 
@@ -593,7 +593,7 @@ MENU TO CHOICE
 - `HELP [topic]` runs `C:\sys\HELPXBASE.COM`, which prints the topic from `C:\sys\xbase\HELPXBASE.HLP`,
   or with no topic lists the topics.
 - `!`, `RUN` and `SHELL` alone run `C:\sys\ROMSHELL.COM -N`, a shell that skips `STARTUP.CMD`. Its
-  `END` comes back to DB, with the tables and records kept. With a command line after them,
+  `EXIT` comes back to DB, with the tables and records kept. With a command line after them,
   they run `C:\sys\ROMSHELL.COM -C line`: the shell runs the line, and the script it starts, then
   ends. `!` needs a space after it. `! DIR` lists files.
 
