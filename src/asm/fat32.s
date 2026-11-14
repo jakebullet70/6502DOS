@@ -52,6 +52,7 @@
 .importzp krn_ptr1, bank_save
 
 .import sector_buffer, sector_buffer_end, sector_lba, sdcard_set_fast_mode
+.import fat_buffer, fat_buffer_end, fat_lba, sdcard_read_fat, sdcard_write_fat
 
 .import filename_char_ucs2_to_internal, filename_char_internal_to_ucs2
 .import filename_cp437_to_internal, filename_char_internal_to_cp437
@@ -137,7 +138,7 @@ fat32_time_seconds:  .byte 0
 
 ; Temp
 bytecnt:             .word 0       ; Used by fat32_write
-tmp_buf:             .res 4        ; Used by save_sector_buffer, fat32_rename
+tmp_buf:             .res 4        ; Used by save_fat_buffer, fat32_rename
 next_sector_arg:     .byte 0       ; Used by next_sector to store argument
 tmp_bufptr:          .word 0       ; Used by next_sector
 tmp_sector_lba:      .dword 0      ; Used by next_sector
@@ -185,6 +186,11 @@ volume_idx:          .byte 0       ; Index of current filesystem
 cur_volume:          .tag fs       ; Current file descriptor state
 
 volumes:             .res FS_SIZE * FAT32_VOLUMES
+
+; FAT sector buffer
+fat_want:            .dword 0      ; load_fat_buffer: the FAT sector to hold
+fat_dirty:           .byte 0       ; not 0: fat_buffer differs from the card
+fsinfo_dirty:        .byte 0       ; not 0: free_clusters differs from the FS info sector
 
 _fat32_bss_end:
 
@@ -405,28 +411,6 @@ write_sector:
 ; * c=0: failure; sets errno
 ;-----------------------------------------------------------------------------
 save_sector_buffer:
-	; Determine if this is FAT area write (sector_lba - lba_fat < fat_size)
-	sub32 tmp_buf, sector_lba, cur_volume + fs::lba_fat
-	lda tmp_buf + 2
-	ora tmp_buf + 3
-	bne @normal
-	sec
-	lda tmp_buf + 0
-	sbc cur_volume + fs::fat_size + 0
-	lda tmp_buf + 1
-	sbc cur_volume + fs::fat_size + 1
-	bcs @normal
-
-	; Write second FAT
-	set32 tmp_buf, sector_lba
-	add32 sector_lba, sector_lba, cur_volume + fs::fat_size
-	jsr write_sector
-	php
-	set32 sector_lba, tmp_buf
-	plp
-	bcc @error_write
-
-@normal:
 	jsr write_sector
 	bcc @error_write
 
@@ -440,6 +424,71 @@ save_sector_buffer:
 
 @error_write:
 	lda #ERRNO_WRITE
+	jmp set_errno
+
+;-----------------------------------------------------------------------------
+; load_fat_buffer
+;
+; Makes fat_buffer hold FAT sector fat_want. Writes the sector it held first
+; when fat_dirty is set.
+;
+; * c=0: failure; sets errno
+;-----------------------------------------------------------------------------
+load_fat_buffer:
+	cmp32_ne fat_want, fat_lba, @do_load
+	sec
+@done:	rts
+
+@do_load:
+	jsr sync_fat_buffer
+	bcc @done
+	set32 fat_lba, fat_want
+	jsr sdcard_read_fat
+	bcs @done
+	lda #ERRNO_READ
+	jmp set_errno
+
+;-----------------------------------------------------------------------------
+; sync_fat_buffer
+;
+; Writes fat_buffer when fat_dirty is set.
+;
+; * c=0: failure; sets errno
+;-----------------------------------------------------------------------------
+sync_fat_buffer:
+	lda fat_dirty
+	bne save_fat_buffer
+	sec
+	rts
+
+;-----------------------------------------------------------------------------
+; save_fat_buffer
+;
+; Writes fat_buffer to sector fat_lba of the second FAT, then of the first,
+; and clears fat_dirty.
+;
+; * c=0: failure; sets errno
+;-----------------------------------------------------------------------------
+save_fat_buffer:
+	lda fat32_readonly
+	bne @protected
+	set32 tmp_buf, fat_lba
+	add32 fat_lba, fat_lba, cur_volume + fs::fat_size
+	jsr sdcard_write_fat
+	php
+	set32 fat_lba, tmp_buf
+	plp
+	bcc @error_write
+	jsr sdcard_write_fat
+	bcc @error_write
+	stz fat_dirty
+	rts
+
+@error_write:
+	lda #ERRNO_WRITE
+	.byte $2C		; BIT abs: skips the lda below
+@protected:
+	lda #ERRNO_WRITE_PROTECT_ON
 	jmp set_errno
 
 ;-----------------------------------------------------------------------------
@@ -462,8 +511,9 @@ calc_cluster_lba:
 ;-----------------------------------------------------------------------------
 ; load_fat_sector_for_cluster
 ;
-; Load sector that hold cluster entry for cur_context.cluster
-; On return fat32_bufptr points to cluster entry in sector_buffer.
+; Load sector that hold cluster entry for cur_context.cluster into fat_buffer.
+; On return fat32_bufptr points to cluster entry in fat_buffer.
+; sector_buffer and cur_context.lba stay as they are.
 ;
 ; * c=0: failure; sets errno
 ;-----------------------------------------------------------------------------
@@ -472,26 +522,26 @@ load_fat_sector_for_cluster:
 
 	; lba = lba_fat + (cluster / 128)
 	lda cur_context + context::cluster + 1
-	sta cur_context + context::lba + 0
+	sta fat_want + 0
 	lda cur_context + context::cluster + 2
-	sta cur_context + context::lba + 1
+	sta fat_want + 1
 	lda cur_context + context::cluster + 3
-	sta cur_context + context::lba + 2
-	stz cur_context + context::lba + 3
+	sta fat_want + 2
+	stz fat_want + 3
 	lda cur_context + context::cluster + 0
 	asl	; upper bit in C
-	rol cur_context + context::lba + 0
-	rol cur_context + context::lba + 1
-	rol cur_context + context::lba + 2
-	rol cur_context + context::lba + 3
-	add32 cur_context + context::lba, cur_context + context::lba, cur_volume + fs::lba_fat
+	rol fat_want + 0
+	rol fat_want + 1
+	rol fat_want + 2
+	rol fat_want + 3
+	add32 fat_want, fat_want, cur_volume + fs::lba_fat
 
 	; Read FAT sector
-	jsr load_sector_buffer
+	jsr load_fat_buffer
 	bcs @1
 	rts	; Failure
 @1:
-	; fat32_bufptr = sector_buffer + (cluster & 127) * 4
+	; fat32_bufptr = fat_buffer + (cluster & 127) * 4
 	lda cur_context + context::cluster
 	asl
 	asl
@@ -500,7 +550,7 @@ load_fat_sector_for_cluster:
 	bcc @2
 	lda #1
 @2:	sta fat32_bufptr + 1
-	add16_val fat32_bufptr, fat32_bufptr, sector_buffer
+	add16_val fat32_bufptr, fat32_bufptr, fat_buffer
 
 	; Success
 	sec
@@ -618,15 +668,14 @@ unlink_cluster_chain:
 	; Increment free clusters
 	inc32 cur_volume + fs::free_clusters
 
-	; Set sector as dirty
-	lda cur_context + context::flags
-	ora #FLAG_DIRTY
-	sta cur_context + context::flags
+	; Set FAT sector as dirty
+	lda #$80
+	sta fat_dirty
 
 	bra @next
 
-	; Make sure dirty sectors are written to disk
-@done:	jsr sync_sector_buffer
+	; Make sure the dirty FAT sector is written to disk
+@done:	jsr sync_fat_buffer
 	bcs @3
 	rts
 
@@ -674,12 +723,12 @@ find_free_cluster:
 	rts
 @1:
 	; Load next FAT sector if at end of buffer
-	cmp16_val_ne fat32_bufptr, sector_buffer_end, @next
-	inc32 cur_context + context::lba
-	jsr load_sector_buffer
+	cmp16_val_ne fat32_bufptr, fat_buffer_end, @next
+	inc32 fat_want
+	jsr load_fat_buffer
 	bcs @2
 	rts
-@2:	set16_val fat32_bufptr, sector_buffer
+@2:	set16_val fat32_bufptr, fat_buffer
 	jmp @next
 
 ;-----------------------------------------------------------------------------
@@ -767,6 +816,8 @@ fat32_get_num_contexts:
 ;-----------------------------------------------------------------------------
 ; update_fs_info
 ;
+; Writes free_clusters to the FS info sector and clears fsinfo_dirty.
+;
 ; * c=0: failure; sets errno
 ;-----------------------------------------------------------------------------
 update_fs_info:
@@ -778,12 +829,17 @@ update_fs_info:
 @1:
 	; Get number of free clusters
 	set32 sector_buffer + 488, cur_volume + fs::free_clusters
+	stz fsinfo_dirty
 
 	; Save sector
 	jmp save_sector_buffer
 
 ;-----------------------------------------------------------------------------
 ; allocate_cluster
+;
+; Marks a free cluster as the end of a chain in fat_buffer and sets fat_dirty.
+; The caller writes the FAT sector. Sets fsinfo_dirty: fat32_close writes the
+; FS info sector.
 ;
 ; * c=0: failure; sets errno
 ;-----------------------------------------------------------------------------
@@ -806,14 +862,15 @@ allocate_cluster:
 	ora #$0F	; Preserve upper 4 bits
 	sta (fat32_bufptr), y
 
-	; Save FAT sector
-	jsr save_sector_buffer
-	bcs @2
-	rts
-@2:
-	; Decrement free clusters and update FS info
+	; The caller saves the FAT sector
+	lda #$80
+	sta fat_dirty
+	sta fsinfo_dirty
+
+	; Decrement free clusters
 	dec32 cur_volume + fs::free_clusters
-	jmp update_fs_info
+	sec
+	rts
 
 ;-----------------------------------------------------------------------------
 ; validate_char
@@ -1084,15 +1141,20 @@ next_sector:
 
 	; Save location of cluster entry in FAT
 	set16 tmp_bufptr, fat32_bufptr
-	set32 tmp_sector_lba, sector_lba
+	set32 tmp_sector_lba, fat_lba
+
+	; Trap: clear_cluster below overwrites sector_buffer without a sync.
+	jsr sync_sector_buffer
+	bcc @error
 
 	; Allocate a new cluster
 	jsr allocate_cluster
 	bcc @error
 
-	; Load back the cluster sector
-	set32 cur_context + context::lba, tmp_sector_lba
-	jsr load_sector_buffer
+	; Load back the FAT sector of the entry. When the new cluster is in
+	; another FAT sector, this writes that sector first.
+	set32 fat_want, tmp_sector_lba
+	jsr load_fat_buffer
 	bcs @1
 @error:	clc
 	rts
@@ -1108,7 +1170,7 @@ next_sector:
 	bne @2
 
 	; Save FAT sector
-	jsr save_sector_buffer
+	jsr save_fat_buffer
 	bcc @error
 
 	; Set allocated cluster as current
@@ -1408,6 +1470,11 @@ fat32_init:
 mount:
 	pha ; partition number
 
+	; No sector in fat_buffer
+	lda #$FF
+	sta fat_lba + 3
+	stz fat_dirty
+
 	jsr load_mbr_sector
 	pla
 	bcs @2a
@@ -1533,6 +1600,7 @@ unmount:
 	jsr set_volume
 	; Set unmounted
 	stz cur_volume + fs::mounted
+	stz fsinfo_dirty
 	; No current volume
 	lda #$ff
 	sta volume_idx
@@ -3141,6 +3209,12 @@ fat32_close:
 	jsr save_sector_buffer
 	bcc error_clear_context
 @done:
+	; Write the FS info sector when a cluster was allocated
+	lda fsinfo_dirty
+	beq @clear
+	jsr update_fs_info
+	bcc error_clear_context
+@clear:
 	clear_bytes cur_context, .sizeof(context)
 
 	sec
@@ -3444,6 +3518,8 @@ x16_stream_copy:
 ;-----------------------------------------------------------------------------
 allocate_first_cluster:
 	jsr allocate_cluster
+	bcc @error
+	jsr sync_fat_buffer
 	bcs @1
 @error:	rts
 @1:

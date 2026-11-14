@@ -103,6 +103,7 @@ FAT32_CONTEXT_RAM = $AD00       ; $AD00-$AEFF: the FAT32 library's contexts, 32 
 HOST_CWD      = $AF00           ; $AF00-$AF4F: hostfs.inc's current directory, from the root
 HOST_LINE     = $AF50           ; $AF50-$AFCF: hostfs.inc's line of a listing or a status
 HOST_PATHS    = $B000           ; $B000-$B7FF: hostfs.inc's path of each channel, 128 bytes each
+FAT32_FAT_BUFFER = $B800        ; $B800-$B9FF: the FAT32 library's FAT sector buffer, FATCACHERAM
 BANK_SYSTEM   = $FF             ; BANK_OWNER: a kernel bank, or a bank the machine lacks
 BANK_FIRST    = $80             ; BANK_OWNER: the first bank of a run
 BANK_KEPT     = $FE             ; BANK_OWNER: a bank of a program that ended with keep

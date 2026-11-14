@@ -36,6 +36,7 @@
 .import fat32_open_dir, fat32_read_dirent_filtered, fat32_tell_dir, fat32_seek_dir
 .import fat32_open_tree, fat32_walk_tree
 .import fat32_cwd, fat32_size, fat32_dirent, fat32_errno, fat32_readonly, skip_mask, sector_lba
+.import fat_lba
 .import fat32_root, fat32_sectors_per_cluster, fat32_cluster_count, fat32_top
 .import sync_sector_buffer, sdcard_read_sector, sd_input, sd_output, jsrfar1
 .import DPB, current_drive, next_dpb, create_attr, match_name
@@ -658,8 +659,9 @@ abs_io:
         bcs @bank
         bit abs_write
         bpl @bank
-        lda sector_lba+3        ; $FF: no sector in the buffer
-        inc
+        lda #$FF
+        sta fat_lba+3           ; no sector in fat_buffer: the write may have changed it
+        eor sector_lba+3        ; $FF: no sector in the buffer
         beq @bank
         jsr sdcard_read_sector  ; the write may have changed it
         lda #ERR_READ_FAULT

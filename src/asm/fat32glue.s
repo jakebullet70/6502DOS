@@ -1,5 +1,6 @@
 ; What the FAT32 library imports, in ROM bank 1: its zero page, its variables, the sector
-; buffer, the sector reads and writes through the SD card driver in bank 0, and to_lower.
+; buffer, the FAT sector buffer, the sector reads and writes through the SD card driver in
+; bank 0, and to_lower.
 
 .setcpu "65C02"
 
@@ -9,7 +10,9 @@
 .exportzp fat32_bufptr, fat32_lfn_bufptr, fat32_ptr, fat32_ptr2, krn_ptr1, bank_save
 .export fat32_size, fat32_dirent, fat32_errno, fat32_readonly, skip_mask
 .export sector_buffer, sector_buffer_end, sector_lba
+.export fat_buffer, fat_buffer_end, fat_lba
 .export sdcard_read_sector, sdcard_write_sector, sdcard_set_fast_mode, to_lower
+.export sdcard_read_fat, sdcard_write_fat
 .import jsrfar1, sd_input, sd_output, unmount
 
 .segment "KERNELZP" : zeropage
@@ -29,6 +32,12 @@ krn_ptr1:         .res 2        ; fat32_read, fat32_write: bit 7 set for a strea
 sector_buffer:    .res 512
 sector_buffer_end:
 
+.segment "FATCACHE"
+
+; fat_buffer holds sectors of the FAT only. sector_buffer holds every other sector.
+fat_buffer:       .res 512
+fat_buffer_end:
+
 ; Trap: fat32_init clears the library's variables, not these. The caller sets fat32_readonly.
 .segment "FATBSS"
 
@@ -38,8 +47,25 @@ fat32_errno:      .res 1
 fat32_readonly:   .res 1        ; not 0: the library writes no sector
 skip_mask:        .res 1        ; match_type: the attribute bits that skip an entry
 sector_lba:       .res 4        ; the sector in sector_buffer
+fat_lba:          .res 4        ; the sector in fat_buffer; mount sets byte 3 to $FF for none
+.assert fat_lba = sector_lba + 4, lderror, "blk_request_fat reads fat_lba at sector_lba + 4"
 
 .segment "B1CODE"
+
+; sdcard_read_fat: reads sector fat_lba into fat_buffer. RAM bank 0 must be selected. Returns
+; carry set on success. Changes A, X and Y. A failure unmounts the volume; mount then marks
+; fat_buffer as holding no sector.
+sdcard_read_fat:
+        jsr blk_request_fat
+        FARCALL sd_input, jsrfar1
+        bcc sector_done
+        bra sector_failed
+
+; sdcard_write_fat: writes fat_buffer to sector fat_lba. RAM bank 0 must be selected. Returns
+; carry set on success. Changes A, X and Y. A failure unmounts the volume.
+sdcard_write_fat:
+        jsr blk_request_fat
+        bra write_request
 
 ; sdcard_read_sector: reads sector sector_lba into sector_buffer. RAM bank 0 must be selected.
 ; Returns carry set on success. Changes A, X and Y. A failure unmounts the volume and leaves
@@ -62,6 +88,7 @@ sector_failed:
 ; Returns carry set on success. Changes A, X and Y. A failure unmounts the volume.
 sdcard_write_sector:
         jsr blk_request
+write_request:
         FARCALL sd_output, jsrfar1
         bcs sector_failed
 sector_done:
@@ -70,20 +97,31 @@ sector_done:
 sdcard_set_fast_mode:
         rts
 
-; blk_request: the request of one sector between sector_lba and sector_buffer, unit 0. Changes A
-; and X.
+; blk_request_fat: the request of one sector between fat_lba and fat_buffer, unit 0. Changes A,
+; X and Y.
+blk_request_fat:
+        ldy #>fat_buffer
+        ldx #7                  ; fat_lba+3, from sector_lba
+        bra blk_fill
+
+; blk_request: the request of one sector between sector_lba and sector_buffer, unit 0. Changes A,
+; X and Y.
 blk_request:
-        stz BLK_UNIT
+        ldy #>sector_buffer
         ldx #3
+blk_fill:
+        .assert <sector_buffer = 0, lderror, "blk_fill takes the buffers on a page boundary"
+        .assert <fat_buffer = 0, lderror, "blk_fill takes the buffers on a page boundary"
+        sty BLK_BUFFER+1
+        stz BLK_BUFFER
+        stz BLK_UNIT
+        ldy #3
 @lba:
         lda sector_lba,x
-        sta BLK_SECTOR,x
+        sta BLK_SECTOR,y
         dex
+        dey
         bpl @lba
-        lda #<sector_buffer
-        sta BLK_BUFFER
-        lda #>sector_buffer
-        sta BLK_BUFFER+1
         lda #1
         sta BLK_COUNT
         rts
