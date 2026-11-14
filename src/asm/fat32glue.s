@@ -10,7 +10,7 @@
 .export fat32_size, fat32_dirent, fat32_errno, fat32_readonly, skip_mask
 .export sector_buffer, sector_buffer_end, sector_lba
 .export sdcard_read_sector, sdcard_write_sector, sdcard_set_fast_mode, to_lower
-.import jsrfar1, sd_input, sd_output
+.import jsrfar1, sd_input, sd_output, unmount
 
 .segment "KERNELZP" : zeropage
 
@@ -42,25 +42,32 @@ sector_lba:       .res 4        ; the sector in sector_buffer
 .segment "B1CODE"
 
 ; sdcard_read_sector: reads sector sector_lba into sector_buffer. RAM bank 0 must be selected.
-; Returns carry set on success. Changes A, X and Y.
+; Returns carry set on success. Changes A, X and Y. A failure unmounts the volume and leaves
+; no sector in the buffer.
 sdcard_read_sector:
         jsr blk_request
         FARCALL sd_input, jsrfar1
-        bra flip_carry
+        bcc sector_done         ; the driver returns carry set on an error
+        lda #$FF
+        sta sector_lba+3        ; no sector in the buffer
+; sector_failed: unmounts the volume, so the next call mounts the card that is present. Returns
+; carry clear.
+sector_failed:
+        lda #0
+        jsr unmount
+        clc
+        rts
 
 ; sdcard_write_sector: writes sector_buffer to sector sector_lba. RAM bank 0 must be selected.
-; Returns carry set on success. Changes A, X and Y.
+; Returns carry set on success. Changes A, X and Y. A failure unmounts the volume.
 sdcard_write_sector:
         jsr blk_request
         FARCALL sd_output, jsrfar1
-flip_carry:                     ; the driver returns carry set on an error
         bcs sector_failed
+sector_done:
         sec
 ; sdcard_set_fast_mode: does nothing. sdcard.s has the slow read loop only.
 sdcard_set_fast_mode:
-        rts
-sector_failed:
-        clc
         rts
 
 ; blk_request: the request of one sector between sector_lba and sector_buffer, unit 0. Changes A

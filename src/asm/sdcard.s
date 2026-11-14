@@ -52,6 +52,7 @@ sd_ready:     .res 1            ; $FF once the card has started, 0 without a car
 sd_cmd:       .res 6            ; the command in the order sent: index, argument high byte first, CRC
 sd_count:     .res 1            ; wait_ready's timeout, then the pages of a sector left
 sd_fast:      .res 1            ; bit 7 set: read_sector uses the fast loop
+sd_tries:     .res 1            ; the tries left for the sector of sd_request
 
 .segment "CODE"
 
@@ -137,8 +138,16 @@ sd_output:
         ldx #$40 | 24           ; WRITE_BLOCK
         ; fall through
 
-; sd_request: moves BLK_COUNT sectors with the command X, one sector a command.
+; sd_request: moves BLK_COUNT sectors with the command X, one sector a command. A sector that
+; fails gets two more tries. Without a card it runs sd_init first, so a card put in after the
+; boot is found. A sector that fails three times clears sd_ready, and the next request starts
+; the card again.
 sd_request:
+        lda sd_ready
+        bne @ready
+        phx                     ; sd_init changes X
+        jsr sd_init
+        plx
         lda sd_ready
         bne @ready
         lda #ERR_NOT_READY
@@ -161,15 +170,33 @@ sd_request:
         lda #1                  ; the CRC is not checked
         sta sd_cmd+5
 @sector:
+        lda #3                  ; a try and two retries
+        sta sd_tries
+@try:
+        lda sd_ptr+1            ; a failed write has moved sd_ptr on
+        pha
         lda sd_cmd
         cmp #$40 | 24
         beq @write
         jsr read_sector
-        bcc @read_fault
-        bra @next
+        bra @tried
 @write:
         jsr write_sector
-        bcc @write_fault
+@tried:
+        pla                     ; keeps carry
+        bcs @next
+        sta sd_ptr+1
+        dec sd_tries
+        bne @try
+        lda #ERR_READ_FAULT
+        ldx sd_cmd
+        cpx #$40 | 24
+        bne @fault
+        lda #ERR_WRITE_FAULT
+@fault:
+        stz sd_ready            ; the card may be gone or changed
+        sec
+        rts
 @next:                          ; the next sector
         ldx #4
 @count:
@@ -181,14 +208,6 @@ sd_request:
         dec BLK_COUNT
         bne @sector
         clc
-        rts
-@read_fault:
-        lda #ERR_READ_FAULT
-        sec
-        rts
-@write_fault:
-        lda #ERR_WRITE_FAULT
-        sec
         rts
 
 ; read_sector: reads the sector of sd_cmd to sd_ptr and moves sd_ptr on by 512. Returns carry
